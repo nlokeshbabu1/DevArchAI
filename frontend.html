@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>DevArchAI - Production Readiness Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/dist/Recharts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .score-excellent { color: #22c55e; }
+        .score-good { color: #3b82f6; }
+        .score-fair { color: #eab308; }
+        .score-poor { color: #f97316; }
+        .score-critical { color: #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold">DevArchAI</h1>
+                    <p class="text-purple-200 mt-1">AI-Powered DevOps Production Readiness Engine</p>
+                </div>
+                <nav class="flex gap-4">
+                    <button onclick="showSection('home')" class="hover:text-purple-200 transition">Analyze</button>
+                    <button onclick="showSection('report')" class="hover:text-purple-200 transition">Report</button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Home Section -->
+        <section id="home-section" class="max-w-2xl mx-auto">
+            <div class="text-center mb-8">
+                <h2 class="text-4xl font-bold text-gray-800 mb-4">
+                    Analyze Your Infrastructure
+                </h2>
+                <p class="text-gray-600 text-lg">
+                    Get AI-powered insights on security, scalability, reliability, cost, and observability
+                </p>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <form id="analyze-form" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            GitHub Repository URL
+                        </label>
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                            </svg>
+                            <input
+                                type="url"
+                                id="repo-url"
+                                placeholder="https://github.com/organization/repository"
+                                class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Branch Selection -->
+                    <div id="branch-section" style="display: block !important; visibility: visible !important;">
+                        <label class="block text-sm font-medium text-gray-700 mb-2" style="display: block !important;">
+                            <span style="color: #6B46C1; font-weight: bold;">🌿 Branch Selection</span>
+                            <span class="text-purple-600 font-bold">▼</span>
+                        </label>
+                        <div class="relative" style="display: block !important;">
+                            <select
+                                id="branch-select"
+                                class="w-full px-4 py-3 border-2 border-purple-400 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white text-gray-800 font-medium"
+                                disabled
+                                style="display: block !important; visibility: visible !important; min-height: 50px;"
+                            >
+                                <option value="">📁 Enter repository URL above, then click here to select branch</option>
+                            </select>
+                            <div id="branch-loading" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
+                            </div>
+                            <div id="branch-check" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-green-500">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1" style="display: block !important;">✨ Auto-detects branches from GitHub - Select the branch you want to scan</p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="ai-explanations" checked class="w-4 h-4 text-purple-600 rounded">
+                        <label for="ai-explanations" class="text-sm text-gray-700">
+                            Include AI-powered explanations and recommendations
+                        </label>
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="analyze-btn"
+                        class="w-full gradient-bg text-white py-3 px-4 rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        <span>Start Analysis</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                        </svg>
+                    </button>
+                </form>
+
+                <div id="loading" class="hidden mt-6 text-center">
+                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto"></div>
+                    <p class="text-gray-600 mt-4">Analyzing repository...</p>
+                </div>
+
+                <div id="error-message" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                    <svg class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                    <p class="text-sm text-red-700" id="error-text"></p>
+                </div>
+            </div>
+
+            <!-- Feature Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+                <div class="bg-white rounded-xl shadow p-6 text-center">
+                    <div class="text-4xl mb-3">🔒</div>
+                    <h3 class="font-semibold text-gray-800 mb-1">Security</h3>
+                    <p class="text-sm text-gray-600">Detect misconfigurations and vulnerabilities</p>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6 text-center">
+                    <div class="text-4xl mb-3">📈</div>
+                    <h3 class="font-semibold text-gray-800 mb-1">Scalability</h3>
+                    <p class="text-sm text-gray-600">Ensure infrastructure can handle growth</p>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6 text-center">
+                    <div class="text-4xl mb-3">🛡️</div>
+                    <h3 class="font-semibold text-gray-800 mb-1">Reliability</h3>
+                    <p class="text-sm text-gray-600">Identify single points of failure</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Report Section -->
+        <section id="report-section" class="hidden max-w-6xl mx-auto">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Analysis Report</h2>
+                    <p class="text-gray-600" id="report-repo"></p>
+                    <p class="text-sm text-gray-500" id="report-branch"></p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="downloadPDF()" class="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        PDF
+                    </button>
+                    <button onclick="downloadExcel()" class="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Excel
+                    </button>
+                    <button onclick="downloadJSON()" class="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        JSON
+                    </button>
+                </div>
+            </div>
+
+            <div id="report-content" class="space-y-6">
+                <!-- Detected Stack -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="font-semibold text-gray-800 mb-3">Detected Technologies</h3>
+                    <div id="detected-stack" class="flex flex-wrap gap-2">
+                        <p class="text-gray-500 text-sm">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Score Overview -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-white rounded-xl shadow-lg p-6 text-center md:col-span-1">
+                        <p class="text-sm text-gray-600 mb-2">Overall Score</p>
+                        <div id="overall-score" class="text-5xl font-bold">-</div>
+                        <p class="text-sm text-gray-500 mt-1">out of 100</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-lg p-6 md:col-span-3">
+                        <h3 class="font-semibold text-gray-800 mb-4">Category Scores</h3>
+                        <div id="category-scores" class="grid grid-cols-5 gap-4"></div>
+                    </div>
+                </div>
+
+                <!-- Executive Summary -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="font-semibold text-gray-800 mb-3">Executive Summary</h3>
+                    <p id="executive-summary" class="text-gray-600"></p>
+                </div>
+
+                <!-- Findings Summary -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="font-semibold text-gray-800 mb-4">Findings by Severity</h3>
+                    <div id="findings-summary" class="grid grid-cols-4 gap-4"></div>
+                </div>
+
+                <!-- All Findings -->
+                <div class="bg-white rounded-xl shadow-lg">
+                    <div class="p-6 border-b">
+                        <h3 class="font-semibold text-gray-800">All Findings</h3>
+                    </div>
+                    <div id="findings-list" class="divide-y"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-gray-400 py-6 mt-12">
+        <div class="container mx-auto px-4 text-center">
+            <p>&copy; 2024 DevArchAI. Production Readiness Engine.</p>
+        </div>
+    </footer>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let currentReport = null;
+        let availableBranches = [];
+
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ DOM loaded, initializing branch selector...');
+
+            function showSection(section) {
+                document.getElementById('home-section').classList.toggle('hidden', section !== 'home');
+                document.getElementById('report-section').classList.toggle('hidden', section !== 'report');
+            }
+
+            function getScoreColor(score) {
+                if (score >= 90) return 'score-excellent';
+                if (score >= 80) return 'score-good';
+                if (score >= 70) return 'score-fair';
+                if (score >= 60) return 'score-poor';
+                return 'score-critical';
+            }
+
+            function getSeverityColor(severity) {
+                const colors = {
+                    critical: 'bg-red-100 text-red-800 border-red-200',
+                    high: 'bg-orange-100 text-orange-800 border-orange-200',
+                    medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                    low: 'bg-green-100 text-green-800 border-green-200'
+                };
+                return colors[severity] || 'bg-gray-100 text-gray-800 border-gray-200';
+            }
+
+            function getSeverityIcon(severity) {
+                const icons = {
+                    critical: '🔴',
+                    high: '🟠',
+                    medium: '🟡',
+                    low: '🟢'
+                };
+                return icons[severity] || '⚪';
+            }
+
+            // Fetch branches when repo URL changes
+            const repoUrlInput = document.getElementById('repo-url');
+            if (repoUrlInput) {
+                console.log('✅ Found repo-url input, attaching blur event...');
+                repoUrlInput.addEventListener('input', async (e) => {
+                    const repoUrl = e.target.value.trim();
+                    if (!repoUrl) return;
+
+                    console.log('🔍 Fetching branches for:', repoUrl);
+
+                    const branchSelect = document.getElementById('branch-select');
+                    const branchLoading = document.getElementById('branch-loading');
+
+                    if (!branchSelect || !branchLoading) {
+                        console.error('❌ Branch elements not found!');
+                        return;
+                    }
+
+                    branchLoading.classList.remove('hidden');
+                    branchSelect.innerHTML = '<option value="">⏳ Loading branches...</option>';
+                    branchSelect.disabled = true;
+
+                    try {
+                        // Extract owner and repo from URL
+                        const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/i);;
+                        if (!match) {
+                            throw new Error('Invalid GitHub URL');
+                        }
+                        const [, owner, repo] = match;
+
+                        console.log('📦 Repository:', owner, repo);
+
+                        // Fetch branches from GitHub API
+                        const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches`, {
+                            headers: { 'Accept': 'application/vnd.github.v3+json' }
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch branches');
+                        }
+
+                        const branches = await response.json();
+                        availableBranches = branches.map(b => b.name);
+
+                        console.log('✅ Found branches:', availableBranches);
+
+                        // Populate dropdown
+                        branchSelect.innerHTML = availableBranches.map(branch =>
+                            `<option value="${branch}" ${branch === 'main' ? 'selected' : ''}>${branch}</option>`
+                        ).join('');
+                        branchSelect.disabled = false;
+
+                    } catch (error) {
+                        console.error('❌ Error fetching branches:', error);
+                        branchSelect.innerHTML = '<option value="main" selected>main</option>';
+                        branchSelect.disabled = false;
+                    } finally {
+                        branchLoading.classList.add('hidden');
+                    }
+                });
+            } else {
+                console.error('❌ repo-url input not found!');
+            }
+
+            // Form submission handler
+            const analyzeForm = document.getElementById('analyze-form');
+            if (analyzeForm) {
+                console.log('✅ Found analyze-form, attaching submit event...');
+                analyzeForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+
+                    const repoUrl = document.getElementById('repo-url').value;
+                    const branch = document.getElementById('branch-select').value || 'main';
+                    const includeAI = document.getElementById('ai-explanations').checked;
+                    const btn = document.getElementById('analyze-btn');
+                    const loading = document.getElementById('loading');
+                    const errorDiv = document.getElementById('error-message');
+
+                    // Debug logging
+                    console.log('🚀 Starting analysis...');
+                    console.log('📁 Repository:', repoUrl);
+                    console.log('🌿 Branch:', branch);
+                    console.log('🤖 AI Explanations:', includeAI);
+                    console.log('📡 API Endpoint:', `${API_BASE}/api/v1/scans/analyze`);
+
+                    btn.disabled = true;
+                    loading.classList.remove('hidden');
+                    errorDiv.classList.add('hidden');
+
+                    // Reset current report to prevent stale data
+                    currentReport = null;
+
+                    try {
+                        // Use cache: "no-store" to prevent browser caching
+                        // Use /api/v1/scans/analyze endpoint (main backend)
+                        const response = await fetch(`${API_BASE}/api/v1/scans/analyze`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            cache: 'no-store',
+                            body: JSON.stringify({
+                                repository_url: repoUrl,
+                                branch: branch
+                            })
+                        });
+
+                        console.log('📡 API Response status:', response.status);
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Analysis failed');
+                        }
+
+                        const job = await response.json();
+                        console.log('📋 Scan job created:', job);
+
+                        // Poll for completion with cache-busting
+                        let reportResponse;
+                        let attempts = 0;
+                        while (attempts < 30) {
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            reportResponse = await fetch(`${API_BASE}/api/v1/reports/${job.report_id}?t=${Date.now()}`, {
+                                cache: 'no-store'
+                            });
+                            currentReport = await reportResponse.json();
+
+                            console.log('⏳ Polling attempt', attempts + 1, '- Status:', currentReport ? 'Received' : 'Waiting');
+
+                            if (currentReport && currentReport.summary) {
+                                break;
+                            }
+                            attempts++;
+                        }
+
+                        // Validate report data
+                        if (!currentReport || !currentReport.summary) {
+                            throw new Error('Invalid report data received');
+                        }
+
+                        console.log('✅ Report received successfully');
+                        console.log('📊 Summary:', currentReport.summary);
+
+                        displayReport(currentReport);
+                        showSection('report');
+
+                    } catch (error) {
+                        console.error('❌ Analysis failed:', error);
+                        document.getElementById('error-text').textContent = error.message;
+                        errorDiv.classList.remove('hidden');
+                    } finally {
+                        btn.disabled = false;
+                        loading.classList.add('hidden');
+                    }
+                });
+            } else {
+                console.error('❌ analyze-form not found!');
+            }
+
+            // Display report function
+            function displayReport(report) {
+                // Clear previous content to prevent stale data
+                const reportRepo = document.getElementById('report-repo');
+                const reportBranch = document.getElementById('report-branch');
+                const overallScore = document.getElementById('overall-score');
+                const categoryScores = document.getElementById('category-scores');
+                const executiveSummary = document.getElementById('executive-summary');
+                const findingsSummary = document.getElementById('findings-summary');
+                const findingsList = document.getElementById('findings-list');
+                const detectedStack = document.getElementById('detected-stack');
+
+                if (reportRepo) reportRepo.textContent = '';
+                if (reportBranch) reportBranch.textContent = '';
+                if (overallScore) overallScore.textContent = '-';
+                if (categoryScores) categoryScores.innerHTML = '';
+                if (executiveSummary) executiveSummary.textContent = '';
+                if (findingsSummary) findingsSummary.innerHTML = '';
+                if (findingsList) findingsList.innerHTML = '';
+                if (detectedStack) detectedStack.innerHTML = '';
+
+                // Set new data
+                if (reportRepo) reportRepo.textContent = report.repository_url;
+                
+                // Show branch if available
+                const branch = report.branch || 'main';
+                if (reportBranch) reportBranch.textContent = `Branch: ${branch}`;
+
+                // Overall score
+                if (overallScore) {
+                    overallScore.textContent = report.overall_score.toFixed(1);
+                    overallScore.className = `text-5xl font-bold ${getScoreColor(report.overall_score)}`;
+                }
+
+                // Category scores - reset and rebuild
+                if (categoryScores) {
+                    categoryScores.innerHTML = report.category_scores.map(cat => `
+                        <div class="text-center">
+                            <div class="text-2xl font-bold ${getScoreColor(cat.score)}">${cat.score.toFixed(0)}</div>
+                            <div class="text-xs text-gray-600 capitalize">${cat.category}</div>
+                            <div class="text-xs text-gray-500">${cat.findings_count} findings</div>
+                        </div>
+                    `).join('');
+                }
+
+                // Executive summary
+                if (executiveSummary) {
+                    executiveSummary.textContent = report.executive_summary || 'No executive summary available.';
+                }
+
+                // Detected stack
+                if (detectedStack && report.detected_stack && report.detected_stack.detected_stack) {
+                    const technologies = report.detected_stack.detected_stack;
+                    detectedStack.innerHTML = `
+                        <div class="flex flex-wrap gap-2">
+                            ${technologies.map(tech => `
+                                <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                                    ${tech.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                // Reset severity counters before rendering
+                const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+                
+                // Count findings by severity from the actual data
+                if (report.findings) {
+                    report.findings.forEach(f => {
+                        if (severityCounts.hasOwnProperty(f.severity)) {
+                            severityCounts[f.severity]++;
+                        }
+                    });
+                }
+
+                // Findings summary - use actual counts
+                if (findingsSummary) {
+                    findingsSummary.innerHTML = Object.entries(severityCounts).map(([severity, count]) => `
+                        <div class="text-center p-4 rounded-lg ${getSeverityColor(severity)}">
+                            <div class="text-2xl font-bold">${count}</div>
+                            <div class="text-sm capitalize">${severity}</div>
+                        </div>
+                    `).join('');
+                }
+
+                // Findings list - clear and rebuild
+                if (findingsList) {
+                    if (!report.findings || report.findings.length === 0) {
+                        findingsList.innerHTML = '<div class="p-8 text-center text-gray-500">No findings - Great job! 🎉</div>';
+                    } else {
+                        findingsList.innerHTML = report.findings.map(finding => `
+                            <div class="p-4 hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-xl">${getSeverityIcon(finding.severity)}</span>
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="font-medium text-gray-800">${finding.rule_name}</span>
+                                            <span class="text-xs px-2 py-1 rounded-full border ${getSeverityColor(finding.severity)}">
+                                                ${finding.severity.toUpperCase()}
+                                            </span>
+                                            <span class="text-xs px-2 py-1 rounded-full bg-gray-100 capitalize">
+                                                ${finding.category}
+                                            </span>
+                                        </div>
+                                        <p class="text-gray-600 text-sm mb-2">${finding.description}</p>
+                                        <p class="text-sm text-gray-700"><strong>Recommendation:</strong> ${finding.recommendation}</p>
+                                        ${finding.file_path ? `<p class="text-xs text-gray-500 mt-2">📁 ${finding.file_path}</p>` : ''}
+                                        ${finding.ai_explanation ? `<p class="text-sm text-gray-600 mt-2 bg-purple-50 p-3 rounded">🤖 ${finding.ai_explanation}</p>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            }
+
+            // Download functions
+            window.downloadJSON = function() {
+                if (!currentReport) {
+                    alert('No report available to download');
+                    return;
+                }
+                const blob = new Blob([JSON.stringify(currentReport, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `devarchai-report-${currentReport.id}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            window.downloadPDF = function() {
+                if (!currentReport) {
+                    alert('No report available to download');
+                    return;
+                }
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Title
+                doc.setFontSize(18);
+                doc.setTextColor(102, 126, 234);
+                doc.text('DevArchAI Security Report', 14, 20);
+
+                // Repository Info
+                doc.setFontSize(11);
+                doc.setTextColor(0, 0, 0);
+                doc.text(`Repository: ${currentReport.repository_url}`, 14, 30);
+                doc.text(`Scan Date: ${new Date(currentReport.created_at).toLocaleString()}`, 14, 36);
+                doc.text(`Overall Score: ${currentReport.overall_score.toFixed(1)}/100`, 14, 42);
+
+                // Summary Table
+                doc.setFontSize(12);
+                doc.text('Summary', 14, 52);
+                
+                const summaryData = [
+                    ['Critical', currentReport.summary.critical.toString()],
+                    ['High', currentReport.summary.high.toString()],
+                    ['Medium', currentReport.summary.medium.toString()],
+                    ['Low', currentReport.summary.low.toString()]
+                ];
+
+                doc.autoTable({
+                    startY: 56,
+                    head: [['Severity', 'Count']],
+                    body: summaryData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [102, 126, 234] },
+                    margin: { left: 14, right: 14 }
+                });
+
+                // Findings Table
+                doc.setFontSize(12);
+                doc.text('Findings', 14, doc.lastAutoTable.finalY + 15);
+
+                const findingsData = currentReport.findings.map(f => [
+                    f.rule_id,
+                    f.severity.toUpperCase(),
+                    f.rule_name,
+                    f.description.substring(0, 80) + (f.description.length > 80 ? '...' : ''),
+                    f.file_path || 'N/A',
+                    f.recommendation.substring(0, 60) + (f.recommendation.length > 60 ? '...' : '')
+                ]);
+
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + 19,
+                    head: [['Rule ID', 'Severity', 'Title', 'Description', 'File Path', 'Recommendation']],
+                    body: findingsData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [102, 126, 234] },
+                    margin: { left: 14, right: 14 },
+                    styles: { fontSize: 8 },
+                    columnStyles: {
+                        0: { cellWidth: 20 },
+                        1: { cellWidth: 20 },
+                        2: { cellWidth: 40 },
+                        3: { cellWidth: 50 },
+                        4: { cellWidth: 40 },
+                        5: { cellWidth: 50 }
+                    }
+                });
+
+                // Footer
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text(`Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
+                }
+
+                // Save
+                const repoName = currentReport.repository_name || 'report';
+                doc.save(`devarchai-${repoName}-report.pdf`);
+            }
+
+            window.downloadExcel = function() {
+                if (!currentReport) {
+                    alert('No report available to download');
+                    return;
+                }
+
+                // Create worksheet data
+                const worksheetData = [
+                    // Header row
+                    ['Rule ID', 'Severity', 'Title', 'Description', 'File Path', 'Recommendation', 'Category'],
+                    // Data rows
+                    ...currentReport.findings.map(f => [
+                        f.rule_id,
+                        f.severity.toUpperCase(),
+                        f.rule_name,
+                        f.description,
+                        f.file_path || 'N/A',
+                        f.recommendation,
+                        f.category
+                    ])
+                ];
+
+                // Create workbook and worksheet
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+
+                // Set column widths
+                ws['!cols'] = [
+                    { wch: 15 }, // Rule ID
+                    { wch: 12 }, // Severity
+                    { wch: 30 }, // Title
+                    { wch: 60 }, // Description
+                    { wch: 40 }, // File Path
+                    { wch: 50 }, // Recommendation
+                    { wch: 15 }  // Category
+                ];
+
+                // Style header row
+                const range = XLSX.utils.decode_range(ws['!ref']);
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const address = XLSX.utils.encode_col(C) + "1";
+                    if (!ws[address]) continue;
+                    ws[address].s = {
+                        font: { bold: true, color: { rgb: "FFFFFF" } },
+                        fill: { fgColor: { rgb: "667EEA" } },
+                        alignment: { horizontal: "center" }
+                    };
+                }
+
+                // Add summary sheet
+                const summaryData = [
+                    ['DevArchAI Security Report Summary'],
+                    ['Repository', currentReport.repository_url],
+                    ['Scan Date', new Date(currentReport.created_at).toLocaleString()],
+                    ['Overall Score', `${currentReport.overall_score.toFixed(1)}/100`],
+                    [],
+                    ['Findings by Severity'],
+                    ['Critical', currentReport.summary.critical],
+                    ['High', currentReport.summary.high],
+                    ['Medium', currentReport.summary.medium],
+                    ['Low', currentReport.summary.low],
+                    ['Total', Object.values(currentReport.summary).reduce((a, b) => a + b, 0)]
+                ];
+
+                const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+                summaryWs['!cols'] = [{ wch: 25 }, { wch: 15 }];
+
+                // Add worksheets to workbook
+                XLSX.utils.book_append_sheet(wb, summaryData, 'Summary');
+                XLSX.utils.book_append_sheet(wb, ws, 'Findings');
+
+                // Save
+                const repoName = currentReport.repository_name || 'report';
+                XLSX.writeFile(wb, `devarchai-${repoName}-report.xlsx`);
+            }
+
+            // Make showSection available globally
+            window.showSection = showSection;
+
+            console.log('✅ Branch selector initialized successfully!');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+# Kubernetes Service for Backend
+apiVersion: v1
+kind: Service
+metadata:
+  name: devarchai-backend
+  labels:
+    app: devarchai
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: devarchai
+    component: backend
+---
+# Kubernetes Service for Frontend
+apiVersion: v1
+kind: Service
+metadata:
+  name: devarchai-frontend
+  labels:
+    app: devarchai
+    component: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: devarchai
+    component: frontend
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devarchai-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - api.devarchai.com
+        - devarchai.com
+      secretName: devarchai-tls
+  rules:
+    - host: api.devarchai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devarchai-backend
+                port:
+                  number: 8000
+    - host: devarchai.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devarchai-frontend
+                port:
+                  number: 80
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devarchai-backend
+  labels:
+    app: devarchai
+---
+# Secret (template - use external secrets manager in production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devarchai-secrets
+type: Opaque
+stringData:
+  database-url: "postgresql://user:password@host:5432/devarchai"
+  redis-url: "redis://host:6379/0"
+  openai-api-key: "your-api-key"
+  secret-key: "change-me-in-production"
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devarchai-config
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  MAX_REPO_SIZE_MB: "100"
+  ANALYSIS_TIMEOUT_SECONDS: "300"
