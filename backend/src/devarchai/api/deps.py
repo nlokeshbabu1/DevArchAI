@@ -1,18 +1,17 @@
 """FastAPI dependencies for API endpoints."""
 
-from typing import Optional, AsyncGenerator
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
+from collections.abc import AsyncGenerator
+from typing import Optional
 
-from devarchai.db.session import get_session_factory
+import structlog
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from devarchai.core.security import (
     get_current_user as get_authenticated_user,
-    get_current_user_from_api_key,
-    get_current_user_from_token,
 )
-from devarchai.config import settings
+from devarchai.db.session import get_session_factory
 
 logger = structlog.get_logger(__name__)
 

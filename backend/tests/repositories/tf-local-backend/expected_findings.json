@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "LOCAL_BACKEND",
+      "file": "main.tf"
+    }
+  ]
+}

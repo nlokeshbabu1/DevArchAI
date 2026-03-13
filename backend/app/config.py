@@ -2,10 +2,11 @@
 Application Configuration
 """
 
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from typing import List, Optional
 from functools import lru_cache
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000, env="PORT")
 
     # CORS
-    CORS_ORIGINS: List[str] = Field(
+    CORS_ORIGINS: list[str] = Field(
         default=[
             "http://localhost:3000",
             "http://localhost:5173",
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
         ],
         # env="CORS_ORIGINS"
     )
-    ALLOWED_HOSTS: List[str] = Field(
+    ALLOWED_HOSTS: list[str] = Field(
         default=["*"],
         env="ALLOWED_HOSTS"
     )
@@ -74,6 +75,9 @@ class Settings(BaseSettings):
 
     # GitHub
     GITHUB_TOKEN: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
+    GITHUB_CLIENT_ID: Optional[str] = Field(default=None, env="GITHUB_CLIENT_ID")
+    GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None, env="GITHUB_CLIENT_SECRET")
+    GITHUB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/github/callback", env="GITHUB_REDIRECT_URI")
 
     # Analysis Settings
     MAX_REPO_SIZE_MB: int = Field(default=100, env="MAX_REPO_SIZE_MB")
@@ -99,7 +103,7 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

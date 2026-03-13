@@ -1,12 +1,13 @@
 """Project model for grouping repositories."""
 
 import uuid
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey
-from sqlalchemy.orm import relationship
+
+from sqlalchemy import Boolean, Column, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
-from devarchai.models.mixins import TimestampMixin, OrganizationMixin
+from devarchai.models.mixins import OrganizationMixin, TimestampMixin
 
 
 class Project(Base, TimestampMixin, OrganizationMixin):
@@ -19,14 +20,14 @@ class Project(Base, TimestampMixin, OrganizationMixin):
     __tablename__ = "projects"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Basic info
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    
+
     # Settings
     is_active = Column(Boolean, default=True, nullable=False)
-    
+
     # Relationships
     repositories = relationship(
         "Repository",

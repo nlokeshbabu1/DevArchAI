@@ -1,10 +1,9 @@
 """Rule runner for executing rule evaluations."""
 
-from typing import Any, Dict, List, Optional
-import structlog
+from typing import Any, Optional
 
-from app.rule_engine.base import RuleRegistry, RuleFinding, Category, Severity
 from app.core.logging import get_logger
+from app.rule_engine.base import Category, RuleFinding, RuleRegistry, Severity
 
 logger = get_logger(__name__)
 
@@ -17,10 +16,10 @@ class RuleRunner:
 
     def evaluate(
         self,
-        resources: List[Dict[str, Any]],
+        resources: list[dict[str, Any]],
         file_path: str,
         file_type: Optional[str] = None,
-    ) -> List[RuleFinding]:
+    ) -> list[RuleFinding]:
         """
         Evaluate all applicable rules against resources.
 
@@ -51,8 +50,8 @@ class RuleRunner:
 
     def evaluate_batch(
         self,
-        parsed_files: List[Dict[str, Any]],
-    ) -> List[RuleFinding]:
+        parsed_files: list[dict[str, Any]],
+    ) -> list[RuleFinding]:
         """
         Evaluate rules against multiple parsed files.
 
@@ -80,7 +79,7 @@ class RuleRunner:
 
         return all_findings
 
-    def get_findings_summary(self, findings: List[RuleFinding]) -> Dict[str, Any]:
+    def get_findings_summary(self, findings: list[RuleFinding]) -> dict[str, Any]:
         """Generate a summary of findings."""
         summary = {
             "total": len(findings),
@@ -100,7 +99,7 @@ class RuleRunner:
             summary["by_category"][category.value] = count
 
         # Count by rule
-        rule_counts: Dict[str, int] = {}
+        rule_counts: dict[str, int] = {}
         for finding in findings:
             rule_counts[finding.rule_id] = rule_counts.get(finding.rule_id, 0) + 1
         summary["by_rule"] = rule_counts
@@ -109,11 +108,11 @@ class RuleRunner:
 
     def filter_findings(
         self,
-        findings: List[RuleFinding],
+        findings: list[RuleFinding],
         min_severity: Optional[Severity] = None,
-        categories: Optional[List[Category]] = None,
+        categories: Optional[list[Category]] = None,
         file_type: Optional[str] = None,
-    ) -> List[RuleFinding]:
+    ) -> list[RuleFinding]:
         """Filter findings by criteria."""
         filtered = findings
 

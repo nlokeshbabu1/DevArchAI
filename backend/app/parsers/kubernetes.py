@@ -2,29 +2,31 @@
 Kubernetes YAML Parser
 """
 
-import yaml
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import yaml
+
 from app.parsers.base import BaseParser, ParsedFile
 
 
 class KubernetesParser(BaseParser):
     """Parser for Kubernetes YAML manifests."""
-    
+
     def __init__(self):
         super().__init__()
         self.supported_extensions = [".yaml", ".yml"]
         self.k8s_api_groups = ["apps", "batch", "networking.k8s.io", "autoscaling", "policy"]
-    
+
     def can_parse(self, file_path: Path) -> bool:
         """Check if file is a Kubernetes manifest."""
         if file_path.suffix not in self.supported_extensions:
             return False
-        
+
         # Check for kubernetes-specific directories
         k8s_indicators = ["kubernetes", "k8s", "manifests", "deployments", "helm"]
         return any(indicator in str(file_path).lower() for indicator in k8s_indicators)
-    
+
     def parse(self, file_path: Path, content: str) -> ParsedFile:
         """Parse Kubernetes YAML file."""
         parse_errors = []
@@ -39,21 +41,21 @@ class KubernetesParser(BaseParser):
             "pdb": [],
             "network_policies": [],
         }
-        
+
         try:
             # Handle multi-document YAML
             documents = list(yaml.safe_load_all(content))
-            
+
             for doc in documents:
                 if not doc:
                     continue
-                
+
                 if not isinstance(doc, dict):
                     continue
-                
+
                 kind = doc.get("kind", "")
                 api_version = doc.get("apiVersion", "")
-                
+
                 resource_data = {
                     "kind": kind,
                     "api_version": api_version,
@@ -64,9 +66,9 @@ class KubernetesParser(BaseParser):
                     "spec": doc.get("spec", {}),
                     "raw": doc,
                 }
-                
+
                 parsed_data["resources"].append(resource_data)
-                
+
                 # Categorize by kind
                 if kind == "Deployment":
                     parsed_data["deployments"].append(self._parse_deployment(resource_data))
@@ -84,12 +86,12 @@ class KubernetesParser(BaseParser):
                     parsed_data["pdb"].append(self._parse_pdb(resource_data))
                 elif kind == "NetworkPolicy":
                     parsed_data["network_policies"].append(self._parse_network_policy(resource_data))
-                    
+
         except yaml.YAMLError as e:
             parse_errors.append(f"YAML parsing error: {str(e)}")
         except Exception as e:
             parse_errors.append(str(e))
-        
+
         return ParsedFile(
             file_path=str(file_path),
             file_type="kubernetes",
@@ -98,13 +100,13 @@ class KubernetesParser(BaseParser):
             line_count=len(content.splitlines()),
             parse_errors=parse_errors,
         )
-    
-    def _parse_deployment(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_deployment(self, data: dict) -> dict[str, Any]:
         """Extract deployment-specific information."""
         spec = data.get("spec", {})
         template = spec.get("template", {})
         pod_spec = template.get("spec", {})
-        
+
         containers = []
         for container in pod_spec.get("containers", []):
             containers.append({
@@ -117,7 +119,7 @@ class KubernetesParser(BaseParser):
                 "env": container.get("env", []),
                 "ports": container.get("ports", []),
             })
-        
+
         return {
             "name": data.get("name", ""),
             "namespace": data.get("namespace", "default"),
@@ -130,8 +132,8 @@ class KubernetesParser(BaseParser):
             "affinity": pod_spec.get("affinity", {}),
             "tolerations": pod_spec.get("tolerations", []),
         }
-    
-    def _parse_service(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_service(self, data: dict) -> dict[str, Any]:
         """Extract service-specific information."""
         spec = data.get("spec", {})
         return {
@@ -142,8 +144,8 @@ class KubernetesParser(BaseParser):
             "selector": spec.get("selector", {}),
             "load_balancer_ip": spec.get("loadBalancerIP"),
         }
-    
-    def _parse_ingress(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_ingress(self, data: dict) -> dict[str, Any]:
         """Extract ingress-specific information."""
         spec = data.get("spec", {})
         return {
@@ -153,8 +155,8 @@ class KubernetesParser(BaseParser):
             "tls": spec.get("tls", []),
             "annotations": data.get("annotations", {}),
         }
-    
-    def _parse_hpa(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_hpa(self, data: dict) -> dict[str, Any]:
         """Extract HPA-specific information."""
         spec = data.get("spec", {})
         return {
@@ -165,8 +167,8 @@ class KubernetesParser(BaseParser):
             "max_replicas": spec.get("maxReplicas"),
             "metrics": spec.get("metrics", []),
         }
-    
-    def _parse_pdb(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_pdb(self, data: dict) -> dict[str, Any]:
         """Extract PDB-specific information."""
         spec = data.get("spec", {})
         return {
@@ -176,8 +178,8 @@ class KubernetesParser(BaseParser):
             "max_unavailable": spec.get("maxUnavailable"),
             "selector": spec.get("selector", {}),
         }
-    
-    def _parse_network_policy(self, data: Dict) -> Dict[str, Any]:
+
+    def _parse_network_policy(self, data: dict) -> dict[str, Any]:
         """Extract network policy-specific information."""
         spec = data.get("spec", {})
         return {
@@ -188,11 +190,11 @@ class KubernetesParser(BaseParser):
             "ingress": spec.get("ingress", []),
             "egress": spec.get("egress", []),
         }
-    
-    def extract_resources(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def extract_resources(self, parsed_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract resources for rule evaluation."""
         resources = []
-        
+
         for deployment in parsed_data.get("deployments", []):
             resources.append({
                 "file_type": "kubernetes",
@@ -200,7 +202,7 @@ class KubernetesParser(BaseParser):
                 "name": deployment.get("name"),
                 "properties": deployment,
             })
-        
+
         for hpa in parsed_data.get("hpa", []):
             resources.append({
                 "file_type": "kubernetes",
@@ -208,7 +210,7 @@ class KubernetesParser(BaseParser):
                 "name": hpa.get("name"),
                 "properties": hpa,
             })
-        
+
         for service in parsed_data.get("services", []):
             resources.append({
                 "file_type": "kubernetes",
@@ -216,7 +218,7 @@ class KubernetesParser(BaseParser):
                 "name": service.get("name"),
                 "properties": service,
             })
-        
+
         for pdb in parsed_data.get("pdb", []):
             resources.append({
                 "file_type": "kubernetes",
@@ -224,7 +226,7 @@ class KubernetesParser(BaseParser):
                 "name": pdb.get("name"),
                 "properties": pdb,
             })
-        
+
         for ingress in parsed_data.get("ingresses", []):
             resources.append({
                 "file_type": "kubernetes",
@@ -232,5 +234,5 @@ class KubernetesParser(BaseParser):
                 "name": ingress.get("name"),
                 "properties": ingress,
             })
-        
+
         return resources

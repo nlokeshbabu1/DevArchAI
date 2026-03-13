@@ -1,8 +1,8 @@
 """Kubernetes rules for infrastructure analysis."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from app.rule_engine.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from app.rule_engine.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule(file_types=["kubernetes"])
@@ -21,7 +21,7 @@ class KubernetesMissingHPARule(BaseRule):
             tags=["kubernetes", "scaling", "hpa"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Collect all deployments and HPAs
@@ -69,7 +69,7 @@ class KubernetesMissingResourceLimitsRule(BaseRule):
             tags=["kubernetes", "resources", "limits"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -126,7 +126,7 @@ class KubernetesMissingHealthCheckRule(BaseRule):
             tags=["kubernetes", "health", "probe"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -185,7 +185,7 @@ class KubernetesMissingNetworkPolicyRule(BaseRule):
             tags=["kubernetes", "networking", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         has_network_policy = any(
             r.get("kind") == "NetworkPolicy"
             for r in resources
@@ -228,7 +228,7 @@ class KubernetesMissingPodSecurityContextRule(BaseRule):
             tags=["kubernetes", "security", "pod"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -272,7 +272,7 @@ class KubernetesMissingPDBRule(BaseRule):
             tags=["kubernetes", "pdb", "availability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Collect deployments and PDBs
@@ -310,40 +310,6 @@ class KubernetesMissingPDBRule(BaseRule):
         return findings
 
 
-@register_rule(file_types=["kubernetes"])
-class KubernetesMissingMonitoringRule(BaseRule):
-    """Check for missing monitoring stack."""
-
-    @property
-    def rule(self) -> Rule:
-        return Rule(
-            id="K8S-OBS-001",
-            name="Missing Monitoring Stack",
-            description="No monitoring stack (Prometheus/Grafana) detected",
-            recommendation="Deploy Prometheus and Grafana for metrics collection and visualization",
-            severity=Severity.HIGH,
-            category=Category.OBSERVABILITY,
-            tags=["kubernetes", "monitoring", "prometheus"],
-        )
-
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
-        findings = []
-
-        has_monitoring = any(
-            any(indicator in resource.get("name", "").lower()
-                for indicator in ["prometheus", "grafana", "monitoring"])
-            for resource in resources
-        )
-
-        if not has_monitoring:
-            findings.append(RuleFinding(
-                rule_id=self.rule.id,
-                rule_name=self.rule.name,
-                severity=self.rule.severity,
-                category=self.rule.category,
-                description=self.rule.description,
-                recommendation=self.rule.recommendation,
-                file_path=file_path,
-            ))
-
-        return findings
+# Note: K8S-OBS-001 (Missing Monitoring) has been moved to repository-level rules
+# See: app.rule_engine.repository_rules.RepositoryLevelRules._check_missing_monitoring
+# This prevents duplicate findings for each file in the repository

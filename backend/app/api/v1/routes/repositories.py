@@ -1,24 +1,22 @@
 """Repository routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import List
-from datetime import datetime
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import get_current_user
 from app.db.session import get_db
-from app.models.user import User
 from app.models.repository import Repository
 from app.models.scan import Scan
+from app.models.user import User
+from app.schemas.common import MessageResponse
 from app.schemas.repository import (
     RepositoryCreate,
-    RepositoryUpdate,
-    RepositoryResponse,
     RepositoryListResponse,
+    RepositoryResponse,
+    RepositoryUpdate,
 )
-from app.schemas.common import MessageResponse
-from app.core.security import get_current_user
-from app.core.exceptions import RepositoryNotFoundException
 from app.utils.repo_downloader import RepoDownloader
 
 router = APIRouter(prefix="/repositories", tags=["Repositories"])

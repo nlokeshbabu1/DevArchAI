@@ -1,11 +1,9 @@
 """Billing and subscription endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-import uuid
-
-from devarchai.api.deps import get_db, get_current_user
+from devarchai.api.deps import get_current_user, get_db
 from devarchai.models.user import User
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 

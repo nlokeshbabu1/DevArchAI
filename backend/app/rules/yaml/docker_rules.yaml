@@ -1,0 +1,144 @@
+rules:
+  - id: DOCKER-001
+    title: Container Must Not Run as Root
+    severity: high
+    category: security
+    description: Running containers as root user increases security risk and potential for container escape attacks
+    remediation: Add USER instruction to run as non-root user (e.g., USER appuser or USER 1000)
+    check_logic:
+      field: user
+      operator: exists
+    file_types:
+      - dockerfile
+    tags:
+      - security
+      - container
+      - cis-benchmark
+
+  - id: DOCKER-002
+    title: Use Minimal Base Images
+    severity: low
+    category: cost
+    description: Using large base images increases attack surface, deployment time, and storage costs
+    remediation: Use alpine, slim, or distroless base images instead of full Ubuntu/Debian images
+    check_logic:
+      field: base_image.repository
+      operator: not_in
+      value:
+        - alpine
+        - slim
+        - distroless
+        - scratch
+        - busybox
+    file_types:
+      - dockerfile
+    tags:
+      - cost
+      - security
+      - best-practice
+
+  - id: DOCKER-003
+    title: Avoid Using Latest Image Tag
+    severity: medium
+    category: reliability
+    description: Using 'latest' tag makes builds non-reproducible and may introduce unexpected changes
+    remediation: Pin base images to specific version tags (e.g., node:18.17.0-alpine)
+    check_logic:
+      field: base_image.is_latest
+      operator: equals
+      value: true
+    file_types:
+      - dockerfile
+    tags:
+      - reliability
+      - versioning
+      - best-practice
+
+  - id: DOCKER-004
+    title: Define HEALTHCHECK Instruction
+    severity: low
+    category: reliability
+    description: No HEALTHCHECK instruction defined, making it harder to detect container failures
+    remediation: Add HEALTHCHECK instruction to monitor container health (e.g., HEALTHCHECK CMD curl -f http://localhost/ || exit 1)
+    check_logic:
+      field: healthcheck
+      operator: not_exists
+    file_types:
+      - dockerfile
+    tags:
+      - reliability
+      - health
+      - production
+
+  - id: DOCKER-005
+    title: Use Multi-Stage Builds
+    severity: medium
+    category: security
+    description: Multi-stage builds reduce image size and attack surface by excluding build tools from final image
+    remediation: Use multi-stage builds with separate builder and runtime stages
+    check_logic:
+      field: from_count
+      operator: less_than
+      value: 2
+    file_types:
+      - dockerfile
+    tags:
+      - security
+      - optimization
+      - best-practice
+
+  - id: DOCKER-006
+    title: Do Not Store Secrets in Dockerfile
+    severity: critical
+    category: security
+    description: Secrets in ENV variables are visible in image history and can be extracted by attackers
+    remediation: Use Docker secrets, build arguments, or runtime environment variables instead of hardcoding secrets
+    check_logic:
+      field: env_vars
+      operator: contains_secret_pattern
+      value:
+        - password
+        - secret
+        - key
+        - token
+        - credential
+        - api_key
+        - private
+    file_types:
+      - dockerfile
+    tags:
+      - security
+      - secrets
+      - critical
+
+  - id: DOCKER-007
+    title: Remove Unnecessary Packages
+    severity: low
+    category: cost
+    description: Not cleaning up package manager cache increases image size
+    remediation: Add cleanup commands after package installation (e.g., rm -rf /var/lib/apt/lists/*)
+    check_logic:
+      field: run_commands
+      operator: has_apt_without_cleanup
+    file_types:
+      - dockerfile
+    tags:
+      - cost
+      - optimization
+      - best-practice
+
+  - id: DOCKER-008
+    title: Use Explicit Version for Dependencies
+    severity: medium
+    category: reliability
+    description: Installing packages without version pinning can lead to inconsistent builds
+    remediation: Pin package versions in RUN instructions (e.g., apt-get install nginx=1.18.0-1)
+    check_logic:
+      field: run_commands
+      operator: has_unpinned_packages
+    file_types:
+      - dockerfile
+    tags:
+      - reliability
+      - versioning
+      - best-practice

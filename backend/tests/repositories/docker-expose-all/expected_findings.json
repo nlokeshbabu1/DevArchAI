@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "EXPOSE_ALL_PORTS",
+      "file": "Dockerfile"
+    }
+  ]
+}

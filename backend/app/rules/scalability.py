@@ -2,14 +2,15 @@
 Scalability Rules for Infrastructure Analysis
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
 class MissingHPARule(BaseRule):
     """Check for missing Horizontal Pod Autoscaler."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -21,14 +22,14 @@ class MissingHPARule(BaseRule):
             category=Category.SCALABILITY,
             tags=["kubernetes", "scaling", "hpa"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         # Collect all deployments and HPAs
         deployments = []
         hpa_targets = set()
-        
+
         for resource in resources:
             if resource.get("file_type") == "kubernetes":
                 if resource.get("kind") == "Deployment":
@@ -36,7 +37,7 @@ class MissingHPARule(BaseRule):
                 elif resource.get("kind") == "HorizontalPodAutoscaler":
                     target = resource.get("properties", {}).get("target_ref", {})
                     hpa_targets.add(f"{target.get('kind', '')}/{target.get('name', '')}")
-        
+
         # Check each deployment for HPA
         for deployment in deployments:
             name = deployment.get("name", "")
@@ -51,14 +52,14 @@ class MissingHPARule(BaseRule):
                     file_path=file_path,
                     resource_name=name,
                 ))
-        
+
         return findings
 
 
 @register_rule
 class MissingResourceLimitsRule(BaseRule):
     """Check for missing resource limits in Kubernetes."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -70,20 +71,20 @@ class MissingResourceLimitsRule(BaseRule):
             category=Category.SCALABILITY,
             tags=["kubernetes", "resources", "limits"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         for resource in resources:
             if resource.get("kind") != "Deployment":
                 continue
-            
+
             deployment = resource.get("properties", {})
             containers = deployment.get("containers", [])
-            
+
             for container in containers:
                 resources_spec = container.get("resources", {})
-                
+
                 if not resources_spec:
                     findings.append(RuleFinding(
                         rule_id=self.rule.id,
@@ -109,14 +110,14 @@ class MissingResourceLimitsRule(BaseRule):
                             resource_name=deployment.get("name"),
                             metadata={"container": container.get("name")},
                         ))
-        
+
         return findings
 
 
 @register_rule
 class SingleReplicaDeploymentRule(BaseRule):
     """Check for single replica deployments."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -128,17 +129,17 @@ class SingleReplicaDeploymentRule(BaseRule):
             category=Category.SCALABILITY,
             tags=["kubernetes", "scaling", "replicas"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         for resource in resources:
             if resource.get("kind") != "Deployment":
                 continue
-            
+
             deployment = resource.get("properties", {})
             replicas = deployment.get("replicas", 1)
-            
+
             if replicas == 1:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -151,14 +152,14 @@ class SingleReplicaDeploymentRule(BaseRule):
                     resource_name=deployment.get("name"),
                     metadata={"replicas": replicas},
                 ))
-        
+
         return findings
 
 
 @register_rule
 class MissingLoadBalancerRule(BaseRule):
     """Check for missing load balancer configuration."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -170,18 +171,18 @@ class MissingLoadBalancerRule(BaseRule):
             category=Category.SCALABILITY,
             tags=["kubernetes", "networking", "load-balancer"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         for resource in resources:
             if resource.get("kind") != "Service":
                 continue
-            
+
             service = resource.get("properties", {})
             service_type = service.get("type", "ClusterIP")
             ports = service.get("ports", [])
-            
+
             # Check if it's an external-facing service without LoadBalancer
             if service_type == "ClusterIP" and ports:
                 # Check if any port is commonly used for external traffic
@@ -200,14 +201,14 @@ class MissingLoadBalancerRule(BaseRule):
                             metadata={"port": port.get("port")},
                         ))
                         break
-        
+
         return findings
 
 
 @register_rule
 class DockerLatestTagRule(BaseRule):
     """Check for use of 'latest' tag in Docker images."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -219,14 +220,14 @@ class DockerLatestTagRule(BaseRule):
             category=Category.SCALABILITY,
             tags=["docker", "image", "versioning"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         for resource in resources:
             if resource.get("file_type") != "dockerfile":
                 continue
-            
+
             base_image = resource.get("base_image", {})
             if base_image and base_image.get("is_latest"):
                 findings.append(RuleFinding(
@@ -239,14 +240,14 @@ class DockerLatestTagRule(BaseRule):
                     file_path=file_path,
                     metadata={"image": base_image.get("full")},
                 ))
-        
+
         return findings
 
 
 @register_rule
 class MissingAffinityRulesRule(BaseRule):
     """Check for missing pod affinity/anti-affinity rules."""
-    
+
     @property
     def rule(self) -> Rule:
         return Rule(
@@ -258,16 +259,16 @@ class MissingAffinityRulesRule(BaseRule):
             category=Category.SCALABILITY,
             tags=["kubernetes", "scheduling", "affinity"],
         )
-    
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        
+
         for resource in resources:
             if resource.get("kind") != "Deployment":
                 continue
-            
+
             deployment = resource.get("properties", {})
-            
+
             # Check for affinity configuration
             # This would need deeper parsing of the deployment spec
             # For now, we flag if no affinity is mentioned
@@ -283,5 +284,5 @@ class MissingAffinityRulesRule(BaseRule):
                     file_path=file_path,
                     resource_name=deployment.get("name"),
                 ))
-        
+
         return findings

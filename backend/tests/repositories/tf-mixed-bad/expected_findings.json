@@ -1,0 +1,16 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "S3_PUBLIC_ACL",
+      "file": "main.tf"
+    },
+    {
+      "rule_id": "NO_REMOTE_BACKEND",
+      "file": "main.tf"
+    },
+    {
+      "rule_id": "HARDCODED_SECRETS",
+      "file": "main.tf"
+    }
+  ]
+}

@@ -1,27 +1,28 @@
 """Repository Analysis routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import List, Optional, Any, Dict
-import structlog
+from typing import Any
 
-from app.db.session import get_db
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
-from app.services.repo_analysis_service import RepoAnalysisService, get_analysis_service
-from app.services.scan_service import ScanService
+from app.db.session import get_db
 from app.models.repo_analysis import RepoAnalysis
+from app.schemas.common import MessageResponse
 from app.schemas.repo_analysis import (
+    BestPracticesResponse,
+    DevOpsStack,
+    MissingBestPractice,
+    RepoAnalysisListItem,
+    RepoAnalysisListResponse,
     RepoAnalysisRequest,
     RepoAnalysisResponse,
-    RepoAnalysisListResponse,
-    RepoAnalysisListItem,
-    BestPracticesResponse,
-    MissingBestPractice,
-    DevOpsStack,
 )
-from app.schemas.common import MessageResponse
+from app.services.repo_analysis_service import RepoAnalysisService, get_analysis_service
+from app.services.scan_service import ScanService
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +32,7 @@ router = APIRouter(prefix="/analyze", tags=["Repository Analysis"])
 # Static routes MUST come before dynamic routes with path parameters
 @router.post(
     "/repo/deep",
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
     status_code=status.HTTP_200_OK,
     summary="Deep Repository Analysis with Rule Engine",
     description="Analyze a GitHub repository with full rule engine execution and AI explanations.",

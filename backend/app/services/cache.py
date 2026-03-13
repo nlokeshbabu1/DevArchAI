@@ -4,11 +4,11 @@ Provides caching for GitHub API responses and analysis results.
 """
 
 import json
-from typing import Optional, Any, Dict, List
 from datetime import timedelta
-import structlog
+from typing import Any, Optional
 
 import redis.asyncio as redis
+import structlog
 
 from app.config import settings
 
@@ -113,7 +113,7 @@ class RedisCache:
             return False
 
     # GitHub tree caching
-    async def get_github_tree(self, owner: str, repo: str, branch: str) -> Optional[List[str]]:
+    async def get_github_tree(self, owner: str, repo: str, branch: str) -> Optional[list[str]]:
         """Get cached GitHub repository file tree."""
         key = f"{self.GITHUB_TREE_PREFIX}{owner}/{repo}:{branch}"
         return await self.get(key)
@@ -123,14 +123,14 @@ class RedisCache:
         owner: str,
         repo: str,
         branch: str,
-        files: List[str],
+        files: list[str],
     ) -> bool:
         """Cache GitHub repository file tree."""
         key = f"{self.GITHUB_TREE_PREFIX}{owner}/{repo}:{branch}"
         return await self.set(key, files, self.GITHUB_TREE_TTL)
 
     # GitHub repo info caching
-    async def get_github_info(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
+    async def get_github_info(self, owner: str, repo: str) -> Optional[dict[str, Any]]:
         """Get cached GitHub repository info."""
         key = f"{self.GITHUB_INFO_PREFIX}{owner}/{repo}"
         return await self.get(key)
@@ -139,14 +139,14 @@ class RedisCache:
         self,
         owner: str,
         repo: str,
-        info: Dict[str, Any],
+        info: dict[str, Any],
     ) -> bool:
         """Cache GitHub repository info."""
         key = f"{self.GITHUB_INFO_PREFIX}{owner}/{repo}"
         return await self.set(key, info, self.GITHUB_INFO_TTL)
 
     # Analysis result caching
-    async def get_analysis(self, repo_url: str) -> Optional[Dict[str, Any]]:
+    async def get_analysis(self, repo_url: str) -> Optional[dict[str, Any]]:
         """Get cached analysis result."""
         key = f"{self.ANALYSIS_PREFIX}{repo_url}"
         return await self.get(key)
@@ -154,14 +154,14 @@ class RedisCache:
     async def set_analysis(
         self,
         repo_url: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
     ) -> bool:
         """Cache analysis result."""
         key = f"{self.ANALYSIS_PREFIX}{repo_url}"
         return await self.set(key, result, self.ANALYSIS_TTL)
 
     # Validation result caching
-    async def get_validation(self, url: str) -> Optional[Dict[str, Any]]:
+    async def get_validation(self, url: str) -> Optional[dict[str, Any]]:
         """Get cached validation result."""
         key = f"{self.VALIDATION_PREFIX}{url}"
         return await self.get(key)
@@ -169,7 +169,7 @@ class RedisCache:
     async def set_validation(
         self,
         url: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
     ) -> bool:
         """Cache validation result."""
         key = f"{self.VALIDATION_PREFIX}{url}"

@@ -1,33 +1,30 @@
 """Scan routes - Updated to use Celery tasks."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import List, Optional
-from datetime import datetime
-import uuid
+from typing import Optional
 
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ScanNotFoundException
+from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
-from app.models.user import User
+from app.models.finding import Finding
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
-from app.models.finding import Finding
+from app.models.user import User
 from app.schemas.scan import (
-    ScanCreate,
-    ScanResponse,
-    ScanListResponse,
-    ScanProgressResponse,
     ScanCancelResponse,
+    ScanCreate,
+    ScanProgressResponse,
+    ScanResponse,
 )
-from app.schemas.common import MessageResponse
-from app.core.security import get_current_user, get_optional_user
-from app.core.exceptions import ScanNotFoundException
-from app.workers.tasks.scan_repository import scan_repository_task, cancel_scan_task
+from app.workers.tasks.scan_repository import cancel_scan_task, scan_repository_task
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
 
-@router.get("", response_model=List[ScanResponse])
+@router.get("", response_model=list[ScanResponse])
 async def list_scans(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -37,24 +34,24 @@ async def list_scans(
 ):
     """List all scans with pagination."""
     offset = (page - 1) * page_size
-    
+
     # Build query
     query = select(Scan).order_by(Scan.created_at.desc())
-    
+
     # Filter by status if provided
     if status_filter:
         query = query.where(Scan.status == status_filter)
-    
+
     # Filter by user if authenticated
     if current_user:
         query = query.where(Scan.user_id == current_user.id)
-    
+
     # Apply pagination
     query = query.offset(offset).limit(page_size)
-    
+
     result = await db.execute(query)
     scans = result.scalars().all()
-    
+
     return scans
 
 
@@ -209,13 +206,13 @@ async def get_scan(
         scan_uuid = UUID(scan_id)
     except ValueError:
         raise ScanNotFoundException(scan_id)
-    
+
     query = select(Scan).where(Scan.id == scan_uuid)
-    
+
     # If authenticated, filter by user
     if current_user:
         query = query.where(Scan.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     scan = result.scalar_one_or_none()
 
@@ -233,10 +230,10 @@ async def get_scan_progress(
 ):
     """Get scan progress."""
     query = select(Scan).where(Scan.id == scan_id)
-    
+
     if current_user:
         query = query.where(Scan.user_id == current_user.id)
-    
+
     result = await db.execute(query)
     scan = result.scalar_one_or_none()
 
@@ -246,7 +243,7 @@ async def get_scan_progress(
     # Get Celery task status if available
     progress = scan.progress
     status_message = scan.status_message or scan.status.value
-    
+
     if scan.celery_task_id:
         try:
             from celery.result import AsyncResult
@@ -311,7 +308,7 @@ async def cancel_scan(
     )
 
 
-@router.get("/{scan_id}/findings", response_model=List)
+@router.get("/{scan_id}/findings", response_model=list)
 async def get_scan_findings(
     scan_id: int,
     db: AsyncSession = Depends(get_db),
@@ -333,4 +330,3 @@ async def get_scan_findings(
 
 
 # Import selectinload for get_scan
-from sqlalchemy.orm import selectinload

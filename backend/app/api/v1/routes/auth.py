@@ -1,36 +1,36 @@
 """Authentication routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime
-import secrets
-import structlog
 import uuid
+from datetime import datetime
 
+import httpx
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    generate_api_key,
+    get_current_user,
+    get_password_hash,
+    verify_password,
+)
 from app.db.session import get_db
-from app.models.user import User, UserRole
-from app.models.organization import Organization, OrganizationMember, MembershipRole, PlanType
+from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
+from app.models.user import User
 from app.schemas.auth import (
+    APIKeyResponse,
     Token,
     UserCreate,
     UserLogin,
     UserResponse,
     UserUpdate,
-    APIKeyResponse,
 )
 from app.schemas.common import MessageResponse
-from app.core.security import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    get_current_user,
-    require_admin,
-    generate_api_key,
-)
-from app.core.exceptions import AuthenticationException
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -60,7 +60,7 @@ async def register(
 ):
     """Register a new user and create their organization."""
     logger.info("Register attempt", email=user_data.email, username=user_data.username)
-    
+
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == user_data.email))
     if result.scalar_one_or_none():
@@ -178,6 +178,208 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token,
     )
+
+
+@router.get("/github/url")
+async def get_github_oauth_url():
+    """
+    Get GitHub OAuth authorization URL.
+    
+    Returns the URL to redirect users to for GitHub OAuth authentication.
+    """
+    if not settings.GITHUB_CLIENT_ID:
+        # Return a mock URL for development/testing
+        # In production, this should return actual OAuth URL
+        return {
+            "oauth_url": None,
+            "error": "GitHub OAuth not configured",
+            "message": "Please use email/password authentication"
+        }
+    
+    # Build OAuth URL
+    oauth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={settings.GITHUB_CLIENT_ID}"
+        f"&redirect_uri={settings.GITHUB_REDIRECT_URI}"
+        f"&scope=user:email%20read:user"
+    )
+    
+    return {"oauth_url": oauth_url}
+
+
+@router.post("/github/callback")
+async def github_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GitHub OAuth callback endpoint.
+    
+    Exchanges GitHub authorization code for access token,
+    gets user info, and creates/updates user in database.
+    """
+    try:
+        # Get authorization code from request
+        data = await request.json()
+        code = data.get("code")
+        
+        if not code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Authorization code required",
+            )
+        
+        # Validate GitHub OAuth settings
+        if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
+            logger.error("GitHub OAuth not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="GitHub OAuth not configured on server",
+            )
+        
+        logger.info("Exchanging GitHub code for token")
+        
+        # Exchange code for access token
+        token_url = "https://github.com/login/oauth/access_token"
+        token_data = {
+            "client_id": settings.GITHUB_CLIENT_ID,
+            "client_secret": settings.GITHUB_CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": settings.GITHUB_REDIRECT_URI,
+        }
+        
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                token_url,
+                data=token_data,
+                headers={"Accept": "application/json"},
+                timeout=10.0,
+            )
+            
+            if token_response.status_code != 200:
+                logger.error("GitHub token exchange failed", status=token_response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to exchange authorization code",
+                )
+            
+            token_json = token_response.json()
+            access_token = token_json.get("access_token")
+            
+            if not access_token:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No access token received from GitHub",
+                )
+            
+            # Get user info from GitHub
+            logger.info("Fetching GitHub user info")
+            user_response = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"token {access_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+                timeout=10.0,
+            )
+            
+            if user_response.status_code != 200:
+                logger.error("GitHub user info fetch failed", status=user_response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to fetch GitHub user info",
+                )
+            
+            github_user = user_response.json()
+            
+            # Extract user information
+            github_id = str(github_user.get("id"))
+            email = github_user.get("email")
+            username = github_user.get("login")
+            full_name = github_user.get("name", "")
+            avatar_url = github_user.get("avatar_url", "")
+            
+            # If no email from GitHub, fetch it
+            if not email:
+                logger.info("Fetching GitHub user emails")
+                emails_response = await client.get(
+                    "https://api.github.com/user/emails",
+                    headers={
+                        "Authorization": f"token {access_token}",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                    timeout=10.0,
+                )
+                
+                if emails_response.status_code == 200:
+                    emails = emails_response.json()
+                    # Get primary email
+                    for email_data in emails:
+                        if email_data.get("primary"):
+                            email = email_data.get("email")
+                            break
+            
+            if not email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No email found in GitHub account",
+                )
+            
+            # Find or create user in database
+            logger.info("Finding or creating user", github_id=github_id, email=email)
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                # Create new user
+                logger.info("Creating new user from GitHub OAuth", email=email)
+                user = User(
+                    email=email,
+                    username=username or email.split("@")[0],
+                    hashed_password="",  # No password for OAuth users
+                    full_name=full_name or "",
+                    avatar_url=avatar_url or "",
+                    github_id=github_id,
+                    is_verified=True,  # GitHub emails are verified
+                )
+                db.add(user)
+                await db.flush()
+                logger.info("User created from GitHub OAuth", user_id=user.id)
+            else:
+                # Update existing user with GitHub info
+                logger.info("Updating existing user with GitHub info", user_id=user.id)
+                user.github_id = github_id
+                if avatar_url:
+                    user.avatar_url = avatar_url
+                if full_name and not user.full_name:
+                    user.full_name = full_name
+            
+            # Update last login
+            user.last_login_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(user)
+            
+            # Generate JWT tokens
+            access_token_jwt = create_access_token(data={"sub": str(user.id), "email": user.email})
+            refresh_token_jwt = create_refresh_token(data={"sub": str(user.id)})
+            
+            logger.info("GitHub OAuth successful", user_id=user.id, email=user.email)
+            
+            return {
+                "access_token": access_token_jwt,
+                "refresh_token": refresh_token_jwt,
+                "token_type": "bearer",
+                "user": user_to_response(user),
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("GitHub OAuth callback failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"GitHub OAuth failed: {str(e)}",
+        )
 
 
 @router.get("/me", response_model=UserResponse)

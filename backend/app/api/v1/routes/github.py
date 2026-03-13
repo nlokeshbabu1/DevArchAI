@@ -1,9 +1,8 @@
 """GitHub API routes for repository operations."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional
 import httpx
 import structlog
+from fastapi import APIRouter, HTTPException, status
 
 from app.config import settings
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException

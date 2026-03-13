@@ -1,12 +1,12 @@
 """User model with multi-tenancy support."""
 
-import uuid
 import enum
+import uuid
+
 import sqlalchemy
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SQLEnum, ForeignKey, Text
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
 from devarchai.models.mixins import TimestampMixin
@@ -30,31 +30,31 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Authentication
     email = Column(String(255), unique=True, index=True, nullable=False)
     username = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
-    
+
     # Profile
     full_name = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
-    
+
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
-    
+
     # Current organization context
     current_org_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
-    
+
     # API key for enterprise users
     api_key = Column(String(255), unique=True, index=True, nullable=True)
     api_key_prefix = Column(String(16), nullable=True)
-    
+
     # Last login tracking
     last_login_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Relationships
     memberships = relationship(
         "devarchai.models.organization.OrganizationMember",
@@ -117,7 +117,7 @@ class OrganizationMember(Base, TimestampMixin):
     __tablename__ = "organization_members"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     organization_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
@@ -130,12 +130,12 @@ class OrganizationMember(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    
+
     role = Column(SQLEnum(MembershipRole), default=MembershipRole.MEMBER, nullable=False)
     invited_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     invited_at = Column(DateTime(timezone=True), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="members")
     user = relationship("devarchai.models.user.User", back_populates="memberships")

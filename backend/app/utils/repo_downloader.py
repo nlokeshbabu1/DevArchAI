@@ -1,16 +1,14 @@
 """Repository downloader utility for cloning GitHub repositories."""
 
 import asyncio
-import shutil
-import tempfile
 import re
-from pathlib import Path
-from typing import Optional, Tuple
+import shutil
 from dataclasses import dataclass
-import structlog
+from pathlib import Path
+from typing import Optional
 
 from app.config import settings
-from app.core.exceptions import RepositoryNotFoundException, InvalidRepositoryException
+from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -41,7 +39,7 @@ class RepoDownloader:
         repo_url: str,
         branch: Optional[str] = None,
         commit_hash: Optional[str] = None,
-    ) -> Tuple[str, RepoInfo]:
+    ) -> tuple[str, RepoInfo]:
         """
         Clone a GitHub repository to a temporary directory.
 

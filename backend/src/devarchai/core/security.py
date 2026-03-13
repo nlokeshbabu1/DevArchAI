@@ -1,18 +1,19 @@
 """Security utilities for authentication and authorization."""
 
+import secrets
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Any, Optional
+
+import structlog
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-import secrets
-import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from devarchai.config import settings
 from devarchai.db.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +42,7 @@ def generate_api_key() -> tuple[str, str]:
     return full_key, prefix
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
@@ -59,7 +60,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return encoded_jwt
 
 
-def create_refresh_token(data: Dict[str, Any]) -> str:
+def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -73,7 +74,7 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[Dict[str, Any]]:
+def decode_token(token: str) -> Optional[dict[str, Any]]:
     """Decode and validate a JWT token."""
     try:
         payload = jwt.decode(
@@ -92,7 +93,7 @@ async def get_current_user_from_token(
 ) -> Optional[Any]:
     """Get current user from JWT token."""
     from devarchai.models.user import User
-    
+
     payload = decode_token(token)
     if payload is None:
         return None
@@ -116,7 +117,7 @@ async def get_current_user_from_api_key(
 ) -> Optional[Any]:
     """Get current user from API key."""
     from devarchai.models.user import User
-    
+
     # Extract prefix for faster lookup
     if "_" not in api_key:
         return None
@@ -153,8 +154,7 @@ async def get_current_user(
     Supports both JWT tokens (Authorization: Bearer <token>)
     and API keys (X-API-Key: <key>).
     """
-    from devarchai.models.user import User
-    
+
     # Try API key first (for enterprise users)
     if api_key:
         user = await get_current_user_from_api_key(api_key, db)
@@ -219,12 +219,12 @@ async def get_current_organization(
 ) -> Optional[Any]:
     """Get current organization from request context."""
     from devarchai.models.organization import Organization
-    
+
     org_id = request.headers.get("X-Organization-ID")
     if not org_id:
         # Fall back to user's current org
         org_id = current_user.current_org_id
-    
+
     if not org_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -232,9 +232,10 @@ async def get_current_organization(
         )
 
     # Verify user is member of this organization
-    from devarchai.models.organization import OrganizationMember
     from sqlalchemy import select
-    
+
+    from devarchai.models.organization import OrganizationMember
+
     result = await db.execute(
         select(OrganizationMember).where(
             OrganizationMember.organization_id == org_id,
@@ -242,11 +243,11 @@ async def get_current_organization(
         )
     )
     membership = result.scalar_one_or_none()
-    
+
     if not membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this organization",
         )
-    
+
     return await db.get(Organization, org_id)

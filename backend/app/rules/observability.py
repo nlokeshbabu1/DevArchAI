@@ -2,8 +2,9 @@
 Observability Rules for Infrastructure Analysis
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -22,7 +23,7 @@ class MissingMonitoringStackRule(BaseRule):
             tags=["kubernetes", "monitoring", "prometheus", "grafana"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Check for monitoring resources
@@ -76,7 +77,7 @@ class MissingLoggingConfigurationRule(BaseRule):
             tags=["kubernetes", "logging", "elk", "fluentd"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Check for logging resources
@@ -133,7 +134,7 @@ class MissingAlertingRule(BaseRule):
             tags=["kubernetes", "alerting", "prometheus", "alertmanager"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         has_alerting = False
@@ -180,7 +181,7 @@ class MissingDistributedTracingRule(BaseRule):
             tags=["kubernetes", "tracing", "jaeger", "x-ray"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         tracing_indicators = ["jaeger", "zipkin", "x-ray", "xray", "tempo"]
@@ -226,7 +227,7 @@ class MissingCloudWatchDashboardsRule(BaseRule):
             tags=["terraform", "aws", "cloudwatch", "dashboard"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         has_dashboard = False
@@ -267,7 +268,7 @@ class MissingServiceMapRule(BaseRule):
             tags=["kubernetes", "service-mesh", "istio", "observability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         service_mesh_indicators = ["istio", "linkerd", "consul", "app-mesh", "service-mesh"]

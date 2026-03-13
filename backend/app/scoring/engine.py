@@ -2,13 +2,11 @@
 Scoring Engine - Production Readiness Score Calculation
 """
 
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from enum import Enum
-import structlog
+from typing import Any, Optional
 
-from app.rule_engine.base import Severity, Category, RuleFinding
 from app.core.logging import get_logger
+from app.rule_engine.base import Category, RuleFinding, Severity
 
 logger = get_logger(__name__)
 
@@ -34,7 +32,7 @@ class OverallScore:
 
     score: float
     grade: str
-    category_scores: List[CategoryScore]
+    category_scores: list[CategoryScore]
     total_findings: int
     critical_findings: int
     high_findings: int
@@ -73,7 +71,7 @@ class ScoringEngine:
 
     def calculate_scores(
         self,
-        findings: List[RuleFinding],
+        findings: list[RuleFinding],
     ) -> OverallScore:
         """
         Calculate overall and category scores from findings.
@@ -87,7 +85,7 @@ class ScoringEngine:
             OverallScore with detailed breakdown
         """
         # Group findings by category
-        findings_by_category: Dict[Category, List[RuleFinding]] = {}
+        findings_by_category: dict[Category, list[RuleFinding]] = {}
         for finding in findings:
             category = finding.category
             if category not in findings_by_category:
@@ -126,11 +124,11 @@ class ScoringEngine:
     def _calculate_category_score(
         self,
         category: Category,
-        findings: List[RuleFinding],
+        findings: list[RuleFinding],
     ) -> CategoryScore:
         """
         Calculate score for a single category.
-        
+
         Formula: score = 100 - (critical * 20 + high * 10 + medium * 5)
         """
         # Start with perfect score
@@ -181,7 +179,7 @@ class ScoringEngine:
         else:
             return "F"
 
-    def get_score_interpretation(self, score: float) -> Dict[str, Any]:
+    def get_score_interpretation(self, score: float) -> dict[str, Any]:
         """Get human-readable interpretation of score."""
         if score >= 90:
             return {
@@ -219,9 +217,9 @@ class ScoreTrendAnalyzer:
     """Analyze score trends over time."""
 
     def __init__(self):
-        self.historical_scores: List[Dict[str, Any]] = []
+        self.historical_scores: list[dict[str, Any]] = []
 
-    def add_score(self, score_data: Dict[str, Any]) -> None:
+    def add_score(self, score_data: dict[str, Any]) -> None:
         """Add a historical score."""
         self.historical_scores.append(score_data)
 

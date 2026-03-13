@@ -2,9 +2,10 @@
 Terraform Analysis Rules
 """
 
-from typing import Any, Dict, List, Optional
 import re
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -23,10 +24,15 @@ class TerraformNoRemoteStateRule(BaseRule):
             tags=["terraform", "backend", "state"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
+
+        # Only evaluate this rule for Terraform files
+        if not file_path.endswith(('.tf', '.tf.json')):
+            return findings
+
         has_backend = False
-        backend_files: List[str] = []
+        backend_files: list[str] = []
 
         for resource in resources:
             if resource.get("file_type") != "terraform":
@@ -39,6 +45,7 @@ class TerraformNoRemoteStateRule(BaseRule):
                     backend_files.append(file_path)
                     break
 
+        # Only report finding if this is a Terraform file and no backend found
         if not has_backend:
             findings.append(RuleFinding(
                 rule_id=self.rule.id,
@@ -70,7 +77,7 @@ class TerraformStateLockingRule(BaseRule):
             tags=["terraform", "backend", "locking", "state"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -83,16 +90,16 @@ class TerraformStateLockingRule(BaseRule):
             backend_type = properties.get("type", "").lower()
             has_locking = properties.get("has_locking", False)
             has_remote_state = properties.get("has_remote_state", False)
-            
+
             # Only check locking for remote backends
             if not has_remote_state:
                 continue
-            
+
             # Skip backends with built-in locking (gcs, azurerm, consul, remote, pg)
             built_in_locking_backends = {"gcs", "azurerm", "consul", "remote", "pg", "etcdv3"}
             if backend_type in built_in_locking_backends:
                 continue
-            
+
             # For S3 backend, check for locking configuration
             if backend_type == "s3" and not has_locking:
                 findings.append(RuleFinding(
@@ -100,7 +107,7 @@ class TerraformStateLockingRule(BaseRule):
                     rule_name=self.rule.name,
                     severity=self.rule.severity,
                     category=self.rule.category,
-                    description=f"S3 backend does not have state locking configured. Add 'dynamodb_table' or 'use_lockfile = true'",
+                    description="S3 backend does not have state locking configured. Add 'dynamodb_table' or 'use_lockfile = true'",
                     recommendation=self.rule.recommendation,
                     file_path=file_path,
                     metadata={
@@ -140,7 +147,7 @@ class TerraformOpenSecurityGroupRule(BaseRule):
             tags=["terraform", "aws", "security-group", "networking"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -188,7 +195,7 @@ class TerraformNoEncryptionRule(BaseRule):
             tags=["terraform", "aws", "s3", "encryption"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -228,7 +235,7 @@ class TerraformNoVersionPinningRule(BaseRule):
             tags=["terraform", "provider", "versioning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -272,7 +279,7 @@ class TerraformNoTagsRule(BaseRule):
             tags=["terraform", "tags", "governance"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -313,7 +320,7 @@ class TerraformHardcodedSecretsRule(BaseRule):
             tags=["terraform", "secrets", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         secret_patterns = [
             r'password\s*=\s*"[^"]+"',
@@ -363,7 +370,7 @@ class TerraformNoLoggingRule(BaseRule):
             tags=["terraform", "logging", "observability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         logging_resources = ["aws_s3_bucket", "aws_lambda_function", "aws_api_gateway", "aws_ecs_service"]
 
@@ -411,7 +418,7 @@ class TerraformNoLifecycleRule(BaseRule):
             tags=["terraform", "lifecycle", "reliability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:

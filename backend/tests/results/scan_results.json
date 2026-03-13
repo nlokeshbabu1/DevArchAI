@@ -1,0 +1,1349 @@
+{
+  "timestamp": "2026-03-12T19:43:52.168127",
+  "metrics": {
+    "repositories_tested": 46,
+    "total_files_scanned": 91,
+    "total_findings": 45,
+    "true_positives": 0,
+    "false_positives": 45,
+    "false_negatives": 52,
+    "accuracy": 0.0,
+    "false_positive_rate": 99.99777782715941,
+    "false_negative_rate": 99.99807696005847,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "total_duration": 0.09019875526428223
+  },
+  "repositories": [
+    {
+      "name": "cicd-no-security-scan",
+      "files_scanned": 1,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0005326271057128906,
+      "findings": []
+    },
+    {
+      "name": "docker-add-root",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 2,
+      "duration": 0.0016634464263916016,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-add-root/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-COST-001",
+          "rule_name": "Large Base Image",
+          "severity": "low",
+          "category": "cost",
+          "description": "Base image 'ubuntu:20.04' may be large",
+          "recommendation": "Consider using Alpine or distroless base images to reduce size",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-add-root/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "ubuntu:20.04"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-alpine",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.0005266666412353516,
+      "findings": []
+    },
+    {
+      "name": "docker-apt-no-clean",
+      "files_scanned": 2,
+      "findings_count": 3,
+      "true_positives": 0,
+      "false_positives": 3,
+      "false_negatives": 1,
+      "duration": 0.0008022785186767578,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-apt-no-clean/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-apt-no-clean/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-COST-001",
+          "rule_name": "Large Base Image",
+          "severity": "low",
+          "category": "cost",
+          "description": "Base image 'ubuntu:20.04' may be large",
+          "recommendation": "Consider using Alpine or distroless base images to reduce size",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-apt-no-clean/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "ubuntu:20.04"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-complete-secure",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.0004589557647705078,
+      "findings": []
+    },
+    {
+      "name": "docker-curl-pipe",
+      "files_scanned": 2,
+      "findings_count": 3,
+      "true_positives": 0,
+      "false_positives": 3,
+      "false_negatives": 1,
+      "duration": 0.0005714893341064453,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-curl-pipe/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-curl-pipe/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-COST-001",
+          "rule_name": "Large Base Image",
+          "severity": "low",
+          "category": "cost",
+          "description": "Base image 'ubuntu:20.04' may be large",
+          "recommendation": "Consider using Alpine or distroless base images to reduce size",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-curl-pipe/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "ubuntu:20.04"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-expose-all",
+      "files_scanned": 2,
+      "findings_count": 3,
+      "true_positives": 0,
+      "false_positives": 3,
+      "false_negatives": 1,
+      "duration": 0.0006973743438720703,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-expose-all/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-expose-all/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-COST-001",
+          "rule_name": "Large Base Image",
+          "severity": "low",
+          "category": "cost",
+          "description": "Base image 'ubuntu:20.04' may be large",
+          "recommendation": "Consider using Alpine or distroless base images to reduce size",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-expose-all/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "ubuntu:20.04"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-latest-base",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0005953311920166016,
+      "findings": [
+        {
+          "rule_id": "DKR-SCALE-001",
+          "rule_name": "Using Latest Tag",
+          "severity": "medium",
+          "category": "scalability",
+          "description": "Base image 'node:latest' uses latest tag",
+          "recommendation": "Pin base images to specific versions for reproducible builds",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-latest-base/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "node:latest"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-mixed-issues",
+      "files_scanned": 2,
+      "findings_count": 3,
+      "true_positives": 0,
+      "false_positives": 3,
+      "false_negatives": 3,
+      "duration": 0.0005774497985839844,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-mixed-issues/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-SCALE-001",
+          "rule_name": "Using Latest Tag",
+          "severity": "medium",
+          "category": "scalability",
+          "description": "Base image 'node:latest' uses latest tag",
+          "recommendation": "Pin base images to specific versions for reproducible builds",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-mixed-issues/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "node:latest"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-mixed-issues/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-multi-stage",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.0004687309265136719,
+      "findings": []
+    },
+    {
+      "name": "docker-no-healthcheck",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0005471706390380859,
+      "findings": [
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-no-healthcheck/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-no-user",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 1,
+      "duration": 0.0005443096160888672,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-no-user/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-no-user/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-node-root",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 2,
+      "duration": 0.0006198883056640625,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-node-root/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-REL-001",
+          "rule_name": "Missing Docker HEALTHCHECK",
+          "severity": "low",
+          "category": "reliability",
+          "description": "Dockerfile does not have HEALTHCHECK instruction",
+          "recommendation": "Add HEALTHCHECK to enable container health monitoring",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-node-root/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-python-insecure",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 2,
+      "duration": 0.0005834102630615234,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-python-insecure/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "DKR-SCALE-001",
+          "rule_name": "Using Latest Tag",
+          "severity": "medium",
+          "category": "scalability",
+          "description": "Base image 'node:latest' uses latest tag",
+          "recommendation": "Pin base images to specific versions for reproducible builds",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-python-insecure/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "image": "node:latest"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-root-user",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0005426406860351562,
+      "findings": [
+        {
+          "rule_id": "DKR-SEC-001",
+          "rule_name": "Container Running as Root",
+          "severity": "high",
+          "category": "security",
+          "description": "Container runs as root user",
+          "recommendation": "Add USER instruction to run as non-root",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/docker-root-user/Dockerfile",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "docker-secure",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.00048351287841796875,
+      "findings": []
+    },
+    {
+      "name": "k8s-complete-secure",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 0,
+      "duration": 0.008804798126220703,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-complete-secure/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-default-ns",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0015568733215332031,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-default-ns/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-host-network",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0025479793548583984,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-host-network/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-latest-tag",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0037937164306640625,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-latest-tag/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-mixed-issues",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 2,
+      "duration": 0.003307342529296875,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-mixed-issues/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-multiple-issues",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 3,
+      "duration": 0.0028421878814697266,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-multiple-issues/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-hpa",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0009722709655761719,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-hpa/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-limits",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0040471553802490234,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-limits/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-network-policy",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0011506080627441406,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-network-policy/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-pdb",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0007936954498291016,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-pdb/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-probes",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 2,
+      "duration": 0.0007736682891845703,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-probes/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-no-security-context",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.002026081085205078,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-no-security-context/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-privileged",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0032689571380615234,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-privileged/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-root-container",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0036346912384033203,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-root-container/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "k8s-secure",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 0,
+      "duration": 0.0057108402252197266,
+      "findings": [
+        {
+          "rule_id": "K8S-OBS-001",
+          "rule_name": "Missing Monitoring Stack",
+          "severity": "high",
+          "category": "observability",
+          "description": "No monitoring stack (Prometheus/Grafana) detected",
+          "recommendation": "Deploy Prometheus and Grafana for metrics collection and visualization",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/k8s-secure/deployment.yaml",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {},
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "tf-complete-secure",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.005414724349975586,
+      "findings": []
+    },
+    {
+      "name": "tf-ec2-unencrypted",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0016841888427734375,
+      "findings": []
+    },
+    {
+      "name": "tf-hardcoded-secrets",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0013129711151123047,
+      "findings": []
+    },
+    {
+      "name": "tf-iam-wildcard",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0013763904571533203,
+      "findings": []
+    },
+    {
+      "name": "tf-local-backend",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.0021429061889648438,
+      "findings": [
+        {
+          "rule_id": "TF-STATE-001",
+          "rule_name": "Local Backend Not Allowed",
+          "severity": "critical",
+          "category": "reliability",
+          "description": "Terraform is configured to use local backend, which prevents collaboration and risks state loss",
+          "recommendation": "Configure remote backend (S3, GCS, Azure Blob, Terraform Cloud) for production use",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-local-backend/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "local"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": "Terraform state stored locally cannot be shared across team members or CI/CD pipelines, leading to state drift, failed applies, and potential infrastructure corruption.",
+          "impact": "Multiple engineers running terraform apply simultaneously can corrupt state, causing infrastructure drift and deployment failures.",
+          "fix_example": "terraform {\n  backend \"s3\" {\n    bucket         = \"tf-state-prod\"\n    key            = \"terraform.tfstate\"\n    region         = \"us-east-1\"\n    dynamodb_table = \"terraform-lock\"\n    encrypt        = true\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "tf-mixed-bad",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 3,
+      "duration": 0.0019261837005615234,
+      "findings": [
+        {
+          "rule_id": "TF-STATE-001",
+          "rule_name": "Local Backend Not Allowed",
+          "severity": "critical",
+          "category": "reliability",
+          "description": "Terraform is configured to use local backend, which prevents collaboration and risks state loss",
+          "recommendation": "Configure remote backend (S3, GCS, Azure Blob, Terraform Cloud) for production use",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-mixed-bad/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "local"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": "Terraform state stored locally cannot be shared across team members or CI/CD pipelines, leading to state drift, failed applies, and potential infrastructure corruption.",
+          "impact": "Multiple engineers running terraform apply simultaneously can corrupt state, causing infrastructure drift and deployment failures.",
+          "fix_example": "terraform {\n  backend \"s3\" {\n    bucket         = \"tf-state-prod\"\n    key            = \"terraform.tfstate\"\n    region         = \"us-east-1\"\n    dynamodb_table = \"terraform-lock\"\n    encrypt        = true\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "tf-mixed-good",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 2,
+      "duration": 0.0019638538360595703,
+      "findings": [
+        {
+          "rule_id": "TF-STATE-003",
+          "rule_name": "Missing State Locking",
+          "severity": "critical",
+          "category": "reliability",
+          "description": "Terraform state backend does not have locking enabled, which can lead to state corruption",
+          "recommendation": "Add 'dynamodb_table' for team/CI environments or 'use_lockfile = true' (Terraform 1.10+)",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-mixed-good/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "s3"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "TF-STATE-004",
+          "rule_name": "Backend State Encryption Required",
+          "severity": "high",
+          "category": "security",
+          "description": "S3 backend does not have encryption enabled",
+          "recommendation": "Add 'encrypt = true' to S3 backend configuration",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-mixed-good/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "s3"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "tf-no-backend",
+      "files_scanned": 2,
+      "findings_count": 1,
+      "true_positives": 0,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "duration": 0.001798391342163086,
+      "findings": [
+        {
+          "rule_id": "TF-STATE-001",
+          "rule_name": "Local Backend Not Allowed",
+          "severity": "critical",
+          "category": "reliability",
+          "description": "Terraform is configured to use local backend, which prevents collaboration and risks state loss",
+          "recommendation": "Configure remote backend (S3, GCS, Azure Blob, Terraform Cloud) for production use",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-no-backend/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "local"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": "Terraform state stored locally cannot be shared across team members or CI/CD pipelines, leading to state drift, failed applies, and potential infrastructure corruption.",
+          "impact": "Multiple engineers running terraform apply simultaneously can corrupt state, causing infrastructure drift and deployment failures.",
+          "fix_example": "terraform {\n  backend \"s3\" {\n    bucket         = \"tf-state-prod\"\n    key            = \"terraform.tfstate\"\n    region         = \"us-east-1\"\n    dynamodb_table = \"terraform-lock\"\n    encrypt        = true\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "tf-no-locking",
+      "files_scanned": 2,
+      "findings_count": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 1,
+      "duration": 0.0017807483673095703,
+      "findings": [
+        {
+          "rule_id": "TF-STATE-003",
+          "rule_name": "Missing State Locking",
+          "severity": "critical",
+          "category": "reliability",
+          "description": "Terraform state backend does not have locking enabled, which can lead to state corruption",
+          "recommendation": "Add 'dynamodb_table' for team/CI environments or 'use_lockfile = true' (Terraform 1.10+)",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-no-locking/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "s3"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        },
+        {
+          "rule_id": "TF-STATE-004",
+          "rule_name": "Backend State Encryption Required",
+          "severity": "high",
+          "category": "security",
+          "description": "S3 backend does not have encryption enabled",
+          "recommendation": "Add 'encrypt = true' to S3 backend configuration",
+          "file_path": "/home/lokesh/AI-Engine/DevArchAI/backend/tests/repositories/tf-no-locking/main.tf",
+          "line_number": null,
+          "resource_name": null,
+          "confidence": 1.0,
+          "metadata": {
+            "backend_type": "s3"
+          },
+          "ai_explanation": null,
+          "impact_analysis": null,
+          "risk": null,
+          "impact": null,
+          "fix_example": null
+        }
+      ]
+    },
+    {
+      "name": "tf-no-tags",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.001313924789428711,
+      "findings": []
+    },
+    {
+      "name": "tf-rds-public",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 2,
+      "duration": 0.0014994144439697266,
+      "findings": []
+    },
+    {
+      "name": "tf-s3-public",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 2,
+      "duration": 0.0013990402221679688,
+      "findings": []
+    },
+    {
+      "name": "tf-s3-secure",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "duration": 0.0015485286712646484,
+      "findings": []
+    },
+    {
+      "name": "tf-security-group-open",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0013225078582763672,
+      "findings": []
+    },
+    {
+      "name": "tf-unpinned-providers",
+      "files_scanned": 2,
+      "findings_count": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "duration": 0.0011899471282958984,
+      "findings": []
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 """Custom exceptions for the application."""
 
-from typing import Any, Optional, Dict
+from typing import Any, Optional
 
 
 class AppException(Exception):
@@ -11,7 +11,7 @@ class AppException(Exception):
         message: str = "An error occurred",
         status_code: int = 500,
         detail: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
+        headers: Optional[dict[str, str]] = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -64,7 +64,7 @@ class NotFoundException(AppException):
             message = f"{resource_type} not found"
             if resource_id:
                 message = f"{resource_type} with ID {resource_id} not found"
-        
+
         super().__init__(
             message=message,
             status_code=404,
@@ -168,7 +168,7 @@ class QuotaExceededException(AppException):
         message = f"Quota exceeded for {quota_type}"
         if limit:
             message += f" (limit: {limit})"
-        
+
         super().__init__(
             message=message,
             status_code=429,

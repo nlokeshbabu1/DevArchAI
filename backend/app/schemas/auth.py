@@ -1,10 +1,10 @@
 """Authentication schemas."""
 
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import Optional, List, Any, Union
 from datetime import datetime
 from enum import Enum
-import uuid
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserRole(str, Enum):
@@ -71,7 +71,7 @@ class UserResponse(BaseModel):
     """User response."""
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
-    
+
     id: str
     email: str
     username: str

@@ -1,11 +1,10 @@
 """Dashboard endpoints for metrics and summaries."""
 
+
+from devarchai.api.deps import get_current_user, get_db
+from devarchai.models.user import User
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-import uuid
-
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 

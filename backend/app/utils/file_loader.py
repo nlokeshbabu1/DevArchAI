@@ -1,15 +1,14 @@
 """File loader utility for parsing infrastructure files."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import structlog
+from typing import Any, Optional
 
-from app.parsers.base import ParserRegistry, ParsedFile
-from app.parsers.terraform import TerraformParser
-from app.parsers.kubernetes import KubernetesParser
-from app.parsers.dockerfile import DockerfileParser
-from app.parsers.cicd import CICDParser
 from app.core.logging import get_logger
+from app.parsers.base import ParsedFile, ParserRegistry
+from app.parsers.cicd import CICDParser
+from app.parsers.dockerfile import DockerfileParser
+from app.parsers.kubernetes import KubernetesParser
+from app.parsers.terraform import TerraformParser
 
 logger = get_logger(__name__)
 
@@ -87,9 +86,9 @@ class FileLoader:
     def load_directory(
         self,
         directory: Path,
-        file_types: Optional[List[str]] = None,
+        file_types: Optional[list[str]] = None,
         max_depth: int = 10,
-    ) -> List[ParsedFile]:
+    ) -> list[ParsedFile]:
         """
         Load and parse all supported files in a directory.
 
@@ -140,8 +139,8 @@ class FileLoader:
 
     def load_files(
         self,
-        paths: List[Path],
-    ) -> List[ParsedFile]:
+        paths: list[Path],
+    ) -> list[ParsedFile]:
         """
         Load and parse multiple files.
 
@@ -177,7 +176,7 @@ class FileLoader:
             return class_name.replace("Parser", "").lower()
         return None
 
-    def extract_resources(self, parsed_files: List[ParsedFile]) -> List[Dict[str, Any]]:
+    def extract_resources(self, parsed_files: list[ParsedFile]) -> list[dict[str, Any]]:
         """
         Extract resources from parsed files for rule evaluation.
 
@@ -209,13 +208,13 @@ class FileLoader:
 
         return all_resources
 
-    def get_supported_file_types(self) -> List[str]:
+    def get_supported_file_types(self) -> list[str]:
         """Get list of supported file types."""
         return ["terraform", "kubernetes", "dockerfile", "cicd"]
 
-    def count_by_type(self, parsed_files: List[ParsedFile]) -> Dict[str, int]:
+    def count_by_type(self, parsed_files: list[ParsedFile]) -> dict[str, int]:
         """Count parsed files by type."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for parsed_file in parsed_files:
             file_type = parsed_file.file_type
             counts[file_type] = counts.get(file_type, 0) + 1

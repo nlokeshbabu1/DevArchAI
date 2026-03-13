@@ -1,18 +1,14 @@
 """Background worker for scan execution."""
 
-import asyncio
-from datetime import datetime
-from typing import Optional, Callable
-import structlog
+from collections.abc import Callable
+from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.scan import Scan, ScanStatus
-from app.models.repository import Repository
-from app.db.session import get_session_factory
-from app.services.scan_service import ScanService
 from app.core.logging import get_logger
+from app.db.session import get_session_factory
+from app.models.scan import Scan, ScanStatus
+from app.services.scan_service import ScanService
 
 logger = get_logger(__name__)
 

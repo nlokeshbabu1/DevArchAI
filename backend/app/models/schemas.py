@@ -2,10 +2,11 @@
 Pydantic Schemas for API Request/Response
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
@@ -28,7 +29,7 @@ class Category(str, Enum):
 
 class RuleFinding(BaseModel):
     """Individual rule finding."""
-    
+
     rule_id: str = Field(..., description="Unique rule identifier")
     rule_name: str = Field(..., description="Human-readable rule name")
     severity: Severity = Field(..., description="Finding severity")
@@ -44,7 +45,7 @@ class RuleFinding(BaseModel):
 
 class CategoryScore(BaseModel):
     """Score for a specific category."""
-    
+
     category: Category
     score: float = Field(ge=0, le=100)
     findings_count: int
@@ -56,7 +57,7 @@ class CategoryScore(BaseModel):
 
 class AnalysisReport(BaseModel):
     """Complete analysis report."""
-    
+
     # Metadata
     id: str = Field(..., description="Unique report ID")
     repository_url: str = Field(..., description="Analyzed repository URL")
@@ -64,23 +65,23 @@ class AnalysisReport(BaseModel):
     commit_hash: Optional[str] = Field(None, description="Analyzed commit")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     analysis_duration_seconds: float = Field(..., description="Time taken for analysis")
-    
+
     # Scores
     overall_score: float = Field(ge=0, le=100, description="Overall production readiness score")
-    category_scores: List[CategoryScore] = Field(..., description="Scores per category")
-    
+    category_scores: list[CategoryScore] = Field(..., description="Scores per category")
+
     # Findings
-    findings: List[RuleFinding] = Field(..., description="All findings")
-    summary: Dict[str, int] = Field(..., description="Summary counts by severity")
-    
+    findings: list[RuleFinding] = Field(..., description="All findings")
+    summary: dict[str, int] = Field(..., description="Summary counts by severity")
+
     # AI Analysis
     executive_summary: Optional[str] = Field(None, description="AI-generated executive summary")
     risk_analysis: Optional[str] = Field(None, description="AI risk analysis")
-    prioritized_recommendations: Optional[List[str]] = Field(None, description="Top recommendations")
-    
+    prioritized_recommendations: Optional[list[str]] = Field(None, description="Top recommendations")
+
     # Files Analyzed
-    files_analyzed: List[str] = Field(default_factory=list, description="List of analyzed files")
-    
+    files_analyzed: list[str] = Field(default_factory=list, description="List of analyzed files")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -110,12 +111,12 @@ class AnalysisReport(BaseModel):
 
 class AnalysisRequest(BaseModel):
     """Request to analyze a repository."""
-    
+
     repository_url: str = Field(..., description="GitHub repository URL")
     branch: Optional[str] = Field(default="main", description="Branch to analyze")
     commit_hash: Optional[str] = Field(None, description="Specific commit to analyze")
     include_ai_explanations: bool = Field(default=True, description="Include AI explanations")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -136,7 +137,7 @@ class AnalysisStatus(str, Enum):
 
 class AnalysisJob(BaseModel):
     """Analysis job status."""
-    
+
     id: str
     repository_url: str
     status: AnalysisStatus
@@ -149,8 +150,8 @@ class AnalysisJob(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response."""
-    
+
     status: str
     version: str
     timestamp: datetime
-    services: Dict[str, str]
+    services: dict[str, str]

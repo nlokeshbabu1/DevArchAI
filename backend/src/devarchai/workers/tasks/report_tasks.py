@@ -1,6 +1,7 @@
 """Celery tasks for report generation."""
 
-from typing import Dict, Any
+from typing import Any
+
 import structlog
 
 from devarchai.workers.celery_app import celery_app
@@ -9,7 +10,7 @@ logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3)
-def generate_report(self, scan_id: str, format: str = "json") -> Dict[str, Any]:
+def generate_report(self, scan_id: str, format: str = "json") -> dict[str, Any]:
     """
     Generate analysis report.
 
@@ -37,7 +38,7 @@ def generate_report(self, scan_id: str, format: str = "json") -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True, max_retries=3)
-def export_report_pdf(self, report_id: str) -> Dict[str, Any]:
+def export_report_pdf(self, report_id: str) -> dict[str, Any]:
     """
     Export report as PDF.
 

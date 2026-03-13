@@ -1,10 +1,10 @@
 """Core application configuration."""
 
-from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
-from typing import List, Optional, Literal
 from functools import lru_cache
-import os
+from typing import Literal, Optional
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -27,16 +27,16 @@ class Settings(BaseSettings):
     # ===========================================
     # CORS & Security
     # ===========================================
-    CORS_ORIGINS: List[str] = Field(
+    CORS_ORIGINS: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:8000"],
         env="CORS_ORIGINS"
     )
-    ALLOWED_HOSTS: List[str] = Field(
+    ALLOWED_HOSTS: list[str] = Field(
         default=["*"],
         env="ALLOWED_HOSTS"
     )
     SECRET_KEY: str = Field(default="change-me-in-production", env="SECRET_KEY")
-    
+
     # ===========================================
     # Database
     # ===========================================
@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FORMAT: Literal["json", "console"] = Field(default="json", env="LOG_FORMAT")
     LOG_REQUEST_BODY: bool = Field(default=False, env="LOG_REQUEST_BODY")
-    
+
     # OpenTelemetry
     OTEL_ENABLED: bool = Field(default=False, env="OTEL_ENABLED")
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(default=None, env="OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -210,7 +210,7 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

@@ -3,15 +3,14 @@ GitHub Scanner Service
 Fetches repository file tree using GitHub API.
 """
 
-import asyncio
-from typing import List, Optional, Dict, Any
-import structlog
+from typing import Any, Optional
+
 import httpx
+import structlog
 
 from app.config import settings
-from app.core.exceptions import RepositoryNotFoundException, InvalidRepositoryException
+from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
 from app.services.github_validator import GitHubValidator
-from app.services.cache import get_cache
 
 logger = structlog.get_logger(__name__)
 
@@ -53,7 +52,7 @@ class GitHubScanner:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
-    async def fetch_file_tree(self, repo_url: str, branch: Optional[str] = None) -> List[str]:
+    async def fetch_file_tree(self, repo_url: str, branch: Optional[str] = None) -> list[str]:
         """
         Fetch the file tree of a GitHub repository.
 
@@ -136,7 +135,7 @@ class GitHubScanner:
         path: str = "",
         max_depth: int = 10,
         current_depth: int = 0
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Recursively fetch the file tree.
 
@@ -190,7 +189,7 @@ class GitHubScanner:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise RepositoryNotFoundException(f"Repository or branch not found")
+                raise RepositoryNotFoundException("Repository or branch not found")
             if e.response.status_code == 403:
                 # Rate limit exceeded
                 raise InvalidRepositoryException(
@@ -249,7 +248,7 @@ class GitHubScanner:
 
         return True
 
-    async def get_repository_info(self, repo_url: str) -> Dict[str, Any]:
+    async def get_repository_info(self, repo_url: str) -> dict[str, Any]:
         """
         Get repository metadata.
 
@@ -300,7 +299,7 @@ class GitHubScanner:
 _scanner = GitHubScanner()
 
 
-async def fetch_repo_files(repo_url: str, branch: Optional[str] = None) -> List[str]:
+async def fetch_repo_files(repo_url: str, branch: Optional[str] = None) -> list[str]:
     """
     Fetch file tree from a GitHub repository.
 
@@ -314,7 +313,7 @@ async def fetch_repo_files(repo_url: str, branch: Optional[str] = None) -> List[
     return await _scanner.fetch_file_tree(repo_url, branch)
 
 
-async def get_repo_info(repo_url: str) -> Dict[str, Any]:
+async def get_repo_info(repo_url: str) -> dict[str, Any]:
     """
     Get repository metadata.
 

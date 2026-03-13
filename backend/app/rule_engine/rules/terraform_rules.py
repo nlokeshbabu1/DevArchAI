@@ -1,10 +1,9 @@
 """Terraform rules for infrastructure analysis."""
 
-from typing import Any, Dict, List, Optional
 import re
+from typing import Any
 
-from app.rule_engine.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
-
+from app.rule_engine.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 # =============================================================================
 # STATE MANAGEMENT RULES
@@ -26,7 +25,7 @@ class TerraformLocalBackendRule(BaseRule):
             tags=["terraform", "backend", "state", "production"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -35,7 +34,6 @@ class TerraformLocalBackendRule(BaseRule):
                 backend_type = backend.get("type", "").lower()
 
                 # Only check files that actually have a backend block
-                # Skip files without backend configuration
                 if not backend_type:
                     continue
 
@@ -50,6 +48,17 @@ class TerraformLocalBackendRule(BaseRule):
                         recommendation=self.rule.recommendation,
                         file_path=file_path,
                         metadata={"backend_type": backend_type},
+                        risk="Terraform state stored locally cannot be shared across team members or CI/CD pipelines, leading to state drift, failed applies, and potential infrastructure corruption.",
+                        impact="Multiple engineers running terraform apply simultaneously can corrupt state, causing infrastructure drift and deployment failures.",
+                        fix_example='''terraform {
+  backend "s3" {
+    bucket         = "tf-state-prod"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock"
+    encrypt        = true
+  }
+}''',
                     ))
 
         return findings
@@ -57,49 +66,24 @@ class TerraformLocalBackendRule(BaseRule):
 
 @register_rule(file_types=["terraform"])
 class TerraformRemoteBackendRequiredRule(BaseRule):
-    """Check if Terraform has remote backend configured."""
+    """Check if Terraform has remote backend configured per module."""
 
     @property
     def rule(self) -> Rule:
         return Rule(
             id="TF-STATE-002",
             name="Remote Backend Required",
-            description="Terraform does not have a remote backend configured, risking state loss and collaboration issues",
+            description="Terraform module does not have a remote backend configured, risking state loss and collaboration issues",
             recommendation="Configure remote backend (S3, GCS, Azure Blob, Consul, Terraform Cloud) with state locking",
             severity=Severity.HIGH,
             category=Category.RELIABILITY,
-            tags=["terraform", "backend", "state", "remote"],
+            tags=["terraform", "backend", "state", "remote", "module"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
-        findings = []
-        has_remote_backend = False
-
-        for resource in resources:
-            if resource.get("resource_type") == "backend":
-                backend = resource.get("properties", {})
-                if backend.get("has_remote_state", False):
-                    has_remote_backend = True
-                    break
-
-        if not has_remote_backend:
-            # Check if there's any backend at all
-            has_any_backend = any(
-                r.get("resource_type") == "backend" for r in resources
-            )
-            if not has_any_backend:
-                findings.append(RuleFinding(
-                    rule_id=self.rule.id,
-                    rule_name=self.rule.name,
-                    severity=self.rule.severity,
-                    category=self.rule.category,
-                    description=self.rule.description,
-                    recommendation=self.rule.recommendation,
-                    file_path=file_path,
-                    metadata={"has_backend": False},
-                ))
-
-        return findings
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
+        # This rule is now handled at module level in scan_service
+        # Return empty - module-level check will handle it
+        return []
 
 
 @register_rule(file_types=["terraform"])
@@ -118,7 +102,7 @@ class TerraformStateLockingRule(BaseRule):
             tags=["terraform", "state", "locking"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -171,7 +155,7 @@ class TerraformBackendEncryptionRule(BaseRule):
             tags=["terraform", "backend", "encryption", "state"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -231,7 +215,7 @@ class TerraformProviderVersionPinningRule(BaseRule):
             tags=["terraform", "provider", "versioning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -272,7 +256,7 @@ class TerraformTrustedProviderSourceRule(BaseRule):
             tags=["terraform", "provider", "security", "supply-chain"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         # Trusted provider sources
         trusted_sources = [
@@ -337,7 +321,7 @@ class TerraformHardcodedSecretsRule(BaseRule):
             tags=["terraform", "secrets", "security", "credentials"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         secret_patterns = [
             (r'password\s*=\s*"[^"]+"', "password"),
@@ -403,7 +387,7 @@ class TerraformS3EncryptionRule(BaseRule):
             tags=["terraform", "aws", "s3", "encryption"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -453,7 +437,7 @@ class TerraformEBSEncryptionRule(BaseRule):
             tags=["terraform", "aws", "ebs", "ec2", "encryption"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         ebs_resource_types = ["aws_ebs_volume", "aws_instance", "aws_launch_template", "aws_ami"]
 
@@ -517,7 +501,7 @@ class TerraformDatabaseEncryptionRule(BaseRule):
             tags=["terraform", "aws", "rds", "database", "encryption"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         db_resource_types = ["aws_db_instance", "aws_rds_cluster", "aws_docdb_cluster"]
 
@@ -570,7 +554,7 @@ class TerraformOpenSecurityGroupRule(BaseRule):
             tags=["terraform", "aws", "security-group", "networking"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         sensitive_ports = {
             "22": "SSH",
@@ -636,7 +620,7 @@ class TerraformDatabasePublicAccessRule(BaseRule):
             tags=["terraform", "aws", "rds", "database", "networking"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -683,7 +667,7 @@ class TerraformIAMWildcardPermissionsRule(BaseRule):
             tags=["terraform", "aws", "iam", "permissions", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         iam_resource_types = ["aws_iam_policy", "aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy"]
 
@@ -737,7 +721,7 @@ class TerraformIAMNotActionRule(BaseRule):
             tags=["terraform", "aws", "iam", "permissions", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         iam_resource_types = ["aws_iam_policy", "aws_iam_role_policy", "aws_iam_user_policy", "aws_iam_group_policy"]
 
@@ -785,7 +769,7 @@ class TerraformRequiredTagsRule(BaseRule):
             tags=["terraform", "tags", "governance", "cost"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         required_tags = ["environment", "owner", "project", "costcenter", "managedby"]
         taggable_resources = [
@@ -867,8 +851,14 @@ class TerraformModuleUsageRule(BaseRule):
             tags=["terraform", "modules", "best-practices"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
+
+        # Skip files inside modules/ directories - these ARE the modules
+        # Files like modules/vpc/main.tf don't need to use modules themselves
+        if "/modules/" in file_path or file_path.startswith("modules/"):
+            return findings
+
         has_modules = False
 
         for resource in resources:
@@ -913,7 +903,7 @@ class TerraformUntrustedModuleSourceRule(BaseRule):
             tags=["terraform", "modules", "security", "supply-chain"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         trusted_sources = [
             "terraform-aws-modules/",
@@ -986,7 +976,7 @@ class TerraformEnvironmentSeparationRule(BaseRule):
             tags=["terraform", "environment", "separation", "best-practices"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         env_indicators = ["dev", "development", "staging", "stage", "prod", "production", "test", "qa"]
         has_env_separation = False
@@ -1050,7 +1040,7 @@ class TerraformProdEnvironmentProtectionRule(BaseRule):
             tags=["terraform", "production", "protection", "reliability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Check if this is a production configuration
@@ -1119,8 +1109,12 @@ class TerraformCIFormatValidationRule(BaseRule):
             tags=["terraform", "cicd", "formatting", "validation"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str, has_terraform: bool = False) -> list[RuleFinding]:
         findings = []
+
+        # Skip if repository doesn't have Terraform files
+        if not has_terraform:
+            return findings
 
         for resource in resources:
             if resource.get("file_type") != "cicd":
@@ -1128,13 +1122,9 @@ class TerraformCIFormatValidationRule(BaseRule):
 
             raw_content = resource.get("raw_content", "")
 
-            # Check for terraform fmt
-            has_fmt = (
-                "terraform fmt" in raw_content or
-                "tofu fmt" in raw_content or
-                "tflint" in raw_content or
-                "terragrunt fmt" in raw_content
-            )
+            # Check for terraform fmt with optional -chdir flag
+            # Patterns: terraform fmt, terraform -chdir=xxx fmt, terraform fmt -check
+            has_fmt = bool(re.search(r'terraform\s+(-chdir=\S+\s+)?fmt', raw_content))
 
             if not has_fmt:
                 findings.append(RuleFinding(
@@ -1167,8 +1157,12 @@ class TerraformCIValidateRule(BaseRule):
             tags=["terraform", "cicd", "validation", "syntax"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str, has_terraform: bool = False) -> list[RuleFinding]:
         findings = []
+
+        # Skip if repository doesn't have Terraform files
+        if not has_terraform:
+            return findings
 
         for resource in resources:
             if resource.get("file_type") != "cicd":
@@ -1176,12 +1170,9 @@ class TerraformCIValidateRule(BaseRule):
 
             raw_content = resource.get("raw_content", "")
 
-            # Check for terraform validate
-            has_validate = (
-                "terraform validate" in raw_content or
-                "tofu validate" in raw_content or
-                "terragrunt validate" in raw_content
-            )
+            # Check for terraform validate with optional -chdir flag
+            # Patterns: terraform validate, terraform -chdir=xxx validate
+            has_validate = bool(re.search(r'terraform\s+(-chdir=\S+\s+)?validate', raw_content))
 
             if not has_validate:
                 findings.append(RuleFinding(
@@ -1214,8 +1205,12 @@ class TerraformCIPlanRule(BaseRule):
             tags=["terraform", "cicd", "plan", "review"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str, has_terraform: bool = False) -> list[RuleFinding]:
         findings = []
+
+        # Skip if repository doesn't have Terraform files
+        if not has_terraform:
+            return findings
 
         for resource in resources:
             if resource.get("file_type") != "cicd":
@@ -1223,12 +1218,9 @@ class TerraformCIPlanRule(BaseRule):
 
             raw_content = resource.get("raw_content", "")
 
-            # Check for terraform plan
-            has_plan = (
-                "terraform plan" in raw_content or
-                "tofu plan" in raw_content or
-                "terragrunt plan" in raw_content
-            )
+            # Check for terraform plan with optional -chdir flag
+            # Patterns: terraform plan, terraform -chdir=xxx plan, terraform plan -out=tfplan
+            has_plan = bool(re.search(r'terraform\s+(-chdir=\S+\s+)?plan', raw_content))
 
             if not has_plan:
                 findings.append(RuleFinding(

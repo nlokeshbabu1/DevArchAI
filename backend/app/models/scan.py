@@ -1,11 +1,12 @@
 """Scan model."""
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum as SQLEnum
+import enum
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-import uuid
 
 from app.db.base import Base
 

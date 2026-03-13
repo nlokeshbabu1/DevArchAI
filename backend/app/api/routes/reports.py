@@ -2,9 +2,10 @@
 Report Routes
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from typing import Optional
 
 from app.models.schemas import AnalysisReport
 
@@ -19,7 +20,7 @@ async def get_report(report_id: str):
     """Get analysis report by ID."""
     if report_id not in reports_store:
         raise HTTPException(status_code=404, detail="Report not found")
-    
+
     return reports_store[report_id]
 
 
@@ -28,9 +29,9 @@ async def download_report(report_id: str, format: Optional[str] = "json"):
     """Download analysis report."""
     if report_id not in reports_store:
         raise HTTPException(status_code=404, detail="Report not found")
-    
+
     report = reports_store[report_id]
-    
+
     if format == "json":
         return JSONResponse(
             content=report.model_dump(mode="json"),

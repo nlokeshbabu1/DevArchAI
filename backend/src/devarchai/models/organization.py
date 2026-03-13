@@ -1,10 +1,11 @@
 """Organization model for multi-tenancy."""
 
-from sqlalchemy import Column, String, Boolean, Enum as SQLEnum, Text
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-import uuid
 import enum
+import uuid
+
+from sqlalchemy import Boolean, Column, Enum as SQLEnum, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
 from devarchai.models.mixins import TimestampMixin

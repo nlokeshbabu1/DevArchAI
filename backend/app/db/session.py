@@ -1,11 +1,11 @@
 """Database Session Management."""
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 import structlog
+from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db.base import Base
@@ -37,7 +37,7 @@ def get_engine():
                 settings.DATABASE_URL,
                 pool_size=settings.DB_POOL_SIZE,
                 max_overflow=settings.DB_MAX_OVERFLOW,
-                pool_pre_ping=True,  # Enable connection health checks
+                pool_pre_ping=False,  # Disable pre-ping for asyncpg compatibility
                 echo=settings.DEBUG,
             )
 
@@ -64,13 +64,13 @@ def get_sync_session_factory():
     if _sync_session_factory is None:
         # Convert async URL to sync URL
         sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2").replace("+aiomysql", "+pymysql")
-        
+
         sync_engine = create_engine(
             sync_url,
             pool_pre_ping=True,
             echo=settings.DEBUG,
         )
-        
+
         _sync_session_factory = sessionmaker(
             bind=sync_engine,
             class_=Session,
@@ -91,7 +91,7 @@ async def init_db() -> None:
     try:
         async with engine.begin() as conn:
             # Import all models to ensure they're registered
-            from app.models import User, Repository, Scan, Finding, Report  # noqa: F401
+            from app.models import Finding, Report, Repository, Scan, User  # noqa: F401
 
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created successfully")

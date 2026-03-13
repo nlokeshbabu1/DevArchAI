@@ -2,8 +2,10 @@
 Health Check Routes
 """
 
-from fastapi import APIRouter
 from datetime import datetime
+
+from fastapi import APIRouter
+
 from app.config import settings
 from app.models.schemas import HealthResponse
 
@@ -14,7 +16,7 @@ router = APIRouter()
 async def health_check():
     """
     Health check endpoint.
-    
+
     Returns service status and version information.
     """
     return HealthResponse(

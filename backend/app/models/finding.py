@@ -1,11 +1,22 @@
 """Finding model."""
 
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Boolean, Enum as SQLEnum
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import enum
 import uuid
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 from app.db.base import Base
 
@@ -49,6 +60,9 @@ class Finding(Base):
     # Details
     description = Column(Text, nullable=False)
     recommendation = Column(Text, nullable=False)
+    risk = Column(Text, nullable=True)
+    impact = Column(Text, nullable=True)
+    fix_example = Column(Text, nullable=True)
 
     # Location
     file_path = Column(String(500), nullable=True)

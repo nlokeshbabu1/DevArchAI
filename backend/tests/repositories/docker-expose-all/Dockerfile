@@ -1,0 +1,3 @@
+
+FROM ubuntu:20.04
+EXPOSE 1-65535

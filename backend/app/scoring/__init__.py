@@ -1,11 +1,11 @@
 """Scoring Engine"""
 
 from app.scoring.engine import (
+    CategoryScore,
+    OverallScore,
+    ScoreTrendAnalyzer,
     ScoringEngine,
     ScoringWeights,
-    OverallScore,
-    CategoryScore,
-    ScoreTrendAnalyzer,
 )
 
 __all__ = [

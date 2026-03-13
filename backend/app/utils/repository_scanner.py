@@ -4,15 +4,14 @@ Repository Scanner - Fetches and detects files in repositories
 """
 
 import os
-import subprocess
 import shutil
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+import subprocess
 from dataclasses import dataclass, field
-import structlog
+from pathlib import Path
+from typing import Any, Optional
 
-from app.core.logging import get_logger
 from app.config import settings
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,16 +24,16 @@ class RepositoryScanResult:
     repo_url: str
     branch: str
     commit_hash: Optional[str]
-    dockerfiles: List[str] = field(default_factory=list)
-    terraform_files: List[str] = field(default_factory=list)
-    kubernetes_files: List[str] = field(default_factory=list)
-    cicd_files: List[str] = field(default_factory=list)
-    other_files: List[str] = field(default_factory=list)
+    dockerfiles: list[str] = field(default_factory=list)
+    terraform_files: list[str] = field(default_factory=list)
+    kubernetes_files: list[str] = field(default_factory=list)
+    cicd_files: list[str] = field(default_factory=list)
+    other_files: list[str] = field(default_factory=list)
     total_files: int = 0
     repo_size_mb: float = 0.0
-    scan_errors: List[str] = field(default_factory=list)
+    scan_errors: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "repo_path": self.repo_path,
@@ -64,7 +63,7 @@ class RepositoryScanner:
         branch: str = "main",
         commit_hash: Optional[str] = None,
         github_token: Optional[str] = None,
-    ) -> Tuple[str, RepositoryScanResult]:
+    ) -> tuple[str, RepositoryScanResult]:
         """
         Clone a GitHub repository to temporary storage.
 

@@ -1,9 +1,10 @@
 """Model mixins for common fields."""
 
-from sqlalchemy import Column, DateTime
-from sqlalchemy.sql import func
 import uuid
 from uuid import UUID as UUIDType
+
+from sqlalchemy import Column, DateTime
+from sqlalchemy.sql import func
 
 
 class TimestampMixin:

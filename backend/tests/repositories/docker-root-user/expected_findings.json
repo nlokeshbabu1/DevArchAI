@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "RUN_AS_ROOT",
+      "file": "Dockerfile"
+    }
+  ]
+}

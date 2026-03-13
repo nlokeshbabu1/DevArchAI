@@ -1,21 +1,21 @@
 """Scan management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List, Optional
 import uuid
+from typing import Optional
 
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User
+from devarchai.api.deps import get_current_user, get_db
+from devarchai.core.exceptions import AuthorizationException
+from devarchai.models.organization import OrganizationMember
 from devarchai.models.scan import Scan, ScanStatus
-from devarchai.models.organization import OrganizationMember, MembershipRole
-from devarchai.core.exceptions import AuthorizationException, ScanNotFoundException
+from devarchai.models.user import User
+from fastapi import APIRouter, BackgroundTasks, Depends, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
 
-@router.get("", response_model=List)
+@router.get("", response_model=list)
 async def list_scans(
     org_id: str,
     status_filter: Optional[str] = None,

@@ -3,6 +3,7 @@ Celery Configuration for app module
 """
 
 from celery import Celery
+
 from app.config import settings
 
 # Create Celery application

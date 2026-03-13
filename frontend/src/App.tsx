@@ -1,11 +1,18 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Layout } from './components/Layout'
+import { Layout } from './components/layout/DashboardLayout'
 import { Landing } from './pages/Landing'
 import { Home } from './pages/Home'
 import { Dashboard } from './pages/Dashboard'
 import { Report } from './pages/Report'
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
+import { GithubCallback } from './pages/auth/GithubCallback'
+import { ScansPage } from './pages/scans/ScansPage'
+import { Findings } from './pages/findings/FindingsPage'
+import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
+import { BillingPage } from './pages/billing/BillingPage'
+import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
+import { IntegrationsPage } from './pages/dashboard/Integrations'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
 
@@ -21,8 +28,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-8 h-8 bg-primary rounded-full animate-pulse" />
+          </div>
+        </div>
       </div>
     )
   }
@@ -46,26 +58,76 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/github/callback" element={<GithubCallback />} />
 
       {/* Protected routes with Layout */}
-      <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
-      <Route path="/report/:id" element={<ProtectedRoute><Layout><Report /></Layout></ProtectedRoute>} />
-      <Route path="/reports" element={<ProtectedRoute><Layout><Reports /></Layout></ProtectedRoute>} />
-      <Route path="/settings" element={<ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />
-      <Route path="/analyze" element={<ProtectedRoute><Layout><Home /></Layout></ProtectedRoute>} />
+      <Route path="/dashboard" element={
+        <ProtectedRoute>
+          <Layout>
+            <Dashboard />
+          </Layout>
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/report/:id" element={
+        <ProtectedRoute>
+          <Layout>
+            <Report />
+          </Layout>
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/analyze" element={
+        <ProtectedRoute>
+          <Layout>
+            <Home />
+          </Layout>
+        </ProtectedRoute>
+      } />
 
-      {/* Catch all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/scans" element={
+        <ProtectedRoute>
+          <Layout>
+            <ScansPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/findings" element={
+        <ProtectedRoute>
+          <Layout>
+            <Findings />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/repositories" element={
+        <ProtectedRoute>
+          <Layout>
+            <RepositoriesPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/billing" element={
+        <ProtectedRoute>
+          <Layout>
+            <BillingPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/settings" element={
+        <ProtectedRoute>
+          <Layout>
+            <Settings />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      {/* Catch all - redirect to dashboard */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
-  )
-}
-
-function Reports() {
-  return (
-    <div className="text-center py-24">
-      <h1 className="text-2xl font-bold mb-2">Reports</h1>
-      <p className="text-muted-foreground">View and manage all your analysis reports.</p>
-    </div>
   )
 }
 

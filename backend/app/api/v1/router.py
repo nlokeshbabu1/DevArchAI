@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import auth, health, scans, repositories, reports, repo_analysis, github
+from app.api.v1.routes import auth, github, health, repo_analysis, reports, repositories, scans
 
 api_router = APIRouter()
 

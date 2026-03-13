@@ -1,14 +1,14 @@
 """Health check routes."""
 
+from datetime import datetime
+
+import structlog
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
-from datetime import datetime
-import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.common import HealthResponse, HealthStatus
-from app.config import settings
 
 logger = structlog.get_logger(__name__)
 

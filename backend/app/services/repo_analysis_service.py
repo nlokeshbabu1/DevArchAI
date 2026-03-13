@@ -3,20 +3,18 @@ Repository Analysis Service
 Orchestrates GitHub repository analysis for DevOps stack detection.
 """
 
-import asyncio
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+from typing import Any, Optional
+
 import structlog
-
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.github_validator import GitHubValidator, ValidationResult
-from app.services.github_scanner import GitHubScanner, fetch_repo_files
-from app.services.devops_detector import DevOpsDetector, detect_devops_stack, DevOpsStackResult
+from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
 from app.models.repo_analysis import RepoAnalysis
 from app.schemas.repo_analysis import DevOpsStack
-from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
+from app.services.devops_detector import DevOpsDetector, DevOpsStackResult
+from app.services.github_scanner import GitHubScanner
+from app.services.github_validator import GitHubValidator, ValidationResult
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +29,7 @@ class RepoAnalysisService:
         self.scanner = GitHubScanner(token=github_token)
         self.detector = DevOpsDetector()
 
-    async def analyze_repository(self, repo_url: str) -> Dict[str, Any]:
+    async def analyze_repository(self, repo_url: str) -> dict[str, Any]:
         """
         Analyze a GitHub repository for DevOps stack.
 
@@ -199,7 +197,7 @@ class RepoAnalysisService:
         stack_result: DevOpsStackResult,
         score: float,
         files_count: int,
-        repo_info: Dict[str, Any],
+        repo_info: dict[str, Any],
     ) -> RepoAnalysis:
         """Save analysis result to database."""
         analysis = RepoAnalysis(
@@ -234,7 +232,7 @@ class RepoAnalysisService:
         )
         return result.scalar_one_or_none()
 
-    async def get_analyses_by_repo(self, repo_url: str, limit: int = 10) -> List[RepoAnalysis]:
+    async def get_analyses_by_repo(self, repo_url: str, limit: int = 10) -> list[RepoAnalysis]:
         """Get recent analyses for a repository."""
         result = await self.db.execute(
             select(RepoAnalysis)
@@ -244,7 +242,7 @@ class RepoAnalysisService:
         )
         return list(result.scalars().all())
 
-    async def get_recent_analyses(self, limit: int = 20) -> List[RepoAnalysis]:
+    async def get_recent_analyses(self, limit: int = 20) -> list[RepoAnalysis]:
         """Get recent analyses."""
         result = await self.db.execute(
             select(RepoAnalysis)
@@ -253,7 +251,7 @@ class RepoAnalysisService:
         )
         return list(result.scalars().all())
 
-    def get_missing_best_practices(self, stack_result: DevOpsStackResult) -> List[Dict[str, Any]]:
+    def get_missing_best_practices(self, stack_result: DevOpsStackResult) -> list[dict[str, Any]]:
         """
         Identify missing best practices based on detected stack.
 

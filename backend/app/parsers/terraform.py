@@ -2,10 +2,11 @@
 Terraform File Parser
 """
 
-import re
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.parsers.base import BaseParser, ParsedFile
 
 
@@ -14,13 +15,22 @@ class TerraformParser(BaseParser):
 
     def __init__(self):
         super().__init__()
-        self.supported_extensions = [".tf", ".tf.json", ".tfvars"]
+        self.supported_extensions = [".tf", ".tf.json"]
+        self.tfvars_extensions = [".tfvars", ".tfvars.json"]
 
     def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix in self.supported_extensions or "terraform" in file_path.parts
+        """Check if this parser can handle the given file."""
+        suffix = file_path.suffix.lower()
+        return suffix in self.supported_extensions or suffix in self.tfvars_extensions
 
     def parse(self, file_path: Path, content: str) -> ParsedFile:
         """Parse Terraform file and extract resources."""
+        suffix = file_path.suffix.lower()
+
+        # Handle tfvars files differently - they don't have resources/backends
+        if suffix in self.tfvars_extensions:
+            return self._parse_tfvars(file_path, content)
+
         parse_errors = []
         parsed_data = {
             "resources": [],
@@ -34,7 +44,7 @@ class TerraformParser(BaseParser):
         }
 
         try:
-            if file_path.suffix == ".tf.json":
+            if suffix == ".tf.json":
                 # JSON format
                 parsed_data = self._parse_json_terraform(json.loads(content))
             else:
@@ -52,7 +62,42 @@ class TerraformParser(BaseParser):
             parse_errors=parse_errors,
         )
 
-    def _parse_hcl_terraform(self, content: str) -> Dict[str, Any]:
+    def _parse_tfvars(self, file_path: Path, content: str) -> ParsedFile:
+        """Parse .tfvars files - these only contain variable values."""
+        # tfvars files don't have resources, backends, or providers
+        # They only contain variable assignments
+        parsed_data = {
+            "resources": [],
+            "data_sources": [],
+            "modules": [],
+            "variables": [],
+            "outputs": [],
+            "providers": [],
+            "backends": [],
+            "terraform_blocks": [],
+            "is_tfvars": True,
+            "variable_names": self._extract_tfvars_names(content),
+        }
+
+        return ParsedFile(
+            file_path=str(file_path),
+            file_type="terraform_vars",  # Different file type for filtering
+            raw_content=content,
+            parsed_data=parsed_data,
+            line_count=len(content.splitlines()),
+            parse_errors=[],
+        )
+
+    def _extract_tfvars_names(self, content: str) -> list[str]:
+        """Extract variable names from tfvars content."""
+        names = []
+        # Match variable = value patterns
+        pattern = r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*='
+        for match in re.finditer(pattern, content, re.MULTILINE):
+            names.append(match.group(1))
+        return names
+
+    def _parse_hcl_terraform(self, content: str) -> dict[str, Any]:
         """Parse HCL Terraform content using regex patterns."""
         result = {
             "resources": [],
@@ -141,6 +186,14 @@ class TerraformParser(BaseParser):
                 "raw_config": match.group(2),
             })
 
+        # Extract outputs
+        output_pattern = r'output\s+"(\w+)"\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
+        for match in re.finditer(output_pattern, content, re.DOTALL):
+            result["outputs"].append({
+                "name": match.group(1),
+                "raw_config": match.group(2),
+            })
+
         # Extract modules
         module_pattern = r'module\s+"(\w+)"\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}'
         for match in re.finditer(module_pattern, content, re.DOTALL):
@@ -198,7 +251,7 @@ class TerraformParser(BaseParser):
         # Default: check for common locking patterns
         return "lock" in backend_body_no_comments.lower() or "dynamodb" in backend_body_no_comments.lower()
 
-    def _parse_json_terraform(self, data: Dict) -> Dict[str, Any]:
+    def _parse_json_terraform(self, data: dict) -> dict[str, Any]:
         """Parse JSON-formatted Terraform."""
         result = {
             "resources": [],
@@ -238,9 +291,13 @@ class TerraformParser(BaseParser):
         match = re.search(r'source\s*=\s*"([^"]+)"', body)
         return match.group(1) if match else ""
 
-    def extract_resources(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def extract_resources(self, parsed_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract resources for rule evaluation."""
         resources = []
+
+        # Skip tfvars files - they don't have resources/backends
+        if parsed_data.get("is_tfvars"):
+            return resources
 
         for resource in parsed_data.get("resources", []):
             resources.append({

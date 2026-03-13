@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "IAM_WILDCARD_PERMISSIONS",
+      "file": "main.tf"
+    }
+  ]
+}

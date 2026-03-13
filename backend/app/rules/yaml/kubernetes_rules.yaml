@@ -1,0 +1,247 @@
+rules:
+  - id: K8S-001
+    title: Define CPU and Memory Resource Limits
+    severity: high
+    category: reliability
+    description: Containers without resource limits can consume all node resources, causing instability
+    remediation: Set resources.limits.cpu and resources.limits.memory for all containers
+    check_logic:
+      field: spec.template.spec.containers[].resources.limits
+      operator: exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - ReplicaSet
+      - Job
+    file_types:
+      - kubernetes
+    tags:
+      - reliability
+      - resources
+      - production
+
+  - id: K8S-002
+    title: Define Resource Requests
+    severity: medium
+    category: scalability
+    description: Containers without resource requests cannot be properly scheduled by the scheduler
+    remediation: Set resources.requests.cpu and resources.requests.memory for all containers
+    check_logic:
+      field: spec.template.spec.containers[].resources.requests
+      operator: exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - ReplicaSet
+    file_types:
+      - kubernetes
+    tags:
+      - scalability
+      - scheduling
+      - production
+
+  - id: K8S-003
+    title: Add Liveness Probe
+    severity: medium
+    category: reliability
+    description: Without liveness probes, Kubernetes cannot detect and restart unhealthy containers
+    remediation: Add livenessProbe with appropriate health check endpoint and timing
+    check_logic:
+      field: spec.template.spec.containers[].livenessProbe
+      operator: exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+    file_types:
+      - kubernetes
+    tags:
+      - reliability
+      - health
+      - production
+
+  - id: K8S-004
+    title: Add Readiness Probe
+    severity: medium
+    category: reliability
+    description: Without readiness probes, traffic may be sent to containers that are not ready
+    remediation: Add readinessProbe with appropriate health check endpoint and timing
+    check_logic:
+      field: spec.template.spec.containers[].readinessProbe
+      operator: exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+    file_types:
+      - kubernetes
+    tags:
+      - reliability
+      - health
+      - traffic
+
+  - id: K8S-005
+    title: Avoid Privileged Containers
+    severity: critical
+    category: security
+    description: Privileged containers have full access to host resources and can escape container isolation
+    remediation: Remove privileged: true and use specific capabilities instead
+    check_logic:
+      field: spec.template.spec.containers[].securityContext.privileged
+      operator: not_equals
+      value: true
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - Pod
+    file_types:
+      - kubernetes
+    tags:
+      - security
+      - critical
+      - cis-benchmark
+
+  - id: K8S-006
+    title: Run Containers as Non-Root
+    severity: high
+    category: security
+    description: Running containers as root increases security risk and potential for privilege escalation
+    remediation: Set runAsNonRoot: true or specify runAsUser with non-zero UID
+    check_logic:
+      field: spec.template.spec.containers[].securityContext.runAsNonRoot
+      operator: equals
+      value: true
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - Pod
+    file_types:
+      - kubernetes
+    tags:
+      - security
+      - cis-benchmark
+      - production
+
+  - id: K8S-007
+    title: Use Image Pull Policy Appropriately
+    severity: low
+    category: reliability
+    description: imagePullPolicy should be set appropriately for the environment
+    remediation: Use Always for latest tag, IfNotPresent for versioned tags in production
+    check_logic:
+      field: spec.template.spec.containers[].imagePullPolicy
+      operator: validate_pull_policy
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+    file_types:
+      - kubernetes
+    tags:
+      - reliability
+      - images
+      - best-practice
+
+  - id: K8S-008
+    title: Avoid hostPath Volumes
+    severity: high
+    category: security
+    description: hostPath volumes mount host filesystem into container, creating security risks
+    remediation: Use PersistentVolumes, ConfigMaps, or Secrets instead of hostPath
+    check_logic:
+      field: spec.template.spec.volumes[].hostPath
+      operator: not_exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - Pod
+    file_types:
+      - kubernetes
+    tags:
+      - security
+      - storage
+      - cis-benchmark
+
+  - id: K8S-009
+    title: Configure Horizontal Pod Autoscaler
+    severity: medium
+    category: scalability
+    description: No HPA configured for automatic scaling based on resource usage
+    remediation: Create HorizontalPodAutoscaler resource with appropriate min/max replicas and metrics
+    check_logic:
+      field: has_hpa
+      operator: exists
+      scope: namespace
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+    file_types:
+      - kubernetes
+    tags:
+      - scalability
+      - autoscaling
+      - production
+
+  - id: K8S-010
+    title: Configure Network Policies
+    severity: high
+    category: security
+    description: No NetworkPolicies found, allowing unrestricted pod-to-pod communication
+    remediation: Implement NetworkPolicies to restrict traffic between pods using labels and selectors
+    check_logic:
+      field: has_network_policy
+      operator: exists
+      scope: namespace
+    file_types:
+      - kubernetes
+    tags:
+      - security
+      - networking
+      - cis-benchmark
+
+  - id: K8S-011
+    title: Avoid Latest Image Tag
+    severity: medium
+    category: reliability
+    description: Container images using 'latest' tag make deployments non-reproducible
+    remediation: Pin container images to specific version tags or digests
+    check_logic:
+      field: spec.template.spec.containers[].image
+      operator: not_contains
+      value: ":latest"
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - Pod
+    file_types:
+      - kubernetes
+    tags:
+      - reliability
+      - versioning
+      - best-practice
+
+  - id: K8S-012
+    title: Mount Secrets as Volumes
+    severity: medium
+    category: security
+    description: Secrets injected via environment variables are less secure than volume mounts
+    remediation: Mount secrets using volume mounts instead of environment variables
+    check_logic:
+      field: spec.template.spec.containers[].env[].valueFrom.secretKeyRef
+      operator: not_exists
+    resource_kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+    file_types:
+      - kubernetes
+    tags:
+      - security
+      - secrets
+      - best-practice

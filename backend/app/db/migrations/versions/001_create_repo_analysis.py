@@ -1,13 +1,12 @@
 """create repo_analysis table
 
 Revision ID: 001
-Revises: 
+Revises:
 Create Date: 2026-03-05
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '001'
@@ -43,7 +42,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
-    
+
     # Create indexes
     op.create_index('ix_repo_analysis_id', 'repo_analysis', ['id'], unique=False)
     op.create_index('ix_repo_analysis_repo_url', 'repo_analysis', ['repo_url'], unique=False)

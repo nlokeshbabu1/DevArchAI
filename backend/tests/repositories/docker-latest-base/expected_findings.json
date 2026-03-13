@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "LATEST_BASE_IMAGE",
+      "file": "Dockerfile"
+    }
+  ]
+}

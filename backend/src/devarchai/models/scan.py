@@ -1,14 +1,14 @@
 """Scan model for tracking analysis jobs."""
 
-import uuid
 import enum
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Text, Enum as SQLEnum, Integer
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
-from devarchai.models.mixins import TimestampMixin, OrganizationMixin
+from devarchai.models.mixins import OrganizationMixin, TimestampMixin
 
 
 class ScanStatus(str, enum.Enum):
@@ -32,22 +32,22 @@ class Scan(Base, TimestampMixin, OrganizationMixin):
     __tablename__ = "scans"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Foreign keys
     repository_id = Column(PG_UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=True, index=True)
     creator_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    
+
     # Scan configuration
     branch = Column(String(100), default="main", nullable=False)
     commit_hash = Column(String(40), nullable=True)
     repository_url = Column(String(500), nullable=False)  # Denormalized for quick access
-    
+
     # Status tracking
     status = Column(SQLEnum(ScanStatus), default=ScanStatus.PENDING, nullable=False, index=True)
     progress = Column(Integer, default=0, nullable=False)  # 0-100
     status_message = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
-    
+
     # Results
     overall_score = Column(Float, nullable=True)
     security_score = Column(Float, nullable=True)
@@ -55,15 +55,15 @@ class Scan(Base, TimestampMixin, OrganizationMixin):
     reliability_score = Column(Float, nullable=True)
     cost_score = Column(Float, nullable=True)
     observability_score = Column(Float, nullable=True)
-    
+
     # Timing
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     analysis_duration_seconds = Column(Float, nullable=True)
-    
+
     # Celery task tracking
     celery_task_id = Column(String(255), nullable=True, index=True)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="scans")
     repository = relationship("Repository", back_populates="scans")

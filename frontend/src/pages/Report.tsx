@@ -35,7 +35,12 @@ interface Finding {
   category: string
   description: string
   recommendation: string
+  risk?: string
+  impact?: string
+  fix_example?: string
   file_path: string
+  line_number?: number
+  resource_name?: string
   ai_explanation?: string
   impact_analysis?: string
   suggested_fix?: string
@@ -93,6 +98,40 @@ export function Report() {
     filesAnalyzed: state?.filesAnalyzed || 0,
   })
   const scannedBranch = state?.branch || sessionStorage.getItem('scannedBranch') || 'main'
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true)
+    try {
+      // Create report data
+      const reportData = {
+        repository: repoInfo.name,
+        url: repoInfo.url,
+        branch: scannedBranch,
+        analyzedAt: new Date().toISOString(),
+        scores: displayScores,
+        findings: filteredFindings,
+        summary: severitySummary,
+      }
+
+      // Convert to blob
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+
+      // Create download link
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `devarchai-report-${repoInfo.name.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
@@ -265,9 +304,9 @@ export function Report() {
             }
           </p>
         </div>
-        <Button variant="secondary">
+        <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
           <Download className="h-4 w-4" />
-          Download Report
+          {isDownloading ? 'Downloading...' : 'Download Report'}
         </Button>
       </div>
 

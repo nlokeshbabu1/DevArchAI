@@ -1,11 +1,20 @@
 """Subscription model for billing."""
 
-import uuid
 import enum
-from sqlalchemy import Column, String, Float, ForeignKey, Text, Enum as SQLEnum, Boolean, DateTime, Integer
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+import uuid
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
 from devarchai.models.mixins import TimestampMixin
@@ -39,37 +48,37 @@ class Subscription(Base, TimestampMixin):
     __tablename__ = "subscriptions"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Foreign keys
     organization_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # Plan info
     plan = Column(SQLEnum(PlanType), default=PlanType.FREE, nullable=False)
     status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.TRIAL, nullable=False)
-    
+
     # Stripe info
     stripe_subscription_id = Column(String(255), unique=True, nullable=True, index=True)
     stripe_customer_id = Column(String(255), nullable=True, index=True)
     stripe_price_id = Column(String(255), nullable=True)
-    
+
     # Billing cycle
     current_period_start = Column(DateTime(timezone=True), nullable=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end = Column(Boolean, default=False, nullable=False)
     canceled_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Trial
     trial_start = Column(DateTime(timezone=True), nullable=True)
     trial_end = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Usage tracking
     scans_this_period = Column(Integer, default=0, nullable=False)
     repositories_count = Column(Integer, default=0, nullable=False)
     team_members_count = Column(Integer, default=1, nullable=False)
-    
+
     # Metadata
     metadata = Column(Text, nullable=True)  # JSON string
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="subscriptions")
 

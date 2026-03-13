@@ -1,11 +1,12 @@
 """User model."""
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SQLEnum, ForeignKey
+import enum
+import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-import uuid
-import enum
 
 from app.db.base import Base
 
@@ -31,6 +32,9 @@ class User(Base):
     # Profile
     full_name = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
+
+    # GitHub OAuth
+    github_id = Column(String(100), unique=True, index=True, nullable=True)
 
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)

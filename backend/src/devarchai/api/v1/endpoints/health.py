@@ -1,14 +1,14 @@
 """Health check endpoints."""
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from datetime import datetime
-import redis.asyncio as redis
 
+import redis.asyncio as redis
+from devarchai import __version__
 from devarchai.api.deps import get_db
 from devarchai.config import settings
-from devarchai import __version__
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/health", tags=["Health"])
 

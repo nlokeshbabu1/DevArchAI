@@ -1,9 +1,10 @@
 """Common schemas and shared types."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Generic, TypeVar
 from datetime import datetime
 from enum import Enum
+from typing import Optional, TypeVar
+
+from pydantic import BaseModel, Field
 
 
 class HealthStatus(str, Enum):
@@ -60,4 +61,4 @@ class BulkOperationResponse(BaseModel):
 
     success_count: int
     failure_count: int
-    errors: Optional[List[dict]] = None
+    errors: Optional[list[dict]] = None

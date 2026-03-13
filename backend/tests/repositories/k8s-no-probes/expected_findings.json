@@ -1,0 +1,12 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "NO_LIVENESS_PROBE",
+      "file": "deployment.yaml"
+    },
+    {
+      "rule_id": "NO_READINESS_PROBE",
+      "file": "deployment.yaml"
+    }
+  ]
+}

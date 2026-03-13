@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "APT_NO_CLEANUP",
+      "file": "Dockerfile"
+    }
+  ]
+}

@@ -1,18 +1,17 @@
 """API v1 router aggregation."""
 
-from fastapi import APIRouter
-
 from devarchai.api.v1.endpoints import (
     auth,
+    billing,
+    dashboard,
+    findings,
     health,
     organizations,
+    reports,
     repositories,
     scans,
-    findings,
-    reports,
-    dashboard,
-    billing,
 )
+from fastapi import APIRouter
 
 api_router = APIRouter()
 

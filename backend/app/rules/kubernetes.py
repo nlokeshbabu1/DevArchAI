@@ -2,8 +2,9 @@
 Kubernetes Analysis Rules
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -22,7 +23,7 @@ class K8sSingleReplicaRule(BaseRule):
             tags=["kubernetes", "deployment", "replicas", "ha"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -64,7 +65,7 @@ class K8sNoLivenessProbeRule(BaseRule):
             tags=["kubernetes", "probe", "health"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -107,7 +108,7 @@ class K8sNoReadinessProbeRule(BaseRule):
             tags=["kubernetes", "probe", "health"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -150,7 +151,7 @@ class K8sNoResourceLimitsRule(BaseRule):
             tags=["kubernetes", "resources", "limits"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -196,7 +197,7 @@ class K8sNoResourceRequestsRule(BaseRule):
             tags=["kubernetes", "resources", "requests"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -242,7 +243,7 @@ class K8sLatestImageTagRule(BaseRule):
             tags=["kubernetes", "image", "versioning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -286,7 +287,7 @@ class K8sPrivilegedContainerRule(BaseRule):
             tags=["kubernetes", "security", "privileged"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -330,7 +331,7 @@ class K8sSecretEnvUsageRule(BaseRule):
             tags=["kubernetes", "secrets", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -376,7 +377,7 @@ class K8sNoNetworkPolicyRule(BaseRule):
             tags=["kubernetes", "networking", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         has_network_policy = False
         has_workload = False
@@ -422,7 +423,7 @@ class K8sNoHPARule(BaseRule):
             tags=["kubernetes", "autoscaling", "scalability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         has_hpa = False
         has_deployment = False

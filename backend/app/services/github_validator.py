@@ -4,8 +4,8 @@ Validates GitHub repository URLs and extracts owner/repo information.
 """
 
 import re
-from typing import Optional
 from dataclasses import dataclass
+
 import structlog
 
 from app.core.exceptions import InvalidRepositoryException

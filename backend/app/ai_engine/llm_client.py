@@ -1,9 +1,8 @@
 """LLM Client for AI-powered explanations."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-import structlog
+from typing import Any
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -18,7 +17,7 @@ class AIExplanation:
     finding_id: str
     explanation: str
     impact_analysis: str
-    remediation_steps: List[str]
+    remediation_steps: list[str]
     confidence: float = 0.9
 
 
@@ -28,7 +27,7 @@ class AISummary:
 
     executive_summary: str
     risk_analysis: str
-    prioritized_recommendations: List[str]
+    prioritized_recommendations: list[str]
 
 
 class BaseLLMProvider(ABC):
@@ -38,7 +37,7 @@ class BaseLLMProvider(ABC):
     async def generate_explanation(
         self,
         finding_description: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> AIExplanation:
         """Generate AI explanation for a finding."""
         pass
@@ -46,8 +45,8 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def generate_executive_summary(
         self,
-        findings: List[Dict[str, Any]],
-        scores: Dict[str, float],
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
     ) -> str:
         """Generate executive summary for the report."""
         pass
@@ -55,7 +54,7 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def generate_risk_analysis(
         self,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
     ) -> str:
         """Generate risk analysis for the findings."""
         pass
@@ -63,8 +62,8 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def generate_prioritized_recommendations(
         self,
-        findings: List[Dict[str, Any]],
-    ) -> List[str]:
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate prioritized list of recommendations."""
         pass
 
@@ -88,7 +87,7 @@ class OpenAIProvider(BaseLLMProvider):
     async def generate_explanation(
         self,
         finding_description: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> AIExplanation:
         """Generate detailed explanation for a finding."""
         prompt = f"""You are a DevOps expert analyzing infrastructure issues.
@@ -135,8 +134,8 @@ Format your response as JSON with keys: explanation, impact_analysis, remediatio
 
     async def generate_executive_summary(
         self,
-        findings: List[Dict[str, Any]],
-        scores: Dict[str, float],
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
     ) -> str:
         """Generate executive summary."""
         prompt = f"""You are a DevOps consultant providing an executive summary.
@@ -176,7 +175,7 @@ Write a concise executive summary (3-4 paragraphs) covering:
 
     async def generate_risk_analysis(
         self,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
     ) -> str:
         """Generate risk analysis."""
         prompt = f"""Analyze the following infrastructure findings and provide a risk assessment:
@@ -206,8 +205,8 @@ Provide risk analysis covering:
 
     async def generate_prioritized_recommendations(
         self,
-        findings: List[Dict[str, Any]],
-    ) -> List[str]:
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate prioritized recommendations."""
         prompt = f"""Based on these findings, provide the top 5 prioritized recommendations:
 
@@ -242,7 +241,7 @@ List recommendations in order of priority (most critical first)."""
             logger.warning("Recommendations generation failed", error=str(e))
             return self._fallback_recommendations(findings)
 
-    def _format_findings(self, findings: List[Dict], severity: str) -> str:
+    def _format_findings(self, findings: list[dict], severity: str) -> str:
         """Format findings by severity."""
         filtered = [f for f in findings if f.get("severity") == severity]
         if not filtered:
@@ -253,14 +252,14 @@ List recommendations in order of priority (most critical first)."""
             for f in filtered[:10]
         ])
 
-    def _format_all_findings(self, findings: List[Dict]) -> str:
+    def _format_all_findings(self, findings: list[dict]) -> str:
         """Format all findings."""
         return "\n".join([
             f"[{f.get('severity').upper()}] {f.get('rule_name')}: {f.get('description')}"
             for f in findings[:20]
         ])
 
-    def _fallback_explanation(self, context: Dict) -> AIExplanation:
+    def _fallback_explanation(self, context: dict) -> AIExplanation:
         """Fallback explanation when LLM fails."""
         return AIExplanation(
             finding_id=context.get("rule_id", ""),
@@ -270,7 +269,7 @@ List recommendations in order of priority (most critical first)."""
             confidence=0.5,
         )
 
-    def _fallback_summary(self, scores: Dict) -> str:
+    def _fallback_summary(self, scores: dict) -> str:
         """Fallback summary when LLM fails."""
         overall = sum(scores.values()) / len(scores) if scores else 0
         return f"""Production Readiness Assessment
@@ -282,7 +281,7 @@ Category Scores:
 
 Please review individual findings for specific recommendations."""
 
-    def _fallback_recommendations(self, findings: List[Dict]) -> List[str]:
+    def _fallback_recommendations(self, findings: list[dict]) -> list[str]:
         """Fallback recommendations when LLM fails."""
         critical = [f for f in findings if f.get("severity") == "critical"]
         high = [f for f in findings if f.get("severity") == "high"]
@@ -315,7 +314,7 @@ class AnthropicProvider(BaseLLMProvider):
     async def generate_explanation(
         self,
         finding_description: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> AIExplanation:
         """Generate explanation using Claude."""
         prompt = f"""You are a DevOps expert. Analyze this finding:
@@ -357,8 +356,8 @@ Provide JSON response with: explanation, impact_analysis, remediation_steps (arr
 
     async def generate_executive_summary(
         self,
-        findings: List[Dict[str, Any]],
-        scores: Dict[str, float],
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
     ) -> str:
         """Generate executive summary using Claude."""
         prompt = f"""Scores: {scores}
@@ -377,7 +376,7 @@ Write a 3-paragraph executive summary."""
             logger.warning("Summary generation failed", error=str(e))
             return f"Overall Score: {sum(scores.values()) / len(scores) if scores else 0:.1f}/100"
 
-    async def generate_risk_analysis(self, findings: List[Dict[str, Any]]) -> str:
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
         """Generate risk analysis using Claude."""
         prompt = f"Analyze risks: {findings[:15]}"
 
@@ -394,8 +393,8 @@ Write a 3-paragraph executive summary."""
 
     async def generate_prioritized_recommendations(
         self,
-        findings: List[Dict[str, Any]],
-    ) -> List[str]:
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
         """Generate recommendations using Claude."""
         prompt = f"Top 5 recommendations for: {findings[:15]}"
 
@@ -418,7 +417,7 @@ class MockLLMProvider(BaseLLMProvider):
     async def generate_explanation(
         self,
         finding_description: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> AIExplanation:
         return AIExplanation(
             finding_id=context.get("rule_id", ""),
@@ -430,18 +429,18 @@ class MockLLMProvider(BaseLLMProvider):
 
     async def generate_executive_summary(
         self,
-        findings: List[Dict[str, Any]],
-        scores: Dict[str, float],
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
     ) -> str:
         return f"Executive Summary: Overall score {sum(scores.values()) / len(scores) if scores else 0:.1f}/100"
 
-    async def generate_risk_analysis(self, findings: List[Dict[str, Any]]) -> str:
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
         return f"Risk Analysis: {len(findings)} findings detected"
 
     async def generate_prioritized_recommendations(
         self,
-        findings: List[Dict[str, Any]],
-    ) -> List[str]:
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
         return [f.get("recommendation") for f in findings[:5]]
 
 
