@@ -162,11 +162,12 @@ class TerraformBackendEncryptionRule(BaseRule):
             if resource.get("resource_type") == "backend":
                 backend = resource.get("properties", {})
                 backend_type = backend.get("type", "").lower()
+                has_encryption = backend.get("has_encryption", False)
                 raw_config = backend.get("raw_config", "")
 
                 # S3 backend must have encrypt = true
                 if backend_type == "s3":
-                    if "encrypt" not in raw_config or "encrypt = true" not in raw_config:
+                    if not has_encryption:
                         findings.append(RuleFinding(
                             rule_id=self.rule.id,
                             rule_name=self.rule.name,
@@ -180,7 +181,7 @@ class TerraformBackendEncryptionRule(BaseRule):
 
                 # COS backend (Tencent) should have encryption
                 elif backend_type == "cos":
-                    if "encrypt" not in raw_config:
+                    if not has_encryption:
                         findings.append(RuleFinding(
                             rule_id=self.rule.id,
                             rule_name=self.rule.name,

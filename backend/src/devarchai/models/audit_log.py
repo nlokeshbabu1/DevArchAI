@@ -3,7 +3,16 @@
 import enum
 import uuid
 
-from sqlalchemy import JSON as SAJSON, Column, DateTime, Enum as SQLEnum, ForeignKey, String, Text
+from sqlalchemy import (
+    JSON as SAJSON,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -96,7 +105,7 @@ class AuditLog(Base):
     # Metadata
     ip_address = Column(String(45), nullable=True)  # IPv6 max length
     user_agent = Column(String(500), nullable=True)
-    metadata = Column(SAJSON, nullable=True)
+    audit_metadata = Column(SAJSON, nullable=True)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
 
     # Timestamp
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

@@ -1,9 +1,9 @@
 """Model mixins for common fields."""
 
 import uuid
-from uuid import UUID as UUIDType
 
 from sqlalchemy import Column, DateTime
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 
 
@@ -45,7 +45,7 @@ class UUIDPrimaryKeyMixin:
     """Mixin for UUID primary key."""
 
     id = Column(
-        UUIDType(as_uuid=True),
+        PG_UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
         index=True,
@@ -56,7 +56,7 @@ class OrganizationMixin:
     """Mixin for organization-based multi-tenancy."""
 
     organization_id = Column(
-        UUIDType(as_uuid=True),
+        PG_UUID(as_uuid=True),
         nullable=False,
         index=True,
     )

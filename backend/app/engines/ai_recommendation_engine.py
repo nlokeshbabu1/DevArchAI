@@ -309,10 +309,6 @@ jobs:
         include_code_examples: bool,
     ) -> AIRecommendation:
         """Generate recommendation using LLM if available."""
-        rule_id = finding.get("rule_id", "")
-        description = finding.get("description", "")
-        category = finding.get("category", "")
-
         # Try LLM if available
         if self.llm_provider:
             try:

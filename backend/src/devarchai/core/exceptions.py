@@ -1,6 +1,6 @@
 """Custom exceptions for the application."""
 
-from typing import Any, Optional
+from typing import Any
 
 
 class AppException(Exception):
@@ -10,8 +10,8 @@ class AppException(Exception):
         self,
         message: str = "An error occurred",
         status_code: int = 500,
-        detail: Optional[str] = None,
-        headers: Optional[dict[str, str]] = None,
+        detail: str | None = None,
+        headers: dict[str, str] | None = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -26,7 +26,7 @@ class AuthenticationException(AppException):
     def __init__(
         self,
         message: str = "Authentication failed",
-        detail: Optional[str] = None,
+        detail: str | None = None,
     ):
         super().__init__(
             message=message,
@@ -42,7 +42,7 @@ class AuthorizationException(AppException):
     def __init__(
         self,
         message: str = "Access denied",
-        detail: Optional[str] = None,
+        detail: str | None = None,
     ):
         super().__init__(
             message=message,
@@ -57,8 +57,8 @@ class NotFoundException(AppException):
     def __init__(
         self,
         resource_type: str = "Resource",
-        resource_id: Optional[Any] = None,
-        message: Optional[str] = None,
+        resource_id: Any | None = None,
+        message: str | None = None,
     ):
         if message is None:
             message = f"{resource_type} not found"
@@ -163,7 +163,7 @@ class QuotaExceededException(AppException):
     def __init__(
         self,
         quota_type: str = "quota",
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ):
         message = f"Quota exceeded for {quota_type}"
         if limit:
@@ -197,7 +197,7 @@ class ConflictException(AppException):
     def __init__(
         self,
         message: str = "Resource conflict",
-        detail: Optional[str] = None,
+        detail: str | None = None,
     ):
         super().__init__(
             message=message,
@@ -212,10 +212,35 @@ class InternalServerException(AppException):
     def __init__(
         self,
         message: str = "Internal server error",
-        detail: Optional[str] = None,
+        detail: str | None = None,
     ):
         super().__init__(
             message=message,
             status_code=500,
             detail=detail,
+        )
+
+
+def setup_exception_handlers(app) -> None:
+    """Setup global exception handlers for FastAPI app."""
+    from fastapi import FastAPI, Request, status
+    from fastapi.responses import JSONResponse
+    
+    if not isinstance(app, FastAPI):
+        return
+    
+    @app.exception_handler(AppException)
+    async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+        """Handle application exceptions."""
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail or exc.message},
+        )
+    
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Handle unhandled exceptions."""
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An unexpected error occurred"},
         )

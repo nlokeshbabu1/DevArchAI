@@ -8,57 +8,9 @@ from typing import Any
 from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
-@register_rule
-class TerraformNoRemoteStateRule(BaseRule):
-    """Check if Terraform has remote backend configured."""
-
-    @property
-    def rule(self) -> Rule:
-        return Rule(
-            id="terraform_no_remote_state",
-            name="No Remote State Backend",
-            description="Terraform state is stored locally instead of remote backend, risking state loss and collaboration issues",
-            recommendation="Configure remote backend (e.g., S3, GCS, Azure Blob) for state storage with locking",
-            severity=Severity.HIGH,
-            category=Category.RELIABILITY,
-            tags=["terraform", "backend", "state"],
-        )
-
-    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
-        findings = []
-
-        # Only evaluate this rule for Terraform files
-        if not file_path.endswith(('.tf', '.tf.json')):
-            return findings
-
-        has_backend = False
-        backend_files: list[str] = []
-
-        for resource in resources:
-            if resource.get("file_type") != "terraform":
-                continue
-            if resource.get("resource_type") == "backend":
-                properties = resource.get("properties", {})
-                # Check if it's a remote backend
-                if properties.get("has_remote_state", False):
-                    has_backend = True
-                    backend_files.append(file_path)
-                    break
-
-        # Only report finding if this is a Terraform file and no backend found
-        if not has_backend:
-            findings.append(RuleFinding(
-                rule_id=self.rule.id,
-                rule_name=self.rule.name,
-                severity=self.rule.severity,
-                category=self.rule.category,
-                description=self.rule.description,
-                recommendation=self.rule.recommendation,
-                file_path=file_path,
-                metadata={"affected_files": [file_path]},
-            ))
-
-        return findings
+# NOTE: TF-STATE-002 (Remote Backend Required) is now checked at module level in scan_service.py
+# This file-level rule is disabled to avoid duplicate/incorrect findings on output.tf files
+# The module-level check ensures we only report once per root module, not per file
 
 
 @register_rule

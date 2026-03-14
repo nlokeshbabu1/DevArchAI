@@ -11,8 +11,12 @@ import { ScansPage } from './pages/scans/ScansPage'
 import { Findings } from './pages/findings/FindingsPage'
 import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
 import { BillingPage } from './pages/billing/BillingPage'
+import { BillingSuccess } from './pages/billing/BillingSuccess'
+import { PricingPage } from './pages/billing/PricingPage'
+import { ScanResultsPage } from './pages/ScanResultsPage'
 import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
 import { IntegrationsPage } from './pages/dashboard/Integrations'
+import { SettingsPage } from './pages/settings/SettingsPage'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
 
@@ -56,9 +60,11 @@ export default function App() {
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
+      <Route path="/scan/results/:sessionId" element={<ScanResultsPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
+      <Route path="/pricing" element={<PricingPage />} />
 
       {/* Protected routes with Layout */}
       <Route path="/dashboard" element={
@@ -117,10 +123,36 @@ export default function App() {
         </ProtectedRoute>
       } />
 
+      <Route path="/pricing" element={<PricingPage />} />
+
+      <Route path="/billing/success" element={
+        <ProtectedRoute>
+          <Layout>
+            <BillingSuccess />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
       <Route path="/settings" element={
         <ProtectedRoute>
           <Layout>
-            <Settings />
+            <SettingsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/ai-suggestions" element={
+        <ProtectedRoute>
+          <Layout>
+            <AISuggestionsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/integrations" element={
+        <ProtectedRoute>
+          <Layout>
+            <IntegrationsPage />
           </Layout>
         </ProtectedRoute>
       } />
@@ -128,14 +160,5 @@ export default function App() {
       {/* Catch all - redirect to dashboard */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
-  )
-}
-
-function Settings() {
-  return (
-    <div className="text-center py-24">
-      <h1 className="text-2xl font-bold mb-2">Settings</h1>
-      <p className="text-muted-foreground">Configure your analysis preferences and integrations.</p>
-    </div>
   )
 }

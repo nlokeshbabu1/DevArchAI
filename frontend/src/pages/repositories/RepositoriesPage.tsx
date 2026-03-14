@@ -20,8 +20,8 @@ const repositories = [
   {
     name: 'ci-cd-pipelines',
     description: 'GitHub Actions workflows',
-    lastScan: null,
-    score: null,
+    lastScan: undefined,
+    score: undefined,
     status: 'pending' as const,
   },
   {

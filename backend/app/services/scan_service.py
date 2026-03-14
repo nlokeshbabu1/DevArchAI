@@ -456,22 +456,22 @@ class ScanService:
     ) -> list[RuleFinding]:
         """
         Run repository-level rules that scan the entire repository.
-        
+
         These rules run once per repository, not per file.
         Examples:
         - Missing monitoring stack (K8S-OBS-001)
         - Missing NetworkPolicy across all namespaces
         - Missing HPA coverage across all deployments
-        
+
         Args:
             parsed_files: List of all parsed files
             all_resources: List of all extracted resources
-            
+
         Returns:
             List of repository-level findings
         """
         from app.rule_engine.repository_rules import repo_level_rules
-        
+
         return repo_level_rules.evaluate_repository_level_rules(
             parsed_files,
             all_resources,
@@ -536,6 +536,10 @@ class ScanService:
         # Generate findings for modules without backend
         for module_path, module_info in modules.items():
             if not module_info["has_backend"]:
+                # Use module directory path instead of first .tf file to avoid confusion
+                # The issue is a module-level problem, not a file-specific problem
+                finding_file_path = module_path.rstrip('/') + '/'  # Use module directory as the "file"
+                
                 findings.append(RuleFinding(
                     rule_id="TF-STATE-002",
                     rule_name="Remote Backend Required",
@@ -543,7 +547,7 @@ class ScanService:
                     category=Category.RELIABILITY,
                     description=f"Terraform root module '{module_path}' does not have a remote backend configured",
                     recommendation="Configure remote backend (S3, GCS, Azure Blob, Consul, Terraform Cloud) with state locking",
-                    file_path=module_info["tf_files"][0] if module_info["tf_files"] else module_path,
+                    file_path=finding_file_path,
                     metadata={
                         "module_path": module_path,
                         "tf_files_count": len(module_info["tf_files"]),

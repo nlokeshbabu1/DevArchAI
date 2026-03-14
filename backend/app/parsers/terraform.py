@@ -127,6 +127,9 @@ class TerraformParser(BaseParser):
 
             # Check for locking mechanisms
             has_locking = self._check_backend_locking(backend_type, backend_body)
+            
+            # Check for encryption
+            has_encryption = "encrypt" in backend_body.lower() and "= true" in backend_body.lower()
 
             # Check if already added (avoid duplicates)
             already_exists = any(
@@ -138,6 +141,7 @@ class TerraformParser(BaseParser):
                 result["backends"].append({
                     "type": backend_type,
                     "has_locking": has_locking,
+                    "has_encryption": has_encryption,
                     "has_remote_state": self._is_remote_backend(backend_type),
                     "raw_config": backend_body,
                 })

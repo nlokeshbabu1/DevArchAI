@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -28,15 +27,15 @@ class OrganizationCreate(BaseModel):
     """Organization creation request."""
 
     name: str = Field(..., min_length=1, max_length=255)
-    slug: Optional[str] = None
-    description: Optional[str] = None
+    slug: str | None = None
+    description: str | None = None
 
 
 class OrganizationUpdate(BaseModel):
     """Organization update request."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
 
 
 class OrganizationResponse(BaseModel):
@@ -45,11 +44,11 @@ class OrganizationResponse(BaseModel):
     id: str
     name: str
     slug: str
-    description: Optional[str] = None
+    description: str | None = None
     plan: str
     is_active: bool
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -62,9 +61,9 @@ class MemberResponse(BaseModel):
     user_id: str
     email: str
     username: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
     role: str
-    joined_at: Optional[datetime] = None
+    joined_at: datetime | None = None
 
 
 class MemberInvite(BaseModel):

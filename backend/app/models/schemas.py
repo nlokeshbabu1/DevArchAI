@@ -4,7 +4,6 @@ Pydantic Schemas for API Request/Response
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,10 +35,10 @@ class RuleFinding(BaseModel):
     category: Category = Field(..., description="Finding category")
     description: str = Field(..., description="What was found")
     recommendation: str = Field(..., description="How to fix")
-    file_path: Optional[str] = Field(None, description="File where issue was found")
-    line_number: Optional[int] = Field(None, description="Line number of issue")
-    ai_explanation: Optional[str] = Field(None, description="AI-generated explanation")
-    impact_analysis: Optional[str] = Field(None, description="AI impact analysis")
+    file_path: str | None = Field(None, description="File where issue was found")
+    line_number: int | None = Field(None, description="Line number of issue")
+    ai_explanation: str | None = Field(None, description="AI-generated explanation")
+    impact_analysis: str | None = Field(None, description="AI impact analysis")
     confidence_score: float = Field(default=1.0, ge=0, le=1, description="Confidence in finding")
 
 
@@ -62,7 +61,7 @@ class AnalysisReport(BaseModel):
     id: str = Field(..., description="Unique report ID")
     repository_url: str = Field(..., description="Analyzed repository URL")
     repository_name: str = Field(..., description="Repository name")
-    commit_hash: Optional[str] = Field(None, description="Analyzed commit")
+    commit_hash: str | None = Field(None, description="Analyzed commit")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     analysis_duration_seconds: float = Field(..., description="Time taken for analysis")
 
@@ -75,9 +74,9 @@ class AnalysisReport(BaseModel):
     summary: dict[str, int] = Field(..., description="Summary counts by severity")
 
     # AI Analysis
-    executive_summary: Optional[str] = Field(None, description="AI-generated executive summary")
-    risk_analysis: Optional[str] = Field(None, description="AI risk analysis")
-    prioritized_recommendations: Optional[list[str]] = Field(None, description="Top recommendations")
+    executive_summary: str | None = Field(None, description="AI-generated executive summary")
+    risk_analysis: str | None = Field(None, description="AI risk analysis")
+    prioritized_recommendations: list[str] | None = Field(None, description="Top recommendations")
 
     # Files Analyzed
     files_analyzed: list[str] = Field(default_factory=list, description="List of analyzed files")
@@ -113,8 +112,8 @@ class AnalysisRequest(BaseModel):
     """Request to analyze a repository."""
 
     repository_url: str = Field(..., description="GitHub repository URL")
-    branch: Optional[str] = Field(default="main", description="Branch to analyze")
-    commit_hash: Optional[str] = Field(None, description="Specific commit to analyze")
+    branch: str | None = Field(default="main", description="Branch to analyze")
+    commit_hash: str | None = Field(None, description="Specific commit to analyze")
     include_ai_explanations: bool = Field(default=True, description="Include AI explanations")
 
     class Config:
@@ -143,9 +142,9 @@ class AnalysisJob(BaseModel):
     status: AnalysisStatus
     progress: int = Field(ge=0, le=100, description="Progress percentage")
     created_at: datetime
-    completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
-    report_id: Optional[str] = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    report_id: str | None = None
 
 
 class HealthResponse(BaseModel):

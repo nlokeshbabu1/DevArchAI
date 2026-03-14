@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react'
+import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Lock, Sparkles } from 'lucide-react'
 import { Card, Button, Badge } from '../../components/ui'
+import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
 import axios from 'axios'
+import { useAuthStore } from '../../stores/auth-store'
+import { useNavigate } from 'react-router-dom'
 
 interface Finding {
   id: string
@@ -19,16 +22,54 @@ interface Finding {
   created_at: string
 }
 
+// Configure axios with auth token
+const api = axios.create({
+  baseURL: '/api/v1',
+})
+
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 export function Findings() {
+  const navigate = useNavigate()
+  const { token } = useAuthStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [severityFilter, setSeverityFilter] = useState<string[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
+  
+  // Get user subscription to determine if AI should be blurred
+  const [userPlan, setUserPlan] = useState<string>('free')
+  
+  useEffect(() => {
+    // Fetch user's subscription plan
+    const fetchPlan = async () => {
+      if (!token) {
+        setUserPlan('free')
+        return
+      }
+      try {
+        const response = await axios.get('/api/v1/billing/subscription', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setUserPlan(response.data.plan || 'free')
+      } catch (error) {
+        setUserPlan('free')
+      }
+    }
+    fetchPlan()
+  }, [token])
 
   // Fetch all scans first, then get findings for each scan
   const { data: scans } = useQuery({
     queryKey: ['scans'],
     queryFn: async () => {
-      const response = await axios.get('/api/v1/scans')
+      const response = await api.get('/scans')
       return response.data
     },
   })
@@ -38,11 +79,11 @@ export function Findings() {
     queryKey: ['all-findings', scans],
     queryFn: async () => {
       if (!scans || scans.length === 0) return []
-      
+
       const findingsPromises = scans.map((scan: any) =>
-        axios.get(`/api/v1/scans/${scan.id}/findings`)
+        api.get(`/scans/${scan.id}/findings`)
       )
-      
+
       const results = await Promise.all(findingsPromises)
       return results.flatMap(r => r.data)
     },
@@ -216,9 +257,14 @@ export function Findings() {
                         </div>
                       )}
                       {finding.ai_explanation && (
-                        <div className="mt-4 p-4 bg-primary/10 border border-primary/30 rounded-lg">
-                          <h4 className="font-medium text-primary mb-2">AI Recommendation</h4>
-                          <p className="text-sm text-muted-foreground">{finding.ai_explanation}</p>
+                        <div className="mt-4">
+                          <AISuggestionBlur
+                            isBlurred={userPlan === 'free'}
+                            suggestion={finding.ai_explanation}
+                            codeFix={finding.recommendation}
+                            onUpgrade={() => navigate('/pricing')}
+                            upgradePlan="plus"
+                          />
                         </div>
                       )}
                     </div>

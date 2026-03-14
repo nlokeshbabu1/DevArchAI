@@ -1,7 +1,6 @@
 """FastAPI dependencies for API endpoints."""
 
 from collections.abc import AsyncGenerator
-from typing import Optional
 
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -41,8 +40,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -55,8 +54,8 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -70,7 +69,7 @@ async def get_optional_user(
         return None
 
 
-async def get_organization_id(request: Request) -> Optional[str]:
+async def get_organization_id(request: Request) -> str | None:
     """
     Get organization ID from request headers.
 
@@ -80,7 +79,7 @@ async def get_organization_id(request: Request) -> Optional[str]:
 
 
 async def require_organization(
-    org_id: Optional[str] = Depends(get_organization_id),
+    org_id: str | None = Depends(get_organization_id),
 ) -> str:
     """
     Require organization ID to be present.

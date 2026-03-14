@@ -1,8 +1,8 @@
 """Security utilities for authentication and authorization."""
 
 import secrets
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -42,13 +42,13 @@ def generate_api_key() -> tuple[str, str]:
     return full_key, prefix
 
 
-def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "access"})
 
@@ -63,7 +63,7 @@ def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta]
 def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
 
     encoded_jwt = jwt.encode(
@@ -74,7 +74,7 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[dict[str, Any]]:
+def decode_token(token: str) -> dict[str, Any] | None:
     """Decode and validate a JWT token."""
     try:
         payload = jwt.decode(
@@ -90,7 +90,7 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
 async def get_current_user_from_token(
     token: str,
     db: AsyncSession,
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user from JWT token."""
     from devarchai.models.user import User
 
@@ -114,7 +114,7 @@ async def get_current_user_from_token(
 async def get_current_user_from_api_key(
     api_key: str,
     db: AsyncSession,
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user from API key."""
     from devarchai.models.user import User
 
@@ -129,14 +129,14 @@ async def get_current_user_from_api_key(
     result = await db.execute(
         select(User).where(
             User.api_key_prefix == prefix,
-            User.is_active == True,
+            User.is_active.is_(True),
         )
     )
     user = result.scalar_one_or_none()
 
     if user and user.api_key == api_key:
         # Update last login
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(UTC)
         return user
 
     return None
@@ -144,8 +144,8 @@ async def get_current_user_from_api_key(
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
@@ -178,10 +178,10 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user if authenticated, None otherwise."""
     try:
         return await get_current_user(request, credentials, api_key, db)
@@ -216,7 +216,8 @@ async def require_enterprise(
 async def get_current_organization(
     request: Request,
     current_user: Any = Depends(get_current_user),
-) -> Optional[Any]:
+    db: AsyncSession = Depends(get_db),
+) -> Any | None:
     """Get current organization from request context."""
     from devarchai.models.organization import Organization
 
@@ -232,9 +233,7 @@ async def get_current_organization(
         )
 
     # Verify user is member of this organization
-    from sqlalchemy import select
-
-    from devarchai.models.organization import OrganizationMember
+    from devarchai.models.user import OrganizationMember
 
     result = await db.execute(
         select(OrganizationMember).where(

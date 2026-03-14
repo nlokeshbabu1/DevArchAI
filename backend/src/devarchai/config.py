@@ -1,7 +1,7 @@
 """Core application configuration."""
 
 from functools import lru_cache
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -68,18 +68,18 @@ class Settings(BaseSettings):
     # AWS Configuration
     # ===========================================
     AWS_REGION: str = Field(default="us-east-1", env="AWS_REGION")
-    AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
+    AWS_ACCESS_KEY_ID: str | None = Field(default=None, env="AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
     S3_USE_CLOUDFRONT: bool = Field(default=False, env="S3_USE_CLOUDFRONT")
-    CLOUDFRONT_DOMAIN: Optional[str] = Field(default=None, env="CLOUDFRONT_DOMAIN")
+    CLOUDFRONT_DOMAIN: str | None = Field(default=None, env="CLOUDFRONT_DOMAIN")
 
     # ===========================================
     # LLM Configuration
     # ===========================================
     LLM_PROVIDER: Literal["openai", "anthropic", "mock"] = Field(default="mock", env="LLM_PROVIDER")
-    OPENAI_API_KEY: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
-    ANTHROPIC_API_KEY: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
+    OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
+    ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")
@@ -88,10 +88,10 @@ class Settings(BaseSettings):
     # ===========================================
     # GitHub Integration
     # ===========================================
-    GITHUB_TOKEN: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
-    GITHUB_CLIENT_ID: Optional[str] = Field(default=None, env="GITHUB_CLIENT_ID")
-    GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None, env="GITHUB_CLIENT_SECRET")
-    GITHUB_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="GITHUB_WEBHOOK_SECRET")
+    GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
+    GITHUB_CLIENT_ID: str | None = Field(default=None, env="GITHUB_CLIENT_ID")
+    GITHUB_CLIENT_SECRET: str | None = Field(default=None, env="GITHUB_CLIENT_SECRET")
+    GITHUB_WEBHOOK_SECRET: str | None = Field(default=None, env="GITHUB_WEBHOOK_SECRET")
 
     # ===========================================
     # Analysis Settings
@@ -120,25 +120,25 @@ class Settings(BaseSettings):
     # ===========================================
     # Stripe Billing
     # ===========================================
-    STRIPE_SECRET_KEY: Optional[str] = Field(default=None, env="STRIPE_SECRET_KEY")
-    STRIPE_PUBLISHABLE_KEY: Optional[str] = Field(default=None, env="STRIPE_PUBLISHABLE_KEY")
-    STRIPE_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_PRO_MONTHLY: Optional[str] = Field(default=None, env="STRIPE_PRICE_ID_PRO_MONTHLY")
-    STRIPE_PRICE_ID_ENTERPRISE_MONTHLY: Optional[str] = Field(default=None, env="STRIPE_PRICE_ID_ENTERPRISE_MONTHLY")
+    STRIPE_SECRET_KEY: str | None = Field(default=None, env="STRIPE_SECRET_KEY")
+    STRIPE_PUBLISHABLE_KEY: str | None = Field(default=None, env="STRIPE_PUBLISHABLE_KEY")
+    STRIPE_WEBHOOK_SECRET: str | None = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
+    STRIPE_PRICE_ID_PRO_MONTHLY: str | None = Field(default=None, env="STRIPE_PRICE_ID_PRO_MONTHLY")
+    STRIPE_PRICE_ID_ENTERPRISE_MONTHLY: str | None = Field(default=None, env="STRIPE_PRICE_ID_ENTERPRISE_MONTHLY")
 
     # ===========================================
     # Email Configuration
     # ===========================================
     EMAIL_PROVIDER: Literal["sendgrid", "ses", "smtp"] = Field(default="smtp", env="EMAIL_PROVIDER")
-    SENDGRID_API_KEY: Optional[str] = Field(default=None, env="SENDGRID_API_KEY")
+    SENDGRID_API_KEY: str | None = Field(default=None, env="SENDGRID_API_KEY")
     EMAIL_FROM_ADDRESS: str = Field(default="noreply@devarchai.com", env="EMAIL_FROM_ADDRESS")
     EMAIL_FROM_NAME: str = Field(default="DevArchAI", env="EMAIL_FROM_NAME")
 
     # SMTP settings
-    SMTP_HOST: Optional[str] = Field(default=None, env="SMTP_HOST")
-    SMTP_PORT: Optional[int] = Field(default=587, env="SMTP_PORT")
-    SMTP_USER: Optional[str] = Field(default=None, env="SMTP_USER")
-    SMTP_PASSWORD: Optional[str] = Field(default=None, env="SMTP_PASSWORD")
+    SMTP_HOST: str | None = Field(default=None, env="SMTP_HOST")
+    SMTP_PORT: int | None = Field(default=587, env="SMTP_PORT")
+    SMTP_USER: str | None = Field(default=None, env="SMTP_USER")
+    SMTP_PASSWORD: str | None = Field(default=None, env="SMTP_PASSWORD")
 
     # ===========================================
     # Logging & Monitoring
@@ -149,7 +149,7 @@ class Settings(BaseSettings):
 
     # OpenTelemetry
     OTEL_ENABLED: bool = Field(default=False, env="OTEL_ENABLED")
-    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(default=None, env="OTEL_EXPORTER_OTLP_ENDPOINT")
+    OTEL_EXPORTER_OTLP_ENDPOINT: str | None = Field(default=None, env="OTEL_EXPORTER_OTLP_ENDPOINT")
     OTEL_SERVICE_NAME: str = Field(default="devarchai-backend", env="OTEL_SERVICE_NAME")
 
     # ===========================================
@@ -180,16 +180,16 @@ class Settings(BaseSettings):
 
     @field_validator('SECRET_KEY')
     @classmethod
-    def validate_secret_key(cls, v, values):
+    def validate_secret_key(cls, v: str, values) -> str:
         """Warn if using default secret key in production."""
         if values.data.get('ENVIRONMENT') == 'production' and v == "change-me-in-production":
             import warnings
-            warnings.warn("Using default SECRET_KEY in production is insecure!")
+            warnings.warn("Using default SECRET_KEY in production is insecure!", stacklevel=2)
         return v
 
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
-    def parse_cors_origins(cls, v):
+    def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(',')]
@@ -197,7 +197,7 @@ class Settings(BaseSettings):
 
     @field_validator('ALLOWED_HOSTS', mode='before')
     @classmethod
-    def parse_allowed_hosts(cls, v):
+    def parse_allowed_hosts(cls, v: str | list[str]) -> list[str]:
         """Parse allowed hosts from comma-separated string."""
         if isinstance(v, str):
             return [host.strip() for host in v.split(',')]

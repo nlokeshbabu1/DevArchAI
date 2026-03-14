@@ -24,7 +24,7 @@ from app.workers.tasks.scan_repository import cancel_scan_task, scan_repository_
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
 
-@router.get("", response_model=list[ScanResponse])
+@router.get("", response_model=list)
 async def list_scans(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -42,9 +42,12 @@ async def list_scans(
     if status_filter:
         query = query.where(Scan.status == status_filter)
 
-    # Filter by user if authenticated
+    # Filter by user if authenticated, otherwise show recent public scans
     if current_user:
         query = query.where(Scan.user_id == current_user.id)
+    else:
+        # For unauthenticated users, show scans without user_id (anonymous scans)
+        query = query.where(Scan.user_id.is_(None))
 
     # Apply pagination
     query = query.offset(offset).limit(page_size)
@@ -52,7 +55,32 @@ async def list_scans(
     result = await db.execute(query)
     scans = result.scalars().all()
 
-    return scans
+    # Convert to list of dicts for JSON serialization
+    return [
+        {
+            "id": str(scan.id),
+            "user_id": str(scan.user_id) if scan.user_id else None,
+            "repository_id": str(scan.repository_id) if scan.repository_id else None,
+            "repository_url": scan.repository_url,
+            "branch": scan.branch,
+            "commit_hash": scan.commit_hash,
+            "status": scan.status.value,
+            "progress": scan.progress,
+            "error_message": scan.error_message,
+            "overall_score": scan.overall_score,
+            "security_score": scan.security_score,
+            "scalability_score": scan.scalability_score,
+            "reliability_score": scan.reliability_score,
+            "cost_score": scan.cost_score,
+            "observability_score": scan.observability_score,
+            "started_at": scan.started_at.isoformat() if scan.started_at else None,
+            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+            "analysis_duration_seconds": scan.analysis_duration_seconds,
+            "created_at": scan.created_at.isoformat(),
+            "updated_at": scan.updated_at.isoformat(),
+        }
+        for scan in scans
+    ]
 
 
 @router.post("", response_model=ScanResponse, status_code=status.HTTP_202_ACCEPTED)

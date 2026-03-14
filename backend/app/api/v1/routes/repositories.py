@@ -96,7 +96,7 @@ async def list_repositories(
             func.count(Scan.id).label("scan_count"),
         )
         .outerjoin(Scan, Repository.id == Scan.repository_id)
-        .where(Repository.user_id == current_user.id, Repository.is_active == True)
+        .where(Repository.user_id == current_user.id, Repository.is_active.is_(True))
         .group_by(Repository.id)
         .order_by(Repository.created_at.desc())
         .offset(offset)
@@ -109,7 +109,7 @@ async def list_repositories(
     # Get total count
     count_query = select(func.count(Repository.id)).where(
         Repository.user_id == current_user.id,
-        Repository.is_active == True,
+        Repository.is_active.is_(True),
     )
     total = await db.scalar(count_query)
 

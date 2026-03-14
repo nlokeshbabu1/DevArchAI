@@ -223,7 +223,7 @@ class DockerfileParser(BaseParser):
             try:
                 import json
                 volumes = json.loads(args)
-            except:
+            except json.JSONDecodeError:
                 pass
         else:
             # Handle space-separated format

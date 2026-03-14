@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye } from 'lucide-react'
+import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react'
 import { Card, Button, Badge, Progress } from '../../components/ui'
 import axios from 'axios'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../stores/auth-store'
 
 interface Scan {
   id: string
@@ -19,14 +20,29 @@ interface Scan {
   error_message?: string
 }
 
+// Configure axios with auth token
+const api = axios.create({
+  baseURL: '/api/v1',
+})
+
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 export function ScansPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const { token } = useAuthStore()
 
   const { data: scans, isLoading, refetch } = useQuery({
     queryKey: ['scans'],
     queryFn: async () => {
-      const response = await axios.get('/api/v1/scans')
+      const response = await api.get('/scans')
       return response.data
     },
     refetchInterval: 5000, // Poll every 5 seconds for live updates
@@ -34,7 +50,7 @@ export function ScansPage() {
 
   const triggerScanMutation = useMutation({
     mutationFn: async (repoUrl: string) => {
-      const response = await axios.post('/api/v1/scans/analyze', {
+      const response = await api.post('/scans/analyze', {
         repository_url: repoUrl,
         branch: 'main',
       })
@@ -42,12 +58,13 @@ export function ScansPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
+      navigate('/scans')
     },
   })
 
   const cancelScanMutation = useMutation({
     mutationFn: async (scanId: string) => {
-      await axios.post(`/api/v1/scans/${scanId}/cancel`)
+      await api.post(`/scans/${scanId}/cancel`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
@@ -56,12 +73,46 @@ export function ScansPage() {
 
   const deleteScanMutation = useMutation({
     mutationFn: async (scanId: string) => {
-      await axios.delete(`/api/v1/scans/${scanId}`)
+      await api.delete(`/scans/${scanId}`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
   })
+
+  const handleExport = async (scanId: string, format: 'json' | 'xlsx' | 'pdf') => {
+    try {
+      // First get the report for this scan
+      const reportsResponse = await api.get(`/reports/scan/${scanId}/latest`)
+      const report = reportsResponse.data
+      
+      // Then download in the requested format
+      const response = await api.get(`/reports/${report.id}/download?format=${format}`, {
+        responseType: 'blob',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      
+      // Create download link
+      const blob = new Blob([response.data], {
+        type: format === 'pdf' ? 'application/pdf' : 
+              format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 
+              'application/json',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `report_${scanId}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Failed to export report. Please try again.')
+    }
+  }
 
   const statusIcons = {
     pending: Clock,
@@ -247,12 +298,40 @@ export function ScansPage() {
 
                   <div className="flex flex-col gap-2">
                     {scan.status === 'completed' && (
-                      <Link to={`/report/${scan.id}`}>
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Report
-                        </Button>
-                      </Link>
+                      <>
+                        <Link to={`/report/${scan.id}`}>
+                          <Button variant="primary" size="sm" className="w-full">
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Report
+                          </Button>
+                        </Link>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExport(scan.id, 'pdf')}
+                            title="Export PDF"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExport(scan.id, 'xlsx')}
+                            title="Export Excel"
+                          >
+                            <FileSpreadsheet className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExport(scan.id, 'json')}
+                            title="Export JSON"
+                          >
+                            <FileJson className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </>
                     )}
                     {isRunning && (
                       <Button

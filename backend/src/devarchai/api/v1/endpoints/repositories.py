@@ -4,7 +4,7 @@ import uuid
 
 from devarchai.api.deps import get_current_user, get_db
 from devarchai.core.exceptions import AuthorizationException
-from devarchai.models.organization import OrganizationMember
+from devarchai.models.user import OrganizationMember
 from devarchai.models.repository import Repository
 from devarchai.models.user import User
 from fastapi import APIRouter, Depends

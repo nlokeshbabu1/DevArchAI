@@ -1,8 +1,9 @@
 """Security module for authentication and authorization."""
 
 import secrets
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import UUID
 
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -43,13 +44,13 @@ def generate_api_key() -> tuple[str, str]:
     return full_key, prefix
 
 
-def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "access"})
 
@@ -64,7 +65,7 @@ def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta]
 def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=7)
+    expire = datetime.now(UTC) + timedelta(days=7)
     to_encode.update({"exp": expire, "type": "refresh"})
 
     encoded_jwt = jwt.encode(
@@ -75,7 +76,7 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[dict[str, Any]]:
+def decode_token(token: str) -> dict[str, Any] | None:
     """Decode and validate a JWT token."""
     try:
         payload = jwt.decode(
@@ -91,7 +92,7 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
 async def get_current_user_from_token(
     token: str,
     db: AsyncSession,
-) -> Optional[User]:
+) -> User | None:
     """Get current user from JWT token."""
     payload = decode_token(token)
     if payload is None:
@@ -102,7 +103,6 @@ async def get_current_user_from_token(
         return None
 
     # User.id is a UUID, not an integer
-    from uuid import UUID
     try:
         user_uuid = UUID(user_id)
     except (ValueError, AttributeError):
@@ -120,7 +120,7 @@ async def get_current_user_from_token(
 async def get_current_user_from_api_key(
     api_key: str,
     db: AsyncSession,
-) -> Optional[User]:
+) -> User | None:
     """Get current user from API key."""
     # Extract prefix for faster lookup
     if "_" not in api_key:
@@ -133,14 +133,14 @@ async def get_current_user_from_api_key(
     result = await db.execute(
         select(User).where(
             User.api_key_prefix == prefix,
-            User.is_active == True,
+            User.is_active.is_(True),
         )
     )
     user = result.scalar_one_or_none()
 
     if user and user.api_key == api_key:
         # Update last login
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(UTC)
         return user
 
     return None
@@ -148,8 +148,8 @@ async def get_current_user_from_api_key(
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -181,10 +181,10 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
+) -> User | None:
     """Get current user if authenticated, None otherwise."""
     try:
         return await get_current_user(request, credentials, api_key, db)

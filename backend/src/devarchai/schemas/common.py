@@ -1,6 +1,6 @@
 """Common schemas used across the API."""
 
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -37,5 +37,5 @@ class ErrorResponse(BaseModel):
     """Error response schema."""
 
     error: str
-    detail: Optional[str] = None
-    code: Optional[str] = None
+    detail: str | None = None
+    code: str | None = None

@@ -77,7 +77,7 @@ class Subscription(Base, TimestampMixin):
     team_members_count = Column(Integer, default=1, nullable=False)
 
     # Metadata
-    metadata = Column(Text, nullable=True)  # JSON string
+    subscription_metadata = Column(Text, nullable=True)  # JSON string (renamed from 'metadata')
 
     # Relationships
     organization = relationship("Organization", back_populates="subscriptions")

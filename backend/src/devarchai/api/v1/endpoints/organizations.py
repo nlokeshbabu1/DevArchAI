@@ -4,8 +4,8 @@ import uuid
 
 from devarchai.api.deps import get_current_user, get_db
 from devarchai.core.exceptions import AuthorizationException, OrganizationNotFoundException
-from devarchai.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
-from devarchai.models.user import User
+from devarchai.models.organization import Organization, PlanType
+from devarchai.models.user import User, MembershipRole, OrganizationMember
 from devarchai.schemas.common import MessageResponse
 from devarchai.schemas.organization import (
     MemberInvite,

@@ -1,6 +1,5 @@
 """Repository-level rule evaluation for cross-file analysis."""
 
-from pathlib import Path
 from typing import Any
 
 import structlog
@@ -13,7 +12,7 @@ logger = structlog.get_logger(__name__)
 class RepositoryLevelRules:
     """
     Repository-level rules that need to scan the entire repository.
-    
+
     These rules run once per repository, not per file.
     Examples:
     - Missing monitoring stack (should check all files)
@@ -48,21 +47,21 @@ class RepositoryLevelRules:
     ) -> list[RuleFinding]:
         """
         Evaluate all repository-level rules.
-        
+
         Args:
             parsed_files: List of all parsed files in repository
             all_resources: List of all extracted resources
-            
+
         Returns:
             List of findings (one per repo-level issue)
         """
         findings = []
-        
+
         # Run each repo-level rule once
         findings.extend(self._check_missing_monitoring(all_resources))
         findings.extend(self._check_missing_network_policy(all_resources))
         findings.extend(self._check_missing_hpa_coverage(all_resources))
-        
+
         return findings
 
     def _check_missing_monitoring(
@@ -71,20 +70,20 @@ class RepositoryLevelRules:
     ) -> list[RuleFinding]:
         """
         Check if repository has any monitoring stack.
-        
+
         Scans entire repository for monitoring indicators.
         Creates ONE finding if none found.
         """
         # Collect all resource names and kinds
         all_names = []
         all_kinds = []
-        
+
         for resource in all_resources:
             name = resource.get("name", "").lower()
             kind = resource.get("kind", "").lower()
             all_names.append(name)
             all_kinds.append(kind)
-            
+
             # Check properties for monitoring-related content
             properties = resource.get("properties", {})
             if isinstance(properties, dict):
@@ -94,15 +93,15 @@ class RepositoryLevelRules:
                     if isinstance(container, dict):
                         image = container.get("image", "").lower()
                         all_names.append(image)
-        
+
         # Check if any monitoring indicator is present
         all_text = " ".join(all_names + all_kinds)
-        
+
         has_monitoring = any(
             indicator in all_text
             for indicator in self.monitoring_indicators
         )
-        
+
         if not has_monitoring:
             return [RuleFinding(
                 rule_id="K8S-OBS-001",
@@ -119,7 +118,7 @@ class RepositoryLevelRules:
                     "recommendation_detail": "Consider using helm chart: prometheus-community/kube-prometheus-stack",
                 },
             )]
-        
+
         return []
 
     def _check_missing_network_policy(
@@ -128,13 +127,13 @@ class RepositoryLevelRules:
     ) -> list[RuleFinding]:
         """
         Check if repository has NetworkPolicy resources.
-        
+
         Scans entire repository for NetworkPolicy.
         Creates ONE finding if none found AND there are deployments.
         """
         has_network_policy = False
         has_deployments = False
-        
+
         for resource in all_resources:
             kind = resource.get("kind", "").lower()
             if kind == "networkpolicy":
@@ -142,7 +141,7 @@ class RepositoryLevelRules:
                 break
             elif kind in ["deployment", "statefulset", "daemonset"]:
                 has_deployments = True
-        
+
         # Only flag if there are workloads but no network policies
         if has_deployments and not has_network_policy:
             return [RuleFinding(
@@ -159,7 +158,7 @@ class RepositoryLevelRules:
                     "recommendation_detail": "Start with default-deny policies and gradually allow required traffic",
                 },
             )]
-        
+
         return []
 
     def _check_missing_hpa_coverage(
@@ -168,13 +167,13 @@ class RepositoryLevelRules:
     ) -> list[RuleFinding]:
         """
         Check if deployments have HPA coverage.
-        
+
         This is a repo-level check that compares all deployments against all HPAs.
         Creates ONE aggregated finding if coverage is missing.
         """
         deployments = []
         hpa_targets = set()
-        
+
         for resource in all_resources:
             kind = resource.get("kind", "").lower()
             if kind == "deployment":
@@ -188,13 +187,13 @@ class RepositoryLevelRules:
                     target_name = target_ref.get("name", "")
                     target_kind = target_ref.get("kind", "Deployment")
                     hpa_targets.add(f"{target_kind}/{target_name}")
-        
+
         # Check coverage
         uncovered = []
         for deployment in deployments:
             if f"Deployment/{deployment}" not in hpa_targets:
                 uncovered.append(deployment)
-        
+
         # Only create finding if there are uncovered deployments
         if uncovered:
             return [RuleFinding(
@@ -213,7 +212,7 @@ class RepositoryLevelRules:
                     "recommendation_detail": "Use metrics-server for resource metrics or Prometheus adapter for custom metrics",
                 },
             )]
-        
+
         return []
 
 

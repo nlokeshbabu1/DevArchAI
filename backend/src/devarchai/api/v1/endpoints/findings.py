@@ -1,12 +1,11 @@
 """Findings management endpoints."""
 
 import uuid
-from typing import Optional
 
 from devarchai.api.deps import get_current_user, get_db
 from devarchai.core.exceptions import AuthorizationException
 from devarchai.models.finding import Finding
-from devarchai.models.organization import OrganizationMember
+from devarchai.models.user import OrganizationMember
 from devarchai.models.user import User
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -18,10 +17,10 @@ router = APIRouter(prefix="/findings", tags=["Findings"])
 @router.get("", response_model=list)
 async def list_findings(
     org_id: str,
-    scan_id: Optional[str] = None,
-    severity: Optional[str] = None,
-    category: Optional[str] = None,
-    status: Optional[str] = None,
+    scan_id: str | None = None,
+    severity: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 

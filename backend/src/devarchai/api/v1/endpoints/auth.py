@@ -11,8 +11,8 @@ from devarchai.core.security import (
     get_password_hash,
     verify_password,
 )
-from devarchai.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
-from devarchai.models.user import User
+from devarchai.models.organization import Organization, PlanType
+from devarchai.models.user import User, MembershipRole, OrganizationMember
 from devarchai.schemas.auth import (
     APIKeyResponse,
     Token,

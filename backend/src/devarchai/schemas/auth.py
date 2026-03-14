@@ -1,7 +1,6 @@
 """Authentication schemas."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -20,8 +19,8 @@ class UserCreate(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=100)
     password: str = Field(..., min_length=8)
-    full_name: Optional[str] = None
-    organization_name: Optional[str] = None
+    full_name: str | None = None
+    organization_name: str | None = None
 
 
 class UserLogin(BaseModel):
@@ -37,15 +36,15 @@ class UserResponse(BaseModel):
     id: str
     email: str
     username: str
-    full_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    full_name: str | None = None
+    avatar_url: str | None = None
     is_active: bool
     is_verified: bool
     role: str
-    current_org_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    last_login_at: Optional[datetime] = None
+    current_org_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_login_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -54,10 +53,10 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     """User update request."""
 
-    full_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    current_password: Optional[str] = None
-    new_password: Optional[str] = None
+    full_name: str | None = None
+    avatar_url: str | None = None
+    current_password: str | None = None
+    new_password: str | None = None
 
 
 class APIKeyResponse(BaseModel):

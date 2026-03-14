@@ -3,7 +3,7 @@ Application Configuration
 """
 
 from functools import lru_cache
-from typing import Optional
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "DevArchAI"
     VERSION: str = "1.0.0"
-    ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
+    ENVIRONMENT: Literal["development", "staging", "production"] = Field(default="development", env="ENVIRONMENT")
     DEBUG: bool = Field(default=False, env="DEBUG")
 
     # Server
@@ -32,12 +32,14 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
             "http://127.0.0.1:5174",
         ],
-        # env="CORS_ORIGINS"
     )
     ALLOWED_HOSTS: list[str] = Field(
         default=["*"],
         env="ALLOWED_HOSTS"
     )
+
+    # Frontend
+    FRONTEND_URL: str = Field(default="http://localhost:5174", env="FRONTEND_URL")
 
     # Database
     DATABASE_URL: str = Field(
@@ -61,22 +63,22 @@ class Settings(BaseSettings):
 
     # AWS
     AWS_REGION: str = Field(default="us-east-1", env="AWS_REGION")
-    AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
+    AWS_ACCESS_KEY_ID: str | None = Field(default=None, env="AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
 
     # LLM Configuration
-    LLM_PROVIDER: str = Field(default="mock", env="LLM_PROVIDER")  # openai, anthropic, mock
-    OPENAI_API_KEY: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
-    ANTHROPIC_API_KEY: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
+    LLM_PROVIDER: Literal["openai", "anthropic", "mock"] = Field(default="mock", env="LLM_PROVIDER")
+    OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
+    ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")
 
     # GitHub
-    GITHUB_TOKEN: Optional[str] = Field(default=None, env="GITHUB_TOKEN")
-    GITHUB_CLIENT_ID: Optional[str] = Field(default=None, env="GITHUB_CLIENT_ID")
-    GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None, env="GITHUB_CLIENT_SECRET")
+    GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
+    GITHUB_CLIENT_ID: str | None = Field(default=None, env="GITHUB_CLIENT_ID")
+    GITHUB_CLIENT_SECRET: str | None = Field(default=None, env="GITHUB_CLIENT_SECRET")
     GITHUB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/github/callback", env="GITHUB_REDIRECT_URI")
 
     # Analysis Settings

@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react'
 import { cn } from '../lib/utils'
 import { AlertTriangle, AlertCircle, CheckCircle, Info, Shield, Zap, GitBranch, Brain, Rocket, FileCode, ArrowRight, Check, Github, BarChart3, Sparkles, Code, Layers, Lock, Bell, Settings, LogOut, User, ChevronRight, Search, Filter, Download, RefreshCw, Play, Clock, TrendingUp, Activity, Server, Database, Cloud, Terminal } from 'lucide-react'
 
+// Re-export UI components
+export { Skeleton, SkeletonCard, SkeletonTable, SkeletonChart, SkeletonStatCard } from './ui/Skeleton'
+export { ScanningAnimation, LoadingDots, PulseGlow } from './ui/LoadingAnimation'
+export { StatCard } from './ui/StatCard'
+
 // ============================================================================
 // Animated Score Circle with Framer Motion
 // ============================================================================
@@ -347,7 +352,7 @@ export function Button({
   }
 
   return (
-    <motion.button
+    <button
       className={cn(
         'inline-flex items-center justify-center gap-2 font-medium',
         'transition-all duration-300',
@@ -359,8 +364,6 @@ export function Button({
         className
       )}
       disabled={disabled || loading}
-      whileHover={{ scale: disabled || loading ? 1 : 1.02 }}
-      whileTap={{ scale: disabled || loading ? 1 : 0.98 }}
       {...props}
     >
       <AnimatePresence mode="wait">
@@ -399,84 +402,7 @@ export function Button({
           </>
         )}
       </AnimatePresence>
-    </motion.button>
-  )
-}
-
-// ============================================================================
-// Animated Stat Card
-// ============================================================================
-
-interface StatCardProps {
-  title: string
-  value: string | number
-  icon?: React.ElementType
-  trend?: 'up' | 'down' | 'neutral'
-  trendValue?: number
-  delay?: number
-}
-
-export function StatCard({ title, value, icon: Icon, trend, trendValue, delay = 0 }: StatCardProps) {
-  return (
-    <Card className="p-6" hover animate>
-      <motion.div
-        className="flex items-start justify-between"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay }}
-      >
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <motion.p
-            className="text-3xl font-bold text-foreground"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: delay + 0.2 }}
-          >
-            {value}
-          </motion.p>
-          {trend && (
-            <motion.div
-              className={cn(
-                'flex items-center gap-1 mt-2 text-sm',
-                trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-muted-foreground'
-              )}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: delay + 0.4 }}
-            >
-              {trend === 'up' && (
-                <motion.svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  animate={{ y: [0, -2, 0] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </motion.svg>
-              )}
-              {trend === 'down' && (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
-                </svg>
-              )}
-              {trendValue && <span>{trendValue}%</span>}
-            </motion.div>
-          )}
-        </div>
-        {Icon && (
-          <motion.div
-            className="p-3 bg-white/5 rounded-xl border border-white/10"
-            whileHover={{ scale: 1.1, rotate: 5 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          >
-            <Icon className="h-6 w-6 text-muted-foreground" />
-          </motion.div>
-        )}
-      </motion.div>
-    </Card>
+    </button>
   )
 }
 
@@ -659,6 +585,7 @@ export function RepositoryCard({ name, description, lastScan, score, status, onS
   }
 
   const StatusIcon = statusConfig[status].icon
+  const scoreColor = score && score >= 80 ? 'text-green-400' : score && score >= 60 ? 'text-yellow-400' : 'text-red-400'
 
   return (
     <motion.div
