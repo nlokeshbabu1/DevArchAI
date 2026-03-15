@@ -1,10 +1,8 @@
-# Ignore backend and other unnecessary files
-backend/
-infrastructure/
-docs/
-scripts/
-.git/
+backend
+infrastructure
+docs
+scripts
+.git
 .gitignore
 *.md
-!frontend/
-!vercel.json
+node_modules
