@@ -91,10 +91,25 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        localStorage.removeItem('current_org_id')
-        set({ token: null, user: null, isAuthenticated: false, isLoading: false })
+        // Clear all storage first to prevent race conditions
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth-storage')
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('current_org_id')
+          sessionStorage.clear()
+        }
+
+        // Then clear state
+        set({
+          token: null,
+          user: null,
+          isAuthenticated: false,
+          isLoading: false
+        })
+
+        // Force hard redirect to landing page
+        window.location.replace('/')
       },
 
       setUser: (user: User) => {

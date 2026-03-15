@@ -22,39 +22,45 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
   const [scanStatus, setScanStatus] = useState<'idle' | 'scanning' | 'complete' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
 
-  // Fetch available branches from GitHub API
-  const fetchBranches = async (owner: string, repo: string) => {
+  // Fetch available branches from backend API (not direct GitHub API)
+  const fetchBranches = async (repoUrl: string) => {
     setIsFetchingBranches(true)
     try {
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches`)
+      console.log('🔍 Fetching branches for:', repoUrl)
+      const response = await fetch(`/api/v1/github/branches?repo_url=${encodeURIComponent(repoUrl)}`)
+      console.log('📦 Backend API response status:', response.status)
+      
       if (response.ok) {
         const data = await response.json()
-        const branchNames = data.map((b: any) => b.name)
+        const branchNames = data.branches.map((b: any) => b.name)
+        console.log('✅ Branches fetched:', branchNames)
         setAvailableBranches(branchNames)
-        
+
         // Set default branch - prioritize master if it exists, otherwise main
-        let defaultBranch = data.find((b: any) => b.name === 'master')
+        let defaultBranch = data.branches.find((b: any) => b.name === 'master')
         if (!defaultBranch) {
-          defaultBranch = data.find((b: any) => b.name === 'main')
+          defaultBranch = data.branches.find((b: any) => b.name === 'main')
         }
         if (!defaultBranch) {
-          defaultBranch = data.find((b: any) => b.protected)
+          defaultBranch = data.branches.find((b: any) => b.protected)
         }
         if (!defaultBranch && branchNames.length > 0) {
-          defaultBranch = data[0]
+          defaultBranch = data.branches[0]
         }
-        
+
         if (defaultBranch) {
           setBranch(defaultBranch.name)
         }
-        
+
         if (branchNames.length > 0) {
           setShowBranchInput(true)
           setShowBranchDropdown(true)
         }
+      } else {
+        console.error('❌ Backend API error:', response.status)
       }
     } catch (error) {
-      console.error('Failed to fetch branches:', error)
+      console.error('❌ Failed to fetch branches:', error)
     } finally {
       setIsFetchingBranches(false)
     }
@@ -69,13 +75,12 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
         setBranch(treeMatch[1])
         setShowBranchInput(true)
       } else {
-        // Extract owner and repo from URL
+        // Validate it's a GitHub URL
         const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
         if (match) {
-          const [, owner, repo] = match
           // Fetch branches after a short delay to avoid too many API calls
           const timeoutId = setTimeout(() => {
-            fetchBranches(owner, repo.replace('.git', ''))
+            fetchBranches(repoUrl.replace('.git', ''))
           }, 500)
           return () => clearTimeout(timeoutId)
         } else {
@@ -243,12 +248,12 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <GitBranch className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  {showBranchDropdown && availableBranches.length > 0 ? (
+                  {availableBranches.length > 0 ? (
                     <select
                       value={branch}
                       onChange={(e) => setBranch(e.target.value)}
                       className="w-full pl-10 pr-8 py-2 rounded-lg bg-white/5 border border-white/10 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 appearance-none cursor-pointer"
-                      disabled={isScanning}
+                      disabled={isScanning || isFetchingBranches}
                     >
                       {availableBranches.map((b) => (
                         <option key={b} value={b} className="bg-background">
@@ -256,6 +261,11 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
                         </option>
                       ))}
                     </select>
+                  ) : isFetchingBranches ? (
+                    <div className="w-full pl-10 pr-3 py-2 rounded-lg bg-white/5 border border-white/10 text-muted-foreground text-sm flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading branches...
+                    </div>
                   ) : (
                     <input
                       type="text"
@@ -278,6 +288,7 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
                   type="button"
                   onClick={() => {
                     setBranch('main')
+                    setAvailableBranches([])
                     setShowBranchInput(false)
                     setShowBranchDropdown(false)
                   }}

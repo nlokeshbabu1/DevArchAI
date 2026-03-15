@@ -335,7 +335,7 @@ export function ScansPage() {
                     )}
                     {isRunning && (
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={() => cancelScanMutation.mutate(scan.id)}
                       >
