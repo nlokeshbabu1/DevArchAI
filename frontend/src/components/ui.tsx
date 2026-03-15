@@ -239,6 +239,48 @@ export function SeverityBadge({ severity, size = 'md', showIcon = true, animated
   )
 }
 
+interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: 'default' | 'outline' | 'secondary'
+  className?: string
+  children: React.ReactNode
+}
+
+export function Badge({ variant = 'default', className, children, ...props }: BadgeProps) {
+  return (
+    <div
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+        variant === 'default' && 'bg-primary text-primary-foreground hover:bg-primary/80',
+        variant === 'outline' && 'border border-white/10 bg-white/5 text-foreground',
+        variant === 'secondary' && 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+interface ProgressProps {
+  value?: number
+  className?: string
+  max?: number
+}
+
+export function Progress({ value = 0, className, max = 100 }: ProgressProps) {
+  const percentage = Math.min(100, Math.max(0, (value / max) * 100))
+  
+  return (
+    <div className={cn('relative h-4 w-full overflow-hidden rounded-full bg-white/10', className)}>
+      <div
+        className="h-full bg-primary transition-all duration-500 ease-in-out"
+        style={{ width: `${percentage}%` }}
+      />
+    </div>
+  )
+}
+
 interface CardProps {
   children: React.ReactNode
   className?: string
@@ -254,11 +296,11 @@ export function Card({ children, className, hover = true, padding = 'md', glass 
     md: 'p-6',
     lg: 'p-8',
   }
-  
+
   return (
     <div className={cn(
-      glass 
-        ? 'bg-card/60 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/30' 
+      glass
+        ? 'bg-card/60 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/30'
         : 'bg-card rounded-2xl border border-border/50 shadow-lg shadow-black/20',
       hover && 'transition-all duration-300 hover:border-white/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-1',
       'rounded-2xl',
@@ -269,7 +311,6 @@ export function Card({ children, className, hover = true, padding = 'md', glass 
     </div>
   )
 }
-
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'destructive'
   size?: 'sm' | 'md' | 'lg'

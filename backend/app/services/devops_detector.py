@@ -3,8 +3,9 @@ DevOps Detector Service
 Analyzes repository files to detect DevOps tools and configurations.
 """
 
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+from typing import Any, Optional
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -16,51 +17,51 @@ class DevOpsStackResult:
 
     # Containers
     docker: bool = False
-    docker_files: List[str] = field(default_factory=list)
+    docker_files: list[str] = field(default_factory=list)
 
     # Infrastructure as Code
     terraform: bool = False
-    terraform_files: List[str] = field(default_factory=list)
+    terraform_files: list[str] = field(default_factory=list)
     pulumi: bool = False
-    pulumi_files: List[str] = field(default_factory=list)
+    pulumi_files: list[str] = field(default_factory=list)
     cloudformation: bool = False
-    cloudformation_files: List[str] = field(default_factory=list)
+    cloudformation_files: list[str] = field(default_factory=list)
     ansible: bool = False
-    ansible_files: List[str] = field(default_factory=list)
+    ansible_files: list[str] = field(default_factory=list)
 
     # Kubernetes
     kubernetes: bool = False
-    kubernetes_files: List[str] = field(default_factory=list)
+    kubernetes_files: list[str] = field(default_factory=list)
     helm: bool = False
-    helm_files: List[str] = field(default_factory=list)
+    helm_files: list[str] = field(default_factory=list)
     kustomize: bool = False
-    kustomize_files: List[str] = field(default_factory=list)
+    kustomize_files: list[str] = field(default_factory=list)
 
     # CI/CD
     cicd: Optional[str] = None  # github_actions, gitlab_ci, jenkins, circleci, travis, azure_devops
-    cicd_files: List[str] = field(default_factory=list)
+    cicd_files: list[str] = field(default_factory=list)
 
     # Monitoring
     monitoring: bool = False
-    monitoring_files: List[str] = field(default_factory=list)
+    monitoring_files: list[str] = field(default_factory=list)
     prometheus: bool = False
-    prometheus_files: List[str] = field(default_factory=list)
+    prometheus_files: list[str] = field(default_factory=list)
     grafana: bool = False
-    grafana_files: List[str] = field(default_factory=list)
+    grafana_files: list[str] = field(default_factory=list)
     datadog: bool = False
-    datadog_files: List[str] = field(default_factory=list)
+    datadog_files: list[str] = field(default_factory=list)
 
     # Service Mesh
     service_mesh: bool = False
-    service_mesh_files: List[str] = field(default_factory=list)
+    service_mesh_files: list[str] = field(default_factory=list)
     istio: bool = False
-    istio_files: List[str] = field(default_factory=list)
+    istio_files: list[str] = field(default_factory=list)
 
     # Security
     security_scanning: bool = False
-    security_files: List[str] = field(default_factory=list)
+    security_files: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "docker": self.docker,
@@ -222,7 +223,7 @@ class DevOpsDetector:
         "sonar-project.properties",
     ]
 
-    def detect(self, files: List[str]) -> DevOpsStackResult:
+    def detect(self, files: list[str]) -> DevOpsStackResult:
         """
         Detect DevOps tools and configurations from a list of files.
 
@@ -506,7 +507,7 @@ class DevOpsDetector:
 _detector = DevOpsDetector()
 
 
-def detect_devops_stack(files: List[str]) -> DevOpsStackResult:
+def detect_devops_stack(files: list[str]) -> DevOpsStackResult:
     """
     Detect DevOps stack from a list of repository files.
 

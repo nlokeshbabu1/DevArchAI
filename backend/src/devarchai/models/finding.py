@@ -1,13 +1,14 @@
 """Finding model for analysis results."""
 
-import uuid
 import enum
-from sqlalchemy import Column, String, Float, ForeignKey, Text, Enum as SQLEnum, Integer, Boolean
-from sqlalchemy.orm import relationship
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
-from devarchai.models.mixins import TimestampMixin, OrganizationMixin
+from devarchai.models.mixins import OrganizationMixin, TimestampMixin
 
 
 class Severity(str, enum.Enum):
@@ -51,40 +52,40 @@ class Finding(Base, TimestampMixin, OrganizationMixin):
     __tablename__ = "findings"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Foreign keys
     scan_id = Column(PG_UUID(as_uuid=True), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # Rule info
     rule_id = Column(String(100), nullable=False, index=True)
     rule_name = Column(String(255), nullable=False)
-    
+
     # Classification
     severity = Column(SQLEnum(Severity), nullable=False, index=True)
     category = Column(SQLEnum(Category), nullable=False, index=True)
-    
+
     # Description
     description = Column(Text, nullable=False)
     recommendation = Column(Text, nullable=True)
-    
+
     # Location
     file_path = Column(String(500), nullable=True, index=True)
     line_number = Column(Integer, nullable=True)
     resource_name = Column(String(255), nullable=True)
     resource_type = Column(String(100), nullable=True)
-    
+
     # AI analysis
     ai_explanation = Column(Text, nullable=True)
     impact_analysis = Column(Text, nullable=True)
-    
+
     # Confidence
     confidence_score = Column(Float, default=1.0, nullable=False)
-    
+
     # Status tracking
     status = Column(SQLEnum(FindingStatus), default=FindingStatus.OPEN, nullable=False, index=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="findings")
     scan = relationship("Scan", back_populates="findings")

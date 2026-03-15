@@ -1,11 +1,11 @@
 """Core exceptions and error handlers."""
 
-from fastapi import FastAPI, Request, status, HTTPException
-from fastapi.responses import JSONResponse
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
-from typing import Any, Dict, Optional
-import structlog
 
 from app.core.logging import get_logger
 
@@ -20,7 +20,7 @@ class DevArchAIException(Exception):
         message: str,
         status_code: int = 500,
         error_code: str = "INTERNAL_ERROR",
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         self.message = message
         self.status_code = status_code

@@ -1,39 +1,49 @@
 """Scan management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List, Optional
 import uuid
+from typing import Optional
 
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User
+from devarchai.api.deps import get_current_user, get_db
+from devarchai.core.exceptions import AuthorizationException
+from devarchai.models.user import OrganizationMember
 from devarchai.models.scan import Scan, ScanStatus
-from devarchai.models.organization import OrganizationMember, MembershipRole
-from devarchai.core.exceptions import AuthorizationException, ScanNotFoundException
+from devarchai.models.user import User
+from fastapi import APIRouter, BackgroundTasks, Depends, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
 
-@router.get("", response_model=List)
+@router.get("", response_model=list)
 async def list_scans(
-    org_id: str,
+    org_id: Optional[str] = None,
     status_filter: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List scans for an organization."""
+    # Get organization ID from user if not provided
+    if not org_id:
+        org_id = current_user.current_org_id
+    
+    if not org_id:
+        return []  # Return empty if no organization
+    
     # Verify membership
-    result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.organization_id == uuid.UUID(org_id),
-            OrganizationMember.user_id == current_user.id,
+    try:
+        result = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == uuid.UUID(org_id),
+                OrganizationMember.user_id == current_user.id,
+            )
         )
-    )
-    membership = result.scalar_one_or_none()
+        membership = result.scalar_one_or_none()
 
-    if not membership:
-        raise AuthorizationException()
+        if not membership:
+            return []  # Return empty instead of error for better UX
+    except Exception:
+        return []  # Return empty on error
 
     query = select(Scan).where(Scan.organization_id == uuid.UUID(org_id))
 
@@ -42,7 +52,15 @@ async def list_scans(
 
     result = await db.execute(query)
     scans = result.scalars().all()
-    return scans
+    # Convert to dict with string UUIDs for JSON serialization
+    return [scan.to_dict() if hasattr(scan, 'to_dict') else {
+        "id": str(scan.id),
+        "status": scan.status.value if hasattr(scan.status, 'value') else str(scan.status),
+        "progress": scan.progress,
+        "repository_url": scan.repository_url,
+        "organization_id": str(scan.organization_id) if scan.organization_id else None,
+        "created_at": str(scan.created_at) if scan.created_at else None,
+    } for scan in scans]
 
 
 @router.post("", response_model=dict, status_code=status.HTTP_202_ACCEPTED)

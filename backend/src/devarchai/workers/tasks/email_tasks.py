@@ -1,6 +1,7 @@
 """Celery tasks for email notifications."""
 
-from typing import Dict, Any, List
+from typing import Any
+
 import structlog
 
 from devarchai.workers.celery_app import celery_app
@@ -9,7 +10,7 @@ logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3)
-def send_welcome_email(self, user_id: str, email: str) -> Dict[str, Any]:
+def send_welcome_email(self, user_id: str, email: str) -> dict[str, Any]:
     """
     Send welcome email to new user.
 
@@ -42,7 +43,7 @@ def send_scan_complete_email(
     email: str,
     scan_id: str,
     score: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Send email notification when scan completes.
 
@@ -87,7 +88,7 @@ def send_invitation_email(
     organization_name: str,
     inviter_name: str,
     invite_link: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Send organization invitation email.
 
@@ -128,8 +129,8 @@ def send_weekly_digest(
     self,
     user_id: str,
     email: str,
-    findings: List[Dict],
-) -> Dict[str, Any]:
+    findings: list[dict],
+) -> dict[str, Any]:
     """
     Send weekly digest email with findings summary.
 

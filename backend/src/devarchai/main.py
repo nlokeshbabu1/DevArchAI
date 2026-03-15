@@ -3,17 +3,18 @@ DevArchAI - AI-Powered DevOps Production Readiness Engine
 Main Application Entry Point
 """
 
+from contextlib import asynccontextmanager
+
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from contextlib import asynccontextmanager
-import structlog
 
-from devarchai.config import settings
 from devarchai.api.v1.router import api_router
+from devarchai.config import settings
 from devarchai.core.exceptions import setup_exception_handlers
 from devarchai.core.logging import setup_logging
-from devarchai.db.session import init_db, close_db
+from devarchai.db.session import close_db, init_db
 
 # Setup structured logging
 setup_logging()

@@ -1,21 +1,20 @@
 """Reports management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
 import uuid
 
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User
-from devarchai.models.report import Report
-from devarchai.models.organization import OrganizationMember
+from devarchai.api.deps import get_current_user, get_db
 from devarchai.core.exceptions import AuthorizationException
+from devarchai.models.user import OrganizationMember
+from devarchai.models.report import Report
+from devarchai.models.user import User
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
-@router.get("", response_model=List)
+@router.get("", response_model=list)
 async def list_reports(
     org_id: str,
     current_user: User = Depends(get_current_user),

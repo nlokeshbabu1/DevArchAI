@@ -1,9 +1,10 @@
 """Finding schemas."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
@@ -37,6 +38,9 @@ class FindingResponse(BaseModel):
     category: Category
     description: str
     recommendation: str
+    risk: Optional[str] = None
+    impact: Optional[str] = None
+    fix_example: Optional[str] = None
     file_path: Optional[str]
     line_number: Optional[int]
     resource_name: Optional[str]
@@ -54,7 +58,7 @@ class FindingResponse(BaseModel):
 class FindingListResponse(BaseModel):
     """Finding list response."""
 
-    findings: List[FindingResponse]
+    findings: list[FindingResponse]
     total: int
     page: int
     page_size: int
@@ -66,3 +70,24 @@ class FindingUpdate(BaseModel):
 
     is_resolved: Optional[bool] = None
     resolution_note: Optional[str] = Field(None, max_length=1000)
+
+
+class EnrichedFinding(BaseModel):
+    """Enriched finding with full remediation guidance."""
+
+    rule_id: str
+    title: str
+    severity: Severity
+    category: Category
+    description: str
+    risk: str
+    impact: str
+    file: str
+    line: Optional[int] = None
+    resource: Optional[str] = None
+    recommendation: str
+    fix_example: Optional[str] = None
+    ai_explanation: Optional[str] = None
+
+    class Config:
+        from_attributes = True

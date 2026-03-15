@@ -1,8 +1,9 @@
 """Repository schemas."""
 
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class RepositoryCreate(BaseModel):
@@ -52,7 +53,7 @@ class RepositoryResponse(BaseModel):
 class RepositoryListResponse(BaseModel):
     """Repository list response."""
 
-    repositories: List[RepositoryResponse]
+    repositories: list[RepositoryResponse]
     total: int
     page: int
     page_size: int

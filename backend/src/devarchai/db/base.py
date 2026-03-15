@@ -1,8 +1,8 @@
 """Database base model and utilities."""
 
-from sqlalchemy.orm import DeclarativeBase, declared_attr
+
 from sqlalchemy import MetaData
-import uuid
+from sqlalchemy.orm import DeclarativeBase, declared_attr
 
 
 class Base(DeclarativeBase):

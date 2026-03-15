@@ -1,0 +1,12 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "S3_PUBLIC_ACL",
+      "file": "main.tf"
+    },
+    {
+      "rule_id": "S3_NO_ENCRYPTION",
+      "file": "main.tf"
+    }
+  ]
+}

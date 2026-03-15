@@ -1,9 +1,10 @@
 """Rule engine base classes and registry."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Optional
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -44,9 +45,12 @@ class RuleFinding:
         line_number: Optional[int] = None,
         resource_name: Optional[str] = None,
         confidence: float = 1.0,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         ai_explanation: Optional[str] = None,
         impact_analysis: Optional[str] = None,
+        risk: Optional[str] = None,
+        impact: Optional[str] = None,
+        fix_example: Optional[str] = None,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -62,8 +66,12 @@ class RuleFinding:
         # AI enhancements
         self.ai_explanation = ai_explanation
         self.impact_analysis = impact_analysis
+        # Remediation guidance
+        self.risk = risk
+        self.impact = impact
+        self.fix_example = fix_example
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
         return {
             "rule_id": self.rule_id,
@@ -79,6 +87,9 @@ class RuleFinding:
             "metadata": self.metadata,
             "ai_explanation": self.ai_explanation,
             "impact_analysis": self.impact_analysis,
+            "risk": self.risk,
+            "impact": self.impact,
+            "fix_example": self.fix_example,
         }
 
     def __repr__(self) -> str:
@@ -96,9 +107,10 @@ class Rule:
     severity: Severity
     category: Category
     enabled: bool = True
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    file_types: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert rule to dictionary."""
         return {
             "id": self.id,
@@ -109,6 +121,7 @@ class Rule:
             "category": self.category.value,
             "enabled": self.enabled,
             "tags": self.tags,
+            "file_types": self.file_types,
         }
 
 
@@ -122,7 +135,7 @@ class BaseRule(ABC):
         pass
 
     @abstractmethod
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         """
         Evaluate the rule against parsed resources.
 
@@ -144,18 +157,22 @@ class RuleRegistry:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._rules: Dict[str, BaseRule] = {}
-            cls._instance._rules_by_category: Dict[str, List[BaseRule]] = {}
-            cls._instance._rules_by_file_type: Dict[str, List[BaseRule]] = {}
+            cls._instance._rules: dict[str, BaseRule] = {}
+            cls._instance._rules_by_category: dict[str, list[BaseRule]] = {}
+            cls._instance._rules_by_file_type: dict[str, list[BaseRule]] = {}
         return cls._instance
 
-    def register(self, rule_class: type[BaseRule], file_types: Optional[List[str]] = None) -> None:
+    def register(self, rule_class: type[BaseRule], file_types: Optional[list[str]] = None) -> None:
         """Register a rule class."""
         try:
             rule_instance = rule_class()
             rule_id = rule_instance.rule.id
 
             self._rules[rule_id] = rule_instance
+
+            # Store file_types on the rule instance
+            if file_types:
+                rule_instance.rule.file_types = file_types
 
             # Index by category
             category = rule_instance.rule.category.value
@@ -170,7 +187,7 @@ class RuleRegistry:
                         self._rules_by_file_type[file_type] = []
                     self._rules_by_file_type[file_type].append(rule_instance)
 
-            logger.debug("Rule registered", rule_id=rule_id, category=category)
+            logger.debug("Rule registered", rule_id=rule_id, category=category, file_types=file_types)
         except Exception as e:
             logger.error("Failed to register rule", rule_class=rule_class.__name__, error=str(e))
 
@@ -178,24 +195,25 @@ class RuleRegistry:
         """Get a rule by ID."""
         return self._rules.get(rule_id)
 
-    def get_rules_by_category(self, category: str) -> List[BaseRule]:
+    def get_rules_by_category(self, category: str) -> list[BaseRule]:
         """Get all rules for a category."""
         return self._rules_by_category.get(category, [])
 
-    def get_rules_by_file_type(self, file_type: str) -> List[BaseRule]:
+    def get_rules_by_file_type(self, file_type: str) -> list[BaseRule]:
         """Get all rules for a file type."""
         return self._rules_by_file_type.get(file_type, [])
 
-    def get_all_rules(self) -> List[BaseRule]:
+    def get_all_rules(self) -> list[BaseRule]:
         """Get all registered rules."""
         return list(self._rules.values())
 
     def evaluate_all(
         self,
-        resources: List[Dict[str, Any]],
+        resources: list[dict[str, Any]],
         file_path: str,
         file_type: Optional[str] = None,
-    ) -> List[RuleFinding]:
+        has_terraform: bool = False,
+    ) -> list[RuleFinding]:
         """Evaluate all rules against resources."""
         findings = []
 
@@ -210,7 +228,17 @@ class RuleRegistry:
         for rule in rules_to_evaluate:
             if rule.rule.enabled:
                 try:
-                    rule_findings = rule.evaluate(resources, file_path)
+                    # Pass has_terraform parameter for rules that support it
+                    # (Terraform CI/CD rules need this to skip when no .tf files exist)
+                    import inspect
+                    sig = inspect.signature(rule.evaluate)
+                    params = list(sig.parameters.keys())
+
+                    if 'has_terraform' in params:
+                        rule_findings = rule.evaluate(resources, file_path, has_terraform)
+                    else:
+                        rule_findings = rule.evaluate(resources, file_path)
+
                     findings.extend(rule_findings)
                 except Exception as e:
                     logger.error(
@@ -222,7 +250,7 @@ class RuleRegistry:
 
         return findings
 
-    def count_rules(self) -> Dict[str, int]:
+    def count_rules(self) -> dict[str, int]:
         """Get rule counts."""
         return {
             "total": len(self._rules),
@@ -234,7 +262,7 @@ class RuleRegistry:
 registry = RuleRegistry()
 
 
-def register_rule(file_types: Optional[List[str]] = None):
+def register_rule(file_types: Optional[list[str]] = None):
     """Decorator to register a rule."""
 
     def decorator(rule_class: type[BaseRule]) -> type[BaseRule]:

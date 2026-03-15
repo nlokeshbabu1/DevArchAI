@@ -12,6 +12,7 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
+    
     // Proxy API requests to backend
     proxy: {
       '/api': {
@@ -22,7 +23,7 @@ export default defineConfig({
       },
     },
   },
-  // Define environment variables
+  
   define: {
     'import.meta.env.VITE_API_URL': JSON.stringify(''),
   },

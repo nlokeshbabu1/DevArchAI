@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from typing import Any, Dict
+
 import structlog
 from structlog.types import Processor
 
@@ -11,10 +11,10 @@ from devarchai.config import settings
 
 def setup_logging() -> None:
     """Configure logging and structlog."""
-    
+
     # Determine log level
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
-    
+
     # Configure logging handlers
     if settings.LOG_FORMAT == "json":
         # JSON format for production
@@ -74,7 +74,7 @@ class LoggingMiddleware:
         # Extract request info
         method = scope["method"]
         path = scope["path"]
-        
+
         self.logger.info(
             "request_started",
             method=method,

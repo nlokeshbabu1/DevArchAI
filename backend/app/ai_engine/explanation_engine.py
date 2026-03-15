@@ -1,11 +1,10 @@
 """Explanation engine for AI-powered analysis."""
 
-from typing import Any, Dict, List, Optional
-import structlog
+from typing import Any, Optional
 
-from app.ai_engine.llm_client import BaseLLMProvider, AIExplanation, get_llm_provider
-from app.rule_engine.base import RuleFinding
+from app.ai_engine.llm_client import AIExplanation, BaseLLMProvider, get_llm_provider
 from app.core.logging import get_logger
+from app.rule_engine.base import RuleFinding
 
 logger = get_logger(__name__)
 
@@ -15,7 +14,7 @@ class ExplanationEngine:
 
     def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
         self.llm_provider = llm_provider or get_llm_provider()
-        self._explanation_cache: Dict[str, AIExplanation] = {}
+        self._explanation_cache: dict[str, AIExplanation] = {}
 
     async def explain_finding(
         self,
@@ -83,10 +82,10 @@ class ExplanationEngine:
 
     async def explain_findings_batch(
         self,
-        findings: List[RuleFinding],
+        findings: list[RuleFinding],
         max_findings: int = 20,
         use_cache: bool = True,
-    ) -> List[RuleFinding]:
+    ) -> list[RuleFinding]:
         """
         Add AI explanations to multiple findings.
 
@@ -137,9 +136,9 @@ class ExplanationEngine:
 
     async def generate_report_summary(
         self,
-        findings: List[RuleFinding],
-        scores: Dict[str, float],
-    ) -> Dict[str, Any]:
+        findings: list[RuleFinding],
+        scores: dict[str, float],
+    ) -> dict[str, Any]:
         """
         Generate AI summary for a complete report.
 
@@ -199,7 +198,7 @@ class ExplanationEngine:
         self._explanation_cache.clear()
         logger.info("Explanation cache cleared")
 
-    def get_cache_stats(self) -> Dict[str, int]:
+    def get_cache_stats(self) -> dict[str, int]:
         """Get cache statistics."""
         return {
             "cached_explanations": len(self._explanation_cache),

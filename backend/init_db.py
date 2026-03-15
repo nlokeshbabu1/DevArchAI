@@ -1,6 +1,8 @@
 """Database initialization script."""
 import asyncio
+
 from app.db.session import init_db
+
 
 async def main():
     print("Initializing database...")

@@ -1,29 +1,30 @@
 """Scan service for orchestrating repository analysis with stack detection."""
 
 import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
-import structlog
+from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.models.scan import Scan, ScanStatus
-from app.models.finding import Finding, Severity, Category
-from app.models.report import Report
-from app.rule_engine.base import RuleFinding, RuleRegistry
 from app.ai_engine.explanation_engine import ExplanationEngine
-from app.scoring.engine import ScoringEngine
-from app.utils.repository_scanner import RepositoryScanner
-from app.parsers.base import ParserRegistry
-from app.parsers.terraform import TerraformParser
-from app.parsers.kubernetes import KubernetesParser
-from app.parsers.dockerfile import DockerfileParser
-from app.parsers.cicd import CICDParser
-from app.services.technology_detector import detect_technology_stack, TechnologyStack
-from app.core.logging import get_logger
 from app.config import settings
+from app.core.logging import get_logger
+from app.models.finding import Category, Finding, Severity
+from app.models.report import Report
+from app.models.scan import Scan, ScanStatus
+from app.parsers.base import ParserRegistry
+from app.parsers.cicd import CICDParser
+from app.parsers.dockerfile import DockerfileParser
+from app.parsers.kubernetes import KubernetesParser
+from app.parsers.terraform import TerraformParser
+from app.rule_engine.base import RuleFinding, RuleRegistry
+from app.scoring.engine import ScoringEngine
+from app.services.findings_deduplicator import FindingsDeduplicator
+from app.services.findings_enricher import FindingsEnricher
+from app.services.technology_detector import TechnologyStack, detect_technology_stack
+from app.utils.repository_scanner import RepositoryScanner
 
 logger = get_logger(__name__)
 
@@ -44,6 +45,8 @@ class ScanService:
         self.parser_registry = self._setup_parsers()
         self.explanation_engine = ExplanationEngine() if include_ai_explanations else None
         self.detected_stack: Optional[TechnologyStack] = None
+        self.deduplicator = FindingsDeduplicator()
+        self.enricher = FindingsEnricher()
         logger.info("ScanService initialized", ai_explanations=include_ai_explanations)
 
     def _setup_parsers(self) -> ParserRegistry:
@@ -61,7 +64,7 @@ class ScanService:
         repo_url: str,
         branch: str = "main",
         commit_hash: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Synchronous repository analysis with stack detection.
 
@@ -107,7 +110,7 @@ class ScanService:
             file_paths = [str(f.file_path) for f in parsed_files]
             self.detected_stack = detect_technology_stack(file_paths)
             detected_techs = self.detected_stack.get_detected_technologies()
-            logger.info("Technology stack detected", stack=detected_techs)
+            logger.info("Technology stack detected", stack=",".join(detected_techs) if detected_techs else "none")
 
             # Extract resources
             logger.info("Extracting resources from detected technologies")
@@ -159,7 +162,7 @@ class ScanService:
             if repo_path:
                 self.repo_scanner.cleanup(repo_path)
 
-    def _finding_to_dict(self, finding: RuleFinding) -> Dict[str, Any]:
+    def _finding_to_dict(self, finding: RuleFinding) -> dict[str, Any]:
         """Convert RuleFinding to dictionary."""
         return {
             "rule_id": finding.rule_id,
@@ -298,18 +301,17 @@ class ScanService:
                 self.repo_scanner.cleanup(repo_path)
 
         return scan
-    
-    def _load_and_parse_files(self, repo_path: Path) -> List:
+
+    def _load_and_parse_files(self, repo_path: Path) -> list:
         """Load and parse all files in repository."""
-        from app.parsers.base import ParsedFile
-        
+
         parsed_files = []
-        
+
         # Scan for files
         for file_path in repo_path.rglob("*"):
             if not file_path.is_file():
                 continue
-            
+
             # Skip hidden dirs (except .github), node_modules, etc.
             if ".git" in str(file_path) and ".github" not in str(file_path):
                 continue
@@ -317,7 +319,7 @@ class ScanService:
                 continue
             if "__pycache__" in str(file_path):
                 continue
-            
+
             try:
                 content = file_path.read_text(encoding="utf-8")
                 parsed = self.parser_registry.parse_file(file_path, content)
@@ -329,10 +331,10 @@ class ScanService:
                     file=str(file_path),
                     error=str(e),
                 )
-        
+
         return parsed_files
-    
-    def _extract_resources(self, parsed_files: List) -> List[Dict[str, Any]]:
+
+    def _extract_resources(self, parsed_files: list) -> list[dict[str, Any]]:
         """Extract resources from parsed files."""
         all_resources = []
 
@@ -381,44 +383,202 @@ class ScanService:
                     all_resources.append(resources)
 
                 elif parsed_file.file_type == "cicd":
-                    resources["file_path"] = str(parsed_file.file_path)
-                    resources["file_type"] = "cicd"
-                    all_resources.append(resources)
+                    # CICD needs raw_content for Terraform command detection
+                    all_resources.append({
+                        "file_path": str(parsed_file.file_path),
+                        "file_type": "cicd",
+                        "raw_content": parsed_file.raw_content,  # Include raw YAML text
+                        **resources  # Include parsed data
+                    })
 
         return all_resources
 
     def _run_rules(
         self,
-        resources: List[Dict[str, Any]],
-        parsed_files: List,
-    ) -> List[RuleFinding]:
-        """Run rule engine against resources."""
+        resources: list[dict[str, Any]],
+        parsed_files: list,
+    ) -> list[RuleFinding]:
+        """Run rule engine against resources with file-type based filtering."""
         all_findings = []
 
+        # Detect if repository has Terraform files
+        has_terraform = any(
+            pf.file_type == "terraform"
+            for pf in parsed_files
+        )
+
         # Group resources by file
-        resources_by_file: Dict[str, List[Dict]] = {}
+        resources_by_file: dict[str, list[dict]] = {}
         for resource in resources:
             file_path = resource.get("file_path", "unknown")
             if file_path not in resources_by_file:
                 resources_by_file[file_path] = []
             resources_by_file[file_path].append(resource)
 
-        # Run rules for each file
+        # Run rules for each file with file-type filtering
         for parsed_file in parsed_files:
             file_path = str(parsed_file.file_path)
             file_type = parsed_file.file_type
             file_resources = resources_by_file.get(file_path, [])
 
-            # Evaluate all rules
-            file_findings = self.rule_registry.evaluate_all(file_resources, file_path)
+            # Skip files that shouldn't be scanned (documentation, etc.)
+            if file_type not in ["terraform", "dockerfile", "kubernetes", "cicd", "docker_compose", "helm"]:
+                continue
+
+            # Skip tfvars files - they only contain variable values, no resources/backends
+            if file_type == "terraform_vars":
+                continue
+
+            # Evaluate rules with file-type filtering
+            # Pass has_terraform flag for CI/CD rules that need it
+            file_findings = self.rule_registry.evaluate_all(
+                file_resources,
+                file_path,
+                file_type=file_type,
+                has_terraform=has_terraform
+            )
             all_findings.extend(file_findings)
 
+        # Run module-level checks for Terraform backends
+        module_findings = self._check_terraform_module_backends(parsed_files)
+        all_findings.extend(module_findings)
+
+        # Run repository-level rules (once per repo, not per file)
+        repo_findings = self._run_repository_level_rules(parsed_files, resources)
+        all_findings.extend(repo_findings)
+
         return all_findings
+
+    def _run_repository_level_rules(
+        self,
+        parsed_files: list,
+        all_resources: list[dict[str, Any]],
+    ) -> list[RuleFinding]:
+        """
+        Run repository-level rules that scan the entire repository.
+
+        These rules run once per repository, not per file.
+        Examples:
+        - Missing monitoring stack (K8S-OBS-001)
+        - Missing NetworkPolicy across all namespaces
+        - Missing HPA coverage across all deployments
+
+        Args:
+            parsed_files: List of all parsed files
+            all_resources: List of all extracted resources
+
+        Returns:
+            List of repository-level findings
+        """
+        from app.rule_engine.repository_rules import repo_level_rules
+
+        return repo_level_rules.evaluate_repository_level_rules(
+            parsed_files,
+            all_resources,
+        )
+
+    def _check_terraform_module_backends(self, parsed_files: list) -> list[RuleFinding]:
+        """
+        Check Terraform backend configuration at module level.
+
+        A Terraform root module is any directory containing .tf files
+        that is NOT inside a modules/ directory.
+
+        Reports one finding per module that lacks backend configuration.
+
+        Args:
+            parsed_files: List of parsed file objects
+
+        Returns:
+            List of findings (one per module without backend)
+        """
+        from app.rule_engine.base import Category, RuleFinding, Severity
+
+        findings = []
+
+        # Collect Terraform files by module directory
+        modules: dict[str, dict] = {}
+
+        for parsed_file in parsed_files:
+            if parsed_file.file_type not in ["terraform", "terraform_vars"]:
+                continue
+
+            file_path = Path(parsed_file.file_path)
+
+            # Skip files inside modules/ directories
+            if "modules" in file_path.parts:
+                continue
+
+            # Get module directory
+            module_dir = str(file_path.parent) if str(file_path.parent) != "." else "."
+
+            # Initialize module if not exists
+            if module_dir not in modules:
+                modules[module_dir] = {
+                    "path": module_dir,
+                    "tf_files": [],
+                    "has_backend": False,
+                    "backend_type": None,
+                }
+
+            modules[module_dir]["tf_files"].append(str(file_path))
+
+            # Check for backend in this file
+            if parsed_file.file_type == "terraform":
+                parsed_data = parsed_file.parsed_data
+                if isinstance(parsed_data, dict):
+                    backends = parsed_data.get("backends", [])
+                    if backends:
+                        modules[module_dir]["has_backend"] = True
+                        if isinstance(backends[0], dict):
+                            modules[module_dir]["backend_type"] = backends[0].get("type")
+
+        # Generate findings for modules without backend
+        for module_path, module_info in modules.items():
+            if not module_info["has_backend"]:
+                # Use module directory path instead of first .tf file to avoid confusion
+                # The issue is a module-level problem, not a file-specific problem
+                finding_file_path = module_path.rstrip('/') + '/'  # Use module directory as the "file"
+                
+                findings.append(RuleFinding(
+                    rule_id="TF-STATE-002",
+                    rule_name="Remote Backend Required",
+                    severity=Severity.HIGH,
+                    category=Category.RELIABILITY,
+                    description=f"Terraform root module '{module_path}' does not have a remote backend configured",
+                    recommendation="Configure remote backend (S3, GCS, Azure Blob, Consul, Terraform Cloud) with state locking",
+                    file_path=finding_file_path,
+                    metadata={
+                        "module_path": module_path,
+                        "tf_files_count": len(module_info["tf_files"]),
+                        "tf_files": module_info["tf_files"][:3],
+                    },
+                    risk="Terraform state stored locally cannot be shared across team members or CI/CD pipelines, leading to state drift, failed applies, and potential infrastructure corruption.",
+                    impact="Multiple engineers running terraform apply simultaneously can corrupt state, causing infrastructure drift and deployment failures.",
+                    fix_example='''terraform {
+  backend "s3" {
+    bucket         = "tf-state-prod"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock"
+    encrypt        = true
+  }
+}''',
+                ))
+
+        if findings:
+            logger.info(
+                "Module-level backend check complete",
+                modules_checked=len(modules),
+                modules_without_backend=len(findings),
+            )
+
+        return findings
 
     async def _save_findings(
         self,
         scan_id: int,
-        findings: List[RuleFinding],
+        findings: list[RuleFinding],
     ) -> None:
         """Save findings to database."""
         for finding in findings:
@@ -444,9 +604,9 @@ class ScanService:
     async def _create_report(
         self,
         scan: Scan,
-        rule_findings: List[RuleFinding],
+        rule_findings: list[RuleFinding],
         scores: Any,
-        files_analyzed: List[str],
+        files_analyzed: list[str],
     ) -> Report:
         """Create analysis report."""
         # Count findings by severity
@@ -465,11 +625,7 @@ class ScanService:
 
         if self.explanation_engine:
             scores_dict = {
-                "security": scores.score,
-                "scalability": scores.scalability_score,
-                "reliability": scores.reliability_score,
-                "cost": scores.cost_score,
-                "observability": scores.observability_score,
+                cs.category.value: cs.score for cs in scores.category_scores
             }
 
             summary_data = await self.explanation_engine.generate_report_summary(

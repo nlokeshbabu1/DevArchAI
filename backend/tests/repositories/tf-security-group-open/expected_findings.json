@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "SG_OPEN_INGRESS",
+      "file": "main.tf"
+    }
+  ]
+}

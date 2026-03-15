@@ -1,27 +1,26 @@
 """Findings management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List, Optional
 import uuid
 
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User
-from devarchai.models.finding import Finding
-from devarchai.models.organization import OrganizationMember, MembershipRole
+from devarchai.api.deps import get_current_user, get_db
 from devarchai.core.exceptions import AuthorizationException
+from devarchai.models.finding import Finding
+from devarchai.models.user import OrganizationMember
+from devarchai.models.user import User
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/findings", tags=["Findings"])
 
 
-@router.get("", response_model=List)
+@router.get("", response_model=list)
 async def list_findings(
     org_id: str,
-    scan_id: Optional[str] = None,
-    severity: Optional[str] = None,
-    category: Optional[str] = None,
-    status: Optional[str] = None,
+    scan_id: str | None = None,
+    severity: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

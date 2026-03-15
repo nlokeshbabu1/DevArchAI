@@ -1,9 +1,9 @@
 """Report schemas."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class CategoryScore(BaseModel):
@@ -29,12 +29,12 @@ class ReportResponse(BaseModel):
 
     # Scores
     overall_score: float = Field(ge=0, le=100)
-    category_scores: Optional[Dict[str, float]]
+    category_scores: Optional[dict[str, float]]
 
     # AI-generated content
     executive_summary: Optional[str]
     risk_analysis: Optional[str]
-    prioritized_recommendations: Optional[List[str]]
+    prioritized_recommendations: Optional[list[str]]
 
     # Summary statistics
     total_findings: int
@@ -45,7 +45,7 @@ class ReportResponse(BaseModel):
     info_count: int
 
     # Files analyzed
-    files_analyzed: Optional[List[str]]
+    files_analyzed: Optional[list[str]]
 
     # Timestamps
     created_at: datetime
@@ -57,7 +57,7 @@ class ReportResponse(BaseModel):
 class ReportListResponse(BaseModel):
     """Report list response."""
 
-    reports: List[ReportResponse]
+    reports: list[ReportResponse]
     total: int
     page: int
     page_size: int

@@ -1,8 +1,8 @@
 """Docker rules for infrastructure analysis."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from app.rule_engine.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from app.rule_engine.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule(file_types=["dockerfile"])
@@ -21,7 +21,7 @@ class DockerRootUserRule(BaseRule):
             tags=["docker", "security", "user"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -57,7 +57,7 @@ class DockerSecretInEnvRule(BaseRule):
             tags=["docker", "secrets", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -94,7 +94,7 @@ class DockerLatestTagRule(BaseRule):
             tags=["docker", "image", "versioning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -130,7 +130,7 @@ class DockerMissingHealthcheckRule(BaseRule):
             tags=["docker", "health", "monitoring"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -165,7 +165,7 @@ class DockerLargeBaseImageRule(BaseRule):
             tags=["docker", "image", "size", "cost"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         large_images = ["ubuntu", "debian", "centos", "fedora", "amazonlinux"]

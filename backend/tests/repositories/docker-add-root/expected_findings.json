@@ -1,0 +1,12 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "ADD_INSTRUCTION",
+      "file": "Dockerfile"
+    },
+    {
+      "rule_id": "RUN_AS_ROOT",
+      "file": "Dockerfile"
+    }
+  ]
+}

@@ -1,0 +1,467 @@
+"""
+Anonymous scan endpoints.
+
+Allows unauthenticated users to:
+- Submit repository URLs for scanning
+- View limited scan results (score, issue counts, titles)
+- See blurred AI suggestions with login CTA
+"""
+
+import json
+import structlog
+from datetime import datetime
+from typing import Any, Dict, Optional
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import get_current_user, get_optional_user
+from app.db.session import get_db
+from app.models.anonymous_scan import AnonymousScan
+from app.models.finding import Finding
+from app.models.repository import Repository as RepositoryModel
+from app.models.scan import Scan, ScanStatus
+from app.models.user import User
+from app.schemas.common import MessageResponse
+from app.workers.tasks.scan_repository import scan_repository_task
+
+from pydantic import BaseModel
+
+logger = structlog.get_logger(__name__)
+
+router = APIRouter(prefix="/public", tags=["Public Scans"])
+
+
+class PublicScanRequest(BaseModel):
+    """Request model for public scan endpoint."""
+    repository_url: str
+    branch: str = "main"
+
+
+@router.post("/scan", response_model=dict)
+async def create_anonymous_scan(
+    request: PublicScanRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create an anonymous scan session.
+
+    No authentication required.
+    Returns a session token to retrieve results.
+    """
+    try:
+        from app.db.session import get_sync_session_factory
+        from app.workers.tasks.scan_repository import SyncScanService
+        import httpx
+        
+        # Generate session token
+        session_token = AnonymousScan.generate_session_token()
+        expires_at = AnonymousScan.get_expiry()
+
+        # Extract repo name from URL
+        repo_name = request.repository_url.rstrip("/").split("/")[-1].replace(".git", "")
+
+        # Auto-detect branch from GitHub API if not specified or is 'main'
+        branch = request.branch or "main"
+        if branch == "main":
+            try:
+                # Extract owner and repo from URL
+                # URL format: https://github.com/owner/repo
+                url_parts = request.repository_url.rstrip("/").split("/")
+                if len(url_parts) >= 2:
+                    owner = url_parts[-2]
+                    repo = url_parts[-1].replace(".git", "")
+                    
+                    # Try to get default branch from GitHub API
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        api_url = f"https://api.github.com/repos/{owner}/{repo}"
+                        response = await client.get(api_url)
+                        if response.status_code == 200:
+                            repo_data = response.json()
+                            branch = repo_data.get("default_branch", "main")
+                            logger.info(f"Detected default branch: {branch} for {owner}/{repo}")
+            except Exception as e:
+                logger.warning(f"Could not detect branch from GitHub API: {e}")
+                # Will try common branch names as fallback
+
+        # Create anonymous scan record (for session tracking)
+        anon_scan = AnonymousScan(
+            session_token=session_token,
+            repository_url=request.repository_url,
+            repository_name=repo_name,
+            branch=branch,
+            expires_at=expires_at,
+            status="pending",
+        )
+
+        db.add(anon_scan)
+        await db.commit()
+        await db.refresh(anon_scan)
+
+        # Create actual scan record linked to anonymous session
+        scan = Scan(
+            id=uuid4(),
+            user_id=None,
+            repository_url=request.repository_url,
+            branch=branch,
+            status=ScanStatus.PENDING,
+            progress=0,
+        )
+
+        db.add(scan)
+        await db.commit()
+        await db.refresh(scan)
+
+        # Link anonymous scan to actual scan using dedicated field
+        anon_scan.linked_scan_id = str(scan.id)
+        await db.commit()
+
+        # Run scan synchronously for development
+        try:
+            SessionLocal = get_sync_session_factory()
+            sync_db = SessionLocal()
+            try:
+                scan_service = SyncScanService(db=sync_db, include_ai_explanations=True)
+                
+                # Get fresh scan from sync db
+                from app.models.scan import Scan as SyncScan
+                sync_scan = sync_db.get(SyncScan, scan.id)
+                
+                if sync_scan:
+                    # Execute scan synchronously
+                    updated_scan = scan_service.execute_scan(sync_scan)
+                    
+                    # Copy results back to async session
+                    scan.status = updated_scan.status
+                    scan.progress = updated_scan.progress
+                    scan.overall_score = updated_scan.overall_score
+                    scan.security_score = updated_scan.security_score
+                    scan.completed_at = updated_scan.completed_at
+                    await db.commit()
+                    
+                    logger.info(f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}")
+            finally:
+                sync_db.close()
+                
+        except Exception as scan_error:
+            error_msg = str(scan_error)
+            
+            # If branch not found, try fallback branches
+            if "Could not find remote branch" in error_msg or "not found in upstream" in error_msg:
+                fallback_branches = ["master", "develop", "dev", "main"]
+                if branch in fallback_branches:
+                    fallback_branches.remove(branch)
+                
+                logger.warning(f"Branch '{branch}' not found. Trying fallback branches: {fallback_branches}")
+                
+                # Try fallback branches
+                for fallback in fallback_branches:
+                    try:
+                        SessionLocal = get_sync_session_factory()
+                        sync_db = SessionLocal()
+                        try:
+                            scan_service = SyncScanService(db=sync_db, include_ai_explanations=True)
+                            sync_scan = sync_db.get(SyncScan, scan.id)
+                            
+                            if sync_scan:
+                                sync_scan.branch = fallback
+                                updated_scan = scan_service.execute_scan(sync_scan)
+                                
+                                # Update scan record
+                                scan.branch = fallback
+                                scan.status = updated_scan.status
+                                scan.progress = updated_scan.progress
+                                scan.overall_score = updated_scan.overall_score
+                                scan.security_score = updated_scan.security_score
+                                scan.completed_at = updated_scan.completed_at
+                                await db.commit()
+                                
+                                branch = fallback  # Update branch variable
+                                logger.info(f"Scan succeeded with fallback branch: {fallback}")
+                                break
+                        finally:
+                            sync_db.close()
+                    except Exception as fallback_error:
+                        logger.warning(f"Fallback branch '{fallback}' failed: {fallback_error}")
+                        continue
+                else:
+                    # All fallbacks failed
+                    scan.status = ScanStatus.FAILED
+                    scan.error_message = f"Scan failed: No valid branch found. Tried: {branch}, {', '.join(fallback_branches)}"
+                    await db.commit()
+                    
+                    return {
+                        "session_token": session_token,
+                        "scan_id": str(scan.id),
+                        "repository_name": repo_name,
+                        "status": "failed",
+                        "message": f"Scan failed: No valid branch found. Please specify a valid branch.",
+                        "expires_at": expires_at.isoformat(),
+                    }
+            else:
+                # Other error - mark as failed
+                logger.exception(f"Sync scan failed: {scan_error}")
+                scan.status = ScanStatus.FAILED
+                scan.error_message = f"Scan error: {str(scan_error)}"
+                await db.commit()
+                
+                return {
+                    "session_token": session_token,
+                    "scan_id": str(scan.id),
+                    "repository_name": repo_name,
+                    "status": "failed",
+                    "message": f"Scan failed: {str(scan_error)}",
+                    "expires_at": expires_at.isoformat(),
+                }
+
+        return {
+            "session_token": session_token,
+            "scan_id": str(scan.id),
+            "repository_name": repo_name,
+            "status": scan.status.value,
+            "message": "Scan completed successfully.",
+            "branch": branch,
+            "expires_at": expires_at.isoformat(),
+        }
+
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Anonymous scan creation failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create scan session: {str(e)}",
+        )
+
+
+@router.get("/scan/{session_token}")
+async def get_anonymous_scan_results(
+    session_token: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Get anonymous scan results.
+
+    Returns:
+    - Security score
+    - Issue severity counts
+    - Issue titles and descriptions
+    - AI suggestions (gated by user plan)
+
+    No authentication required, but authenticated users get AI suggestions based on plan.
+    """
+    from sqlalchemy.orm import selectinload
+    from app.services.feature_gating import FeatureGatingService
+
+    # Find scan session
+    result = await db.execute(
+        select(AnonymousScan).where(
+            AnonymousScan.session_token == session_token,
+            AnonymousScan.expires_at > datetime.utcnow(),
+        )
+    )
+    anon_scan = result.scalar_one_or_none()
+
+    if not anon_scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan session not found or expired",
+        )
+
+    # Get linked scan ID
+    scan_id = anon_scan.linked_scan_id
+
+    if not scan_id:
+        # Scan not yet linked, still pending
+        return {
+            "session_token": session_token,
+            "status": "pending",
+            "message": "Scan is in progress. Please check back in a few moments.",
+            "repository_name": anon_scan.repository_name,
+        }
+
+    # Fetch actual scan results
+    from uuid import UUID
+    try:
+        scan_uuid = UUID(scan_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid scan ID",
+        )
+
+    scan_result = await db.execute(
+        select(Scan)
+        .options(selectinload(Scan.findings))
+        .where(Scan.id == scan_uuid)
+    )
+    scan = scan_result.scalar_one_or_none()
+
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan not found",
+        )
+
+    # If scan is still pending/processing, return status
+    if scan.status in [ScanStatus.PENDING, ScanStatus.QUEUED, ScanStatus.PROCESSING]:
+        return {
+            "session_token": session_token,
+            "status": scan.status.value,
+            "message": "Scan is in progress. Please check back in a few moments.",
+            "repository_name": anon_scan.repository_name,
+            "progress": scan.progress,
+        }
+
+    # If scan failed, return error
+    if scan.status == ScanStatus.FAILED:
+        return {
+            "session_token": session_token,
+            "status": "failed",
+            "message": f"Scan failed: {scan.error_message}",
+            "repository_name": anon_scan.repository_name,
+        }
+
+    # Get feature gating settings based on user plan
+    show_all_ai, preview_count = FeatureGatingService.get_ai_suggestion_limit(current_user)
+    user_plan = getattr(current_user, 'subscription_plan', 'free') if current_user else 'free'
+
+    # Process findings with appropriate AI gating
+    findings = []
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+
+    for finding in scan.findings:
+        severity = finding.severity.lower() if finding.severity else "info"
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+
+        # Build finding response
+        finding_data = {
+            "rule_id": finding.rule_id,
+            "rule_name": finding.rule_name,
+            "severity": finding.severity,
+            "category": finding.category,
+            "description": finding.description,
+            "recommendation": finding.recommendation,
+            "file_path": finding.file_path,
+            "line_number": finding.line_number,
+            "ai_explanation": finding.ai_explanation,
+            "ai_fix_code": None,
+        }
+        findings.append(finding_data)
+
+    # Sort findings by severity (critical → high → medium → low → info)
+    severity_priority = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    findings.sort(key=lambda x: severity_priority.get(x["severity"].lower(), 5))
+
+    # Apply AI gating after sorting (based on sorted index)
+    for index, finding_data in enumerate(findings):
+        should_blur = FeatureGatingService.should_blur_suggestion(current_user, index)
+        finding_data["is_ai_blurred"] = should_blur
+        finding_data["ai_explanation"] = finding_data["ai_explanation"] if not should_blur else None
+
+    # Calculate security score as string (e.g., "72/100")
+    security_score = f"{int(scan.security_score)}/100" if scan.security_score else "N/A"
+
+    # Update anonymous scan record with results
+    anon_scan.security_score = security_score
+    anon_scan.critical_count = str(severity_counts["critical"])
+    anon_scan.high_count = str(severity_counts["high"])
+    anon_scan.medium_count = str(severity_counts["medium"])
+    anon_scan.low_count = str(severity_counts["low"])
+    anon_scan.status = "completed"
+    await db.commit()
+
+    # Return results with user plan and gating info
+    return {
+        "session_token": session_token,
+        "scan_id": scan_id,
+        "status": "completed",
+        "repository_name": anon_scan.repository_name,
+        "repository_url": anon_scan.repository_url,
+        "security_score": security_score,
+        "severity_counts": severity_counts,
+        "findings": findings,
+        "user_plan": user_plan,
+        "ai_suggestions_blurred": not show_all_ai,
+        "ai_preview_count": preview_count,
+        "login_required": current_user is None,
+        "total_findings": len(findings),
+    }
+
+
+@router.post("/scan/{session_token}/claim")
+async def claim_anonymous_scan(
+    session_token: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Claim an anonymous scan and associate it with a user account.
+    
+    Called after user logs in or signs up.
+    Converts anonymous scan to authenticated scan.
+    """
+    from app.core.security import get_current_user, get_optional_user
+    
+    # Find anonymous scan
+    result = await db.execute(
+        select(AnonymousScan).where(
+            AnonymousScan.session_token == session_token,
+            AnonymousScan.expires_at > datetime.utcnow(),
+        )
+    )
+    anon_scan = result.scalar_one_or_none()
+    
+    if not anon_scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan session not found or expired",
+        )
+    
+    # Create authenticated scan
+    auth_scan = Scan(
+        user_id=current_user.id,
+        repository_url=anon_scan.repository_url,
+        branch=anon_scan.branch,
+        status=ScanStatus.COMPLETED if anon_scan.status == "completed" else ScanStatus.PENDING,
+        security_score=float(anon_scan.security_score.split("/")[0]) if anon_scan.security_score else None,
+    )
+    
+    db.add(auth_scan)
+    
+    # Mark anonymous scan as claimed
+    anon_scan.status = "claimed"
+    
+    await db.commit()
+    await db.refresh(auth_scan)
+    
+    return {
+        "scan_id": str(auth_scan.id),
+        "message": "Scan claimed successfully. Full results now available.",
+    }
+
+
+@router.delete("/scan/{session_token}")
+async def delete_anonymous_scan(
+    session_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an anonymous scan session."""
+    result = await db.execute(
+        select(AnonymousScan).where(AnonymousScan.session_token == session_token)
+    )
+    anon_scan = result.scalar_one_or_none()
+    
+    if not anon_scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan session not found",
+        )
+    
+    await db.delete(anon_scan)
+    await db.commit()
+
+    return MessageResponse(message="Scan session deleted")

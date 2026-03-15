@@ -1,0 +1,12 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "NO_RESOURCE_LIMITS",
+      "file": "deployment.yaml"
+    },
+    {
+      "rule_id": "LATEST_IMAGE_TAG",
+      "file": "deployment.yaml"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "UNPINNED_PROVIDERS",
+      "file": "main.tf"
+    }
+  ]
+}

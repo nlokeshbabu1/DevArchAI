@@ -2,29 +2,26 @@
 Celery Tasks for Repository Scanning with Dynamic Scanner Execution
 """
 
-from celery import states
-from typing import Dict, Any, Optional, List
-import structlog
+import time
 from datetime import datetime
 from pathlib import Path
-import time
-import yaml
+from typing import Any, Optional
 
-from app.workers.celery_config import celery_app
-from app.db.session import get_sync_session_factory
-from app.models.scan import Scan, ScanStatus
-from app.models.finding import Finding as FindingModel, Severity, Category
-from app.models.report import Report
-from app.utils.repository_scanner import RepositoryScanner
-from app.core.logging import get_logger
 from app.config import settings
-from app.rule_engine.base import RuleRegistry, RuleFinding
-from app.scoring.engine import ScoringEngine
-from app.parsers.base import ParserRegistry, ParsedFile
-from app.parsers.terraform import TerraformParser
-from app.parsers.kubernetes import KubernetesParser
-from app.parsers.dockerfile import DockerfileParser
+from app.core.logging import get_logger
+from app.db.session import get_sync_session_factory
+from app.models.finding import Category, Finding as FindingModel
+from app.models.report import Report
+from app.models.scan import Scan, ScanStatus
+from app.parsers.base import ParsedFile, ParserRegistry
 from app.parsers.cicd import CICDParser
+from app.parsers.dockerfile import DockerfileParser
+from app.parsers.kubernetes import KubernetesParser
+from app.parsers.terraform import TerraformParser
+from app.rule_engine.base import RuleFinding, RuleRegistry
+from app.scoring.engine import ScoringEngine
+from app.utils.repository_scanner import RepositoryScanner
+from app.workers.celery_config import celery_app
 
 logger = get_logger(__name__)
 
@@ -34,17 +31,17 @@ class DetectedTechnologyStack:
 
     def __init__(self):
         self.has_docker = False
-        self.docker_files: List[str] = []
+        self.docker_files: list[str] = []
         self.has_terraform = False
-        self.terraform_files: List[str] = []
+        self.terraform_files: list[str] = []
         self.has_kubernetes = False
-        self.kubernetes_files: List[str] = []
+        self.kubernetes_files: list[str] = []
         self.has_github_actions = False
-        self.github_actions_files: List[str] = []
+        self.github_actions_files: list[str] = []
         self.has_docker_compose = False
-        self.docker_compose_files: List[str] = []
+        self.docker_compose_files: list[str] = []
 
-    def get_detected_technologies(self) -> List[str]:
+    def get_detected_technologies(self) -> list[str]:
         """Get list of detected technology names."""
         technologies = []
         if self.has_docker:
@@ -60,7 +57,7 @@ class DetectedTechnologyStack:
         return technologies
 
 
-def detect_technology_stack_from_files(files: List[str]) -> DetectedTechnologyStack:
+def detect_technology_stack_from_files(files: list[str]) -> DetectedTechnologyStack:
     """Detect technology stack from file list."""
     stack = DetectedTechnologyStack()
 
@@ -234,7 +231,7 @@ class SyncScanService:
 
         return scan
 
-    def _collect_all_files(self, repo_path: Path) -> List[str]:
+    def _collect_all_files(self, repo_path: Path) -> list[str]:
         """Collect all file paths in repository."""
         files = []
         for file_path in repo_path.rglob("*"):
@@ -248,7 +245,7 @@ class SyncScanService:
                 files.append(str(file_path.relative_to(repo_path)))
         return files
 
-    def _load_and_parse_files(self, repo_path: Path) -> List[ParsedFile]:
+    def _load_and_parse_files(self, repo_path: Path) -> list[ParsedFile]:
         """Load and parse all files in repository."""
         parsed_files = []
 
@@ -273,7 +270,7 @@ class SyncScanService:
 
         return parsed_files
 
-    def _extract_resources(self, parsed_files: List[ParsedFile]):
+    def _extract_resources(self, parsed_files: list[ParsedFile]):
         """Extract resources from parsed files."""
         all_resources = []
 
@@ -325,7 +322,7 @@ class SyncScanService:
 
         return all_resources
 
-    def _run_rules(self, resources, parsed_files: List[ParsedFile]):
+    def _run_rules(self, resources, parsed_files: list[ParsedFile]):
         """Run rule engine against resources."""
         all_findings = []
 
@@ -344,7 +341,7 @@ class SyncScanService:
 
         return all_findings
 
-    def _save_findings(self, scan_id, findings: List[RuleFinding]):
+    def _save_findings(self, scan_id, findings: list[RuleFinding]):
         """Save findings to database."""
         for finding in findings:
             db_finding = FindingModel(
@@ -389,7 +386,7 @@ def scan_repository_task(
     branch: str = "main",
     commit_hash: Optional[str] = None,
     include_ai_explanations: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Celery task to scan a repository."""
     scanner = RepositoryScanner()
     repo_path = None
@@ -442,7 +439,7 @@ def scan_repository_task(
                 self.update_state(state="PROGRESS", meta={"progress": progress, "status": message})
 
             updated_scan = scan_service.execute_scan(scan, progress_callback)
-            
+
             # Get findings count before session closes
             findings_count = len(updated_scan.findings) if hasattr(updated_scan, 'findings') else 0
             overall_score = updated_scan.overall_score
@@ -489,7 +486,7 @@ def scan_repository_task(
 
 
 @celery_app.task(bind=True)
-def cancel_scan_task(self, scan_id: int) -> Dict[str, Any]:
+def cancel_scan_task(self, scan_id: int) -> dict[str, Any]:
     """Cancel a running scan."""
     from app.db.session import get_session_factory
     session_factory = get_session_factory()
@@ -517,10 +514,11 @@ def cancel_scan_task(self, scan_id: int) -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True, max_retries=3)
-def cleanup_old_scans_task(self, days_old: int = 30) -> Dict[str, Any]:
+def cleanup_old_scans_task(self, days_old: int = 30) -> dict[str, Any]:
     """Clean up old scans and their data."""
-    from sqlalchemy import delete, select, func
     from datetime import timedelta
+
+    from sqlalchemy import delete, func, select
 
     from app.db.session import get_session_factory
     session_factory = get_session_factory()

@@ -1,10 +1,10 @@
 """Scan schemas."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from datetime import datetime
 from enum import Enum
-import uuid
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class ScanStatus(str, Enum):
@@ -67,7 +67,7 @@ class ScanResponse(BaseModel):
 class ScanListResponse(BaseModel):
     """Scan list response."""
 
-    scans: List[ScanResponse]
+    scans: list[ScanResponse]
     total: int
     page: int
     page_size: int

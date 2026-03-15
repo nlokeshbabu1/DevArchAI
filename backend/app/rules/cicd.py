@@ -2,8 +2,9 @@
 CI/CD Pipeline Analysis Rules
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -22,7 +23,7 @@ class CICDNoSecurityScanRule(BaseRule):
             tags=["cicd", "security", "scanning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -31,7 +32,7 @@ class CICDNoSecurityScanRule(BaseRule):
 
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
-            
+
             security_tools = ["trivy", "snyk", "sonarqube", "semgrep", "gitleaks", "bandit", "safety", "zap", "security-scan"]
             has_security_scan = False
 
@@ -71,7 +72,7 @@ class CICDNoContainerScanRule(BaseRule):
             tags=["cicd", "container", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -80,7 +81,7 @@ class CICDNoContainerScanRule(BaseRule):
 
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
-            
+
             container_scan_tools = ["trivy", "snyk", "docker scan", "clair", "grype", "anchore"]
             has_container_scan = False
 
@@ -120,7 +121,7 @@ class CICDNoTerraformValidationRule(BaseRule):
             tags=["cicd", "terraform", "validation"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -129,7 +130,7 @@ class CICDNoTerraformValidationRule(BaseRule):
 
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
-            
+
             terraform_commands = ["terraform fmt", "terraform validate", "tflint", "tfsec", "checkov", "terrascan"]
             has_terraform_validation = False
 
@@ -169,7 +170,7 @@ class CICDNoDependencyScanRule(BaseRule):
             tags=["cicd", "dependencies", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -178,7 +179,7 @@ class CICDNoDependencyScanRule(BaseRule):
 
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
-            
+
             dependency_tools = ["npm audit", "yarn audit", "pip-audit", "safety", "dependabot", "renovate", "owasp dependency-check"]
             has_dependency_scan = False
 
@@ -218,7 +219,7 @@ class CICDNoBuildCacheRule(BaseRule):
             tags=["cicd", "cache", "performance"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -226,7 +227,7 @@ class CICDNoBuildCacheRule(BaseRule):
                 continue
 
             properties = resource.get("properties", {})
-            
+
             # Check for caching configuration
             caching = properties.get("caching", [])
             has_cache = len(caching) > 0
@@ -270,7 +271,7 @@ class CICDNoTestStageRule(BaseRule):
             tags=["cicd", "testing", "quality"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -280,7 +281,7 @@ class CICDNoTestStageRule(BaseRule):
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
             stages = properties.get("stages", [])
-            
+
             test_keywords = ["test", "spec", "pytest", "jest", "mocha", "junit", "go test", "cargo test", "mvn test"]
             has_test = False
 
@@ -329,7 +330,7 @@ class CICDNoArtifactStorageRule(BaseRule):
             tags=["cicd", "artifacts", "storage"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -338,7 +339,7 @@ class CICDNoArtifactStorageRule(BaseRule):
 
             properties = resource.get("properties", {})
             artifacts = properties.get("artifacts", [])
-            
+
             has_artifacts = len(artifacts) > 0
 
             if not has_artifacts:
@@ -371,7 +372,7 @@ class CICDNoEnvironmentProtectionRule(BaseRule):
             tags=["cicd", "environment", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -380,7 +381,7 @@ class CICDNoEnvironmentProtectionRule(BaseRule):
 
             properties = resource.get("properties", {})
             security_features = properties.get("security_features", {})
-            
+
             has_environment_protection = security_features.get("has_environment_protection", False)
 
             if not has_environment_protection:
@@ -413,7 +414,7 @@ class CICDNoRollbackStrategyRule(BaseRule):
             tags=["cicd", "rollback", "deployment"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -422,7 +423,7 @@ class CICDNoRollbackStrategyRule(BaseRule):
 
             properties = resource.get("properties", {})
             jobs = properties.get("jobs", [])
-            
+
             rollback_keywords = ["rollback", "blue-green", "canary", "progressive", "staged", "manual approval"]
             has_rollback = False
 

@@ -1,32 +1,30 @@
 """Authentication endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import datetime
-import secrets
 
-from devarchai.api.deps import get_db, get_current_user
-from devarchai.models.user import User, UserRole
-from devarchai.models.organization import Organization, OrganizationMember, MembershipRole, PlanType
+from devarchai.api.deps import get_current_user, get_db
+from devarchai.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    generate_api_key,
+    get_password_hash,
+    verify_password,
+)
+from devarchai.models.organization import Organization, PlanType
+from devarchai.models.user import User, MembershipRole, OrganizationMember
 from devarchai.schemas.auth import (
+    APIKeyResponse,
     Token,
     UserCreate,
     UserLogin,
     UserResponse,
     UserUpdate,
-    APIKeyResponse,
 )
 from devarchai.schemas.common import MessageResponse
-from devarchai.core.security import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    generate_api_key,
-)
-from devarchai.core.exceptions import AuthenticationException
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -62,7 +60,7 @@ async def register(
         # Create organization first
         org_name = user_data.organization_name or f"{user_data.username}'s Organization"
         org_slug = org_name.lower().replace(" ", "-")[:100]
-        
+
         # Ensure unique slug
         counter = 1
         original_slug = org_slug

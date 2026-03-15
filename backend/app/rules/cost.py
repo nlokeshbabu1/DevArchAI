@@ -2,8 +2,9 @@
 Cost Optimization Rules for Infrastructure Analysis
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -22,7 +23,7 @@ class MissingSpotInstanceRule(BaseRule):
             tags=["terraform", "aws", "ec2", "cost-optimization"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -64,7 +65,7 @@ class OverprovisionedResourcesRule(BaseRule):
             tags=["terraform", "aws", "cost-optimization", "rightsizing"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Large instance families that might be overprovisioned
@@ -116,7 +117,7 @@ class MissingS3LifecycleRule(BaseRule):
             tags=["terraform", "aws", "s3", "cost-optimization"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -158,7 +159,7 @@ class MissingReservedCapacityRule(BaseRule):
             tags=["terraform", "aws", "cost-optimization", "reserved-instances"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         # This is a meta-rule that would require analysis across multiple resources
         # For now, we flag if there are multiple similar instances
         findings = []
@@ -198,7 +199,7 @@ class DockerImageSizeRule(BaseRule):
             tags=["docker", "image", "cost-optimization"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         # Large base images

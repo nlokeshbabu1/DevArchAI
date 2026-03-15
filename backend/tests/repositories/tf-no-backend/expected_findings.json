@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "NO_REMOTE_BACKEND",
+      "file": "main.tf"
+    }
+  ]
+}

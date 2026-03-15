@@ -4,18 +4,19 @@ Dockerfile Parser
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.parsers.base import BaseParser, ParsedFile
 
 
 class DockerfileParser(BaseParser):
     """Parser for Dockerfiles."""
-    
+
     def __init__(self):
         super().__init__()
         self.supported_filenames = ["Dockerfile", "Containerfile"]
         self.supported_extensions = [".dockerfile"]
-    
+
     def can_parse(self, file_path: Path) -> bool:
         """Check if file is a Dockerfile."""
         return (
@@ -23,7 +24,7 @@ class DockerfileParser(BaseParser):
             file_path.suffix in self.supported_extensions or
             "dockerfile" in file_path.name.lower()
         )
-    
+
     def parse(self, file_path: Path, content: str) -> ParsedFile:
         """Parse Dockerfile and extract instructions."""
         parse_errors = []
@@ -41,18 +42,18 @@ class DockerfileParser(BaseParser):
             "run_commands": [],
             "security_issues": [],
         }
-        
+
         try:
             lines = content.splitlines()
             current_instruction = None
             multiline_content = ""
-            
+
             for line_num, line in enumerate(lines, 1):
                 # Skip comments and empty lines
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):
                     continue
-                
+
                 # Handle line continuation
                 if multiline_content:
                     multiline_content += " " + stripped.rstrip("\\").strip()
@@ -65,24 +66,24 @@ class DockerfileParser(BaseParser):
                         )
                         multiline_content = ""
                     continue
-                
+
                 if stripped.endswith("\\"):
                     multiline_content = stripped.rstrip("\\").strip()
                     continue
-                
+
                 # Parse single-line instruction
                 self._parse_instruction(stripped, line_num, parsed_data)
-            
+
             # Handle any remaining multiline content
             if multiline_content:
                 self._parse_instruction(multiline_content, len(lines), parsed_data)
-            
+
             # Analyze security issues
             parsed_data["security_issues"] = self._analyze_security(parsed_data)
-            
+
         except Exception as e:
             parse_errors.append(str(e))
-        
+
         return ParsedFile(
             file_path=str(file_path),
             file_type="dockerfile",
@@ -91,25 +92,25 @@ class DockerfileParser(BaseParser):
             line_count=len(content.splitlines()),
             parse_errors=parse_errors,
         )
-    
-    def _parse_instruction(self, instruction: str, line_num: int, parsed_data: Dict) -> None:
+
+    def _parse_instruction(self, instruction: str, line_num: int, parsed_data: dict) -> None:
         """Parse a single Dockerfile instruction."""
         # Match instruction pattern
         match = re.match(r'^(\w+)\s*(.*)', instruction, re.IGNORECASE)
         if not match:
             return
-        
+
         cmd = match.group(1).upper()
         args = match.group(2).strip()
-        
+
         instruction_data = {
             "instruction": cmd,
             "arguments": args,
             "line_number": line_num,
         }
-        
+
         parsed_data["instructions"].append(instruction_data)
-        
+
         # Parse specific instructions
         if cmd == "FROM":
             parsed_data["base_image"] = self._parse_from(args)
@@ -139,26 +140,26 @@ class DockerfileParser(BaseParser):
                 "command": args,
                 "line_number": line_num,
             })
-    
-    def _parse_from(self, args: str) -> Dict[str, Any]:
+
+    def _parse_from(self, args: str) -> dict[str, Any]:
         """Parse FROM instruction."""
         parts = args.split()
         image = parts[0]
-        
+
         # Parse image components
         registry = ""
         repository = ""
         tag = "latest"
         digest = ""
-        
+
         if "@" in image:
             image_part, digest = image.split("@", 1)
         else:
             image_part = image
-        
+
         if ":" in image_part:
             image_part, tag = image_part.rsplit(":", 1)
-        
+
         if "/" in image_part:
             parts = image_part.split("/")
             if "." in parts[0] or ":" in parts[0]:
@@ -168,7 +169,7 @@ class DockerfileParser(BaseParser):
                 repository = image_part
         else:
             repository = image_part
-        
+
         return {
             "full": image,
             "registry": registry,
@@ -178,8 +179,8 @@ class DockerfileParser(BaseParser):
             "is_latest": tag == "latest",
             "has_digest": bool(digest),
         }
-    
-    def _parse_expose(self, args: str) -> List[Dict[str, Any]]:
+
+    def _parse_expose(self, args: str) -> list[dict[str, Any]]:
         """Parse EXPOSE instruction."""
         ports = []
         for port_spec in args.split():
@@ -188,18 +189,18 @@ class DockerfileParser(BaseParser):
             else:
                 port = port_spec
                 protocol = "tcp"
-            
+
             ports.append({
                 "port": int(port) if port.isdigit() else port,
                 "protocol": protocol,
             })
-        
+
         return ports
-    
-    def _parse_env(self, args: str) -> Dict[str, str]:
+
+    def _parse_env(self, args: str) -> dict[str, str]:
         """Parse ENV instruction."""
         env_vars = {}
-        
+
         # Handle KEY=value format
         if "=" in args:
             pairs = re.findall(r'(\w+)=([^\s]+)', args)
@@ -210,39 +211,39 @@ class DockerfileParser(BaseParser):
             parts = args.split(None, 1)
             if len(parts) == 2:
                 env_vars[parts[0]] = parts[1].strip('"\'')
-        
+
         return env_vars
-    
-    def _parse_volume(self, args: str) -> List[str]:
+
+    def _parse_volume(self, args: str) -> list[str]:
         """Parse VOLUME instruction."""
         volumes = []
-        
+
         # Handle JSON array format
         if args.startswith("["):
             try:
                 import json
                 volumes = json.loads(args)
-            except:
+            except json.JSONDecodeError:
                 pass
         else:
             # Handle space-separated format
             volumes = args.split()
-        
+
         return volumes
-    
-    def _parse_healthcheck(self, args: str) -> Dict[str, Any]:
+
+    def _parse_healthcheck(self, args: str) -> dict[str, Any]:
         """Parse HEALTHCHECK instruction."""
         if args.upper() == "NONE":
             return {"disabled": True}
-        
+
         healthcheck = {"disabled": False}
-        
+
         # Parse options
         interval_match = re.search(r'--interval=(\S+)', args)
         timeout_match = re.search(r'--timeout=(\S+)', args)
         retries_match = re.search(r'--retries=(\d+)', args)
         cmd_match = re.search(r'CMD\s+(.+)', args)
-        
+
         if interval_match:
             healthcheck["interval"] = interval_match.group(1)
         if timeout_match:
@@ -251,24 +252,24 @@ class DockerfileParser(BaseParser):
             healthcheck["retries"] = int(retries_match.group(1))
         if cmd_match:
             healthcheck["command"] = cmd_match.group(1)
-        
+
         return healthcheck
-    
-    def _parse_label(self, args: str) -> Dict[str, str]:
+
+    def _parse_label(self, args: str) -> dict[str, str]:
         """Parse LABEL instruction."""
         labels = {}
-        
+
         # Handle KEY=value format
         pairs = re.findall(r'(\w+\.?\w*)=([^\s]+)', args)
         for key, value in pairs:
             labels[key] = value.strip('"\'')
-        
+
         return labels
-    
-    def _analyze_security(self, parsed_data: Dict) -> List[Dict[str, Any]]:
+
+    def _analyze_security(self, parsed_data: dict) -> list[dict[str, Any]]:
         """Analyze Dockerfile for security issues."""
         issues = []
-        
+
         # Check for root user
         if not parsed_data.get("user") or parsed_data["user"] == "root":
             issues.append({
@@ -277,7 +278,7 @@ class DockerfileParser(BaseParser):
                 "description": "Container runs as root user",
                 "recommendation": "Add USER instruction to run as non-root",
             })
-        
+
         # Check for latest tag
         base_image = parsed_data.get("base_image", {})
         if base_image and base_image.get("is_latest"):
@@ -287,7 +288,7 @@ class DockerfileParser(BaseParser):
                 "description": "Using 'latest' tag for base image",
                 "recommendation": "Pin to specific version tag",
             })
-        
+
         # Check for missing healthcheck
         if not parsed_data.get("healthcheck"):
             issues.append({
@@ -296,7 +297,7 @@ class DockerfileParser(BaseParser):
                 "description": "No HEALTHCHECK instruction",
                 "recommendation": "Add HEALTHCHECK for container health monitoring",
             })
-        
+
         # Check for ADD instead of COPY
         for cmd in parsed_data.get("copy_commands", []):
             if cmd["instruction"] == "ADD" and not cmd["source"].startswith(("http://", "https://")):
@@ -307,7 +308,7 @@ class DockerfileParser(BaseParser):
                     "recommendation": "Use COPY unless extracting archives or fetching URLs",
                     "line_number": cmd["line_number"],
                 })
-        
+
         # Check for secrets in ENV
         secret_patterns = ["password", "secret", "key", "token", "credential", "api_key"]
         for env_name in parsed_data.get("env_vars", {}).keys():
@@ -318,7 +319,7 @@ class DockerfileParser(BaseParser):
                     "description": f"Potential secret in ENV variable: {env_name}",
                     "recommendation": "Use secrets management instead of ENV for sensitive data",
                 })
-        
+
         # Check for apt-get without clean
         for run_cmd in parsed_data.get("run_commands", []):
             cmd = run_cmd["command"]
@@ -330,10 +331,10 @@ class DockerfileParser(BaseParser):
                     "recommendation": "Add 'rm -rf /var/lib/apt/lists/*' to reduce image size",
                     "line_number": run_cmd["line_number"],
                 })
-        
+
         return issues
-    
-    def extract_resources(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def extract_resources(self, parsed_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract resources for rule evaluation."""
         return [
             {

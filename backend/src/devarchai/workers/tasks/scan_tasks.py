@@ -1,13 +1,13 @@
 """Celery tasks for scan execution."""
 
-from celery import states
-from typing import Dict, Any
-import structlog
+from typing import Any
 
-from devarchai.workers.celery_app import celery_app
+import structlog
+from sqlalchemy import select
+
 from devarchai.db.session import get_session_factory
 from devarchai.models.scan import Scan, ScanStatus
-from sqlalchemy import select
+from devarchai.workers.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
 
@@ -20,7 +20,7 @@ logger = structlog.get_logger(__name__)
     retry_backoff_max=600,
     retry_jitter=True,
 )
-def execute_scan(self, scan_id: str) -> Dict[str, Any]:
+def execute_scan(self, scan_id: str) -> dict[str, Any]:
     """
     Execute a repository scan.
 
@@ -84,7 +84,7 @@ def execute_scan(self, scan_id: str) -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True)
-def cancel_scan(self, scan_id: str) -> Dict[str, Any]:
+def cancel_scan(self, scan_id: str) -> dict[str, Any]:
     """
     Cancel a running scan.
 

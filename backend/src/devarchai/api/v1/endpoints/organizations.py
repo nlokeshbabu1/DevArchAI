@@ -1,24 +1,22 @@
 """Organization management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
 import uuid
 
-from devarchai.api.deps import get_db, get_current_user, require_organization
-from devarchai.models.user import User
-from devarchai.models.organization import Organization, OrganizationMember, MembershipRole, PlanType
-from devarchai.schemas.organization import (
-    OrganizationResponse,
-    OrganizationCreate,
-    OrganizationUpdate,
-    MemberResponse,
-    MemberInvite,
-    MemberUpdate,
-)
+from devarchai.api.deps import get_current_user, get_db
+from devarchai.core.exceptions import AuthorizationException, OrganizationNotFoundException
+from devarchai.models.organization import Organization, PlanType
+from devarchai.models.user import User, MembershipRole, OrganizationMember
 from devarchai.schemas.common import MessageResponse
-from devarchai.core.exceptions import OrganizationNotFoundException, AuthorizationException
+from devarchai.schemas.organization import (
+    MemberInvite,
+    MemberResponse,
+    OrganizationCreate,
+    OrganizationResponse,
+    OrganizationUpdate,
+)
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -46,7 +44,7 @@ async def get_current_organization(
     return org
 
 
-@router.get("", response_model=List[OrganizationResponse])
+@router.get("", response_model=list[OrganizationResponse])
 async def list_organizations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -72,7 +70,7 @@ async def create_organization(
     slug = org_data.slug or org_data.name.lower().replace(" ", "-")[:100]
     counter = 1
     original_slug = slug
-    
+
     while True:
         result = await db.execute(select(Organization).where(Organization.slug == slug))
         if not result.scalar_one_or_none():
@@ -173,7 +171,7 @@ async def update_organization(
     return org
 
 
-@router.get("/{org_id}/members", response_model=List[MemberResponse])
+@router.get("/{org_id}/members", response_model=list[MemberResponse])
 async def list_members(
     org_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

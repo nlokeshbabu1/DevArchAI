@@ -1,9 +1,14 @@
 """Database engine and session management."""
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
-from sqlalchemy.pool import NullPool
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 import structlog
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from devarchai.config import settings
 from devarchai.db.base import Base
@@ -62,16 +67,16 @@ async def init_db() -> None:
         async with engine.begin() as conn:
             # Import all models to ensure they're registered
             from devarchai.models import (  # noqa: F401
-                User,
+                AuditLog,
+                Finding,
                 Organization,
                 OrganizationMember,
                 Project,
+                Report,
                 Repository,
                 Scan,
-                Finding,
-                Report,
                 Subscription,
-                AuditLog,
+                User,
             )
 
             await conn.run_sync(Base.metadata.create_all)

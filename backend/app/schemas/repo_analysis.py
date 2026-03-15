@@ -1,8 +1,9 @@
 """Repository Analysis schemas."""
 
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class RepoAnalysisRequest(BaseModel):
@@ -25,49 +26,49 @@ class DevOpsStack(BaseModel):
 
     # Containers
     docker: bool = False
-    docker_files: List[str] = Field(default_factory=list)
+    docker_files: list[str] = Field(default_factory=list)
 
     # Infrastructure as Code
     terraform: bool = False
-    terraform_files: List[str] = Field(default_factory=list)
+    terraform_files: list[str] = Field(default_factory=list)
     pulumi: bool = False
-    pulumi_files: List[str] = Field(default_factory=list)
+    pulumi_files: list[str] = Field(default_factory=list)
     cloudformation: bool = False
-    cloudformation_files: List[str] = Field(default_factory=list)
+    cloudformation_files: list[str] = Field(default_factory=list)
     ansible: bool = False
-    ansible_files: List[str] = Field(default_factory=list)
+    ansible_files: list[str] = Field(default_factory=list)
 
     # Kubernetes
     kubernetes: bool = False
-    kubernetes_files: List[str] = Field(default_factory=list)
+    kubernetes_files: list[str] = Field(default_factory=list)
     helm: bool = False
-    helm_files: List[str] = Field(default_factory=list)
+    helm_files: list[str] = Field(default_factory=list)
     kustomize: bool = False
-    kustomize_files: List[str] = Field(default_factory=list)
+    kustomize_files: list[str] = Field(default_factory=list)
 
     # CI/CD
     cicd: Optional[str] = None
-    cicd_files: List[str] = Field(default_factory=list)
+    cicd_files: list[str] = Field(default_factory=list)
 
     # Monitoring
     monitoring: bool = False
-    monitoring_files: List[str] = Field(default_factory=list)
+    monitoring_files: list[str] = Field(default_factory=list)
     prometheus: bool = False
-    prometheus_files: List[str] = Field(default_factory=list)
+    prometheus_files: list[str] = Field(default_factory=list)
     grafana: bool = False
-    grafana_files: List[str] = Field(default_factory=list)
+    grafana_files: list[str] = Field(default_factory=list)
     datadog: bool = False
-    datadog_files: List[str] = Field(default_factory=list)
+    datadog_files: list[str] = Field(default_factory=list)
 
     # Service Mesh
     service_mesh: bool = False
-    service_mesh_files: List[str] = Field(default_factory=list)
+    service_mesh_files: list[str] = Field(default_factory=list)
     istio: bool = False
-    istio_files: List[str] = Field(default_factory=list)
+    istio_files: list[str] = Field(default_factory=list)
 
     # Security
     security_scanning: bool = False
-    security_files: List[str] = Field(default_factory=list)
+    security_files: list[str] = Field(default_factory=list)
 
 
 class RepoAnalysisResponse(BaseModel):
@@ -114,7 +115,7 @@ class RepoAnalysisListItem(BaseModel):
 class RepoAnalysisListResponse(BaseModel):
     """List of repository analyses."""
 
-    analyses: List[RepoAnalysisListItem]
+    analyses: list[RepoAnalysisListItem]
     total: int
     page: int
     page_size: int
@@ -134,6 +135,6 @@ class BestPracticesResponse(BaseModel):
     """Missing best practices analysis."""
 
     repo: str
-    missing_practices: List[MissingBestPractice]
+    missing_practices: list[MissingBestPractice]
     total_missing: int
     score: float

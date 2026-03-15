@@ -1,12 +1,13 @@
 """Organization model for multi-tenancy."""
 
-import uuid
 import enum
+import uuid
+
 import sqlalchemy
-from sqlalchemy import Column, String, Boolean, Enum as SQLEnum, Text, DateTime, ForeignKey, Integer
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.db.base import Base
 
@@ -85,7 +86,7 @@ class OrganizationMember(Base):
     __tablename__ = "organization_members"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     organization_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
@@ -98,16 +99,16 @@ class OrganizationMember(Base):
         nullable=False,
         index=True,
     )
-    
+
     role = Column(SQLEnum(MembershipRole), default=MembershipRole.MEMBER, nullable=False)
     invited_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     invited_at = Column(DateTime(timezone=True), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="members")
     user = relationship("app.models.user.User", foreign_keys=[user_id], back_populates="memberships")

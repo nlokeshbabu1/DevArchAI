@@ -1,0 +1,8 @@
+{
+  "expected_findings": [
+    {
+      "rule_id": "CURL_PIPE_BASH",
+      "file": "Dockerfile"
+    }
+  ]
+}

@@ -1,18 +1,16 @@
 """FastAPI dependencies for API endpoints."""
 
-from typing import Optional, AsyncGenerator
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
+from collections.abc import AsyncGenerator
 
-from devarchai.db.session import get_session_factory
+import structlog
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from devarchai.core.security import (
     get_current_user as get_authenticated_user,
-    get_current_user_from_api_key,
-    get_current_user_from_token,
 )
-from devarchai.config import settings
+from devarchai.db.session import get_session_factory
 
 logger = structlog.get_logger(__name__)
 
@@ -42,8 +40,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -56,8 +54,8 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -71,7 +69,7 @@ async def get_optional_user(
         return None
 
 
-async def get_organization_id(request: Request) -> Optional[str]:
+async def get_organization_id(request: Request) -> str | None:
     """
     Get organization ID from request headers.
 
@@ -81,7 +79,7 @@ async def get_organization_id(request: Request) -> Optional[str]:
 
 
 async def require_organization(
-    org_id: Optional[str] = Depends(get_organization_id),
+    org_id: str | None = Depends(get_organization_id),
 ) -> str:
     """
     Require organization ID to be present.

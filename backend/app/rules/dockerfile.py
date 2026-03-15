@@ -2,8 +2,9 @@
 Dockerfile Analysis Rules
 """
 
-from typing import Any, Dict, List
-from app.rules.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from typing import Any
+
+from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule
@@ -22,7 +23,7 @@ class DockerLatestTagRule(BaseRule):
             tags=["docker", "image", "versioning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -61,7 +62,7 @@ class DockerRunsAsRootRule(BaseRule):
             tags=["docker", "security", "user"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -99,7 +100,7 @@ class DockerNoHealthcheckRule(BaseRule):
             tags=["docker", "healthcheck", "reliability"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -137,7 +138,7 @@ class DockerNoMultistageRule(BaseRule):
             tags=["docker", "multistage", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -177,7 +178,7 @@ class DockerLargeBaseImageRule(BaseRule):
             tags=["docker", "image", "size"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         large_images = ["ubuntu", "debian", "centos", "fedora", "node:", "python:", "openjdk"]
         small_indicators = ["alpine", "slim", "distroless", "scratch", "busybox"]
@@ -225,7 +226,7 @@ class DockerCopyAllContextRule(BaseRule):
             tags=["docker", "copy", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -265,7 +266,7 @@ class DockerExposesManyPortsRule(BaseRule):
             tags=["docker", "ports", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -304,7 +305,7 @@ class DockerSecretInEnvRule(BaseRule):
             tags=["docker", "secrets", "security"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
         secret_patterns = ["password", "secret", "key", "token", "credential", "api_key", "private"]
 

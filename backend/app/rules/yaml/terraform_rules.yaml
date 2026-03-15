@@ -1,0 +1,227 @@
+rules:
+  - id: TF-001
+    title: No Public Access for Storage Buckets
+    severity: critical
+    category: security
+    description: S3 buckets with public access expose data to the internet
+    remediation: Set acl to private and remove any public bucket policies. Use bucket policies with specific IAM principals
+    check_logic:
+      field: acl
+      operator: not_in
+      value:
+        - public-read
+        - public-read-write
+    resource_types:
+      - aws_s3_bucket
+    file_types:
+      - terraform
+    tags:
+      - security
+      - s3
+      - critical
+      - cis-benchmark
+
+  - id: TF-002
+    title: No Open Security Groups for SSH
+    severity: critical
+    category: security
+    description: Security groups allowing SSH (port 22) from 0.0.0.0/0 expose instances to brute force attacks
+    remediation: Restrict SSH access to specific IP ranges or use AWS Systems Manager Session Manager
+    check_logic:
+      field: ingress
+      operator: no_open_ssh
+    resource_types:
+      - aws_security_group
+      - aws_security_group_rule
+    file_types:
+      - terraform
+    tags:
+      - security
+      - networking
+      - critical
+      - cis-benchmark
+
+  - id: TF-003
+    title: Enable Encryption for Storage
+    severity: high
+    category: security
+    description: S3 buckets without encryption expose data at rest
+    remediation: Enable server-side encryption using SSE-S3, SSE-KMS, or SSE-C
+    check_logic:
+      field: server_side_encryption_configuration
+      operator: exists
+    resource_types:
+      - aws_s3_bucket
+    file_types:
+      - terraform
+    tags:
+      - security
+      - s3
+      - encryption
+
+  - id: TF-004
+    title: Enable Logging for Critical Resources
+    severity: medium
+    category: observability
+    description: S3 buckets without access logging lack audit trail for data access
+    remediation: Enable S3 access logging to track bucket access
+    check_logic:
+      field: logging
+      operator: exists
+    resource_types:
+      - aws_s3_bucket
+    file_types:
+      - terraform
+    tags:
+      - observability
+      - auditing
+      - compliance
+
+  - id: TF-005
+    title: Use Least Privilege IAM Policies
+    severity: high
+    category: security
+    description: IAM policies with wildcard (*) actions or resources violate least privilege principle
+    remediation: Replace wildcard actions and resources with specific permissions
+    check_logic:
+      field: statement[].Action
+      operator: no_wildcards
+    resource_types:
+      - aws_iam_policy
+      - aws_iam_role_policy
+      - aws_iam_user_policy
+    file_types:
+      - terraform
+    tags:
+      - security
+      - iam
+      - cis-benchmark
+
+  - id: TF-006
+    title: Use Remote State Backend
+    severity: high
+    category: reliability
+    description: Terraform without remote state backend risks state file loss and team collaboration issues
+    remediation: Configure S3 backend with DynamoDB for state locking
+    check_logic:
+      field: backend
+      operator: exists
+    file_types:
+      - terraform
+    tags:
+      - reliability
+      - state-management
+      - team
+
+  - id: TF-007
+    title: Enable Versioning for Storage Buckets
+    severity: medium
+    category: reliability
+    description: S3 buckets without versioning cannot recover from accidental deletions or overwrites
+    remediation: Enable versioning on S3 buckets
+    check_logic:
+      field: versioning
+      operator: has_enabled_true
+    resource_types:
+      - aws_s3_bucket
+    file_types:
+      - terraform
+    tags:
+      - reliability
+      - s3
+      - backup
+
+  - id: TF-008
+    title: Tag All Infrastructure Resources
+    severity: low
+    category: cost
+    description: Untagged resources make cost allocation and management difficult
+    remediation: Add standard tags: Name, Environment, Owner, CostCenter
+    check_logic:
+      field: tags
+      operator: has_required_tags
+      value:
+        - Name
+        - Environment
+    file_types:
+      - terraform
+    tags:
+      - cost
+      - governance
+      - best-practice
+
+  - id: TF-009
+    title: Enable RDS Encryption
+    severity: high
+    category: security
+    description: RDS instances without encryption expose database data at rest
+    remediation: Set storage_encrypted to true for RDS instances
+    check_logic:
+      field: storage_encrypted
+      operator: equals
+      value: true
+    resource_types:
+      - aws_db_instance
+      - aws_rds_cluster
+    file_types:
+      - terraform
+    tags:
+      - security
+      - rds
+      - encryption
+
+  - id: TF-010
+    title: Enable RDS Multi-AZ
+    severity: medium
+    category: reliability
+    description: RDS without Multi-AZ lacks high availability for production workloads
+    remediation: Set multi_az to true for production RDS instances
+    check_logic:
+      field: multi_az
+      operator: equals
+      value: true
+    resource_types:
+      - aws_db_instance
+      - aws_rds_cluster
+    file_types:
+      - terraform
+    tags:
+      - reliability
+      - rds
+      - high-availability
+
+  - id: TF-011
+    title: Restrict Database Public Accessibility
+    severity: critical
+    category: security
+    description: Publicly accessible RDS instances expose databases to the internet
+    remediation: Set publicly_accessible to false for RDS instances
+    check_logic:
+      field: publicly_accessible
+      operator: equals
+      value: false
+    resource_types:
+      - aws_db_instance
+    file_types:
+      - terraform
+    tags:
+      - security
+      - rds
+      - critical
+
+  - id: TF-012
+    title: Use VPC Flow Logs
+    severity: medium
+    category: observability
+    description: VPC without flow logs lacks network traffic visibility for security analysis
+    remediation: Enable VPC Flow Logs to CloudWatch Logs or S3
+    check_logic:
+      field: aws_flow_log
+      operator: exists
+      scope: vpc
+    file_types:
+      - terraform
+    tags:
+      - observability
+      - networking
+      - security

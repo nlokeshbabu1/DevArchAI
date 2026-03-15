@@ -1,18 +1,19 @@
 """Security utilities for authentication and authorization."""
 
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import structlog
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-import secrets
-import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from devarchai.config import settings
 from devarchai.db.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 logger = structlog.get_logger(__name__)
 
@@ -41,13 +42,13 @@ def generate_api_key() -> tuple[str, str]:
     return full_key, prefix
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "access"})
 
@@ -59,10 +60,10 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return encoded_jwt
 
 
-def create_refresh_token(data: Dict[str, Any]) -> str:
+def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
 
     encoded_jwt = jwt.encode(
@@ -73,7 +74,7 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[Dict[str, Any]]:
+def decode_token(token: str) -> dict[str, Any] | None:
     """Decode and validate a JWT token."""
     try:
         payload = jwt.decode(
@@ -89,10 +90,10 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
 async def get_current_user_from_token(
     token: str,
     db: AsyncSession,
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user from JWT token."""
     from devarchai.models.user import User
-    
+
     payload = decode_token(token)
     if payload is None:
         return None
@@ -113,10 +114,10 @@ async def get_current_user_from_token(
 async def get_current_user_from_api_key(
     api_key: str,
     db: AsyncSession,
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user from API key."""
     from devarchai.models.user import User
-    
+
     # Extract prefix for faster lookup
     if "_" not in api_key:
         return None
@@ -128,14 +129,14 @@ async def get_current_user_from_api_key(
     result = await db.execute(
         select(User).where(
             User.api_key_prefix == prefix,
-            User.is_active == True,
+            User.is_active.is_(True),
         )
     )
     user = result.scalar_one_or_none()
 
     if user and user.api_key == api_key:
         # Update last login
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(UTC)
         return user
 
     return None
@@ -143,8 +144,8 @@ async def get_current_user_from_api_key(
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
@@ -153,8 +154,7 @@ async def get_current_user(
     Supports both JWT tokens (Authorization: Bearer <token>)
     and API keys (X-API-Key: <key>).
     """
-    from devarchai.models.user import User
-    
+
     # Try API key first (for enterprise users)
     if api_key:
         user = await get_current_user_from_api_key(api_key, db)
@@ -178,10 +178,10 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    api_key: Optional[str] = Depends(api_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
-) -> Optional[Any]:
+) -> Any | None:
     """Get current user if authenticated, None otherwise."""
     try:
         return await get_current_user(request, credentials, api_key, db)
@@ -216,15 +216,16 @@ async def require_enterprise(
 async def get_current_organization(
     request: Request,
     current_user: Any = Depends(get_current_user),
-) -> Optional[Any]:
+    db: AsyncSession = Depends(get_db),
+) -> Any | None:
     """Get current organization from request context."""
     from devarchai.models.organization import Organization
-    
+
     org_id = request.headers.get("X-Organization-ID")
     if not org_id:
         # Fall back to user's current org
         org_id = current_user.current_org_id
-    
+
     if not org_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -232,9 +233,8 @@ async def get_current_organization(
         )
 
     # Verify user is member of this organization
-    from devarchai.models.organization import OrganizationMember
-    from sqlalchemy import select
-    
+    from devarchai.models.user import OrganizationMember
+
     result = await db.execute(
         select(OrganizationMember).where(
             OrganizationMember.organization_id == org_id,
@@ -242,11 +242,11 @@ async def get_current_organization(
         )
     )
     membership = result.scalar_one_or_none()
-    
+
     if not membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this organization",
         )
-    
+
     return await db.get(Organization, org_id)

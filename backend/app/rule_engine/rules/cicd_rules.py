@@ -1,8 +1,8 @@
 """CI/CD rules for infrastructure analysis."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from app.rule_engine.base import BaseRule, Rule, RuleFinding, Severity, Category, register_rule
+from app.rule_engine.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
 
 @register_rule(file_types=["cicd"])
@@ -21,7 +21,7 @@ class CICDMissingSecurityScanningRule(BaseRule):
             tags=["cicd", "security", "scanning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -74,7 +74,7 @@ class CICDMissingContainerScanningRule(BaseRule):
             tags=["cicd", "security", "container", "scanning"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -120,40 +120,103 @@ class CICDMissingContainerScanningRule(BaseRule):
 
 @register_rule(file_types=["cicd"])
 class CICDMissingOIDCRule(BaseRule):
-    """Check for missing OIDC authentication in CI/CD."""
+    """Check for missing OIDC authentication in CI/CD cloud deployments."""
 
     @property
     def rule(self) -> Rule:
         return Rule(
             id="CI-SEC-003",
             name="Missing OIDC Authentication",
-            description="CI/CD pipeline does not use OIDC for cloud authentication",
-            recommendation="Use OIDC authentication instead of long-lived credentials",
+            description="CI/CD pipeline uses cloud provider authentication without OIDC",
+            recommendation="Use OIDC authentication instead of long-lived credentials (AWS IAM Roles Anywhere, Azure Federated Identity, GCP Workload Identity)",
             severity=Severity.MEDIUM,
             category=Category.SECURITY,
-            tags=["cicd", "security", "authentication"],
+            tags=["cicd", "security", "authentication", "cloud"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def _uses_cloud_provider(self, resource: dict) -> bool:
+        """Check if workflow interacts with cloud providers."""
+        raw_content = str(resource.get("raw_content", "")).lower()
+        jobs = resource.get("properties", {}).get("jobs", [])
+        jobs_str = str(jobs).lower()
+
+        # AWS indicators
+        aws_indicators = [
+            "aws-actions/configure-aws-credentials",
+            "aws-actions/aws-cloudformation-github-deploy",
+            "aws-actions/amazon-ecs",
+            "aws-actions/amazon-ecr",
+            "aws s3", "aws ec2", "aws lambda", "aws cloudformation",
+            "aws_cli", "amazon aws",
+        ]
+
+        # Azure indicators
+        azure_indicators = [
+            "azure/login", "az login", "azure/cli",
+            "azure/webapps-deploy", "azure/container-apps-deploy",
+            "azure resource", "azurerm",
+        ]
+
+        # GCP indicators
+        gcp_indicators = [
+            "google-github-actions/auth", "google-github-actions/deploy-appengine",
+            "gcloud auth", "gcloud deploy", "gcloud container",
+            "google cloud", "gcp_",
+        ]
+
+        all_content = raw_content + " " + jobs_str
+
+        # Check for any cloud provider usage
+        for indicator in aws_indicators + azure_indicators + gcp_indicators:
+            if indicator in all_content:
+                return True
+
+        return False
+
+    def _has_oidc_permissions(self, resource: dict) -> bool:
+        """Check if workflow has OIDC permissions configured."""
+        raw_content = str(resource.get("raw_content", ""))
+
+        # Check for id-token: write permissions
+        has_id_token = (
+            "id-token: write" in raw_content or
+            "id-token:write" in raw_content or
+            '"id-token": "write"' in raw_content or
+            "'id-token': 'write'" in raw_content
+        )
+
+        # Check for AWS credentials action usage
+        has_aws_credentials = "aws-actions/configure-aws-credentials" in raw_content
+
+        # OIDC is properly configured if BOTH exist
+        return has_id_token and has_aws_credentials
+
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
             if resource.get("file_type") != "cicd":
                 continue
 
-            properties = resource.get("properties", {})
-            security_features = properties.get("security_features", {})
+            # Only check if workflow uses cloud providers
+            if not self._uses_cloud_provider(resource):
+                continue
 
-            if not security_features.get("uses_oidc"):
-                findings.append(RuleFinding(
-                    rule_id=self.rule.id,
-                    rule_name=self.rule.name,
-                    severity=self.rule.severity,
-                    category=self.rule.category,
-                    description=self.rule.description,
-                    recommendation=self.rule.recommendation,
-                    file_path=file_path,
-                ))
+            # OIDC passes if BOTH conditions are met:
+            # 1. Has id-token: write permissions
+            # 2. Uses aws-actions/configure-aws-credentials
+            if self._has_oidc_permissions(resource):
+                continue
+
+            findings.append(RuleFinding(
+                rule_id=self.rule.id,
+                rule_name=self.rule.name,
+                severity=self.rule.severity,
+                category=self.rule.category,
+                description=self.rule.description,
+                recommendation=self.rule.recommendation,
+                file_path=file_path,
+            ))
 
         return findings
 
@@ -174,7 +237,7 @@ class CICDMissingCachingRule(BaseRule):
             tags=["cicd", "caching", "performance"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -214,7 +277,7 @@ class CICDMissingApprovalRule(BaseRule):
             tags=["cicd", "approval", "deployment"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:
@@ -277,7 +340,7 @@ class CICDMissingTestingRule(BaseRule):
             tags=["cicd", "testing", "quality"],
         )
 
-    def evaluate(self, resources: List[Dict[str, Any]], file_path: str) -> List[RuleFinding]:
+    def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
 
         for resource in resources:

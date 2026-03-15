@@ -1,13 +1,13 @@
 """Repository model."""
 
 import uuid
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
 from devarchai.db.base import Base
-from devarchai.models.mixins import TimestampMixin, OrganizationMixin
+from devarchai.models.mixins import OrganizationMixin, TimestampMixin
 
 
 class Repository(Base, TimestampMixin, OrganizationMixin):
@@ -20,7 +20,7 @@ class Repository(Base, TimestampMixin, OrganizationMixin):
     __tablename__ = "repositories"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
     # Source control info
     provider = Column(String(50), default="github", nullable=False)  # github, gitlab, bitbucket
     provider_repo_id = Column(String(255), nullable=True)  # External ID from provider
@@ -28,24 +28,24 @@ class Repository(Base, TimestampMixin, OrganizationMixin):
     full_name = Column(String(500), nullable=True)  # e.g., "org/repo"
     url = Column(String(500), nullable=False)
     clone_url = Column(String(500), nullable=True)
-    
+
     # Branch info
     default_branch = Column(String(100), default="main", nullable=False)
     current_branch = Column(String(100), nullable=True)
-    
+
     # Git info
     current_commit = Column(String(40), nullable=True)
-    
+
     # Status
     is_active = Column(Boolean, default=True, nullable=False)
     is_private = Column(Boolean, default=True, nullable=False)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     sync_status = Column(String(50), default="idle", nullable=True)  # idle, syncing, error
-    
+
     # Foreign keys
     project_id = Column(PG_UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     creator_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="repositories")
     project = relationship("Project", back_populates="repositories")

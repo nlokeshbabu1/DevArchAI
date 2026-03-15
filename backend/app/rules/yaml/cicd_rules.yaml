@@ -1,0 +1,160 @@
+rules:
+  - id: CI-001
+    title: Pipeline Must Include Automated Tests
+    severity: high
+    category: reliability
+    description: Pipeline without automated tests risks deploying broken code to production
+    remediation: Add test stage/job that runs unit tests, integration tests before deployment
+    check_logic:
+      field: jobs
+      operator: has_test_job
+    file_types:
+      - cicd
+    tags:
+      - reliability
+      - testing
+      - production
+
+  - id: CI-002
+    title: Pipeline Must Include Security Scanning
+    severity: high
+    category: security
+    description: Pipeline without security scanning may deploy vulnerable code
+    remediation: Add security scanning step using SAST, SCA, or container scanning tools
+    check_logic:
+      field: jobs
+      operator: has_security_scan
+    file_types:
+      - cicd
+    tags:
+      - security
+      - scanning
+      - devsecops
+
+  - id: CI-003
+    title: Use Artifact Versioning
+    severity: medium
+    category: reliability
+    description: Artifacts without versioning make rollbacks and traceability difficult
+    remediation: Use commit SHA, semantic version, or timestamp in artifact names
+    check_logic:
+      field: artifacts
+      operator: has_versioning
+    file_types:
+      - cicd
+    tags:
+      - reliability
+      - versioning
+      - artifacts
+
+  - id: CI-004
+    title: Do Not Expose Secrets in Pipeline Logs
+    severity: critical
+    category: security
+    description: Secrets printed in logs can be accessed by unauthorized users
+    remediation: Use masked variables and avoid echo/print of secret values
+    check_logic:
+      field: steps
+      operator: no_secret_exposure
+    file_types:
+      - cicd
+    tags:
+      - security
+      - secrets
+      - critical
+
+  - id: CI-005
+    title: Separate Build and Deploy Stages
+    severity: medium
+    category: reliability
+    description: Combined build and deploy stages reduce visibility and increase risk
+    remediation: Create separate stages/jobs for build and deployment
+    check_logic:
+      field: stages
+      operator: has_separate_build_deploy
+    file_types:
+      - cicd
+    tags:
+      - reliability
+      - best-practice
+      - separation-of-concerns
+
+  - id: CI-006
+    title: Use Environment-Based Deployments
+    severity: medium
+    category: reliability
+    description: Pipeline should deploy to different environments (dev, staging, prod)
+    remediation: Configure environment-specific deployment stages with appropriate approvals
+    check_logic:
+      field: environments
+      operator: has_multiple_environments
+    file_types:
+      - cicd
+    tags:
+      - reliability
+      - environments
+      - production
+
+  - id: CI-007
+    title: Add Approval Step for Production Deploy
+    severity: high
+    category: reliability
+    description: Production deployments should require manual approval
+    remediation: Add manual approval gate before production deployment stage
+    check_logic:
+      field: production_job
+      operator: has_approval_required
+    file_types:
+      - cicd
+    tags:
+      - reliability
+      - production
+      - governance
+
+  - id: CI-008
+    title: Cache Dependencies
+    severity: low
+    category: cost
+    description: Not caching dependencies increases pipeline duration and costs
+    remediation: Configure dependency caching using cache action or similar
+    check_logic:
+      field: cache
+      operator: exists
+    file_types:
+      - cicd
+    tags:
+      - cost
+      - performance
+      - optimization
+
+  - id: CI-009
+    title: Use Protected Branches
+    severity: high
+    category: security
+    description: Main/master branches should be protected from direct pushes
+    remediation: Configure branch protection rules requiring PR reviews
+    check_logic:
+      field: branch_protection
+      operator: is_enabled
+    file_types:
+      - cicd
+    tags:
+      - security
+      - governance
+      - best-practice
+
+  - id: CI-010
+    title: Implement Container Image Scanning
+    severity: high
+    category: security
+    description: Container images should be scanned for vulnerabilities before deployment
+    remediation: Add Trivy, Docker Scan, or similar container scanning in pipeline
+    check_logic:
+      field: jobs
+      operator: has_container_scan
+    file_types:
+      - cicd
+    tags:
+      - security
+      - containers
+      - devsecops
