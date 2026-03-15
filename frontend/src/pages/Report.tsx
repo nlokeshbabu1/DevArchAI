@@ -90,8 +90,12 @@ export function Report() {
     branch?: string
   } | null
 
-  const [findingsFromState] = useState<Finding[]>(state?.findings || [])
-  const [scoresFromState] = useState<Scores>(state?.scores || { overall: 0, grade: 'N/A', category_scores: {} })
+  // Also check sessionStorage for findings (fallback)
+  const sessionFindings = typeof window !== 'undefined' ? JSON.parse(sessionStorage.getItem('latestFindings') || '[]') : []
+  const sessionScores = typeof window !== 'undefined' ? JSON.parse(sessionStorage.getItem('latestScores') || '{}') : null
+
+  const [findingsFromState] = useState<Finding[]>(state?.findings || sessionFindings || [])
+  const [scoresFromState] = useState<Scores>(state?.scores || sessionScores || { overall: 0, grade: 'N/A', category_scores: {} })
   const [repoInfo] = useState({
     name: state?.repoName || 'Repository',
     url: state?.repoUrl || '',
@@ -109,7 +113,7 @@ export function Report() {
         url: repoInfo.url,
         branch: scannedBranch,
         analyzedAt: new Date().toISOString(),
-        scores: displayScores,
+        scores: finalScores,
         findings: filteredFindings,
         summary: severitySummary,
       }
@@ -192,54 +196,58 @@ export function Report() {
     enabled: !!id && !state?.findings,
   })
 
-  const displayFindings = findingsFromState.length > 0 ? findingsFromState : (report?.findings || [])
-  const displayScores = scoresFromState.overall > 0 ? scoresFromState : {
+  const finalFindings = state?.findings || report?.findings || []
+  const finalScores = state?.scores || {
     overall: report?.overall_score || 0,
-    grade: report ? (report.overall_score >= 90 ? 'A' : report.overall_score >= 80 ? 'B' : report.overall_score >= 70 ? 'C' : report.overall_score >= 60 ? 'D' : 'F') : 'N/A',
-    category_scores: {},
+    grade: report?.overall_score >= 90 ? 'A' : report?.overall_score >= 80 ? 'B' : report?.overall_score >= 70 ? 'C' : report?.overall_score >= 60 ? 'D' : 'F',
+    category_scores: report?.category_scores || {},
   }
-  const displayRepoInfo = state?.findings ? repoInfo : {
+  const finalRepoInfo = state?.findings ? {
+    name: state.repoName || 'Repository',
+    url: state.repoUrl || '',
+    filesAnalyzed: state.filesAnalyzed || 0,
+  } : {
     name: report?.repository_name || 'Repository',
     url: report?.repository_url || '',
     filesAnalyzed: Array.isArray(report?.files_analyzed) ? report.files_analyzed.length : 0,
   }
 
-  const severitySummary = displayFindings.reduce((acc: Record<string, number>, f: Finding) => {
+  const severitySummary = finalFindings.reduce((acc: Record<string, number>, f: Finding) => {
     acc[f.severity] = (acc[f.severity] || 0) + 1
     return acc
   }, {} as Record<string, number>)
 
-  const totalFindings = displayFindings.length
+  const totalFindings = finalFindings.length
 
   const filteredFindings = severityFilter === 'all' 
-    ? displayFindings 
-    : displayFindings.filter((f: Finding) => f.severity === severityFilter)
+    ? finalFindings 
+    : finalFindings.filter((f: Finding) => f.severity === severityFilter)
 
   const findingsBySeverity = {
-    critical: displayFindings.filter((f: Finding) => f.severity === 'critical'),
-    high: displayFindings.filter((f: Finding) => f.severity === 'high'),
-    medium: displayFindings.filter((f: Finding) => f.severity === 'medium'),
-    low: displayFindings.filter((f: Finding) => f.severity === 'low' || f.severity === 'info'),
+    critical: finalFindings.filter((f: Finding) => f.severity === 'critical'),
+    high: finalFindings.filter((f: Finding) => f.severity === 'high'),
+    medium: finalFindings.filter((f: Finding) => f.severity === 'medium'),
+    low: finalFindings.filter((f: Finding) => f.severity === 'low' || f.severity === 'info'),
   }
 
   const devopsStack = state?.devopsStack || {
-    docker: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('docker')),
+    docker: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('docker')),
     docker_files: [],
-    terraform: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('.tf')),
+    terraform: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('.tf')),
     terraform_files: [],
-    kubernetes: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('k8s') || f.file_path?.toLowerCase().includes('kubernetes')),
+    kubernetes: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('k8s') || f.file_path?.toLowerCase().includes('kubernetes')),
     kubernetes_files: [],
-    helm: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('helm')),
+    helm: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('helm')),
     helm_files: [],
-    cicd: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('.github') || f.file_path?.toLowerCase().includes('ci')) ? 'github_actions' : null,
+    cicd: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('.github') || f.file_path?.toLowerCase().includes('ci')) ? 'github_actions' : null,
     cicd_files: [],
-    monitoring: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('prometheus') || f.file_path?.toLowerCase().includes('grafana')),
+    monitoring: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('prometheus') || f.file_path?.toLowerCase().includes('grafana')),
     monitoring_files: [],
-    prometheus: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('prometheus')),
-    grafana: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('grafana')),
-    ansible: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('ansible')),
-    pulumi: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('pulumi')),
-    security_scanning: displayFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('security') || f.file_path?.toLowerCase().includes('scan')),
+    prometheus: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('prometheus')),
+    grafana: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('grafana')),
+    ansible: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('ansible')),
+    pulumi: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('pulumi')),
+    security_scanning: finalFindings.some((f: Finding) => f.file_path?.toLowerCase().includes('security') || f.file_path?.toLowerCase().includes('scan')),
   }
 
   if (isLoading) {
@@ -280,10 +288,10 @@ export function Report() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-foreground">{displayRepoInfo.name}</h1>
-            {displayRepoInfo.url && (
+            <h1 className="text-3xl font-bold text-foreground">{finalRepoInfo.name}</h1>
+            {finalRepoInfo.url && (
               <a
-                href={displayRepoInfo.url}
+                href={finalRepoInfo.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 hover:bg-white/5 rounded-lg transition-colors"
@@ -314,7 +322,7 @@ export function Report() {
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="p-8 text-center glow-primary" hover={false}>
           <h3 className="text-sm font-medium text-muted-foreground mb-6">Overall Score</h3>
-          <ScoreCircle score={displayScores.overall} size="xl" animated delay={200} />
+          <ScoreCircle score={finalScores.overall} size="xl" animated delay={200} />
         </Card>
 
         <Card className="p-6" hover={false}>
@@ -361,7 +369,7 @@ export function Report() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Files Analyzed</p>
-                <p className="font-medium text-foreground">{displayRepoInfo.filesAnalyzed}</p>
+                <p className="font-medium text-foreground">{finalRepoInfo.filesAnalyzed}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
@@ -378,11 +386,11 @@ export function Report() {
       </div>
 
       {/* Category Scores */}
-      {Object.keys(displayScores.category_scores).length > 0 && (
+      {Object.keys(finalScores.category_scores).length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4 text-foreground">Category Scores</h2>
           <div className="grid gap-4 md:grid-cols-5">
-            {Object.entries(displayScores.category_scores).map(([category, score]) => {
+            {Object.entries(finalScores.category_scores).map(([category, score]) => {
               const scoreColor = getCategoryColor(score as number)
               return (
                 <Card key={category} className="p-5 text-center" hover>
@@ -509,7 +517,7 @@ export function Report() {
               : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
-          All Findings ({displayFindings.length})
+          All Findings ({finalFindings.length})
         </button>
         <button
           onClick={() => setActiveTab('recommendations')}
@@ -598,7 +606,7 @@ export function Report() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {displayFindings.map((rec: Finding, idx: number) => (
+          {finalFindings.map((rec: Finding, idx: number) => (
             <Card key={idx} className="p-6" hover>
               <div className="space-y-4">
                 {/* Header */}

@@ -223,17 +223,32 @@ export function ScanResultsPage() {
               </h3>
               {(() => {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
-                const totalFindings = results.findings?.length || 0
-                const isLoggedIn = isAuthenticated
                 const isFreeUser = effectivePlan === 'free'
+                const totalFindings = results.findings?.length || 0
                 
-                // Free users see only first 10 findings
+                // Count unique rules (after deduplication)
+                const uniqueRules = new Set(results.findings?.map(f => f.rule_id) || [])
+                const uniqueRuleCount = uniqueRules.size
+                
+                // Free users see only first 10 findings (before deduplication)
                 const maxVisible = isFreeUser ? 10 : totalFindings
+                const visibleFindings = (results.findings || []).slice(0, maxVisible)
                 
-                if (isFreeUser && totalFindings > 10) {
+                // Deduplicate visible findings
+                const deduplicatedVisible = visibleFindings.reduce((acc, finding) => {
+                  const existing = acc.find(f => f.rule_id === finding.rule_id)
+                  if (!existing) {
+                    acc.push(finding)
+                  }
+                  return acc
+                }, [] as typeof visibleFindings)
+                
+                const displayedCount = deduplicatedVisible.length
+                
+                if (isFreeUser && uniqueRuleCount > displayedCount) {
                   return (
                     <div className="text-sm text-muted-foreground">
-                      Showing 10 of {totalFindings} findings
+                      Showing {displayedCount} of {uniqueRuleCount} unique issues
                       <Button
                         variant="ghost"
                         size="sm"
@@ -255,24 +270,47 @@ export function ScanResultsPage() {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
                 const isFreeUser = effectivePlan === 'free'
                 const totalFindings = results.findings?.length || 0
-                
+
                 // Free users see only first 10 findings
                 const maxVisible = isFreeUser ? 10 : totalFindings
                 const visibleFindings = (results.findings || []).slice(0, maxVisible)
-                
-                return visibleFindings.map((finding, index) => {
+
+                // Deduplicate findings by rule_id and count unique files
+                const deduplicatedFindings = visibleFindings.reduce((acc, finding) => {
+                  const existing = acc.find(f => f.rule_id === finding.rule_id)
+                  if (existing && existing.uniqueFiles) {
+                    // Add file to unique files set if not already present
+                    if (finding.file_path && !existing.uniqueFiles.has(finding.file_path)) {
+                      existing.uniqueFiles.add(finding.file_path)
+                      existing.occurrenceCount = existing.uniqueFiles.size
+                    }
+                  } else if (!existing) {
+                    // Add new finding with unique files set
+                    const newFinding = { 
+                      ...finding, 
+                      occurrenceCount: 1,
+                      uniqueFiles: new Set(finding.file_path ? [finding.file_path] : [])
+                    }
+                    acc.push(newFinding)
+                  }
+                  return acc
+                }, [] as (typeof visibleFindings[0] & { occurrenceCount: number; uniqueFiles: Set<string> })[])
+
+                return deduplicatedFindings.map((finding, index) => {
                   const Icon = severityIcons[finding.severity]
-                  const isExpanded = expandedFinding === finding.rule_id
+                  // Use unique key combining rule_id and index
+                  const uniqueKey = `${finding.rule_id}-${index}`
+                  const isExpanded = expandedFinding === uniqueKey
 
                   return (
                     <div
-                      key={finding.rule_id}
+                      key={uniqueKey}
                       className="border border-white/10 rounded-xl overflow-hidden"
                     >
                       <div
                         className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
                         onClick={() => setExpandedFinding(
-                          isExpanded ? null : finding.rule_id
+                          isExpanded ? null : uniqueKey
                         )}
                       >
                         <div className="flex items-start gap-4">
@@ -290,6 +328,11 @@ export function ScanResultsPage() {
                               <span className="text-xs font-mono text-muted-foreground">
                                 {finding.rule_id}
                               </span>
+                              {finding.occurrenceCount && finding.occurrenceCount > 1 && (
+                                <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                                  {finding.occurrenceCount} {finding.occurrenceCount === 1 ? 'file' : 'files'}
+                                </Badge>
+                              )}
                             </div>
                             <h4 className="font-semibold text-foreground mb-1">
                               {finding.rule_name}
