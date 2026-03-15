@@ -19,6 +19,8 @@ from app.parsers.dockerfile import DockerfileParser
 from app.parsers.kubernetes import KubernetesParser
 from app.parsers.terraform import TerraformParser
 from app.rule_engine.base import RuleFinding, RuleRegistry
+from app.scanners.azure_scanner import AzureScanner
+from app.scanners.helm_scanner import HelmScanner
 from app.scoring.engine import ScoringEngine
 from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
@@ -326,6 +328,20 @@ class SyncScanService:
         """Run rule engine against resources."""
         all_findings = []
 
+        # Run Azure scanner on Terraform files
+        azure_scanner = AzureScanner()
+        azure_findings = azure_scanner.scan(parsed_files)
+        all_findings.extend(azure_findings)
+        
+        # Run Helm scanner on chart files
+        helm_scanner = HelmScanner()
+        helm_findings = helm_scanner.scan("", [
+            {"file_path": pf.file_path, "content": pf.raw_content} 
+            for pf in parsed_files if pf.file_type == "helm"
+        ])
+        all_findings.extend(helm_findings)
+
+        # Run standard rule engine
         resources_by_file = {}
         for resource in resources:
             file_path = resource.get("file_path", "unknown")
@@ -336,7 +352,12 @@ class SyncScanService:
         for parsed_file in parsed_files:
             file_path = str(parsed_file.file_path)
             file_resources = resources_by_file.get(file_path, [])
-            file_findings = self.rule_registry.evaluate_all(file_resources, file_path)
+            # Pass file type to enable proper rule filtering
+            file_findings = self.rule_registry.evaluate_all(
+                file_resources, 
+                file_path,
+                file_type=parsed_file.file_type
+            )
             all_findings.extend(file_findings)
 
         return all_findings

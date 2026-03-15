@@ -36,6 +36,18 @@ interface AnalysisResult {
   files_analyzed: number
   analysis_id: number
   created_at: string
+  // New fields from updated API
+  findings?: any[]
+  security_score?: number
+  severity_counts?: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
+  }
+  total_findings?: number
+  repository_url?: string
 }
 
 interface GitHubBranch {

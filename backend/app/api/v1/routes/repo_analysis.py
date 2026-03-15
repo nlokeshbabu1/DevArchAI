@@ -9,8 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
+from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
+from app.models.finding import Finding
 from app.models.repo_analysis import RepoAnalysis
+from app.models.scan import Scan, ScanStatus
 from app.schemas.common import MessageResponse
 from app.schemas.repo_analysis import (
     BestPracticesResponse,
@@ -23,6 +26,7 @@ from app.schemas.repo_analysis import (
 )
 from app.services.repo_analysis_service import RepoAnalysisService, get_analysis_service
 from app.services.scan_service import ScanService
+from app.workers.tasks.scan_repository import SyncScanService
 
 logger = structlog.get_logger(__name__)
 
@@ -99,10 +103,10 @@ async def analyze_repository_deep(
 
 @router.post(
     "/repo",
-    response_model=RepoAnalysisResponse,
+    response_model=dict,
     status_code=status.HTTP_200_OK,
-    summary="Analyze GitHub Repository",
-    description="Analyze a GitHub repository to detect DevOps stack and calculate DevOps score.",
+    summary="Analyze GitHub Repository with Security Rules",
+    description="Analyze a GitHub repository to detect security issues with full rule engine.",
 )
 async def analyze_repository(
     request: RepoAnalysisRequest,
@@ -110,56 +114,140 @@ async def analyze_repository(
 ):
     """
     Analyze a GitHub repository for DevOps configuration.
-
-    This endpoint:
-    1. Validates the GitHub URL
-    2. Fetches the repository file tree
-    3. Detects DevOps tools (Docker, Terraform, Kubernetes, CI/CD, etc.)
-    4. Calculates a DevOps maturity score
-    5. Stores the analysis result
-
-    **Example:**
-    ```json
-    {
-        "repo_url": "https://github.com/torvalds/linux"
-    }
-    ```
+    
+    Uses the SAME SyncScanService as guest scans for consistency.
     """
-    service = get_analysis_service(db, settings.GITHUB_TOKEN)
+    from app.workers.tasks.scan_repository import SyncScanService
+    from app.models.scan import Scan
+    from uuid import uuid4
+    
+    logger.info("Repository analysis requested", repo_url=request.repo_url, branch=request.branch)
 
     try:
-        result = await service.analyze_repository(request.repo_url)
-
-        return RepoAnalysisResponse(
-            repo=result["repo"],
-            repo_url=result["repo_url"],
-            repo_owner=result["repo_owner"],
-            repo_name=result["repo_name"],
-            devops_stack=result["devops_stack"],
-            devops_score=result["devops_score"],
-            files_analyzed=result["files_analyzed"],
-            analysis_id=result["analysis_id"],
-            created_at=result["created_at"],
+        # Create a scan record
+        scan = Scan(
+            id=uuid4(),
+            repository_url=request.repo_url,
+            branch=request.branch or "main",
+            status=ScanStatus.PENDING,
+            progress=0,
         )
+        db.add(scan)
+        await db.commit()
+        await db.refresh(scan)
+        
+        # Use SyncScanService (same as guest scans) for consistency
+        from app.db.session import get_sync_session_factory
+        sync_db = get_sync_session_factory()()
+        try:
+            scan_service = SyncScanService(db=sync_db, include_ai_explanations=True)
+            sync_scan = sync_db.get(Scan, scan.id)
+            
+            if sync_scan:
+                try:
+                    updated_scan = scan_service.execute_scan(sync_scan)
+                except Exception as scan_error:
+                    # If branch not found, try fallback branches
+                    error_msg = str(scan_error)
+                    if "Could not find remote branch" in error_msg or "not found in upstream" in error_msg:
+                        fallback_branches = ["master", "develop", "dev", "main"]
+                        original_branch = sync_scan.branch
+                        
+                        for fallback in fallback_branches:
+                            if fallback == original_branch:
+                                continue
+                            
+                            try:
+                                logger.info(f"Trying fallback branch: {fallback}")
+                                sync_scan.branch = fallback
+                                updated_scan = scan_service.execute_scan(sync_scan)
+                                # Update request branch to match successful fallback
+                                request.branch = fallback
+                                break
+                            except Exception as fallback_error:
+                                logger.warning(f"Fallback branch '{fallback}' failed: {fallback_error}")
+                                continue
+                        else:
+                            # All fallbacks failed
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Failed to clone repository. No valid branch found. Tried: {original_branch}, {', '.join(fallback_branches)}"
+                            )
+                    else:
+                        raise
+                
+                # Update async session with results
+                scan.status = updated_scan.status
+                scan.progress = updated_scan.progress
+                scan.overall_score = updated_scan.overall_score
+                scan.security_score = updated_scan.security_score
+                scan.completed_at = updated_scan.completed_at
+                await db.commit()
+                
+                # Get findings for this scan
+                from sqlalchemy import select
+                from app.models.finding import Finding
+                from app.services.feature_gating import FeatureGatingService
+                
+                findings_result = await db.execute(
+                    select(Finding).where(Finding.scan_id == scan.id)
+                )
+                findings = findings_result.scalars().all()
+
+                # Format response same as guest scan
+                severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+                findings_list = []
+
+                for finding in findings:
+                    severity = finding.severity.lower() if finding.severity else "info"
+                    if severity in severity_counts:
+                        severity_counts[severity] += 1
+
+                    findings_list.append({
+                        "rule_id": finding.rule_id,
+                        "rule_name": finding.rule_name,
+                        "severity": finding.severity,
+                        "category": finding.category,
+                        "description": finding.description,
+                        "recommendation": finding.recommendation,
+                        "file_path": finding.file_path,
+                        "line_number": finding.line_number,
+                    })
+
+                # Sort findings by severity
+                severity_priority = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+                findings_list.sort(key=lambda x: severity_priority.get(x["severity"].lower(), 5))
+
+                logger.info(
+                    "Repository analysis completed",
+                    repo_url=request.repo_url,
+                    findings_count=len(findings_list),
+                    score=updated_scan.security_score,
+                )
+
+                return {
+                    "success": True,
+                    "scan_id": str(scan.id),
+                    "repo_url": request.repo_url,
+                    "branch": request.branch or "main",
+                    "security_score": updated_scan.security_score,
+                    "severity_counts": severity_counts,
+                    "findings": findings_list,
+                    "total_findings": len(findings_list),
+                }
+        finally:
+            sync_db.close()
 
     except InvalidRepositoryException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except RepositoryNotFoundException as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        logger.error("Repository analysis failed", repo_url=request.repo_url, error=str(e))
+        logger.exception("Repository analysis failed", repo_url=request.repo_url, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}",
         )
-    finally:
-        await service.close()
 
 
 @router.get(
