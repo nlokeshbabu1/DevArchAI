@@ -161,7 +161,7 @@ export function Findings() {
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-foreground">{count}</div>
+                  <div className="text-2xl font-bold text-foreground">{String(count)}</div>
                   <div className="text-sm text-muted-foreground capitalize">{severity}</div>
                 </div>
               </div>

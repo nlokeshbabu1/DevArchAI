@@ -40,7 +40,12 @@ export function GithubCallback() {
 
         // Update auth store
         login(tokenResponse.access_token)
-        setUser(tokenResponse.user)
+        setUser({
+          ...tokenResponse.user,
+          is_active: tokenResponse.user.is_active ?? true,
+          is_verified: tokenResponse.user.is_verified ?? false,
+          role: tokenResponse.user.role ?? 'user',
+        })
 
         // Success!
         setStatus('success')

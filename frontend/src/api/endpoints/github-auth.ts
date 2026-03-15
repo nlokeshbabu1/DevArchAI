@@ -17,6 +17,10 @@ export interface GithubTokenResponse {
     email: string
     username: string
     avatar_url?: string
+    is_active?: boolean
+    is_verified?: boolean
+    role?: string
+    current_org_id?: string
   }
 }
 
