@@ -83,6 +83,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     last_login_at: Optional[datetime] = None
     has_api_key: bool = False
+    plan: str = "free"  # Subscription plan: free, plus, pro, enterprise
 
 
 class UserUpdate(BaseModel):

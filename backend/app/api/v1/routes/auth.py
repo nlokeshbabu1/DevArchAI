@@ -50,6 +50,7 @@ def user_to_response(user: User) -> dict:
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
         "has_api_key": bool(user.api_key),
+        "plan": user.subscription_plan if hasattr(user, 'subscription_plan') else "free",
     }
 
 

@@ -37,7 +37,7 @@ export function Layout({ children }: LayoutProps) {
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    navigate('/')  // Redirect to main landing page
   }
 
   return (

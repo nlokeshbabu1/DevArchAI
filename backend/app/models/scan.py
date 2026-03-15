@@ -40,6 +40,7 @@ class Scan(Base):
     status = Column(SQLEnum(ScanStatus), default=ScanStatus.PENDING, nullable=False)
     progress = Column(Integer, default=0, nullable=False)  # 0-100
     error_message = Column(Text, nullable=True)
+    celery_task_id = Column(String(255), nullable=True)  # Celery task ID for tracking
 
     # Results
     overall_score = Column(Float, nullable=True)

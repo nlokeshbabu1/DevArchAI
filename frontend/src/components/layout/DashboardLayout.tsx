@@ -141,7 +141,7 @@ export function Layout({ children }: LayoutProps) {
                       className="w-full justify-start gap-2"
                       onClick={() => {
                         logout()
-                        navigate('/login')
+                        navigate('/')
                       }}
                     >
                       <LogOut className="h-4 w-4" />

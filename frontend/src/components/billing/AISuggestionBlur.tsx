@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Lock, Sparkles, ArrowRight, Zap } from 'lucide-react'
+import { Lock, Sparkles, ArrowRight, Zap, CheckCircle, AlertTriangle } from 'lucide-react'
 import { Button, Card } from '../ui-animated'
 import { cn } from '../../lib/utils'
 
@@ -10,6 +10,7 @@ interface AISuggestionBlurProps {
   onUpgrade?: () => void
   upgradePlan?: string
   className?: string
+  showPartialPreview?: boolean  // For free users - show first suggestion only
 }
 
 export function AISuggestionBlur({
@@ -19,6 +20,7 @@ export function AISuggestionBlur({
   onUpgrade,
   upgradePlan = 'plus',
   className,
+  showPartialPreview = false,
 }: AISuggestionBlurProps) {
   if (!isBlurred) {
     // Show full AI suggestion
@@ -33,7 +35,7 @@ export function AISuggestionBlur({
             <p className="text-sm text-muted-foreground">{suggestion}</p>
           </div>
         )}
-        
+
         {codeFix && (
           <div className="relative group">
             <pre className="p-4 rounded-xl bg-black/50 border border-white/10 overflow-x-auto text-sm font-mono">
@@ -63,10 +65,25 @@ export function AISuggestionBlur({
           <div>
             <h4 className="font-semibold text-foreground">AI Fix Suggestion</h4>
             <p className="text-sm text-muted-foreground">
-              Upgrade to unlock AI-powered remediation
+              {upgradePlan === 'free' 
+                ? 'Login to unlock AI-powered remediation' 
+                : `Upgrade to ${upgradePlan === 'plus' ? 'Plus' : 'Pro'} to view full AI remediation`}
             </p>
           </div>
         </div>
+
+        {/* Partial Preview for Free Users */}
+        {showPartialPreview && suggestion && (
+          <div className="mb-4 p-3 rounded-lg bg-white/5 border border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-400" />
+              <span className="text-xs font-medium text-yellow-400">Preview (Free Plan)</span>
+            </div>
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {suggestion}
+            </p>
+          </div>
+        )}
 
         {/* Blurred Code Block */}
         <div className="relative">
@@ -101,7 +118,9 @@ export function AISuggestionBlur({
                 AI Remediation Locked
               </p>
               <p className="text-xs text-muted-foreground">
-                Upgrade to {upgradePlan === 'plus' ? 'Plus' : 'Pro'} to view
+                {upgradePlan === 'free' 
+                  ? 'Login to view fix suggestions' 
+                  : `Upgrade to ${upgradePlan === 'plus' ? 'Plus' : 'Pro'} to view`}
               </p>
             </div>
           </div>
@@ -137,7 +156,7 @@ export function AISuggestionBlur({
                   className="w-full"
                   glow
                 >
-                  Upgrade to {upgradePlan === 'plus' ? 'Plus' : 'Pro'}
+                  {upgradePlan === 'free' ? 'Login to Unlock' : `Upgrade to ${upgradePlan === 'plus' ? 'Plus' : 'Pro'}`}
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </div>

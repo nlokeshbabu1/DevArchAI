@@ -27,14 +27,17 @@ class AnonymousScan(Base):
     repository_url = Column(String(500), nullable=False)
     repository_name = Column(String(255), nullable=True)
     branch = Column(String(100), default="main", nullable=False)
-    
+
+    # Linked scan ID
+    linked_scan_id = Column(String(255), nullable=True)  # UUID of the actual Scan record
+
     # Results summary (public)
     security_score = Column(String(10), nullable=True)  # e.g., "72/100"
     critical_count = Column(String(10), nullable=True)  # Store as string to allow "2+"
     high_count = Column(String(10), nullable=True)
     medium_count = Column(String(10), nullable=True)
     low_count = Column(String(10), nullable=True)
-    
+
     # Full results (stored but gated)
     findings_summary = Column(Text, nullable=True)  # JSON string of findings
     ai_suggestions = Column(Text, nullable=True)  # JSON string of AI suggestions (blurred for anon)

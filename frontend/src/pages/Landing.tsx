@@ -2,117 +2,14 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Shield, Zap, GitBranch, BarChart3, Sparkles, Check, ArrowRight,
-  Github, FileCode, Brain, Rocket, Server, Cloud, Lock, Layers,
-  Terminal, Database, ChevronRight, Star, Users, Globe, Play
+  Github, Star, Users, Globe
 } from 'lucide-react'
-import { Button, Card } from '../components/ui'
+import { Button } from '../components/ui-animated'
 import { cn } from '../lib/utils'
-import { useState, useEffect } from 'react'
-import { ScanningAnimation } from '../components/ui/LoadingAnimation'
-import { LandingScanner } from '../components/scanner/LandingScanner'
-
-const technologies = [
-  { name: 'Docker', icon: Terminal, description: 'Container security scanning' },
-  { name: 'Kubernetes', icon: Cloud, description: 'K8s manifest analysis' },
-  { name: 'Terraform', icon: Layers, description: 'IaC security checks' },
-  { name: 'GitHub Actions', icon: Github, description: 'CI/CD pipeline security' },
-  { name: 'AWS', icon: Server, description: 'Cloud infrastructure' },
-  { name: 'Azure', icon: Cloud, description: 'Cloud security' },
-]
-
-const pricingPlans = [
-  {
-    name: 'Free',
-    price: '$0',
-    period: 'forever',
-    description: 'Perfect for getting started',
-    features: [
-      '3 scans per month',
-      '1 repository',
-      'View security score',
-      'Basic issue detection',
-      'Detected technologies',
-    ],
-    limitations: [
-      'AI suggestions blurred',
-      'No report exports',
-      'No GitHub automation',
-    ],
-    cta: 'Get Started',
-    popular: false,
-    highlight: false,
-    planId: 'free',
-  },
-  {
-    name: 'Plus',
-    price: '$12',
-    period: 'per month',
-    description: 'For individual developers',
-    features: [
-      '50 scans per month',
-      '5 repositories',
-      'Full AI fix suggestions',
-      'Copy AI remediation code',
-      'PDF report download',
-      '10 reports per month',
-      'Priority email support',
-    ],
-    limitations: [
-      'No GitHub PR automation',
-      'No team features',
-    ],
-    cta: 'Start Free Trial',
-    popular: true,
-    highlight: true,
-    planId: 'plus',
-  },
-  {
-    name: 'Pro',
-    price: '$29',
-    period: 'per month',
-    description: 'For professional DevOps engineers',
-    features: [
-      'Unlimited scans',
-      'Unlimited repositories',
-      'AI remediation (Docker, K8s, Terraform)',
-      'Download security patches',
-      'Export JSON / SARIF / Excel',
-      'Scan history dashboard',
-      'Architecture visualization',
-      'GitHub app integration',
-      'API access (1000 req/hr)',
-      'Priority support',
-    ],
-    limitations: [],
-    cta: 'Start Free Trial',
-    popular: false,
-    highlight: true,
-    planId: 'pro',
-  },
-  {
-    name: 'Enterprise',
-    price: '$99',
-    period: 'per month',
-    description: 'For companies and teams',
-    features: [
-      'Everything in Pro',
-      'GitHub PR auto-fix',
-      'CI/CD pipeline integration',
-      'Unlimited team members',
-      'Organization scanning',
-      'Compliance reporting',
-      'Custom security rules',
-      'Full API access (5000 req/hr)',
-      'Dedicated support',
-      'SLA guarantee',
-    ],
-    limitations: [],
-    cta: 'Contact Sales',
-    popular: false,
-    highlight: false,
-    planId: 'enterprise',
-  },
-]
+import { HeroScanner } from '../components/landing/HeroScanner'
+import { DetectedTechStack } from '../components/landing/DetectedTechStack'
+import { TrustSection } from '../components/landing/TrustSection'
+import { PricingSection } from '../components/landing/PricingSection'
 
 const testimonials = [
   {
@@ -140,39 +37,6 @@ const testimonials = [
 
 export function Landing() {
   const navigate = useNavigate()
-  const [animationStep, setAnimationStep] = useState(0)
-
-  const animationSteps = [
-    { text: 'Connecting to GitHub repository...', icon: Github },
-    { text: 'Detecting DevOps stack...', icon: GitBranch },
-    { text: 'Scanning Docker, Terraform, CI/CD files...', icon: Shield },
-    { text: 'Running security and architecture checks...', icon: Zap },
-    { text: 'Generating AI recommendations...', icon: Sparkles },
-  ]
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setAnimationStep((prev) => (prev + 1) % animationSteps.length)
-    }, 2000)
-    return () => clearInterval(timer)
-  }, [])
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  }
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.5 }
-    }
-  }
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -216,7 +80,7 @@ export function Landing() {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Hero Section with Scanner */}
       <section className="relative py-20 lg:py-32 overflow-hidden">
         {/* Background gradient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -239,84 +103,8 @@ export function Landing() {
         </div>
 
         <div className="container mx-auto px-4 relative">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              className="max-w-2xl space-y-8"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              {/* Badge */}
-              <motion.div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/15 border border-primary/30 backdrop-blur-sm shadow-lg shadow-primary/20"
-                variants={itemVariants}
-              >
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-primary">AI-Powered DevSecOps Platform</span>
-              </motion.div>
-
-              {/* Title */}
-              <motion.h1
-                className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight"
-                variants={itemVariants}
-              >
-                <span className="gradient-text">Secure Your DevOps</span>
-                <br />
-                <span className="text-foreground">Before Production</span>
-              </motion.h1>
-
-              {/* Description */}
-              <motion.p
-                className="text-lg md:text-xl text-muted-foreground"
-                variants={itemVariants}
-              >
-                Analyze GitHub repositories to detect infrastructure vulnerabilities in Docker, Terraform, Kubernetes and CI/CD pipelines. Get AI-powered fix recommendations instantly.
-              </motion.p>
-
-              {/* Scanner Component */}
-              <motion.div
-                className="pt-4"
-                variants={itemVariants}
-              >
-                <LandingScanner />
-              </motion.div>
-
-              {/* Social proof */}
-              <motion.div
-                className="flex items-center gap-6 pt-4"
-                variants={itemVariants}
-              >
-                <div className="flex -space-x-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-indigo-600/20 border-2 border-background flex items-center justify-center text-xs font-medium text-primary"
-                    >
-                      {String.fromCharCode(64 + i)}
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Trusted by 10,000+ developers</p>
-                </div>
-              </motion.div>
-            </motion.div>
-
-            {/* Right side - Scanning Animation */}
-            <motion.div
-              className="hidden lg:block"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-            >
-              <ScanningAnimation />
-            </motion.div>
-          </div>
+          {/* Hero Scanner Component */}
+          <HeroScanner />
         </div>
       </section>
 
@@ -346,91 +134,31 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Why DevOps Security is Difficult */}
+      {/* Detected Technologies Section */}
       <section className="py-20 lg:py-32">
         <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">Why DevOps Security is Difficult</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Modern infrastructure is complex. Security teams struggle to keep up with the pace of change.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {[
-              {
-                icon: Lock,
-                title: 'Multiple Tools & Formats',
-                description: 'Docker, K8s, Terraform, CI/CD - each with their own security concerns and best practices.',
-              },
-              {
-                icon: Zap,
-                title: 'Fast-Paced Development',
-                description: 'Deployments happen multiple times per day. Manual security reviews can\'t keep up.',
-              },
-              {
-                icon: Brain,
-                title: 'Expertise Gap',
-                description: 'Security teams lack DevOps context. DevOps teams lack security expertise.',
-              },
-              {
-                icon: Server,
-                title: 'Cloud Complexity',
-                description: 'AWS, Azure, GCP - each with hundreds of services and configuration options.',
-              },
-              {
-                icon: GitBranch,
-                title: 'Distributed Ownership',
-                description: 'Infrastructure code is spread across repos, teams, and environments.',
-              },
-              {
-                icon: AlertTriangle,
-                title: 'False Positives',
-                description: 'Traditional scanners generate noise. Teams ignore alerts due to alert fatigue.',
-              },
-            ].map((item, index) => (
-              <motion.div
-                key={item.title}
-                className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="p-3 rounded-xl w-fit bg-red-500/10 border border-red-500/30 mb-4">
-                  <item.icon className="h-6 w-6 text-red-400" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">{item.title}</h3>
-                <p className="text-muted-foreground">{item.description}</p>
-              </motion.div>
-            ))}
-          </div>
+          <DetectedTechStack />
         </div>
       </section>
 
-      {/* How the Platform Works */}
+      {/* Trust Section */}
       <section className="py-20 lg:py-32 bg-white/5">
         <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">How DevArchAI Works</span>
+          <TrustSection />
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-20 lg:py-32">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16 space-y-4">
+            <h2 className="text-4xl font-bold gradient-text">
+              How DevArchAI Works
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get comprehensive security analysis in 5 simple steps.
+              Get comprehensive security analysis in 5 simple steps
             </p>
-          </motion.div>
+          </div>
 
           <div className="max-w-4xl mx-auto space-y-6">
             {[
@@ -442,7 +170,7 @@ export function Landing() {
               },
               {
                 step: '02',
-                icon: FileCode,
+                icon: GitBranch,
                 title: 'Automatic Detection',
                 description: 'We automatically detect your DevOps stack - Docker, K8s, Terraform, CI/CD.',
               },
@@ -454,13 +182,13 @@ export function Landing() {
               },
               {
                 step: '04',
-                icon: Brain,
+                icon: Sparkles,
                 title: 'AI Analysis',
                 description: 'AI analyzes findings and provides context-aware fix recommendations.',
               },
               {
                 step: '05',
-                icon: Rocket,
+                icon: BarChart3,
                 title: 'Get Actionable Report',
                 description: 'Receive a comprehensive report with prioritized issues and fix suggestions.',
               },
@@ -493,150 +221,17 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Supported Technologies */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">Supported Technologies</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Comprehensive coverage for your entire DevOps stack.
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 max-w-5xl mx-auto">
-            {technologies.map((tech, index) => (
-              <motion.div
-                key={tech.name}
-                className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 text-center hover:border-primary/30 transition-all duration-300"
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.05 }}
-                whileHover={{ scale: 1.05 }}
-              >
-                <tech.icon className="h-10 w-10 text-primary mx-auto mb-3" />
-                <h3 className="font-semibold text-foreground mb-1">{tech.name}</h3>
-                <p className="text-xs text-muted-foreground">{tech.description}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Live Scan Demo */}
+      {/* Testimonials */}
       <section className="py-20 lg:py-32 bg-white/5">
         <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">See It In Action</span>
+          <div className="text-center mb-16 space-y-4">
+            <h2 className="text-4xl font-bold gradient-text">
+              Loved by DevOps Teams
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Watch how DevArchAI analyzes your infrastructure in real-time.
+              See what security engineers and DevOps teams are saying
             </p>
-          </motion.div>
-
-          <div className="max-w-2xl mx-auto">
-            <Card className="p-6" hover={false}>
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground text-left">
-                  Live Analysis Demo
-                </h3>
-                <div className="space-y-3">
-                  {animationSteps.map((step, index) => {
-                    const Icon = step.icon
-                    const isActive = index === animationStep
-                    const isCompleted = index < animationStep
-
-                    return (
-                      <motion.div
-                        key={index}
-                        className={cn(
-                          'flex items-center gap-3 p-3 rounded-lg transition-all duration-300',
-                          isActive
-                            ? 'bg-primary/15 border border-primary/30'
-                            : isCompleted
-                            ? 'bg-green-500/10 border border-green-500/30'
-                            : 'bg-white/5 border border-white/10'
-                        )}
-                        initial={{ opacity: 0, x: -20 }}
-                        whileInView={{ opacity: 1, x: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ delay: index * 0.1 }}
-                      >
-                        <div className={cn(
-                          'p-2 rounded-lg transition-all duration-300',
-                          isActive
-                            ? 'bg-primary/20'
-                            : isCompleted
-                            ? 'bg-green-500/20'
-                            : 'bg-white/10'
-                        )}>
-                          {isCompleted ? (
-                            <Check className="h-4 w-4 text-green-400" />
-                          ) : (
-                            <Icon className={cn(
-                              'h-4 w-4',
-                              isActive ? 'text-primary animate-pulse' : 'text-muted-foreground'
-                            )} />
-                          )}
-                        </div>
-                        <span className={cn(
-                          'text-sm font-medium transition-colors duration-300',
-                          isActive
-                            ? 'text-primary'
-                            : isCompleted
-                            ? 'text-green-400'
-                            : 'text-muted-foreground'
-                        )}>
-                          {step.text}
-                        </span>
-                        {isActive && (
-                          <motion.div
-                            className="ml-auto"
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                          >
-                            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full" />
-                          </motion.div>
-                        )}
-                      </motion.div>
-                    )
-                  })}
-                </div>
-              </div>
-            </Card>
           </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">Loved by DevOps Teams</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              See what security engineers and DevOps teams are saying.
-            </p>
-          </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {testimonials.map((testimonial, index) => (
@@ -653,13 +248,15 @@ export function Landing() {
                     <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                   ))}
                 </div>
-                <p className="text-muted-foreground mb-6">"{testimonial.content}"</p>
+                <p className="text-muted-foreground mb-6 leading-relaxed">
+                  "{testimonial.content}"
+                </p>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center text-sm font-medium text-white">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-indigo-600/20 border-2 border-primary/30 flex items-center justify-center text-sm font-semibold text-primary">
                     {testimonial.avatar}
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{testimonial.name}</p>
+                    <p className="font-semibold text-foreground">{testimonial.name}</p>
                     <p className="text-sm text-muted-foreground">{testimonial.role}</p>
                   </div>
                 </div>
@@ -669,218 +266,78 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Pricing Plans */}
-      <section className="py-20 lg:py-32 bg-white/5">
+      {/* Pricing Section */}
+      <section className="py-20 lg:py-32">
         <div className="container mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-              <span className="gradient-text">Simple, Transparent Pricing</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Start free and scale as you grow. No hidden fees.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-            {pricingPlans.map((plan, index) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card
-                  className={cn(
-                    'p-6 h-full flex flex-col relative',
-                    plan.highlight && 'border-primary/50 shadow-lg shadow-primary/10',
-                    plan.popular && 'ring-2 ring-primary'
-                  )}
-                  hover
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                      <span className="inline-flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground shadow-lg">
-                        <Star className="h-3 w-3 fill-current" />
-                        Most Popular
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="mb-6">
-                    <h3 className="text-xl font-semibold text-foreground">{plan.name}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
-                  </div>
-
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold text-foreground">{plan.price}</span>
-                    <span className="text-muted-foreground ml-2">/{plan.period}</span>
-                  </div>
-
-                  <ul className="space-y-3 mb-6 flex-1">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-muted-foreground">{feature}</span>
-                      </li>
-                    ))}
-                    {plan.limitations && plan.limitations.length > 0 && (
-                      <>
-                        <li className="pt-3 border-t border-white/10" />
-                        {plan.limitations.map((limitation) => (
-                          <li key={limitation} className="flex items-start gap-2">
-                            <Lock className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                            <span className="text-sm text-muted-foreground">{limitation}</span>
-                          </li>
-                        ))}
-                      </>
-                    )}
-                  </ul>
-
-                  <Button
-                    variant={plan.highlight ? 'primary' : 'secondary'}
-                    className="w-full"
-                    glow={plan.highlight}
-                    onClick={() => navigate(plan.highlight ? '/register' : '/login')}
-                  >
-                    {plan.cta}
-                  </Button>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+          <PricingSection />
         </div>
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 lg:py-32">
+      <section className="py-20 lg:py-32 bg-white/5">
         <div className="container mx-auto px-4">
-          <Card className="max-w-4xl mx-auto p-12 text-center glow-primary" hover={false}>
-            <div className="space-y-8">
-              <motion.div
-                className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30"
-                initial={{ scale: 0.8, opacity: 0 }}
-                whileInView={{ scale: 1, opacity: 1 }}
-                viewport={{ once: true }}
-              >
-                <Shield className="h-12 w-12 text-white" />
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-              >
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                  <span className="gradient-text">Ready to Secure Your Infrastructure?</span>
-                </h2>
-                <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-                  Start analyzing your DevOps architecture today. Get actionable security recommendations in seconds.
-                </p>
-              </motion.div>
-
-              <motion.div
-                className="flex flex-col sm:flex-row items-center justify-center gap-4"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.2 }}
-              >
+          <motion.div
+            className="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30 backdrop-blur-sm"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <div className="space-y-6">
+              <h2 className="text-4xl md:text-5xl font-bold gradient-text">
+                Ready to Secure Your DevOps?
+              </h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Start scanning your repositories today and get AI-powered remediation suggestions in seconds.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={() => navigate('/register')}
-                  className="w-full sm:w-auto px-8 py-6 text-lg"
                   glow
                 >
-                  Start Free Trial
-                  <ArrowRight className="h-5 w-5" />
+                  Start Free Scan
+                  <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
                 <Button
                   variant="secondary"
                   size="lg"
-                  onClick={() => navigate('/login')}
-                  className="w-full sm:w-auto px-8 py-6 text-lg"
+                  onClick={() => navigate('/pricing')}
                 >
-                  Login to Existing Account
+                  View Pricing
                 </Button>
-              </motion.div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <Check className="h-4 w-4 inline mr-1 text-green-400" />
+                No credit card required • Free tier available
+              </p>
             </div>
-          </Card>
+          </motion.div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-white/10">
+      <footer className="border-t border-white/10 py-12">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600">
-                  <Shield className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-semibold gradient-text">DevArchAI</span>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600">
+                <Shield className="h-5 w-5 text-white" />
               </div>
-              <p className="text-sm text-muted-foreground">
-                AI-powered DevSecOps platform for modern infrastructure security.
-              </p>
+              <span className="font-bold gradient-text">DevArchAI</span>
             </div>
-            <div>
-              <h4 className="font-semibold text-foreground mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary transition-colors">Features</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Integrations</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Changelog</a></li>
-              </ul>
+            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+              <a href="#" className="hover:text-foreground transition-colors">Security</a>
+              <a href="#" className="hover:text-foreground transition-colors">Contact</a>
             </div>
-            <div>
-              <h4 className="font-semibold text-foreground mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">API Reference</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Community</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-foreground mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Security</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Privacy</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Contact</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 border-t border-white/10">
             <p className="text-sm text-muted-foreground">
-              &copy; 2024 DevArchAI. All rights reserved.
+              © 2024 DevArchAI. All rights reserved.
             </p>
-            <div className="flex items-center gap-6">
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                <Globe className="h-5 w-5" />
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                <Github className="h-5 w-5" />
-              </a>
-            </div>
           </div>
         </div>
       </footer>
     </div>
-  )
-}
-
-function AlertTriangle() {
-  return (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
   )
 }

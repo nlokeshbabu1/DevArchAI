@@ -24,19 +24,25 @@ interface Finding {
 
 interface ScanResults {
   session_token: string
+  scan_id: string
   status: string
   repository_name: string
+  repository_url: string
   security_score?: string
   severity_counts?: {
-    critical: string
-    high: string
-    medium: string
-    low: string
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
   }
   findings?: Finding[]
+  user_plan?: string  // free, plus, pro, enterprise
   ai_suggestions_blurred?: boolean
+  ai_preview_count?: number
   login_required?: boolean
   message?: string
+  total_findings?: number
 }
 
 export function ScanResultsPage() {
@@ -50,6 +56,14 @@ export function ScanResultsPage() {
   useEffect(() => {
     fetchResults()
   }, [sessionId])
+
+  // Refetch results when authentication state changes (after login)
+  useEffect(() => {
+    if (isAuthenticated && results) {
+      // User just logged in, refetch to get updated plan-based results
+      fetchResults()
+    }
+  }, [isAuthenticated])
 
   const fetchResults = async () => {
     try {
@@ -65,8 +79,10 @@ export function ScanResultsPage() {
   }
 
   const handleLogin = () => {
-    // Store intended destination
+    // Store intended destination with plan upgrade context
     sessionStorage.setItem('postLoginRedirect', `/scan/results/${sessionId}`)
+    sessionStorage.setItem('upgradeIntent', 'true')
+    sessionStorage.setItem('upgradePlan', 'plus')
     navigate('/login')
   }
 
@@ -201,128 +217,209 @@ export function ScanResultsPage() {
           transition={{ delay: 0.3 }}
         >
           <Card className="p-6" hover={false}>
-            <h3 className="text-lg font-semibold text-foreground mb-4">
-              Detected Issues
-            </h3>
-            <div className="space-y-4">
-              {(results.findings || []).map((finding, index) => {
-                const Icon = severityIcons[finding.severity]
-                const isExpanded = expandedFinding === finding.rule_id
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">
+                Detected Issues
+              </h3>
+              {(() => {
+                const effectivePlan = results.user_plan || user?.plan || 'free'
+                const totalFindings = results.findings?.length || 0
+                const isLoggedIn = isAuthenticated
+                const isFreeUser = effectivePlan === 'free'
                 
-                return (
-                  <div
-                    key={finding.rule_id}
-                    className="border border-white/10 rounded-xl overflow-hidden"
-                  >
-                    <div
-                      className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
-                      onClick={() => setExpandedFinding(
-                        isExpanded ? null : finding.rule_id
-                      )}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={cn(
-                          'p-2 rounded-lg',
-                          severityColors[finding.severity]
-                        )}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="secondary" className={severityColors[finding.severity]}>
-                              {finding.severity.toUpperCase()}
-                            </Badge>
-                            <span className="text-xs font-mono text-muted-foreground">
-                              {finding.rule_id}
-                            </span>
-                          </div>
-                          <h4 className="font-semibold text-foreground mb-1">
-                            {finding.rule_name}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {finding.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        className="px-4 pb-4 border-t border-white/10"
+                // Free users see only first 10 findings
+                const maxVisible = isFreeUser ? 10 : totalFindings
+                
+                if (isFreeUser && totalFindings > 10) {
+                  return (
+                    <div className="text-sm text-muted-foreground">
+                      Showing 10 of {totalFindings} findings
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate('/pricing')}
+                        className="ml-2 text-primary hover:text-primary"
                       >
-                        {/* Issue Details - Always Visible */}
-                        <div className="pt-4 space-y-4">
-                          <div>
-                            <h5 className="text-sm font-semibold text-foreground mb-2">
-                              Description
-                            </h5>
+                        Upgrade to view all
+                      </Button>
+                    </div>
+                  )
+                }
+                
+                return null
+              })()}
+            </div>
+            
+            <div className="space-y-4">
+              {(() => {
+                const effectivePlan = results.user_plan || user?.plan || 'free'
+                const isFreeUser = effectivePlan === 'free'
+                const totalFindings = results.findings?.length || 0
+                
+                // Free users see only first 10 findings
+                const maxVisible = isFreeUser ? 10 : totalFindings
+                const visibleFindings = (results.findings || []).slice(0, maxVisible)
+                
+                return visibleFindings.map((finding, index) => {
+                  const Icon = severityIcons[finding.severity]
+                  const isExpanded = expandedFinding === finding.rule_id
+
+                  return (
+                    <div
+                      key={finding.rule_id}
+                      className="border border-white/10 rounded-xl overflow-hidden"
+                    >
+                      <div
+                        className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
+                        onClick={() => setExpandedFinding(
+                          isExpanded ? null : finding.rule_id
+                        )}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={cn(
+                            'p-2 rounded-lg',
+                            severityColors[finding.severity]
+                          )}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="secondary" className={severityColors[finding.severity]}>
+                                {finding.severity.toUpperCase()}
+                              </Badge>
+                              <span className="text-xs font-mono text-muted-foreground">
+                                {finding.rule_id}
+                              </span>
+                            </div>
+                            <h4 className="font-semibold text-foreground mb-1">
+                              {finding.rule_name}
+                            </h4>
                             <p className="text-sm text-muted-foreground">
                               {finding.description}
                             </p>
                           </div>
-                          
-                          {finding.file_path && (
+                        </div>
+                      </div>
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          className="px-4 pb-4 border-t border-white/10"
+                        >
+                          {/* Issue Details - Always Visible */}
+                          <div className="pt-4 space-y-4">
                             <div>
                               <h5 className="text-sm font-semibold text-foreground mb-2">
-                                Location
+                                Description
                               </h5>
-                              <code className="text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded">
-                                {finding.file_path}
-                                {finding.line_number && ` (Line ${finding.line_number})`}
-                              </code>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* AI Suggestion - GATED */}
-                        <div className="mt-6">
-                          {!isAuthenticated ? (
-                            // NOT LOGGED IN - Show blur with login CTA
-                            <AISuggestionBlur
-                              isBlurred={true}
-                              suggestion={finding.recommendation}
-                              onUpgrade={handleLogin}
-                              upgradePlan="free"
-                            />
-                          ) : user?.plan === 'free' ? (
-                            // FREE USER - Show partial preview
-                            <AISuggestionBlur
-                              isBlurred={true}
-                              suggestion={finding.recommendation}
-                              onUpgrade={() => navigate('/pricing')}
-                              upgradePlan="plus"
-                            />
-                          ) : (
-                            // PAID USER - Show full suggestion
-                            <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
-                              <div className="flex items-center gap-2 mb-2">
-                                <CheckCircle className="h-4 w-4 text-primary" />
-                                <h5 className="font-semibold text-primary">
-                                  AI Fix Suggestion
-                                </h5>
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-3">
-                                {finding.recommendation}
+                              <p className="text-sm text-muted-foreground">
+                                {finding.description}
                               </p>
-                              <div className="flex gap-2">
-                                <Button variant="primary" size="sm">
-                                  Copy Fix
-                                </Button>
-                                <Button variant="secondary" size="sm">
-                                  Create PR
-                                </Button>
-                              </div>
                             </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-                )
-              })}
+
+                            {finding.file_path && (
+                              <div>
+                                <h5 className="text-sm font-semibold text-foreground mb-2">
+                                  Location
+                                </h5>
+                                <code className="text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded">
+                                  {finding.file_path}
+                                  {finding.line_number && ` (Line ${finding.line_number})`}
+                                </code>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* AI Suggestion - GATED based on user plan */}
+                          <div className="mt-6">
+                            {(() => {
+                              // Determine user's effective plan (API response takes precedence)
+                              const plan = results.user_plan || user?.plan || 'free'
+                              const isLoggedIn = isAuthenticated
+                              const isFreeUser = plan === 'free'
+                              const isPaidUser = ['plus', 'pro', 'enterprise'].includes(plan)
+
+                              // For free users, show first 2 AI suggestions unblurred
+                              const isPreviewFinding = index < (results.ai_preview_count || 2)
+
+                              if (!isLoggedIn) {
+                                // NOT LOGGED IN - All AI suggestions blurred with login CTA
+                                return (
+                                  <AISuggestionBlur
+                                    isBlurred={true}
+                                    suggestion={finding.recommendation}
+                                    onUpgrade={handleLogin}
+                                    upgradePlan="free"
+                                    showPartialPreview={false}
+                                  />
+                                )
+                              }
+
+                              if (isFreeUser && !isPreviewFinding) {
+                                // FREE USER - Show first 2 suggestions, blur the rest
+                                return (
+                                  <AISuggestionBlur
+                                    isBlurred={true}
+                                    suggestion={finding.recommendation}
+                                    onUpgrade={() => navigate('/pricing')}
+                                    upgradePlan="plus"
+                                    showPartialPreview={true}
+                                  />
+                                )
+                              }
+
+                              if (isPaidUser || isPreviewFinding) {
+                                // PAID USER or Preview finding - Show full AI suggestion
+                                return (
+                                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <CheckCircle className="h-4 w-4 text-primary" />
+                                      <h5 className="font-semibold text-primary">
+                                        AI Fix Suggestion
+                                        {isFreeUser && isPreviewFinding && (
+                                          <span className="ml-2 text-xs text-muted-foreground">
+                                            (Preview {index + 1} of 2)
+                                          </span>
+                                        )}
+                                      </h5>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground mb-3">
+                                      {finding.recommendation}
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <Button variant="primary" size="sm">
+                                        Copy Fix
+                                      </Button>
+                                      {isPaidUser && (
+                                        <Button variant="secondary" size="sm">
+                                          Create PR
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              // Fallback - show blurred
+                              return (
+                                <AISuggestionBlur
+                                  isBlurred={true}
+                                  suggestion={finding.recommendation}
+                                  onUpgrade={() => navigate('/pricing')}
+                                  upgradePlan="plus"
+                                  showPartialPreview={false}
+                                />
+                              )
+                            })()}
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </Card>
         </motion.div>

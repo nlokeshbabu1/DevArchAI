@@ -45,8 +45,25 @@ export function Login() {
         console.warn('Failed to fetch user info', err)
       }
 
-      // Navigate to dashboard
-      navigate('/dashboard')
+      // Navigate to dashboard or intended destination
+      const redirectPath = sessionStorage.getItem('postLoginRedirect')
+      const upgradeIntent = sessionStorage.getItem('upgradeIntent')
+      
+      if (upgradeIntent === 'true') {
+        // User came from upgrade click, redirect to pricing with plan selected
+        const plan = sessionStorage.getItem('upgradePlan') || 'plus'
+        sessionStorage.removeItem('upgradeIntent')
+        sessionStorage.removeItem('upgradePlan')
+        sessionStorage.removeItem('postLoginRedirect')
+        navigate(`/pricing?plan=${plan}&redirect=${encodeURIComponent(redirectPath || '')}`)
+      } else if (redirectPath) {
+        // Return to intended destination
+        sessionStorage.removeItem('postLoginRedirect')
+        navigate(redirectPath)
+      } else {
+        // Default to dashboard
+        navigate('/dashboard')
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.')
     } finally {

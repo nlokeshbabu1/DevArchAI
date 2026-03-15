@@ -41,6 +41,9 @@ class User(Base):
     is_verified = Column(Boolean, default=False, nullable=False)
     role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
 
+    # Subscription plan
+    subscription_plan = Column(String(50), default="free", nullable=False)  # free, plus, pro, enterprise
+
     # Current organization
     current_org_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
 
