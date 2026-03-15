@@ -1,8 +1,0 @@
-backend
-infrastructure
-docs
-scripts
-.git
-.gitignore
-*.md
-node_modules
