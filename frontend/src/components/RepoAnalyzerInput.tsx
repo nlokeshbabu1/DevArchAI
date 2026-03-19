@@ -5,6 +5,7 @@ import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap
 import axios from 'axios'
 import { Button, Card } from '../components/ui'
 import { cn } from '../lib/utils'
+import { ScanProgress } from './ScanProgress'
 
 interface DevOpsStack {
   docker: boolean
@@ -76,6 +77,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [showProgress, setShowProgress] = useState(false)
+  const [currentScanId, setCurrentScanId] = useState<string>('')
   const [currentStep, setCurrentStep] = useState(0)
   const [progressPercent, setProgressPercent] = useState(0)
 
@@ -106,67 +108,22 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
 
   const mutation = useMutation({
     mutationFn: async (url: string) => {
-      // Show progress UI
-      setShowProgress(true)
-      setCurrentStep(0)
-      setProgressPercent(0)
-
-      // Simulate progress through steps
-      const stepDuration = 800 // ms per step
-      const totalSteps = scanSteps.length
-
-      for (let i = 0; i < totalSteps; i++) {
-        setCurrentStep(i)
-        const targetProgress = ((i + 1) / totalSteps) * 100
-        const progressIncrement = (targetProgress - progressPercent) / 10
-        for (let j = 0; j < 10; j++) {
-          setProgressPercent(prev => prev + progressIncrement)
-          await new Promise(resolve => setTimeout(resolve, stepDuration / 10))
-        }
-      }
-
-      // Call the unified analysis endpoint
+      // Call the unified analysis endpoint and get scan_id
       const response = await axios.post('/api/v1/analyze/repo', {
         repo_url: url,
         branch: selectedBranch || 'main'
       })
 
-      return response.data
+      const data = response.data
+      const scanId = data.scan_id || `scan-${Date.now()}`
+      setCurrentScanId(scanId)
+      setShowProgress(true)
+
+      return data
     },
     onSuccess: (data) => {
       setResult(data)
-      setProgressPercent(100)
       onAnalysisComplete?.(data)
-
-      // Navigate to report page with findings
-      if (data.findings && data.findings.length > 0) {
-        // Store findings in sessionStorage for the report page
-        sessionStorage.setItem('latestFindings', JSON.stringify(data.findings))
-        sessionStorage.setItem('latestScores', JSON.stringify({
-          overall: data.security_score || 0,
-          grade: data.security_score >= 90 ? 'A' : data.security_score >= 80 ? 'B' : data.security_score >= 70 ? 'C' : data.security_score >= 60 ? 'D' : 'F',
-          category_scores: data.severity_counts || {}
-        }))
-        sessionStorage.setItem('scannedBranch', selectedBranch)
-        
-        setTimeout(() => {
-          navigate(`/report/analysis-${Date.now()}`, {
-            state: {
-              findings: data.findings,
-              scores: {
-                overall: data.security_score || 0,
-                grade: data.security_score >= 90 ? 'A' : data.security_score >= 80 ? 'B' : data.security_score >= 70 ? 'C' : data.security_score >= 60 ? 'D' : 'F',
-                category_scores: data.severity_counts || {}
-              },
-              repoUrl: data.repo_url || repoUrl,
-              repoName: data.repo || repoUrl.split('/').slice(-2).join('/'),
-              filesAnalyzed: data.files_analyzed || 0,
-              branch: selectedBranch,
-              detectedStack: data.devops_stack || {},
-            }
-          })
-        }, 500)
-      }
     },
     onError: () => {
       setShowProgress(false)

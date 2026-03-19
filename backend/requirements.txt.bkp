@@ -1,0 +1,96 @@
+# ===========================================
+# Core Dependencies
+# ===========================================
+# Using latest stable versions with all security fixes
+fastapi==0.115.12
+starlette==0.41.3
+uvicorn[standard]==0.34.2
+pydantic==2.10.6
+pydantic-settings==2.7.1
+email-validator==2.2.0
+psycopg2-binary==2.9.10
+
+# ===========================================
+# Database
+# ===========================================
+sqlalchemy==2.0.38
+asyncpg==0.30.0
+alembic==1.14.1
+aiosqlite==0.20.0
+
+# ===========================================
+# Parsing Libraries
+# ===========================================
+python-terraform==0.10.1
+pyyaml==6.0.2
+dockerfile-parse==2.0.1
+
+# ===========================================
+# AI/LLM
+# ===========================================
+# Security fixes for langchain ecosystem - using latest compatible versions
+langchain==0.3.27
+langchain-openai==0.3.7
+langchain-core==0.3.80
+langchain-community==0.3.27
+langchain-text-splitters==0.3.9
+
+# ===========================================
+# Security & Authentication
+# ===========================================
+# Security fix: 3.3.0 has vulnerabilities PYSEC-2024-232, PYSEC-2024-233
+python-jose[cryptography]==3.5.0
+# ecdsa will be upgraded automatically as dependency of python-jose
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# ===========================================
+# Cache & Task Queue
+# ===========================================
+redis==5.2.1
+celery==5.4.0
+
+# ===========================================
+# AWS SDK
+# ===========================================
+boto3==1.36.10
+
+# ===========================================
+# Report Export
+# ===========================================
+openpyxl==3.1.5
+xlsxwriter==3.2.2
+reportlab==4.3.1
+
+# ===========================================
+# Utilities
+# ===========================================
+# Security fix: 0.0.6 has vulnerabilities CVE-2024-53981, CVE-2026-24486
+python-multipart==0.0.22
+httpx==0.28.1
+aiofiles==24.1.0
+
+# ===========================================
+# Logging
+# ===========================================
+structlog==25.1.0
+python-json-logger==3.2.1
+
+# ===========================================
+# Code Quality
+# ===========================================
+ruff==0.9.6
+mypy==1.15.0
+
+# ===========================================
+# Testing
+# ===========================================
+pytest==8.3.5
+pytest-asyncio==0.25.3
+pytest-cov==6.0.0
+
+# ===========================================
+# Security Auditing (for CI/CD)
+# ===========================================
+pip-audit==2.7.3
+safety==3.2.9

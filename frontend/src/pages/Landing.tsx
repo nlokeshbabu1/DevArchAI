@@ -114,9 +114,9 @@ export function Landing() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
             {[
               { label: 'Repositories Analyzed', value: '10,000+' },
-              { label: 'Security Rules', value: '500+' },
+              { label: 'Security Rules', value: '39' },
+              { label: 'Categories', value: '4' },
               { label: 'Avg. Analysis Time', value: '< 30s' },
-              { label: 'Accuracy Rate', value: '99.9%' },
             ].map((stat, index) => (
               <motion.div
                 key={stat.label}
@@ -178,7 +178,7 @@ export function Landing() {
                 step: '03',
                 icon: Shield,
                 title: 'Run Security Rules',
-                description: '500+ security rules check for misconfigurations, vulnerabilities, and best practices.',
+                description: '39+ security rules check for misconfigurations, vulnerabilities, and best practices.',
               },
               {
                 step: '04',

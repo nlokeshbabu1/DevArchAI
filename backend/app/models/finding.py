@@ -83,6 +83,12 @@ class Finding(Base):
 
     # Relationship
     scan = relationship("Scan", back_populates="findings")
+    # Use string for back_populates only - foreign_keys not needed here
+    ai_suggestions = relationship(
+        "AISuggestion",
+        back_populates="finding",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Finding(id={self.id}, rule_id={self.rule_id}, severity={self.severity})>"

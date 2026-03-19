@@ -2,6 +2,7 @@
 Celery Tasks for Repository Scanning with Dynamic Scanner Execution
 """
 
+import asyncio
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,22 @@ from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
 
 logger = get_logger(__name__)
+
+
+def _safe_await(coro):
+    """
+    Safely await a coroutine from sync code.
+    If there's a running event loop, schedule the coroutine; otherwise run it.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # Running in async context - schedule the task but don't await
+        # This is a fire-and-forget approach for progress updates
+        asyncio.create_task(coro)
+        return None
+    except RuntimeError:
+        # No running loop - safe to run synchronously
+        return asyncio.run(coro)
 
 
 class DetectedTechnologyStack:
@@ -112,14 +129,38 @@ def _is_kubernetes_file(file_path: str) -> bool:
 class SyncScanService:
     """Synchronous scan service for Celery tasks with dynamic scanner execution."""
 
-    def __init__(self, db, include_ai_explanations: bool = True):
+    def __init__(
+        self, 
+        db, 
+        include_ai_explanations: bool = True,
+        progress_store = None,
+        scan_id: str = None,
+    ):
         self.db = db
         self.include_ai_explanations = include_ai_explanations
+        self.progress_store = progress_store
+        self.scan_id = scan_id
         self.rule_registry = RuleRegistry()
         self.scoring_engine = ScoringEngine()
         self.repo_scanner = RepositoryScanner()
         self.parser_registry = self._setup_parsers()
         self.detected_stack = DetectedTechnologyStack()
+
+    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None):
+        """Update progress in the store (async)."""
+        if self.progress_store and self.scan_id:
+            await self.progress_store.update_status(self.scan_id, "running", progress, message)
+            if message:
+                await self.progress_store.add_log(self.scan_id, message)
+            if step_name:
+                from app.schemas.scan_progress import StepStatus
+                # Mark previous running step as completed
+                for step in (await self.progress_store.get_progress(self.scan_id)).steps:
+                    if step.status == StepStatus.RUNNING:
+                        await self.progress_store.update_step(self.scan_id, step.name, StepStatus.COMPLETED, 100)
+                        break
+                # Mark current step as running
+                await self.progress_store.update_step(self.scan_id, step_name, StepStatus.RUNNING, progress)
 
     def _setup_parsers(self) -> ParserRegistry:
         """Initialize and register all parsers."""
@@ -136,6 +177,8 @@ class SyncScanService:
         progress_callback: Optional[callable] = None,
     ) -> Scan:
         """Execute a complete scan workflow synchronously with dynamic scanner execution."""
+        import asyncio
+        
         start_time = time.time()
         repo_path = None
 
@@ -144,6 +187,10 @@ class SyncScanService:
             scan.status = ScanStatus.PROCESSING
             scan.started_at = datetime.utcnow()
             self.db.commit()
+
+            # Initialize progress tracking
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub"))
 
             self._update_progress(progress_callback, 10, "Cloning repository...")
 
@@ -155,16 +202,29 @@ class SyncScanService:
                 settings.GITHUB_TOKEN,
             )
 
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository"))
+
             self._update_progress(progress_callback, 20, "Detecting technology stack...")
 
             # Detect technology stack from file list
             all_files = self._collect_all_files(Path(repo_path))
             self.detected_stack = detect_technology_stack_from_files(all_files)
 
+            # Update detected stack in progress store and get detected technologies
+            detected = []
+            if self.progress_store and self.scan_id:
+                detected = self.detected_stack.get_detected_technologies()
+                if detected:
+                    _safe_await(self.progress_store.update_detected_stack(self.scan_id, detected))
+
             logger.info(
                 "Technology stack detected",
-                stack=",".join(self.detected_stack.get_detected_technologies()) or "none",
+                stack=",".join(detected) or "none",
             )
+
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies"))
 
             self._update_progress(progress_callback, 30, "Loading files...")
 
@@ -174,16 +234,25 @@ class SyncScanService:
             if not parsed_files:
                 raise ValueError("No analyzable files found in repository")
 
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(50, f"Running rule engine ({len(parsed_files)} files)...", "Running security rules"))
+
             self._update_progress(progress_callback, 50, f"Running rule engine ({len(parsed_files)} files)...")
 
             # Extract resources and run rules
             resources = self._extract_resources(parsed_files)
             rule_findings = self._run_rules(resources, parsed_files)
 
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(80, "Calculating scores...", "Generating AI suggestions"))
+
             self._update_progress(progress_callback, 80, "Calculating scores...")
 
             # Calculate scores
             scores = self.scoring_engine.calculate_scores(rule_findings)
+
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(90, "Saving results...", "Calculating score"))
 
             self._update_progress(progress_callback, 90, "Saving results...")
 
@@ -205,6 +274,11 @@ class SyncScanService:
 
             self.db.commit()
 
+            # Mark scan as complete in progress store
+            if self.progress_store and self.scan_id:
+                _safe_await(self.progress_store.complete_scan(self.scan_id))
+                _safe_await(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
+
             self._update_progress(progress_callback, 100, "Scan complete")
 
             logger.info(
@@ -213,7 +287,7 @@ class SyncScanService:
                 duration=analysis_duration,
                 overall_score=scores.score,
                 findings_count=len(rule_findings),
-                detected_stack=",".join(self.detected_stack.get_detected_technologies()) or "none",
+                detected_stack=",".join(detected) or "none",
             )
 
         except Exception as e:
@@ -222,6 +296,10 @@ class SyncScanService:
             scan.error_message = str(e)
             scan.completed_at = datetime.utcnow()
             self.db.commit()
+
+            # Mark scan as failed in progress store
+            if self.progress_store and self.scan_id:
+                _safe_await(self.progress_store.fail_scan(self.scan_id, str(e)))
 
             self._update_progress(progress_callback, 0, f"Failed: {str(e)}")
             raise
@@ -464,6 +542,182 @@ def scan_repository_task(
             # Get findings count before session closes
             findings_count = len(updated_scan.findings) if hasattr(updated_scan, 'findings') else 0
             overall_score = updated_scan.overall_score
+            
+            # Extract detected technologies from findings
+            detected_technologies = []
+            devops_stack = {
+                'docker': False,
+                'terraform': False,
+                'kubernetes': False,
+                'helm': False,
+                'cicd': None,
+                'monitoring': False,
+                'prometheus': False,
+                'grafana': False,
+                'ansible': False,
+                'pulumi': False,
+                'security_scanning': False,
+                'aws': False,
+                'azure': False,
+                'gcp': False,
+            }
+            
+            # Analyze findings to detect technologies
+            if hasattr(updated_scan, 'findings') and updated_scan.findings:
+                categories = set()
+                for finding in updated_scan.findings:
+                    if hasattr(finding, 'category'):
+                        cat = finding.category.value if hasattr(finding.category, 'value') else str(finding.category)
+                        categories.add(cat.lower())
+                    
+                    # Detect from file paths
+                    if hasattr(finding, 'file_path') and finding.file_path:
+                        path = finding.file_path.lower()
+                        
+                        # Containerization
+                        if 'docker' in path or 'dockerfile' in path or 'docker-compose' in path:
+                            if 'docker' not in detected_technologies:
+                                detected_technologies.append('docker')
+                            devops_stack['docker'] = True
+                        
+                        # Infrastructure as Code - Terraform
+                        if 'terraform' in path or '.tf' in path or '.tfvars' in path:
+                            if 'terraform' not in detected_technologies:
+                                detected_technologies.append('terraform')
+                            devops_stack['terraform'] = True
+                        
+                        # Kubernetes
+                        if 'kubernetes' in path or 'k8s' in path or '.yaml' in path or '.yml' in path:
+                            if 'kubernetes' not in detected_technologies:
+                                detected_technologies.append('kubernetes')
+                            devops_stack['kubernetes'] = True
+                        
+                        # Helm
+                        if 'helm' in path or 'chart.yaml' in path or 'chart.yml' in path or 'values.yaml' in path:
+                            if 'helm' not in detected_technologies:
+                                detected_technologies.append('helm')
+                            devops_stack['helm'] = True
+                        
+                        # CI/CD
+                        if '.github/workflows' in path or 'circleci' in path or 'jenkins' in path or 'gitlab-ci' in path or '.gitlab-ci.yml' in path or 'azure-pipelines' in path or 'buildkite' in path:
+                            if '.github' in path:
+                                devops_stack['cicd'] = 'github_actions'
+                            elif 'circleci' in path:
+                                devops_stack['cicd'] = 'circleci'
+                            elif 'jenkins' in path:
+                                devops_stack['cicd'] = 'jenkins'
+                            elif 'gitlab' in path:
+                                devops_stack['cicd'] = 'gitlab_ci'
+                            elif 'azure-pipelines' in path:
+                                devops_stack['cicd'] = 'azure_devops'
+                            else:
+                                devops_stack['cicd'] = 'other'
+                            if 'cicd' not in detected_technologies:
+                                detected_technologies.append('cicd')
+                        
+                        # Monitoring & Observability
+                        if 'prometheus' in path or 'alertmanager' in path or 'promtail' in path:
+                            if 'prometheus' not in detected_technologies:
+                                detected_technologies.append('prometheus')
+                            devops_stack['prometheus'] = True
+                            devops_stack['monitoring'] = True
+                        if 'grafana' in path:
+                            if 'grafana' not in detected_technologies:
+                                detected_technologies.append('grafana')
+                            devops_stack['grafana'] = True
+                            devops_stack['monitoring'] = True
+                        if 'loki' in path or 'tempo' in path:
+                            if 'loki' not in detected_technologies:
+                                detected_technologies.append('loki')
+                            devops_stack['monitoring'] = True
+                        if 'jaeger' in path:
+                            if 'jaeger' not in detected_technologies:
+                                detected_technologies.append('jaeger')
+                            devops_stack['monitoring'] = True
+                        
+                        # Configuration Management
+                        if 'ansible' in path or '.yml' in path and 'playbook' in path or 'inventory' in path:
+                            if 'ansible' not in detected_technologies:
+                                detected_technologies.append('ansible')
+                            devops_stack['ansible'] = True
+                        
+                        # Infrastructure as Code - Pulumi
+                        if 'pulumi' in path or 'Pulumi.yaml' in path or 'Pulumi.dev.yaml' in path:
+                            if 'pulumi' not in detected_technologies:
+                                detected_technologies.append('pulumi')
+                            devops_stack['pulumi'] = True
+                        
+                        # Security Scanning
+                        if 'security' in path or 'trivy' in path or 'snyk' in path or 'sonarqube' in path or 'aquasec' in path:
+                            if 'security_scanning' not in detected_technologies:
+                                detected_technologies.append('security_scanning')
+                            devops_stack['security_scanning'] = True
+                        
+                        # Cloud Providers - AWS
+                        if 'aws' in path or 'amazon' in path or '.aws' in path or 'ec2' in path or 's3' in path or 'lambda' in path or 'cloudformation' in path or 'iam' in path or 'vpc' in path or 'rds' in path or 'eks' in path or 'ecs' in path or 'dynamodb' in path or 'sqs' in path or 'sns' in path or 'cloudwatch' in path or 'cloudfront' in path or 'route53' in path or 'elastic' in path:
+                            if 'aws' not in detected_technologies:
+                                detected_technologies.append('aws')
+                            devops_stack['aws'] = True
+                        
+                        # Cloud Providers - Azure
+                        if 'azure' in path or 'microsoft' in path or '.azure' in path or 'aks' in path or 'arm' in path or 'bicep' in path or 'app service' in path or 'function app' in path or 'cosmos' in path or 'blob storage' in path or 'azure devops' in path or 'azure ad' in path or 'key vault' in path or 'service bus' in path:
+                            if 'azure' not in detected_technologies:
+                                detected_technologies.append('azure')
+                            devops_stack['azure'] = True
+                        
+                        # Cloud Providers - GCP
+                        if 'gcp' in path or 'google' in path or '.gcp' in path or 'gke' in path or 'bigquery' in path or 'cloud functions' in path or 'cloud run' in path or 'gcs' in path or 'pubsub' in path or 'cloud sql' in path or 'iam' in path and 'google' in path:
+                            if 'gcp' not in detected_technologies:
+                                detected_technologies.append('gcp')
+                            devops_stack['gcp'] = True
+                        
+                        # Additional DevOps Tools
+                        if 'nginx' in path or 'apache' in path or 'traefik' in path or 'envoy' in path:
+                            if 'load_balancer' not in detected_technologies:
+                                detected_technologies.append('load_balancer')
+                        if 'redis' in path or 'memcached' in path:
+                            if 'redis' not in detected_technologies:
+                                detected_technologies.append('redis')
+                        if 'postgres' in path or 'postgresql' in path or 'mysql' in path or 'mongodb' in path or 'database' in path:
+                            if 'database' not in detected_technologies:
+                                detected_technologies.append('database')
+                        if 'vault' in path or 'secrets' in path:
+                            if 'vault' not in detected_technologies:
+                                detected_technologies.append('vault')
+                        if 'consul' in path:
+                            if 'consul' not in detected_technologies:
+                                detected_technologies.append('consul')
+                        if 'istio' in path or 'linkerd' in path or 'service mesh' in path:
+                            if 'service_mesh' not in detected_technologies:
+                                detected_technologies.append('service_mesh')
+                        if 'argocd' in path or 'flux' in path or 'gitops' in path:
+                            if 'gitops' not in detected_technologies:
+                                detected_technologies.append('gitops')
+                        if 'jenkins' in path:
+                            if 'jenkins' not in detected_technologies:
+                                detected_technologies.append('jenkins')
+                        if 'nexus' in path or 'artifactory' in path or 'package registry' in path:
+                            if 'artifact_registry' not in detected_technologies:
+                                detected_technologies.append('artifact_registry')
+                
+                # Add categories as detected technologies
+                if 'security' in categories and 'security_scanning' not in detected_technologies:
+                    detected_technologies.append('security')
+                if 'reliability' in categories:
+                    detected_technologies.append('reliability')
+                if 'scalability' in categories:
+                    detected_technologies.append('scalability')
+                if 'cost' in categories:
+                    detected_technologies.append('cost_optimization')
+                if 'observability' in categories:
+                    if 'observability' not in detected_technologies:
+                        detected_technologies.append('observability')
+                    if 'monitoring' not in detected_technologies:
+                        detected_technologies.append('monitoring')
+                        devops_stack['monitoring'] = True
+            
+            # Remove duplicates and sort
+            detected_technologies = sorted(list(set(detected_technologies)))
         finally:
             db.close()
 
@@ -471,6 +725,8 @@ def scan_repository_task(
             "Repository scan completed",
             scan_id=scan_id,
             score=overall_score,
+            findings=findings_count,
+            technologies=len(detected_technologies),
         )
 
         return {
@@ -478,6 +734,8 @@ def scan_repository_task(
             "scan_id": str(scan_id),
             "overall_score": overall_score,
             "findings_count": findings_count,
+            "detected_technologies": detected_technologies,
+            "devops_stack": devops_stack,
         }
 
     except Exception as exc:

@@ -66,31 +66,35 @@ export function Findings() {
   }, [token])
 
   // Fetch all scans first, then get findings for each scan
-  const { data: scans } = useQuery({
+  const { data: scans, isLoading: scansLoading } = useQuery({
     queryKey: ['scans'],
     queryFn: async () => {
-      const response = await api.get('/scans')
+      const response = await api.get('/scans?page_size=100')
       return response.data
     },
+    refetchInterval: 5000, // Poll every 5 seconds
   })
 
   // Fetch findings for all scans
-  const { data: allFindings = [], isLoading } = useQuery({
+  const { data: allFindings = [], isLoading: findingsLoading } = useQuery({
     queryKey: ['all-findings', scans],
     queryFn: async () => {
       if (!scans || scans.length === 0) return []
 
+      // Fetch findings for each scan
       const findingsPromises = scans.map((scan: any) =>
         api.get(`/scans/${scan.id}/findings`)
       )
 
       const results = await Promise.all(findingsPromises)
-      return results.flatMap(r => r.data)
+      return results.flatMap(r => r.data || [])
     },
     enabled: !!scans && scans.length > 0,
+    refetchInterval: 5000, // Poll every 5 seconds for live updates
   })
 
   const findings = allFindings
+  const isLoading = scansLoading || findingsLoading
 
   const severityIcons: Record<string, any> = {
     critical: AlertCircle,
@@ -180,7 +184,7 @@ export function Findings() {
               placeholder="Search findings..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
           <div className="flex gap-2">
@@ -188,7 +192,7 @@ export function Findings() {
               multiple
               value={severityFilter}
               onChange={(e) => setSeverityFilter(Array.from(e.target.selectedOptions, option => option.value))}
-              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground focus:outline-none"
+              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="critical">Critical</option>
               <option value="high">High</option>
@@ -200,7 +204,7 @@ export function Findings() {
               multiple
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(Array.from(e.target.selectedOptions, option => option.value))}
-              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground focus:outline-none"
+              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="security">Security</option>
               <option value="reliability">Reliability</option>

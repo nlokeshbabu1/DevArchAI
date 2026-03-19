@@ -40,7 +40,7 @@ export function Login() {
       try {
         const userResponse = await authApi.getCurrentUser()
         setUser(userResponse)
-        
+
         // Navigate to dashboard or intended destination AFTER user is set
         const redirectPath = sessionStorage.getItem('postLoginRedirect')
         const upgradeIntent = sessionStorage.getItem('upgradeIntent')
@@ -63,14 +63,9 @@ export function Login() {
       } catch (err) {
         // User info fetch failed but login succeeded
         console.warn('Failed to fetch user info', err)
-        // Still redirect to intended destination
-        const redirectPath = sessionStorage.getItem('postLoginRedirect')
-        if (redirectPath) {
-          sessionStorage.removeItem('postLoginRedirect')
-          navigate(redirectPath)
-        } else {
-          navigate('/dashboard')
-        }
+        
+        // Default to dashboard on error
+        navigate('/dashboard')
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.')

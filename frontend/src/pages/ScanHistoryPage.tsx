@@ -1,0 +1,382 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
+import { 
+  FolderGit2, Clock, CheckCircle, XCircle, AlertCircle, Loader2, 
+  Search, Filter, ArrowRight, BarChart3, Shield, Zap
+} from 'lucide-react'
+import { Card, Button } from '../components/ui-animated'
+import { Badge } from '../components/ui'
+import { scansApi } from '../api/endpoints/scans'
+import { cn } from '../lib/utils'
+
+interface Scan {
+  id: string
+  repository_url: string
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  overall_score?: number
+  security_score?: number
+  created_at: string
+  completed_at?: string
+  analysis_duration_seconds?: number
+  error_message?: string
+}
+
+type StatusFilter = 'all' | 'completed' | 'failed' | 'processing'
+
+export function ScanHistoryPage() {
+  const navigate = useNavigate()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortBy, setSortBy] = useState<'date' | 'score'>('date')
+
+  // Fetch all scans (including anonymous for demo purposes)
+  const { data: scans, isLoading, error, refetch } = useQuery({
+    queryKey: ['scans-history'],
+    queryFn: async () => {
+      try {
+        // Fetch both authenticated and anonymous scans for demo
+        const response = await scansApi.listScans(undefined, 1, 100)
+        console.log('Scan history response:', response)
+        return response || []
+      } catch (err) {
+        console.error('Failed to fetch scan history:', err)
+        return []
+      }
+    },
+    refetchInterval: 10000, // Poll every 10 seconds
+    retry: 2,
+  })
+
+  // Filter and sort scans
+  const filteredScans = (scans || [])
+    .filter((scan: Scan) => {
+      const matchesSearch = scan.repository_url.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || scan.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+    .sort((a: Scan, b: Scan) => {
+      if (sortBy === 'date') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+      return (b.overall_score || 0) - (a.overall_score || 0)
+    })
+
+  // Calculate stats
+  const stats = {
+    total: scans?.length || 0,
+    completed: scans?.filter((s: Scan) => s.status === 'completed').length || 0,
+    failed: scans?.filter((s: Scan) => s.status === 'failed').length || 0,
+    inProgress: scans?.filter((s: Scan) => ['processing', 'queued', 'pending'].includes(s.status)).length || 0,
+  }
+
+  const statusIcons: Record<string, any> = {
+    completed: CheckCircle,
+    failed: XCircle,
+    processing: Loader2,
+    queued: Clock,
+    pending: Clock,
+    cancelled: AlertCircle,
+  }
+
+  const statusColors: Record<string, string> = {
+    completed: 'bg-green-500/10 text-green-400 border-green-500/30',
+    failed: 'bg-red-500/10 text-red-400 border-red-500/30',
+    processing: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+    queued: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+    pending: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
+    cancelled: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-400'
+    if (score >= 60) return 'text-yellow-400'
+    if (score >= 50) return 'text-orange-400'
+    return 'text-red-400'
+  }
+
+  const getScoreGrade = (score: number) => {
+    if (score >= 90) return 'A'
+    if (score >= 80) return 'B'
+    if (score >= 70) return 'C'
+    if (score >= 60) return 'D'
+    return 'F'
+  }
+
+  const handleScanClick = (scanId: string) => {
+    navigate(`/scan/result/${scanId}`)
+  }
+
+  const handleNewScan = () => {
+    navigate('/scan')
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-48 bg-white/10 rounded animate-pulse" />
+          <div className="h-10 w-32 bg-white/10 rounded animate-pulse" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-24 bg-white/5 rounded-xl animate-pulse" />
+          ))}
+        </div>
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-20 bg-white/5 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="p-12 text-center" hover={false}>
+        <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-foreground mb-2">Failed to Load Scans</h3>
+        <p className="text-muted-foreground mb-4">{(error as Error).message}</p>
+        <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Scan History</h1>
+          <p className="text-muted-foreground mt-1">
+            View and manage all your repository scans
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleNewScan}
+          icon={<Zap className="h-4 w-4" />}
+          glow
+        >
+          New Scan
+        </Button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-4">
+        <Card className="p-4" hover={false}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <FolderGit2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{stats.total}</div>
+              <div className="text-sm text-muted-foreground">Total Scans</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4" hover={false}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <CheckCircle className="h-5 w-5 text-green-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{stats.completed}</div>
+              <div className="text-sm text-muted-foreground">Completed</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4" hover={false}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-500/10">
+              <Loader2 className="h-5 w-5 text-blue-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{stats.inProgress}</div>
+              <div className="text-sm text-muted-foreground">In Progress</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4" hover={false}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-500/10">
+              <XCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{stats.failed}</div>
+              <div className="text-sm text-muted-foreground">Failed</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4" hover={false}>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search repositories..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="all">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="processing">In Progress</option>
+              <option value="failed">Failed</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'date' | 'score')}
+              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="date">Sort by Date</option>
+              <option value="score">Sort by Score</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Scans List */}
+      <div className="space-y-4">
+        {filteredScans.length === 0 ? (
+          <Card className="p-12 text-center" hover={false}>
+            <div className="inline-flex p-4 rounded-2xl bg-white/5 mb-4">
+              <FolderGit2 className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              {scans?.length === 0 ? 'No scans yet' : 'No scans found'}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {scans?.length === 0
+                ? 'Start by scanning your first repository'
+                : 'Try adjusting your search or filters'}
+            </p>
+            {scans?.length === 0 && (
+              <Button
+                variant="primary"
+                onClick={handleNewScan}
+                icon={<Zap className="h-4 w-4" />}
+              >
+                Start First Scan
+              </Button>
+            )}
+          </Card>
+        ) : (
+          filteredScans.map((scan: Scan) => {
+            const Icon = statusIcons[scan.status]
+            const isRunning = ['processing', 'queued', 'pending'].includes(scan.status)
+            const repoName = scan.repository_url.split('/').slice(-2).join('/')
+
+            return (
+              <motion.div
+                key={scan.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.01 }}
+              >
+                <Card
+                  className="p-4 cursor-pointer transition-all hover:border-primary/30"
+                  hover={false}
+                  onClick={() => handleScanClick(scan.id)}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className={cn(
+                        'p-2 rounded-lg',
+                        statusColors[scan.status]
+                      )}>
+                        <Icon className={cn(
+                          'h-5 w-5',
+                          isRunning && 'animate-spin'
+                        )} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {repoName}
+                          </h3>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              'text-xs',
+                              statusColors[scan.status]
+                            )}
+                          >
+                            {scan.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(scan.created_at).toLocaleDateString()}
+                          </span>
+                          {scan.analysis_duration_seconds && (
+                            <span>{scan.analysis_duration_seconds.toFixed(0)}s</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      {scan.overall_score !== undefined && scan.overall_score !== null && (
+                        <div className="text-right">
+                          <div className={cn(
+                            'text-2xl font-bold',
+                            getScoreColor(scan.overall_score)
+                          )}>
+                            {scan.overall_score.toFixed(1)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Grade: {getScoreGrade(scan.overall_score)}
+                          </div>
+                        </div>
+                      )}
+                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  {isRunning && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="text-foreground">{scan.progress}%</span>
+                      </div>
+                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-primary to-indigo-500 rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${scan.progress}%` }}
+                          transition={{ duration: 0.5 }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {scan.error_message && (
+                    <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <p className="text-sm text-red-400">{scan.error_message}</p>
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}

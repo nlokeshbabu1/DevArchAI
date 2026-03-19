@@ -1,14 +1,16 @@
-"""Repository routes."""
+"""Repository routes - Fixed UUID types."""
 
-
+import asyncio
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
 
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.repository import Repository
-from app.models.scan import Scan
+from app.models.scan import Scan, ScanStatus
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.repository import (
@@ -18,8 +20,22 @@ from app.schemas.repository import (
     RepositoryUpdate,
 )
 from app.utils.repo_downloader import RepoDownloader
+from app.workers.tasks.scan_repository import scan_repository_task
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/repositories", tags=["Repositories"])
+
+
+def _parse_repo_id(repo_id: str) -> UUID:
+    """Parse repository ID string to UUID."""
+    try:
+        return UUID(repo_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid repository ID format: {repo_id}. Expected UUID."
+        )
 
 
 @router.post("", response_model=RepositoryResponse, status_code=status.HTTP_201_CREATED)
@@ -129,14 +145,16 @@ async def list_repositories(
 
 @router.get("/{repo_id}", response_model=RepositoryResponse)
 async def get_repository(
-    repo_id: int,
+    repo_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific repository."""
+    repo_uuid = _parse_repo_id(repo_id)
+    
     result = await db.execute(
         select(Repository).where(
-            Repository.id == repo_id,
+            Repository.id == repo_uuid,
             Repository.user_id == current_user.id,
             Repository.is_active == True,
         )
@@ -154,15 +172,17 @@ async def get_repository(
 
 @router.put("/{repo_id}", response_model=RepositoryResponse)
 async def update_repository(
-    repo_id: int,
+    repo_id: str,
     repo_data: RepositoryUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a repository."""
+    repo_uuid = _parse_repo_id(repo_id)
+    
     result = await db.execute(
         select(Repository).where(
-            Repository.id == repo_id,
+            Repository.id == repo_uuid,
             Repository.user_id == current_user.id,
         )
     )
@@ -190,14 +210,16 @@ async def update_repository(
 
 @router.delete("/{repo_id}", response_model=MessageResponse)
 async def delete_repository(
-    repo_id: int,
+    repo_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a repository (soft delete)."""
+    repo_uuid = _parse_repo_id(repo_id)
+    
     result = await db.execute(
         select(Repository).where(
-            Repository.id == repo_id,
+            Repository.id == repo_uuid,
             Repository.user_id == current_user.id,
         )
     )
@@ -218,14 +240,17 @@ async def delete_repository(
 
 @router.post("/{repo_id}/scan", response_model=MessageResponse)
 async def trigger_repository_scan(
-    repo_id: int,
+    repo_id: str,
+    branch: str = Query(default="main"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger a new scan for the repository."""
+    repo_uuid = _parse_repo_id(repo_id)
+    
     result = await db.execute(
         select(Repository).where(
-            Repository.id == repo_id,
+            Repository.id == repo_uuid,
             Repository.user_id == current_user.id,
             Repository.is_active == True,
         )
@@ -243,22 +268,35 @@ async def trigger_repository_scan(
         user_id=current_user.id,
         repository_id=repository.id,
         repository_url=repository.url,
-        branch=repository.default_branch,
-        status="pending",
+        branch=branch,
+        status=ScanStatus.PENDING,
     )
 
     db.add(scan)
     await db.commit()
+    await db.refresh(scan)
 
-    # Trigger background scan (in production, use Celery)
-    from app.workers.scan_worker import execute_scan_background
-    asyncio.create_task(execute_scan_background(scan.id))
+    # Start Celery task
+    try:
+        task = scan_repository_task.delay(
+            scan_id=str(scan.id),
+            repository_url=repository.url,
+            branch=branch,
+            include_ai_explanations=True,
+        )
+        scan.celery_task_id = task.id
+        scan.status = ScanStatus.QUEUED
+        await db.commit()
+        
+        logger.info(f"Scan triggered for repository {repository.name}", scan_id=str(scan.id))
+    except Exception as e:
+        logger.exception(f"Failed to trigger scan: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger scan: {str(e)}",
+        )
 
     return MessageResponse(
         message=f"Scan triggered for repository {repository.name}",
         success=True,
     )
-
-
-# Import asyncio for background task
-import asyncio

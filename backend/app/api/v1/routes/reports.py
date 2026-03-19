@@ -1,15 +1,18 @@
-"""Report routes."""
+"""Report routes - Fixed UUID types."""
 
 
+import structlog
 from datetime import datetime
 from io import BytesIO
+from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.report import Report
@@ -22,7 +25,20 @@ from app.schemas.report import (
     ReportSummary,
 )
 
+logger = structlog.get_logger(__name__)
+
 router = APIRouter(prefix="/reports", tags=["Reports"])
+
+
+def _parse_report_id(report_id: str) -> UUID:
+    """Parse report ID string to UUID."""
+    try:
+        return UUID(report_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid report ID format: {report_id}. Expected UUID."
+        )
 
 
 @router.get("", response_model=ReportListResponse)
@@ -66,15 +82,17 @@ async def list_reports(
 
 @router.get("/{report_id}", response_model=ReportResponse)
 async def get_report(
-    report_id: int,
+    report_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific report."""
+    report_uuid = _parse_report_id(report_id)
+    
     result = await db.execute(
         select(Report)
         .join(Scan, Report.scan_id == Scan.id)
-        .where(Report.id == report_id, Scan.user_id == current_user.id)
+        .where(Report.id == report_uuid, Scan.user_id == current_user.id)
     )
     report = result.scalar_one_or_none()
 
@@ -89,17 +107,19 @@ async def get_report(
 
 @router.get("/{report_id}/download")
 async def download_report(
-    report_id: int,
+    report_id: str,
     format: str = Query(default="json", regex="^(json|csv|pdf|xlsx)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Download a report in JSON, CSV, PDF, or Excel format."""
+    report_uuid = _parse_report_id(report_id)
+    
     # Get report
     result = await db.execute(
         select(Report)
         .join(Scan, Report.scan_id == Scan.id)
-        .where(Report.id == report_id, Scan.user_id == current_user.id)
+        .where(Report.id == report_uuid, Scan.user_id == current_user.id)
     )
     report = result.scalar_one_or_none()
 
@@ -111,7 +131,7 @@ async def download_report(
 
     # Get findings
     findings_result = await db.execute(
-        select(Finding).where(Finding.scan_id == report.scan_id)
+        select(Finding).where(Finding.scan_id == str(report.id))
     )
     findings = findings_result.scalars().all()
 
@@ -119,8 +139,8 @@ async def download_report(
         # Build complete JSON report
         report_data = {
             "report": {
-                "id": report.id,
-                "scan_id": report.scan_id,
+                "id": str(report.id),
+                "scan_id": str(report.scan_id),
                 "repository_name": report.repository_name,
                 "repository_url": report.repository_url,
                 "commit_hash": report.commit_hash,
@@ -142,7 +162,7 @@ async def download_report(
             },
             "findings": [
                 {
-                    "id": f.id,
+                    "id": str(f.id),
                     "rule_id": f.rule_id,
                     "rule_name": f.rule_name,
                     "severity": f.severity.value,
@@ -210,24 +230,24 @@ async def download_report(
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
         wb = Workbook()
-        
+
         # Summary Sheet
         ws_summary = wb.active
         ws_summary.title = "Summary"
-        
+
         # Styles
         header_font = Font(bold=True, size=12, color="FFFFFF")
         header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
         title_font = Font(bold=True, size=14)
         cell_alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-        
+
         # Summary data
         ws_summary["A1"] = "DevArchAI Security Report"
         ws_summary["A1"].font = Font(bold=True, size=16)
         ws_summary["A2"] = f"Repository: {report.repository_name}"
         ws_summary["A3"] = f"Scan Date: {report.created_at.strftime('%Y-%m-%d %H:%M')}"
         ws_summary["A4"] = f"Overall Score: {report.overall_score}/100"
-        
+
         # Findings summary
         ws_summary["A6"] = "Findings Summary"
         ws_summary["A6"].font = title_font
@@ -244,10 +264,10 @@ async def download_report(
         ws_summary["A12"] = "Total"
         ws_summary["B12"] = report.total_findings
         ws_summary["B12"].font = Font(bold=True)
-        
+
         # Findings Sheet
         ws_findings = wb.create_sheet(title="Findings")
-        
+
         # Headers
         headers = ["Severity", "Rule ID", "Rule Name", "Category", "Description", "File", "Line"]
         for col, header in enumerate(headers, 1):
@@ -255,7 +275,7 @@ async def download_report(
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = cell_alignment
-        
+
         # Data rows
         severity_colors = {
             "critical": "FF4444",
@@ -264,7 +284,7 @@ async def download_report(
             "low": "6BCB77",
             "info": "4D96FF",
         }
-        
+
         for row_idx, finding in enumerate(findings, 2):
             ws_findings.cell(row=row_idx, column=1, value=finding.severity.value.upper())
             ws_findings.cell(row=row_idx, column=2, value=finding.rule_id)
@@ -273,7 +293,7 @@ async def download_report(
             ws_findings.cell(row=row_idx, column=5, value=finding.description)
             ws_findings.cell(row=row_idx, column=6, value=finding.file_path or "")
             ws_findings.cell(row=row_idx, column=7, value=finding.line_number or "")
-            
+
             # Color code severity
             severity_cell = ws_findings.cell(row=row_idx, column=1)
             severity_fill = PatternFill(
@@ -283,7 +303,7 @@ async def download_report(
             )
             severity_cell.fill = severity_fill
             severity_cell.font = Font(bold=True, color="FFFFFF")
-        
+
         # Adjust column widths
         for col in ws_findings.columns:
             max_length = 0
@@ -296,12 +316,12 @@ async def download_report(
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws_findings.column_dimensions[column].width = adjusted_width
-        
+
         # Save to buffer
         output = BytesIO()
         wb.save(output)
         output.seek(0)
-        
+
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -377,7 +397,7 @@ async def download_report(
             ["Info", str(report.info_count)],
             ["<b>Total</b>", f"<b>{report.total_findings}</b>"],
         ]
-        
+
         summary_table = Table(summary_data, colWidths=[3*inch, 1.5*inch])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
@@ -394,7 +414,7 @@ async def download_report(
 
         # Findings Detail
         elements.append(Paragraph("Detailed Findings", heading_style))
-        
+
         for idx, finding in enumerate(findings[:20], 1):  # Limit to 20 findings for PDF
             severity_color = {
                 "critical": "#FF4444",
@@ -403,12 +423,12 @@ async def download_report(
                 "low": "#6BCB77",
                 "info": "#4D96FF",
             }.get(finding.severity.value, "#CCCCCC")
-            
+
             finding_html = f"""
             <para style="margin-bottom: 8">
                 <b>{idx}. {finding.rule_name}</b><br/>
-                <font color="{severity_color}"><b>{finding.severity.value.upper()}</b></font> | 
-                <b>{finding.rule_id}</b> | 
+                <font color="{severity_color}"><b>{finding.severity.value.upper()}</b></font> |
+                <b>{finding.rule_id}</b> |
                 {finding.category.value}<br/>
                 {finding.description}<br/>
                 <b>Recommendation:</b> {finding.recommendation}<br/>
@@ -417,14 +437,14 @@ async def download_report(
             """
             elements.append(Paragraph(finding_html, normal_style))
             elements.append(Spacer(1, 0.15*inch))
-            
+
             if idx % 5 == 0:
                 elements.append(PageBreak())
 
         # Build PDF
         doc.build(elements)
         buffer.seek(0)
-        
+
         return StreamingResponse(
             buffer,
             media_type="application/pdf",
@@ -436,15 +456,17 @@ async def download_report(
 
 @router.get("/{report_id}/summary", response_model=ReportSummary)
 async def get_report_summary(
-    report_id: int,
+    report_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a brief summary of a report."""
+    report_uuid = _parse_report_id(report_id)
+    
     result = await db.execute(
         select(Report)
         .join(Scan, Report.scan_id == Scan.id)
-        .where(Report.id == report_id, Scan.user_id == current_user.id)
+        .where(Report.id == report_uuid, Scan.user_id == current_user.id)
     )
     report = result.scalar_one_or_none()
 
@@ -455,8 +477,8 @@ async def get_report_summary(
         )
 
     return ReportSummary(
-        id=report.id,
-        scan_id=report.scan_id,
+        id=str(report.id),
+        scan_id=str(report.scan_id),
         repository_name=report.repository_name,
         overall_score=report.overall_score,
         total_findings=report.total_findings,
@@ -468,15 +490,17 @@ async def get_report_summary(
 
 @router.delete("/{report_id}", response_model=MessageResponse)
 async def delete_report(
-    report_id: int,
+    report_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a report."""
+    report_uuid = _parse_report_id(report_id)
+    
     result = await db.execute(
         select(Report)
         .join(Scan, Report.scan_id == Scan.id)
-        .where(Report.id == report_id, Scan.user_id == current_user.id)
+        .where(Report.id == report_uuid, Scan.user_id == current_user.id)
     )
     report = result.scalar_one_or_none()
 
@@ -494,15 +518,17 @@ async def delete_report(
 
 @router.get("/scan/{scan_id}/latest", response_model=ReportResponse)
 async def get_latest_report_for_scan(
-    scan_id: int,
+    scan_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest report for a scan."""
+    scan_uuid = _parse_scan_id(scan_id)
+    
     result = await db.execute(
         select(Report)
         .join(Scan, Report.scan_id == Scan.id)
-        .where(Scan.id == scan_id, Scan.user_id == current_user.id)
+        .where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
         .order_by(Report.created_at.desc())
     )
     report = result.scalar_one_or_none()
@@ -514,3 +540,14 @@ async def get_latest_report_for_scan(
         )
 
     return report
+
+
+def _parse_scan_id(scan_id: str) -> UUID:
+    """Parse scan ID string to UUID."""
+    try:
+        return UUID(scan_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid scan ID format: {scan_id}. Expected UUID."
+        )

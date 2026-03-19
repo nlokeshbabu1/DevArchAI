@@ -13,7 +13,9 @@ import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
 import { BillingPage } from './pages/billing/BillingPage'
 import { BillingSuccess } from './pages/billing/BillingSuccess'
 import { PricingPage } from './pages/billing/PricingPage'
-import { ScanResultsPage } from './pages/ScanResultsPage'
+import { ScanPage } from './pages/ScanPage'
+import { ResultPage } from './pages/ResultPage'
+import { ScanHistoryPage } from './pages/ScanHistoryPage'
 import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
 import { IntegrationsPage } from './pages/dashboard/Integrations'
 import { SettingsPage } from './pages/settings/SettingsPage'
@@ -60,7 +62,8 @@ export default function App() {
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
-      <Route path="/scan/results/:sessionId" element={<ScanResultsPage />} />
+      <Route path="/scan" element={<ScanPage />} />
+      <Route path="/scan/result/:id" element={<ResultPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
@@ -74,15 +77,7 @@ export default function App() {
           </Layout>
         </ProtectedRoute>
       } />
-      
-      <Route path="/report/:id" element={
-        <ProtectedRoute>
-          <Layout>
-            <Report />
-          </Layout>
-        </ProtectedRoute>
-      } />
-      
+
       <Route path="/analyze" element={
         <ProtectedRoute>
           <Layout>
@@ -95,6 +90,14 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <ScansPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/history" element={
+        <ProtectedRoute>
+          <Layout>
+            <ScanHistoryPage />
           </Layout>
         </ProtectedRoute>
       } />
@@ -122,8 +125,6 @@ export default function App() {
           </Layout>
         </ProtectedRoute>
       } />
-
-      <Route path="/pricing" element={<PricingPage />} />
 
       <Route path="/billing/success" element={
         <ProtectedRoute>

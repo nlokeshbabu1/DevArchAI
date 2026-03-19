@@ -1,9 +1,12 @@
+import { useNavigate } from 'react-router-dom'
 import { RepoAnalyzerInput } from '../components/RepoAnalyzerInput'
 import { Sparkles, Shield, Zap, GitBranch } from 'lucide-react'
-import { Card } from '../components/ui'
+import { Card, Button } from '../components/ui'
 import { cn } from '../lib/utils'
 
 export function Home() {
+  const navigate = useNavigate()
+  
   const features = [
     {
       icon: Shield,
@@ -55,7 +58,23 @@ export function Home() {
         {/* Analyzer Component - Centered */}
         <div className="flex justify-center w-full">
           <div className="w-full max-w-3xl">
-            <RepoAnalyzerInput />
+            <Card className="p-8" hover={false}>
+              <div className="text-center space-y-6">
+                <p className="text-muted-foreground">
+                  Use our new scan interface for a better experience
+                </p>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => navigate('/scan')}
+                  className="w-full"
+                  glow
+                >
+                  <GitBranch className="h-5 w-5" />
+                  Start New Scan
+                </Button>
+              </div>
+            </Card>
           </div>
         </div>
 

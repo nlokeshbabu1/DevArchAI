@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Shield, AlertTriangle, AlertCircle, Info, CheckCircle,
@@ -10,6 +10,7 @@ import { Badge } from '../components/ui'
 import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
+import { Layout } from '../components/layout/DashboardLayout'
 
 interface Finding {
   rule_id: string
@@ -23,12 +24,12 @@ interface Finding {
 }
 
 interface ScanResults {
-  session_token: string
-  scan_id: string
-  status: string
-  repository_name: string
-  repository_url: string
-  security_score?: string
+  session_token?: string
+  scan_id?: string
+  status?: string
+  repository_name?: string
+  repository_url?: string
+  security_score?: number | string
   severity_counts?: {
     critical: number
     high: number
@@ -45,25 +46,66 @@ interface ScanResults {
   total_findings?: number
 }
 
+interface ScanState {
+  findings?: Finding[]
+  scores?: {
+    overall: number
+    grade: string
+    category_scores: {
+      critical?: number
+      high?: number
+      medium?: number
+      low?: number
+      info?: number
+    }
+  }
+  repoUrl?: string
+  repoName?: string
+  filesAnalyzed?: number
+  branch?: string
+}
+
 export function ScanResultsPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { isAuthenticated, user } = useAuthStore()
+  const location = useLocation()
   const [results, setResults] = useState<ScanResults | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
 
+  // Check if we have scan data from navigation state (logged-in scan)
+  const state = location.state as ScanState | null
+  const hasStateData = !!state?.findings
+
   useEffect(() => {
+    // If we have state data (from logged-in scan), use it directly
+    if (hasStateData) {
+      setResults({
+        scan_id: sessionId,
+        status: 'completed',
+        repository_name: state.repoName || 'Repository',
+        repository_url: state.repoUrl || '',
+        security_score: state.scores?.overall || 0,
+        severity_counts: {
+          critical: state.scores?.category_scores?.critical || 0,
+          high: state.scores?.category_scores?.high || 0,
+          medium: state.scores?.category_scores?.medium || 0,
+          low: state.scores?.category_scores?.low || 0,
+          info: state.scores?.category_scores?.info || 0,
+        },
+        findings: state.findings || [],
+        user_plan: user?.plan || 'free',
+        ai_preview_count: user?.plan === 'free' ? 2 : 0,
+        total_findings: state.findings?.length || 0,
+      })
+      setIsLoading(false)
+      return
+    }
+
+    // Otherwise fetch from API (guest scan)
     fetchResults()
   }, [sessionId])
-
-  // Refetch results when authentication state changes (after login)
-  useEffect(() => {
-    if (isAuthenticated && results) {
-      // User just logged in, refetch to get updated plan-based results
-      fetchResults()
-    }
-  }, [isAuthenticated])
 
   const fetchResults = async () => {
     try {
@@ -142,7 +184,8 @@ export function ScanResultsPage() {
     )
   }
 
-  return (
+  // Conditional rendering: Dashboard layout for logged-in users, simple layout for guests
+  const content = (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4 max-w-6xl space-y-8">
         {/* Header */}
@@ -171,7 +214,7 @@ export function ScanResultsPage() {
                 Production Readiness Score
               </h2>
               <ScoreCircle
-                score={results.security_score ? parseInt(results.security_score) : 0}
+                score={typeof results.security_score === 'number' ? results.security_score : (results.security_score ? parseInt(results.security_score) : 0)}
                 size="xl"
                 animated
               />
@@ -542,4 +585,7 @@ export function ScanResultsPage() {
       </div>
     </div>
   )
+
+  // Wrap with Layout for logged-in users, render directly for guests
+  return isAuthenticated ? <Layout>{content}</Layout> : content
 }
