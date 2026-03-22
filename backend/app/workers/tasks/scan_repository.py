@@ -3,6 +3,7 @@ Celery Tasks for Repository Scanning with Dynamic Scanner Execution
 """
 
 import asyncio
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -243,6 +244,16 @@ class SyncScanService:
             resources = self._extract_resources(parsed_files)
             rule_findings = self._run_rules(resources, parsed_files)
 
+            # Enrich findings with AI fix data
+            logger.info("Enriching findings with AI data...", findings_count=len(rule_findings))
+            from app.services.findings_enricher import enrich_findings
+            rule_findings = enrich_findings(rule_findings)
+            logger.info(
+                "Findings enriched",
+                findings_count=len(rule_findings),
+                with_fix_examples=sum(1 for f in rule_findings if f.fix_example),
+            )
+
             if self.progress_store and self.scan_id:
                 _safe_await(self._update_progress_async(80, "Calculating scores...", "Generating AI suggestions"))
 
@@ -451,12 +462,24 @@ class SyncScanService:
                 category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
                 description=finding.description,
                 recommendation=finding.recommendation,
+                # AI Fix Generator fields
+                summary=finding.summary,
+                risk=finding.risk,
+                impact=finding.impact,
+                fix_code=finding.fix_code,
+                fix_example=finding.fix_example,
+                full_example=finding.full_example,
+                best_practices=json.dumps(finding.best_practices) if finding.best_practices else None,
+                confidence=finding.confidence,
+                confidence_score=finding.confidence or 1.0,
+                documentation_url=finding.documentation_url,
+                ai_generated=getattr(finding, 'ai_generated', False),
+                # Legacy fields
                 file_path=finding.file_path,
                 line_number=finding.line_number,
                 resource_name=finding.resource_name,
                 ai_explanation=finding.ai_explanation,
                 impact_analysis=finding.impact_analysis,
-                confidence_score=finding.confidence,
             )
             self.db.add(db_finding)
 

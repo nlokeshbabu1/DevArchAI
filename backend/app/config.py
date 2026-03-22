@@ -69,9 +69,10 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
 
     # LLM Configuration
-    LLM_PROVIDER: Literal["openai", "anthropic", "mock"] = Field(default="mock", env="LLM_PROVIDER")
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mock"] = Field(default="mock", env="LLM_PROVIDER")
     OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
     ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
+    GEMINI_API_KEY: str | None = Field(default=None, env="GEMINI_API_KEY")
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")

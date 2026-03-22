@@ -262,6 +262,7 @@ async def get_scan_findings(
             "line_number": finding.line_number,
             "ai_explanation": finding.ai_explanation,
             "impact_analysis": finding.impact_analysis,
+            "documentation_url": finding.documentation_url,
             "created_at": finding.created_at.isoformat(),
         }
         for finding in findings

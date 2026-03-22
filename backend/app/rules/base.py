@@ -43,6 +43,10 @@ class RuleFinding:
         metadata: Optional[dict[str, Any]] = None,
         ai_explanation: Optional[str] = None,
         impact_analysis: Optional[str] = None,
+        documentation_url: Optional[str] = None,
+        risk: Optional[str] = None,
+        impact: Optional[str] = None,
+        fix_example: Optional[str] = None,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -58,6 +62,12 @@ class RuleFinding:
         # AI enhancements
         self.ai_explanation = ai_explanation
         self.impact_analysis = impact_analysis
+        # Documentation link
+        self.documentation_url = documentation_url
+        # Additional fields
+        self.risk = risk
+        self.impact = impact
+        self.fix_example = fix_example
 
     def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
@@ -75,6 +85,10 @@ class RuleFinding:
             "metadata": self.metadata,
             "ai_explanation": self.ai_explanation,
             "impact_analysis": self.impact_analysis,
+            "documentation_url": self.documentation_url,
+            "risk": self.risk,
+            "impact": self.impact,
+            "fix_example": self.fix_example,
         }
 
     def __repr__(self) -> str:

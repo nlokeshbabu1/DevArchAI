@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Lock, Sparkles } from 'lucide-react'
+import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Lock, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, Button, Badge } from '../../components/ui'
 import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
 import axios from 'axios'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { cn } from '../../lib/utils'
 
 interface Finding {
   id: string
@@ -19,6 +21,15 @@ interface Finding {
   file_path: string
   line_number?: number
   ai_explanation?: string
+  documentation_url?: string
+  // AI Fix Generator fields
+  summary?: string
+  risk?: string
+  impact?: string
+  fix_code?: string
+  full_example?: string
+  best_practices?: string[]
+  confidence_score?: number
   created_at: string
 }
 
@@ -42,6 +53,37 @@ export function Findings() {
   const [severityFilter, setSeverityFilter] = useState<string[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string[]>([])
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
+
+  // Get confidence badge color
+  const getConfidenceBadge = (confidence: number | undefined) => {
+    if (!confidence) return { color: 'bg-gray-500/10 text-gray-400', label: 'Unknown' }
+    if (confidence >= 0.8) return { color: 'bg-green-500/10 text-green-400', label: 'High' }
+    if (confidence >= 0.6) return { color: 'bg-yellow-500/10 text-yellow-400', label: 'Medium' }
+    return { color: 'bg-gray-500/10 text-gray-400', label: 'Low' }
+  }
+
+  // Get documentation URL
+  const getDocumentationUrl = (finding: Finding): string => {
+    if (finding.documentation_url) return finding.documentation_url
+    
+    const category = finding.category.toLowerCase()
+    const ruleId = finding.rule_id?.toUpperCase() || ''
+    
+    if (category.includes('kubernetes') || ruleId.startsWith('K8S')) {
+      return 'https://kubernetes.io/docs/'
+    }
+    if (category.includes('docker') || ruleId.startsWith('DKR') || ruleId.startsWith('DOCKER')) {
+      return 'https://docs.docker.com/develop/'
+    }
+    if (category.includes('terraform') || ruleId.startsWith('TF')) {
+      return 'https://developer.hashicorp.com/terraform/docs'
+    }
+    if (category.includes('ci') || ruleId.startsWith('CI')) {
+      return 'https://docs.github.com/en/actions'
+    }
+    
+    return 'https://kubernetes.io/docs/'
+  }
   
   // Get user subscription to determine if AI should be blurred
   const [userPlan, setUserPlan] = useState<string>('free')
@@ -236,6 +278,8 @@ export function Findings() {
         ) : (
           filteredFindings?.map((finding: Finding) => {
             const Icon = severityIcons[finding.severity]
+            const isExpanded = expandedFinding === finding.id
+            
             return (
               <Card key={finding.id} className="p-6 hover:bg-white/5 transition-colors">
                 <div className="flex items-start justify-between gap-4">
@@ -252,6 +296,14 @@ export function Findings() {
                         <Badge variant="secondary" className={severityColors[finding.severity]}>
                           {finding.severity}
                         </Badge>
+                        {finding.confidence_score && (
+                          <span className={cn(
+                            'px-2 py-0.5 rounded-full text-xs font-medium',
+                            getConfidenceBadge(finding.confidence_score).color
+                          )}>
+                            {getConfidenceBadge(finding.confidence_score).label}
+                          </span>
+                        )}
                       </div>
                       <p className="text-muted-foreground mb-3">{finding.description}</p>
                       {finding.file_path && (
@@ -260,7 +312,72 @@ export function Findings() {
                           {finding.line_number && <span className="ml-2">Line {finding.line_number}</span>}
                         </div>
                       )}
-                      {finding.ai_explanation && (
+                      
+                      {/* AI Suggestion Preview */}
+                      {(finding.summary || finding.risk || finding.fix_code) && (
+                        <div className="mt-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Brain className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">AI Suggestion</span>
+                            {finding.confidence_score && (
+                              <span className="text-xs text-muted-foreground">
+                                ({(finding.confidence_score * 100).toFixed(0)}% confidence)
+                              </span>
+                            )}
+                          </div>
+                          
+                          {finding.summary && (
+                            <p className="text-sm text-muted-foreground mb-3">{finding.summary}</p>
+                          )}
+                          
+                          {(finding.risk || finding.impact) && (
+                            <div className="mb-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                              <p className="text-sm text-orange-300">{finding.risk || finding.impact}</p>
+                            </div>
+                          )}
+                          
+                          {finding.fix_code && (
+                            <div className="mb-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-medium text-green-400">Suggested Fix</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs"
+                                  onClick={() => navigator.clipboard.writeText(finding.fix_code || '')}
+                                >
+                                  Copy
+                                </Button>
+                              </div>
+                              <pre className="p-3 rounded-lg bg-black/50 border border-white/10 overflow-x-auto max-h-48">
+                                <code className="text-sm text-green-400 font-mono whitespace-pre">
+                                  {finding.fix_code}
+                                </code>
+                              </pre>
+                            </div>
+                          )}
+                          
+                          {finding.best_practices && finding.best_practices.length > 0 && (
+                            <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Sparkles className="h-4 w-4 text-indigo-400" />
+                                <span className="text-xs font-semibold text-indigo-400">Best Practices</span>
+                              </div>
+                              <ul className="space-y-1">
+                                {finding.best_practices.map((practice, idx) => (
+                                  <li key={idx} className="flex items-start gap-2 text-sm text-indigo-300">
+                                    <CheckCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                                    <span>{practice}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Fallback to old AI explanation */}
+                      {finding.ai_explanation && !(finding.summary || finding.risk || finding.fix_code) && (
                         <div className="mt-4">
                           <AISuggestionBlur
                             isBlurred={userPlan === 'free'}
@@ -274,14 +391,62 @@ export function Findings() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Button variant="secondary" size="sm">
-                      View Details
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const docUrl = getDocumentationUrl(finding)
+                        window.open(docUrl, '_blank', 'noopener,noreferrer')
+                      }}
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Documentation
+                      <ExternalLink className="h-3 w-3 ml-1" />
                     </Button>
-                    <Button variant="ghost" size="sm">
-                      <CheckCircle className="h-4 w-4" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpandedFinding(isExpanded ? null : finding.id)}
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 </div>
+                
+                {/* Expanded View with Full Example */}
+                <AnimatePresence>
+                  {isExpanded && finding.full_example && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="mt-4 pt-4 border-t border-white/10"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Code className="h-4 w-4 text-blue-400" />
+                          <span className="text-sm font-semibold text-foreground">Full Fix Example</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigator.clipboard.writeText(finding.full_example || '')}
+                        >
+                          Copy Full File
+                        </Button>
+                      </div>
+                      <pre className="p-4 rounded-lg bg-black/50 border border-white/10 overflow-x-auto max-h-[600px]">
+                        <code className="text-sm text-blue-300 font-mono whitespace-pre">
+                          {finding.full_example}
+                        </code>
+                      </pre>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </Card>
             )
           })

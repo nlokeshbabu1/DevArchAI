@@ -4,10 +4,12 @@ Unified Scan API - Works for BOTH guest and authenticated users.
 Provides real-time progress tracking with step-by-step updates.
 """
 
-import structlog
+import json
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
+
+import structlog
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -115,8 +117,9 @@ async def start_unified_scan(
                 
                 if sync_scan:
                     # Execute scan synchronously with progress tracking
+                    # SyncScanService uses sync db but has async methods - call without await
                     updated_scan = scan_service.execute_scan(sync_scan)
-                    
+
                     # Copy results back to async session
                     scan.status = updated_scan.status
                     scan.progress = updated_scan.progress
@@ -289,20 +292,97 @@ async def get_scan_results(
         select(Finding).where(Finding.scan_id == scan_id)
     )
     findings = findings_result.scalars().all()
-    
+
     # Count by severity
     severity_counts = {}
     for f in findings:
         severity = f.severity.value if hasattr(f.severity, 'value') else str(f.severity)
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
-    
+
     # Get AI suggestions
     from app.models.ai_suggestion import AISuggestion
     suggestions_result = await db.execute(
         select(AISuggestion).where(AISuggestion.scan_id == scan_id)
     )
     suggestions = suggestions_result.scalars().all()
+
+    # Get detected technologies from findings file paths
+    # (Progress store data expires, so we extract from permanent findings data)
+    detected_technologies = []
+    tech_files = {}
     
+    for f in findings:
+        if not f.file_path:
+            continue
+            
+        path_lower = f.file_path.lower()
+        
+        # Docker
+        if 'dockerfile' in path_lower or 'docker' in path_lower:
+            if 'docker' not in detected_technologies:
+                detected_technologies.append('docker')
+            tech_files['docker'] = tech_files.get('docker', 0) + 1
+        
+        # Terraform
+        if '.tf' in path_lower or 'terraform' in path_lower:
+            if 'terraform' not in detected_technologies:
+                detected_technologies.append('terraform')
+            tech_files['terraform'] = tech_files.get('terraform', 0) + 1
+        
+        # Kubernetes
+        if 'kubernetes' in path_lower or 'k8s' in path_lower or ('.yaml' in path_lower and 'deployment' in path_lower):
+            if 'kubernetes' not in detected_technologies:
+                detected_technologies.append('kubernetes')
+            tech_files['kubernetes'] = tech_files.get('kubernetes', 0) + 1
+        
+        # GitHub Actions
+        if '.github/workflows' in path_lower:
+            if 'github_actions' not in detected_technologies:
+                detected_technologies.append('github_actions')
+            tech_files['github_actions'] = tech_files.get('github_actions', 0) + 1
+        
+        # AWS
+        if 'aws' in path_lower or 'ec2' in path_lower or 's3' in path_lower or 'lambda' in path_lower:
+            if 'aws' not in detected_technologies:
+                detected_technologies.append('aws')
+            tech_files['aws'] = tech_files.get('aws', 0) + 1
+        
+        # Azure
+        if 'azure' in path_lower or 'aks' in path_lower:
+            if 'azure' not in detected_technologies:
+                detected_technologies.append('azure')
+            tech_files['azure'] = tech_files.get('azure', 0) + 1
+        
+        # GCP
+        if 'gcp' in path_lower or 'gke' in path_lower or 'google' in path_lower:
+            if 'gcp' not in detected_technologies:
+                detected_technologies.append('gcp')
+            tech_files['gcp'] = tech_files.get('gcp', 0) + 1
+        
+        # Helm
+        if 'helm' in path_lower or 'chart.yaml' in path_lower:
+            if 'helm' not in detected_technologies:
+                detected_technologies.append('helm')
+            tech_files['helm'] = tech_files.get('helm', 0) + 1
+        
+        # Jenkins
+        if 'jenkins' in path_lower or 'jenkinsfile' in path_lower:
+            if 'jenkins' not in detected_technologies:
+                detected_technologies.append('jenkins')
+            tech_files['jenkins'] = tech_files.get('jenkins', 0) + 1
+        
+        # Prometheus
+        if 'prometheus' in path_lower:
+            if 'prometheus' not in detected_technologies:
+                detected_technologies.append('prometheus')
+            tech_files['prometheus'] = tech_files.get('prometheus', 0) + 1
+        
+        # Grafana
+        if 'grafana' in path_lower:
+            if 'grafana' not in detected_technologies:
+                detected_technologies.append('grafana')
+            tech_files['grafana'] = tech_files.get('grafana', 0) + 1
+
     return {
         "scan_id": str(scan.id),
         "repository_url": scan.repository_url,
@@ -316,16 +396,33 @@ async def get_scan_results(
         "observability_score": scan.observability_score,
         "findings_count": len(findings),
         "severity_counts": severity_counts,
+        "files_analyzed": len(set(f.file_path for f in findings if f.file_path)),  # Count unique files
+        "detected_technologies": detected_technologies,  # Extracted from findings
         "findings": [
             {
                 "id": str(f.id),
+                "rule_id": f.rule_id,
                 "rule_name": f.rule_name,
                 "severity": f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
                 "category": f.category.value if hasattr(f.category, 'value') else str(f.category),
                 "description": f.description,
                 "recommendation": f.recommendation,
                 "file_path": f.file_path,
+                "line_number": f.line_number,
                 "ai_explanation": f.ai_explanation,
+                # AI Fix Generator fields (production-grade)
+                "summary": f.summary,
+                "risk": f.risk,
+                "impact": f.impact,
+                "fix_code": f.fix_code,
+                "fix_example": f.fix_example,
+                "full_example": f.full_example,
+                # Parse best_practices if it's a JSON string
+                "best_practices": json.loads(f.best_practices) if isinstance(f.best_practices, str) else (f.best_practices or []),
+                # Use confidence_score (frontend expects this field name)
+                "confidence_score": f.confidence_score or f.confidence or 0.8,
+                "confidence": f.confidence or f.confidence_score or 0.8,  # Also include for backwards compatibility
+                "documentation_url": f.documentation_url,
             }
             for f in findings
         ],

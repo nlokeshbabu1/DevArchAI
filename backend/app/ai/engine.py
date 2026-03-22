@@ -429,6 +429,121 @@ class MockLLMProvider(BaseLLMProvider):
         return [f.get("recommendation") for f in findings[:5]]
 
 
+class GeminiProvider(BaseLLMProvider):
+    """Google Gemini LLM provider."""
+
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
+        self.api_key = api_key
+        self.model = model
+        self._client = None
+
+    @property
+    def client(self):
+        """Lazy load Gemini client."""
+        if self._client is None:
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            self._client = genai.GenerativeModel(self.model)
+        return self._client
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate explanation using Gemini."""
+        prompt = f"""You are a DevOps expert. Analyze this finding:
+
+Finding: {finding_description}
+Context: {context}
+
+Provide JSON response with: explanation, impact_analysis, remediation_steps (array)
+
+Respond ONLY with valid JSON."""
+
+        try:
+            response = await self.client.generate_content_async(prompt)
+            import json
+            content = response.text
+            # Clean markdown code blocks if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
+            data = json.loads(content)
+
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", ""),
+                impact_analysis=data.get("impact_analysis", ""),
+                remediation_steps=data.get("remediation_steps", []),
+                confidence=0.9,
+            )
+        except Exception as e:
+            logger.warning("Gemini explanation generation failed", error=str(e))
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=finding_description,
+                impact_analysis="Impact analysis unavailable.",
+                remediation_steps=["Review recommendation"],
+                confidence=0.5,
+            )
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate executive summary using Gemini."""
+        prompt = f"""Scores: {scores}
+Findings: {findings[:10]}
+
+Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
+
+        try:
+            response = await self.client.generate_content_async(prompt)
+            return response.text
+        except Exception as e:
+            logger.warning("Gemini summary generation failed", error=str(e))
+            return f"Overall Score: {sum(scores.values()) / len(scores) if scores else 0:.1f}/100"
+
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
+        """Generate risk analysis using Gemini."""
+        prompt = f"Analyze risks for these findings: {findings[:15]}. Respond ONLY with risk analysis text."
+
+        try:
+            response = await self.client.generate_content_async(prompt)
+            return response.text
+        except Exception as e:
+            logger.warning("Gemini risk analysis failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate recommendations using Gemini."""
+        prompt = f"Top 5 recommendations for: {findings[:15]}. Respond with numbered list."
+
+        try:
+            response = await self.client.generate_content_async(prompt)
+            content = response.text
+            return [line.strip() for line in content.split("\n") if line.strip()][:5]
+        except Exception as e:
+            logger.warning("Gemini recommendations failed", error=str(e))
+            return [f.get("recommendation") for f in findings[:5]]
+
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response - used by fix generator."""
+        try:
+            response = await self.client.generate_content_async(prompt)
+            return response.text
+        except Exception as e:
+            logger.error("Gemini generation failed", error=str(e))
+            raise
+
+
 def get_llm_provider() -> BaseLLMProvider:
     """Factory function to get configured LLM provider."""
     provider = settings.LLM_PROVIDER.lower()
@@ -442,6 +557,11 @@ def get_llm_provider() -> BaseLLMProvider:
         return AnthropicProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model=settings.LLM_MODEL,
+        )
+    elif provider == "gemini" and settings.GEMINI_API_KEY:
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model=settings.LLM_MODEL or "gemini-1.5-flash",
         )
     else:
         return MockLLMProvider()

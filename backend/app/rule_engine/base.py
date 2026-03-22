@@ -48,9 +48,16 @@ class RuleFinding:
         metadata: Optional[dict[str, Any]] = None,
         ai_explanation: Optional[str] = None,
         impact_analysis: Optional[str] = None,
+        # AI Fix Generator fields (production-grade)
+        summary: Optional[str] = None,
         risk: Optional[str] = None,
         impact: Optional[str] = None,
+        fix_code: Optional[str] = None,
         fix_example: Optional[str] = None,
+        full_example: Optional[str] = None,
+        best_practices: Optional[list[str]] = None,
+        documentation_url: Optional[str] = None,
+        ai_generated: bool = False,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -66,10 +73,16 @@ class RuleFinding:
         # AI enhancements
         self.ai_explanation = ai_explanation
         self.impact_analysis = impact_analysis
-        # Remediation guidance
+        # AI Fix Generator fields
+        self.summary = summary
         self.risk = risk
         self.impact = impact
+        self.fix_code = fix_code
         self.fix_example = fix_example
+        self.full_example = full_example
+        self.best_practices = best_practices or []
+        self.documentation_url = documentation_url
+        self.ai_generated = ai_generated
 
     def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
@@ -87,9 +100,16 @@ class RuleFinding:
             "metadata": self.metadata,
             "ai_explanation": self.ai_explanation,
             "impact_analysis": self.impact_analysis,
+            # AI Fix Generator fields
+            "summary": self.summary,
             "risk": self.risk,
             "impact": self.impact,
+            "fix_code": self.fix_code,
             "fix_example": self.fix_example,
+            "full_example": self.full_example,
+            "best_practices": self.best_practices,
+            "documentation_url": self.documentation_url,
+            "ai_generated": self.ai_generated,
         }
 
     def __repr__(self) -> str:
