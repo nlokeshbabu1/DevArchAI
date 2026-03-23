@@ -171,6 +171,18 @@ async def download_report(
                     "recommendation": f.recommendation,
                     "file_path": f.file_path,
                     "line_number": f.line_number,
+                    # AI Fix Generator fields (production-grade)
+                    "summary": f.summary,
+                    "risk": f.risk,
+                    "impact": f.impact,
+                    "fix_code": f.fix_code,
+                    "fix_example": f.fix_example,
+                    "full_example": f.full_example,
+                    "best_practices": json.loads(f.best_practices) if isinstance(f.best_practices, str) else (f.best_practices or []),
+                    "confidence": f.confidence,
+                    "documentation_url": f.documentation_url,
+                    "ai_generated": f.ai_generated,
+                    # Legacy fields (for backwards compatibility)
                     "ai_explanation": f.ai_explanation,
                     "impact_analysis": f.impact_analysis,
                 }

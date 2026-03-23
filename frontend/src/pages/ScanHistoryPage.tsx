@@ -14,11 +14,11 @@ import { cn } from '../lib/utils'
 interface Scan {
   id: string
   repository_url: string
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status: string  // Changed to string to match API response
   progress: number
   overall_score?: number
   security_score?: number
-  created_at: string
+  created_at?: string  // Made optional to match API
   completed_at?: string
   analysis_duration_seconds?: number
   error_message?: string
@@ -39,14 +39,20 @@ export function ScanHistoryPage() {
       try {
         // Fetch both authenticated and anonymous scans for demo
         const response = await scansApi.listScans(undefined, 1, 100)
-        console.log('Scan history response:', response)
-        return response || []
+        // Ensure scans are sorted by created_at descending (latest first)
+        const sortedScans = (response || []).sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+          return dateB - dateA
+        })
+        console.log('Scan history response:', sortedScans)
+        return sortedScans
       } catch (err) {
         console.error('Failed to fetch scan history:', err)
         return []
       }
     },
-    refetchInterval: 10000, // Poll every 10 seconds
+    refetchInterval: 5000, // Poll every 5 seconds for real-time updates
     retry: 2,
   })
 
@@ -59,7 +65,9 @@ export function ScanHistoryPage() {
     })
     .sort((a: Scan, b: Scan) => {
       if (sortBy === 'date') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+        return dateB - dateA
       }
       return (b.overall_score || 0) - (a.overall_score || 0)
     })
@@ -287,11 +295,12 @@ export function ScanHistoryPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ scale: 1.01 }}
+                onClick={() => handleScanClick(scan.id)}
+                className="cursor-pointer"
               >
                 <Card
-                  className="p-4 cursor-pointer transition-all hover:border-primary/30"
+                  className="p-4 transition-all hover:border-primary/30"
                   hover={false}
-                  onClick={() => handleScanClick(scan.id)}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -322,7 +331,7 @@ export function ScanHistoryPage() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {new Date(scan.created_at).toLocaleDateString()}
+                            {scan.created_at && new Date(scan.created_at).toLocaleDateString()}
                           </span>
                           {scan.analysis_duration_seconds && (
                             <span>{scan.analysis_duration_seconds.toFixed(0)}s</span>

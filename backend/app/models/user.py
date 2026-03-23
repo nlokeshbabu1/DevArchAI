@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, String, Index
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -25,7 +25,11 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
+    
+    # Email encryption: store encrypted email, with hash for lookups
+    email_encrypted = Column(String(512), nullable=False)  # Encrypted email
+    email_hash = Column(String(255), unique=True, index=True, nullable=False)  # SHA256 hash for lookups
+    
     username = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
 
@@ -67,4 +71,4 @@ class User(Base):
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email={self.email})>"
+        return f"<User(id={self.id}, email_hash={self.email_hash})>"

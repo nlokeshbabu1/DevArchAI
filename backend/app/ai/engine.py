@@ -430,20 +430,19 @@ class MockLLMProvider(BaseLLMProvider):
 
 
 class GeminiProvider(BaseLLMProvider):
-    """Google Gemini LLM provider."""
+    """Google Gemini LLM provider - Using new google-genai library."""
 
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         self.api_key = api_key
         self.model = model
         self._client = None
 
     @property
     def client(self):
-        """Lazy load Gemini client."""
+        """Lazy load Gemini client using new google-genai library."""
         if self._client is None:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self._client = genai.GenerativeModel(self.model)
+            from google import genai
+            self._client = genai.Client(api_key=self.api_key)
         return self._client
 
     async def generate_explanation(
@@ -462,7 +461,12 @@ Provide JSON response with: explanation, impact_analysis, remediation_steps (arr
 Respond ONLY with valid JSON."""
 
         try:
-            response = await self.client.generate_content_async(prompt)
+            # Use new google-genai library
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt
+            )
+
             import json
             content = response.text
             # Clean markdown code blocks if present
@@ -502,7 +506,10 @@ Findings: {findings[:10]}
 Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
 
         try:
-            response = await self.client.generate_content_async(prompt)
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             logger.warning("Gemini summary generation failed", error=str(e))
@@ -513,7 +520,10 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
         prompt = f"Analyze risks for these findings: {findings[:15]}. Respond ONLY with risk analysis text."
 
         try:
-            response = await self.client.generate_content_async(prompt)
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             logger.warning("Gemini risk analysis failed", error=str(e))
@@ -527,7 +537,10 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
         prompt = f"Top 5 recommendations for: {findings[:15]}. Respond with numbered list."
 
         try:
-            response = await self.client.generate_content_async(prompt)
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt
+            )
             content = response.text
             return [line.strip() for line in content.split("\n") if line.strip()][:5]
         except Exception as e:
@@ -537,7 +550,10 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
     async def generate(self, prompt: str) -> str:
         """Generate raw text response - used by fix generator."""
         try:
-            response = await self.client.generate_content_async(prompt)
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             logger.error("Gemini generation failed", error=str(e))

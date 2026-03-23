@@ -14,9 +14,12 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    decrypt_user_email,
+    encrypt_user_email,
     generate_api_key,
     get_current_user,
     get_password_hash,
+    hash_email,
     verify_password,
 )
 from app.db.session import get_db
@@ -38,9 +41,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def user_to_response(user: User) -> dict:
     """Convert User model to response dict with proper UUID serialization."""
+    # Decrypt email for response
+    email = decrypt_user_email(user.email_encrypted)
+    
     return {
         "id": str(user.id) if isinstance(user.id, uuid.UUID) else user.id,
-        "email": user.email,
+        "email": email,
         "username": user.username,
         "full_name": user.full_name,
         "avatar_url": user.avatar_url,
@@ -60,10 +66,11 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new user and create their organization."""
-    logger.info("Register attempt", email=user_data.email, username=user_data.username)
+    logger.info("Register attempt", username=user_data.username)
 
-    # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
+    # Check if email already exists (using hash)
+    email_hash = hash_email(user_data.email)
+    result = await db.execute(select(User).where(User.email_hash == email_hash))
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -104,9 +111,13 @@ async def register(
             await db.flush()  # Get organization ID
             logger.info("Organization created", name=org_name, slug=org_slug)
 
-        # Create user
+        # Encrypt email and create hash
+        email_encrypted, email_hash = encrypt_user_email(user_data.email)
+
+        # Create user with encrypted email
         user = User(
-            email=user_data.email,
+            email_encrypted=email_encrypted,
+            email_hash=email_hash,
             username=user_data.username,
             hashed_password=get_password_hash(user_data.password),
             full_name=user_data.full_name,
@@ -114,7 +125,7 @@ async def register(
         )
         db.add(user)
         await db.flush()  # Get user ID
-        logger.info("User created", user_id=user.id, email=user.email)
+        logger.info("User created", user_id=user.id)
 
         # Create organization membership if organization exists
         if organization:
@@ -150,8 +161,9 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """Authenticate user and return JWT tokens."""
-    # Find user by email
-    result = await db.execute(select(User).where(User.email == credentials.email))
+    # Find user by email hash
+    email_hash = hash_email(credentials.email)
+    result = await db.execute(select(User).where(User.email_hash == email_hash))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
@@ -171,8 +183,11 @@ async def login(
     user.last_login_at = datetime.utcnow()
     await db.commit()
 
+    # Decrypt email for token
+    email = decrypt_user_email(user.email_encrypted)
+    
     # Generate tokens
-    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+    access_token = create_access_token(data={"sub": str(user.id), "email": email})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
     return Token(
@@ -238,8 +253,6 @@ async def github_callback(
                 detail="GitHub OAuth not configured on server",
             )
 
-        logger.info("Exchanging GitHub code for token")
-
         # Exchange code for access token
         token_url = "https://github.com/login/oauth/access_token"
         token_data = {
@@ -274,7 +287,6 @@ async def github_callback(
                 )
 
             # Get user info from GitHub
-            logger.info("Fetching GitHub user info")
             user_response = await client.get(
                 "https://api.github.com/user",
                 headers={
@@ -302,7 +314,6 @@ async def github_callback(
 
             # If no email from GitHub, fetch it
             if not email:
-                logger.info("Fetching GitHub user emails")
                 emails_response = await client.get(
                     "https://api.github.com/user/emails",
                     headers={
@@ -326,16 +337,19 @@ async def github_callback(
                     detail="No email found in GitHub account",
                 )
 
-            # Find or create user in database
-            logger.info("Finding or creating user", github_id=github_id, email=email)
-            result = await db.execute(select(User).where(User.email == email))
+            # Find or create user in database using email hash
+            email_hash = hash_email(email)
+            result = await db.execute(select(User).where(User.email_hash == email_hash))
             user = result.scalar_one_or_none()
 
             if not user:
+                # Encrypt email and create hash
+                email_encrypted, email_hash = encrypt_user_email(email)
+                
                 # Create new user
-                logger.info("Creating new user from GitHub OAuth", email=email)
                 user = User(
-                    email=email,
+                    email_encrypted=email_encrypted,
+                    email_hash=email_hash,
                     username=username or email.split("@")[0],
                     hashed_password="",  # No password for OAuth users
                     full_name=full_name or "",
@@ -348,7 +362,6 @@ async def github_callback(
                 logger.info("User created from GitHub OAuth", user_id=user.id)
             else:
                 # Update existing user with GitHub info
-                logger.info("Updating existing user with GitHub info", user_id=user.id)
                 user.github_id = github_id
                 if avatar_url:
                     user.avatar_url = avatar_url
@@ -360,11 +373,14 @@ async def github_callback(
             await db.commit()
             await db.refresh(user)
 
+            # Decrypt email for JWT token
+            decrypted_email = decrypt_user_email(user.email_encrypted)
+            
             # Generate JWT tokens
-            access_token_jwt = create_access_token(data={"sub": str(user.id), "email": user.email})
+            access_token_jwt = create_access_token(data={"sub": str(user.id), "email": decrypted_email})
             refresh_token_jwt = create_refresh_token(data={"sub": str(user.id)})
 
-            logger.info("GitHub OAuth successful", user_id=user.id, email=user.email)
+            logger.info("GitHub OAuth successful", user_id=user.id)
 
             return {
                 "access_token": access_token_jwt,

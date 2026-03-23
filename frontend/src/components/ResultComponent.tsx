@@ -20,20 +20,21 @@ interface Finding {
   recommendation: string
   file_path?: string
   line_number?: number
-  // AI Fix Generator fields (production-grade) - MUST match backend
+  // AI Fix Generator fields (production-grade) - Primary fields
   summary?: string
   risk?: string
-  impact?: string
+  impact?: string  // Primary impact field
   fix_code?: string
+  fix_example?: string  // Primary fix example field
   full_example?: string
   best_practices?: string[]
-  confidence?: number  // Backend returns this
-  confidence_score?: number  // Also accept this for backwards compatibility
+  confidence?: number
+  confidence_score?: number  // Alternative field name
   documentation_url?: string
-  // Legacy fields (fallback)
-  fix_example?: string
+  ai_generated?: boolean
+  // Legacy fields (fallback only - will be consolidated)
   ai_explanation?: string
-  impact_analysis?: string
+  impact_analysis?: string  // Fallback for impact field
 }
 
 interface SeverityCounts {
@@ -89,6 +90,27 @@ interface ResultComponentProps {
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
 type SortOption = 'severity' | 'category' | 'name'
+
+/**
+ * Consolidate impact fields - prefer primary 'impact' field, fallback to 'impact_analysis'
+ */
+function getImpact(finding: Finding): string | undefined {
+  return finding.impact || finding.impact_analysis
+}
+
+/**
+ * Consolidate fix example fields - prefer 'fix_example', fallback to 'fix_code' or 'full_example'
+ */
+function getFixExample(finding: Finding): string | undefined {
+  return finding.fix_example || finding.fix_code || finding.full_example
+}
+
+/**
+ * Get documentation URL - prefer explicit URL, fallback to recommendation if available
+ */
+function getDocumentationUrl(finding: Finding): string | undefined {
+  return finding.documentation_url
+}
 
 // Full Example Section Component (Expandable)
 function FullExampleSection({ fullExample, filePath }: { fullExample: string; filePath?: string }) {
@@ -667,19 +689,6 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                     transition={{ delay: index * 0.05 }}
                     className="border border-white/10 rounded-xl overflow-hidden"
                   >
-                    {/* Debug log - remove in production */}
-                    {console.log(`Finding ${index}:`, {
-                      rule_id: finding.rule_id,
-                      rule_name: finding.rule_name,
-                      hasSummary: !!finding.summary,
-                      hasRisk: !!finding.risk,
-                      hasImpact: !!finding.impact,
-                      hasFixCode: !!finding.fix_code,
-                      hasFullExample: !!finding.full_example,
-                      hasBestPractices: !!finding.best_practices?.length,
-                      confidence: finding.confidence ?? finding.confidence_score,
-                      full_finding: finding,  // Log entire object for debugging
-                    })}
                     <div
                       className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
                       onClick={() => setExpandedFinding(isExpanded ? null : `${finding.rule_id}-${index}`)}
@@ -741,7 +750,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                             )}
 
                             {/* Risk/Impact */}
-                            {(finding.risk || finding.impact) && (
+                            {(finding.risk || getImpact(finding)) && (
                               <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
                                 <h5 className="text-sm font-semibold text-orange-400 mb-2 flex items-center gap-2">
                                   <AlertTriangle className="h-4 w-4" />
@@ -750,8 +759,8 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                 {finding.risk && (
                                   <p className="text-sm text-orange-300 mb-2">{finding.risk}</p>
                                 )}
-                                {finding.impact && (
-                                  <p className="text-sm text-orange-300">{finding.impact}</p>
+                                {getImpact(finding) && (
+                                  <p className="text-sm text-orange-300">{getImpact(finding)}</p>
                                 )}
                               </div>
                             )}
@@ -776,7 +785,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                         {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence
                                       </span>
                                       <span className="text-xs text-muted-foreground">
-                                        ({((finding.confidence ?? finding.confidence_score) * 100).toFixed(0)}%)
+                                        ({Math.round(((finding.confidence ?? finding.confidence_score) || 0.8) * 100)}%)
                                       </span>
                                     </div>
                                   )}
@@ -795,7 +804,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                               </div>
 
                               {/* Risk & Impact */}
-                              {(finding.risk || finding.impact) && (
+                              {(finding.risk || getImpact(finding)) && (
                                 <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
                                   <div className="flex items-center gap-2 mb-2">
                                     <AlertTriangle className="h-4 w-4 text-orange-400" />
@@ -807,10 +816,10 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                       <p className="text-sm text-orange-300 inline">{finding.risk}</p>
                                     </div>
                                   )}
-                                  {finding.impact && (
+                                  {getImpact(finding) && (
                                     <div>
                                       <span className="text-xs font-medium text-orange-300">Impact: </span>
-                                      <p className="text-sm text-orange-300 inline">{finding.impact}</p>
+                                      <p className="text-sm text-orange-300 inline">{getImpact(finding)}</p>
                                     </div>
                                   )}
                                 </div>
@@ -891,7 +900,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                               )}
 
                               {/* Why This Matters (Fallback) */}
-                              {finding.recommendation && !(finding.summary || finding.risk || finding.impact) && (
+                              {finding.recommendation && !(finding.summary || finding.risk || getImpact(finding)) && (
                                 <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
                                   <div className="flex items-center gap-2 mb-2">
                                     <CheckCircle className="h-4 w-4 text-green-400" />

@@ -1,5 +1,14 @@
 """
-CI/CD Pipeline Parser
+CI/CD Pipeline Parser - Production-grade support for all major CI/CD platforms.
+
+Supports:
+- GitHub Actions
+- GitLab CI
+- Jenkins (Declarative & Scripted)
+- CircleCI
+- Azure DevOps
+- Travis CI
+- Drone CI
 """
 
 import re
@@ -20,11 +29,15 @@ class CICDParser(BaseParser):
         self.ci_patterns = [
             ".github/workflows/",
             ".gitlab-ci.yml",
+            ".gitlab-ci.yaml",
             ".circleci/config.yml",
+            ".circleci/config.yaml",
             ".travis.yml",
+            ".travis.yaml",
             "azure-pipelines.yml",
-            "Jenkinsfile",
+            "azure-pipelines.yaml",
             ".drone.yml",
+            ".drone.yaml",
         ]
         # Files to explicitly ignore (documentation, etc.)
         self.ignored_filenames = {"README.md", "README.yaml", "README.yml", "example.yml", "example.yaml"}
@@ -38,18 +51,18 @@ class CICDParser(BaseParser):
         if file_name in self.ignored_filenames:
             return False
 
-        # Must be YAML/YML file
+        # Jenkinsfile (no extension)
+        if file_path.name == "Jenkinsfile":
+            return True
+
+        # Must be YAML/YML file for other CI/CD types
         if file_path.suffix.lower() not in self.supported_extensions:
             return False
 
-        # Check for CI/CD specific paths
+        # Check for CI/CD specific paths and filenames
         for pattern in self.ci_patterns:
             if pattern in path_str:
                 return True
-
-        # Check for Jenkinsfile
-        if file_path.name == "Jenkinsfile":
-            return True
 
         return False
 
@@ -75,8 +88,8 @@ class CICDParser(BaseParser):
                 # YAML-based CI/CD
                 docs = list(yaml.safe_load_all(content))
                 for doc in docs:
-                    if doc:
-                        parsed_data = self._parse_yaml_cicd(doc, parsed_data)
+                    if doc and isinstance(doc, dict):
+                        parsed_data = self._parse_yaml_cicd(doc, parsed_data, file_path)
 
         except yaml.YAMLError as e:
             parse_errors.append(f"YAML parsing error: {str(e)}")
@@ -95,6 +108,7 @@ class CICDParser(BaseParser):
     def _detect_ci_type(self, file_path: Path) -> str:
         """Detect CI/CD platform type."""
         path_str = str(file_path)
+        file_name = file_path.name.lower()
 
         if ".github/workflows" in path_str:
             return "github_actions"
@@ -104,7 +118,7 @@ class CICDParser(BaseParser):
             return "circleci"
         elif ".travis" in path_str:
             return "travis"
-        elif "azure-pipelines" in path_str:
+        elif "azure-pipelines" in path_str or file_name == "azure-pipelines.yml":
             return "azure_devops"
         elif file_path.name == "Jenkinsfile":
             return "jenkins"
