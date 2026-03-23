@@ -1091,7 +1091,20 @@ class AIFixEnrichmentService:
 
     def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
         self.llm_provider = llm_provider
-        self._use_mock = settings.LLM_PROVIDER.lower() == "mock" or not settings.OPENAI_API_KEY
+        
+        # Determine if we should use mock based on provider and API keys
+        provider = settings.LLM_PROVIDER.lower()
+        if provider == "mock":
+            self._use_mock = True
+        elif provider == "gemini":
+            self._use_mock = not settings.GEMINI_API_KEY
+        elif provider == "openai":
+            self._use_mock = not settings.OPENAI_API_KEY
+        elif provider == "anthropic":
+            self._use_mock = not settings.ANTHROPIC_API_KEY
+        else:
+            self._use_mock = True  # Default to mock for unknown providers
+        
         self._cache: dict[str, dict[str, Any]] = {}  # In-memory cache
 
     def _get_cache_key(self, rule_id: str, file_content_hash: str) -> str:
@@ -1113,24 +1126,30 @@ class AIFixEnrichmentService:
         Returns:
             dict with summary, risk, fix_code, full_example, impact, confidence
         """
+        rule_id = finding.get("rule_id", "")
+        logger.info("Generating fix", rule_id=rule_id, use_mock=self._use_mock, provider=settings.LLM_PROVIDER)
+        
         # Check cache first
         cache_key = self._get_cache_key(
-            finding.get("rule_id", ""),
+            rule_id,
             self._hash_content(file_content) if file_content else "no_content"
         )
 
         if cache_key in self._cache:
-            logger.debug("Cache hit for fix", rule_id=finding.get("rule_id"))
+            logger.debug("Cache hit for fix", rule_id=rule_id)
             return self._cache[cache_key]
 
         # Use mock if AI not configured
         if self._use_mock:
+            logger.info("Using mock fix generator", rule_id=rule_id)
             result = self._generate_mock_fix(finding)
         else:
             try:
+                logger.info("Calling AI fix generator", rule_id=rule_id, provider=settings.LLM_PROVIDER)
                 result = await self._generate_ai_fix(finding, file_content)
+                logger.info("AI fix generated successfully", rule_id=rule_id, confidence=result.get("confidence"))
             except Exception as e:
-                logger.warning("AI fix generation failed, using mock", error=str(e))
+                logger.warning("AI fix generation failed, using mock", rule_id=rule_id, error=str(e))
                 result = self._generate_mock_fix(finding)
 
         # Cache result

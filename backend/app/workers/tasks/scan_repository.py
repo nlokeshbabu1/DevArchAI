@@ -246,12 +246,37 @@ class SyncScanService:
 
             # Enrich findings with AI fix data
             logger.info("Enriching findings with AI data...", findings_count=len(rule_findings))
-            from app.services.findings_enricher import enrich_findings
-            rule_findings = enrich_findings(rule_findings)
+            
+            # Use AI-powered enrichment (with static fallback)
+            # Run async enrichment in sync context
+            import asyncio
+            from app.services.findings_enricher import enrich_findings_with_ai
+            
+            # Get file contents for AI context
+            file_contents = {}
+            for finding in rule_findings:
+                if finding.file_path and not file_contents.get(finding.file_path):
+                    try:
+                        file_path = Path(finding.file_path)
+                        if file_path.exists():
+                            file_contents[str(file_path)] = file_path.read_text(encoding="utf-8")
+                    except Exception as e:
+                        logger.debug(f"Could not read file {finding.file_path}: {e}")
+            
+            # Run async enrichment
+            try:
+                rule_findings = asyncio.run(enrich_findings_with_ai(rule_findings, file_contents))
+            except RuntimeError as e:
+                # Event loop already running - use fallback
+                logger.warning("Async enrichment skipped (loop running), using static enrichment", error=str(e))
+                from app.services.findings_enricher import enrich_findings
+                rule_findings = enrich_findings(rule_findings)
+            
             logger.info(
                 "Findings enriched",
                 findings_count=len(rule_findings),
                 with_fix_examples=sum(1 for f in rule_findings if f.fix_example),
+                ai_generated=sum(1 for f in rule_findings if getattr(f, 'ai_generated', False)),
             )
 
             if self.progress_store and self.scan_id:
