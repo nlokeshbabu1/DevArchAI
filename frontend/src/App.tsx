@@ -68,20 +68,15 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
+      
+      {/* Redirect old /analyze route to /scan for backward compatibility */}
+      <Route path="/analyze" element={<Navigate to="/scan" replace />} />
 
       {/* Protected routes with Layout */}
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <Layout>
             <Dashboard />
-          </Layout>
-        </ProtectedRoute>
-      } />
-
-      <Route path="/analyze" element={
-        <ProtectedRoute>
-          <Layout>
-            <Home />
           </Layout>
         </ProtectedRoute>
       } />

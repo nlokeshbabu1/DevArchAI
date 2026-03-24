@@ -749,22 +749,6 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                               </div>
                             )}
 
-                            {/* Risk/Impact */}
-                            {(finding.risk || getImpact(finding)) && (
-                              <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                                <h5 className="text-sm font-semibold text-orange-400 mb-2 flex items-center gap-2">
-                                  <AlertTriangle className="h-4 w-4" />
-                                  Risk & Impact
-                                </h5>
-                                {finding.risk && (
-                                  <p className="text-sm text-orange-300 mb-2">{finding.risk}</p>
-                                )}
-                                {getImpact(finding) && (
-                                  <p className="text-sm text-orange-300">{getImpact(finding)}</p>
-                                )}
-                              </div>
-                            )}
-
                             {/* AI Suggestion Block - Production Grade */}
                             <div className="space-y-4">
                               {/* Header with Confidence Badge */}
@@ -803,7 +787,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                 </p>
                               </div>
 
-                              {/* Risk & Impact */}
+                              {/* Risk & Impact (only shown once inside AI block) */}
                               {(finding.risk || getImpact(finding)) && (
                                 <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
                                   <div className="flex items-center gap-2 mb-2">

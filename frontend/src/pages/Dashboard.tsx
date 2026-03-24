@@ -55,7 +55,7 @@ const repositories = [
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { token } = useAuthStore()
+  const { token, isAuthenticated } = useAuthStore()
   const [stats, setStats] = useState({
     totalRepositories: 0,
     totalScans: 0,
@@ -64,22 +64,25 @@ export function Dashboard() {
   })
 
   // Fetch dashboard summary
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: dashboardApi.getSummary,
     refetchInterval: 10000, // Poll every 10 seconds
-    enabled: !!token,
+    enabled: !!isAuthenticated,
+    retry: 2,
   })
 
   // Fetch recent scans
-  const { data: recentScansData, isLoading: scansLoading } = useQuery({
+  const { data: recentScansData, isLoading: scansLoading, error: scansError } = useQuery({
     queryKey: ['dashboard-recent-scans'],
     queryFn: () => dashboardApi.getRecentScans(5),
     refetchInterval: 10000,
-    enabled: !!token,
+    enabled: !!isAuthenticated,
+    retry: 2,
   })
 
   const isLoading = summaryLoading || scansLoading
+  const hasError = summaryError || scansError
 
   // Update stats when summary data arrives
   useEffect(() => {
@@ -116,6 +119,84 @@ export function Dashboard() {
     )
   }
 
+  // Show error state
+  if (hasError) {
+    console.error('Dashboard error:', hasError)
+    return (
+      <div className="space-y-8">
+        <Card className="p-8 text-center" hover={false}>
+          <AlertTriangle className="h-12 w-12 text-orange-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-foreground mb-2">
+            Unable to Load Dashboard
+          </h2>
+          <p className="text-muted-foreground mb-4">
+            {hasError.message || 'Failed to load dashboard data'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button
+              variant="secondary"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => navigate('/scan')}
+            >
+              Start Scan
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show empty state when no scans exist
+  const hasNoData = stats.totalScans === 0 && stats.totalRepositories === 0
+  if (hasNoData && !isLoading) {
+    return (
+      <div className="space-y-8">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Overview of your DevOps security posture
+            </p>
+          </div>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={() => navigate('/scan')}
+            icon={<Play className="h-4 w-4" />}
+            glow
+          >
+            New Scan
+          </Button>
+        </div>
+        <Card className="p-12 text-center" hover={false}>
+          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 mb-4">
+            <FolderGit2 className="h-8 w-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-2">
+            Welcome to DevArchAI!
+          </h2>
+          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+            Start by scanning your first repository to see security insights, AI suggestions, and more.
+          </p>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={() => navigate('/scan')}
+            icon={<Play className="h-5 w-5" />}
+            glow
+          >
+            Start Your First Scan
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -133,7 +214,7 @@ export function Dashboard() {
         <Button
           variant="primary"
           size="lg"
-          onClick={() => navigate('/analyze')}
+          onClick={() => navigate('/scan')}
           icon={<Play className="h-4 w-4" />}
           glow
         >

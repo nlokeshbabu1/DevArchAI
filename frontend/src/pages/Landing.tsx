@@ -38,6 +38,7 @@ export function Landing() {
   const navigate = useNavigate()
 
   const handleStartScan = () => {
+    // Users must login first to scan
     navigate('/login')
   }
 
@@ -528,7 +529,7 @@ export function Landing() {
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/register')}
+                  onClick={() => navigate('/login')}
                   glow
                 >
                   Start Free Scan

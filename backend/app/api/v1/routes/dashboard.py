@@ -66,12 +66,13 @@ async def get_dashboard_summary(
     # Calculate stats
     unique_repos = set(scan.repository_url for scan in scans)
     critical_count = sum(1 for f in findings if f.severity.value == 'critical')
-    ai_suggestions_count = sum(1 for f in findings if f.ai_explanation)
-    
+    # Count AI suggestions: findings with ai_generated=true OR ai_explanation present
+    ai_suggestions_count = sum(1 for f in findings if f.ai_generated or f.ai_explanation)
+
     # Calculate average score
     scores = [s.overall_score for s in scans if s.overall_score is not None]
     average_score = sum(scores) / len(scores) if scores else 0
-    
+
     return {
         "total_scans": len(scans),
         "total_repositories": len(unique_repos),

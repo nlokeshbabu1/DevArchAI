@@ -58,37 +58,120 @@ class AIFixGenerator:
 
     def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
         self.llm_provider = llm_provider
-        self._use_mock = settings.LLM_PROVIDER.lower() == "mock"
-        self._provider_name = settings.LLM_PROVIDER.lower()
+        self._provider_name = "auto"  # Use auto-detection based on API keys
 
     async def generate_fix(self, finding: dict[str, Any], file_content: str = "") -> dict[str, Any]:
         """
-        Generate AI fix suggestion for a finding.
-
+        Generate AI fix suggestion for a finding with automatic provider fallback.
+        
+        Fallback chain:
+        1. Try Gemini (if GEMINI_API_KEY is set)
+        2. Try OpenAI (if OPENAI_API_KEY is set)
+        3. Try Anthropic (if ANTHROPIC_API_KEY is set)
+        4. Fallback to Mock (static examples) - sets ai_generated=false, source="Static"
+        
         Args:
             finding: Finding dict with rule_id, title, severity, file_type
             file_content: Optional actual file content for context
 
         Returns:
-            dict with summary, risk, impact, fix_code, full_example, best_practices, confidence
+            dict with summary, risk, impact, fix_code, full_example, best_practices, confidence,
+            ai_generated (bool), source (str)
         """
-        # Always try AI first if not mock, fallback to mock on any failure
-        if self._use_mock:
+        # Get provider with automatic fallback based on API keys
+        if not self.llm_provider:
+            self.llm_provider = get_llm_provider()
+            self._provider_name = type(self.llm_provider).__name__
+
+        # Check if we're using mock provider (static fallback)
+        from app.ai.engine import MockLLMProvider
+        if isinstance(self.llm_provider, MockLLMProvider):
+            logger.info("Using static fallback for AI fix generation", rule_id=finding.get("rule_id"))
             return self._generate_mock_fix(finding, file_content)
 
+        # Try AI generation with fallback chain
         try:
-            # Route to appropriate provider
-            if self._provider_name == "gemini":
-                return await self._generate_fix_with_gemini(finding, file_content)
-            elif self._provider_name == "openai":
-                return await self._generate_ai_fix(finding, file_content)
-            elif self._provider_name == "anthropic":
-                return await self._generate_ai_fix(finding, file_content)
-            else:
-                return await self._generate_ai_fix(finding, file_content)
+            # Try with current provider first
+            return await self._generate_ai_fix_with_fallback(finding, file_content)
         except Exception as e:
-            logger.warning("AI fix generation failed, using mock", provider=self._provider_name, error=str(e))
+            logger.warning("AI fix generation failed, using static fallback", 
+                          provider=self._provider_name, error=str(e))
+            # Return static fallback with proper flags
             return self._generate_mock_fix(finding, file_content)
+
+    async def _generate_ai_fix_with_fallback(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
+        """Generate AI fix with automatic fallback to next provider on failure."""
+        from app.ai.engine import GeminiProvider, OpenAIProvider, AnthropicProvider, MockLLMProvider
+        
+        # Try Gemini first if available
+        if settings.GEMINI_API_KEY and isinstance(self.llm_provider, GeminiProvider):
+            try:
+                result = await self._generate_fix_with_gemini(finding, file_content)
+                result["ai_generated"] = True
+                result["source"] = "Gemini"
+                return result
+            except Exception as e:
+                logger.warning("Gemini failed, trying next provider", error=str(e))
+                if settings.OPENAI_API_KEY:
+                    self.llm_provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+                    self._provider_name = "OpenAI"
+                    return await self._generate_fix_with_openai(finding, file_content)
+                elif settings.ANTHROPIC_API_KEY:
+                    self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
+                    self._provider_name = "Anthropic"
+                    return await self._generate_fix_with_anthropic(finding, file_content)
+        
+        # Try OpenAI
+        if settings.OPENAI_API_KEY and isinstance(self.llm_provider, OpenAIProvider):
+            try:
+                result = await self._generate_fix_with_openai(finding, file_content)
+                result["ai_generated"] = True
+                result["source"] = "OpenAI"
+                return result
+            except Exception as e:
+                logger.warning("OpenAI failed, trying next provider", error=str(e))
+                if settings.ANTHROPIC_API_KEY:
+                    self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
+                    self._provider_name = "Anthropic"
+                    return await self._generate_fix_with_anthropic(finding, file_content)
+        
+        # Try Anthropic
+        if settings.ANTHROPIC_API_KEY and isinstance(self.llm_provider, AnthropicProvider):
+            try:
+                result = await self._generate_fix_with_anthropic(finding, file_content)
+                result["ai_generated"] = True
+                result["source"] = "Anthropic"
+                return result
+            except Exception as e:
+                logger.warning("Anthropic failed, using static fallback", error=str(e))
+        
+        # Ultimate fallback to Mock
+        logger.info("All AI providers failed, using static fallback")
+        return self._generate_mock_fix(finding, file_content)
+
+    async def _generate_fix_with_openai(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
+        """Generate fix using OpenAI."""
+        if not self.llm_provider or not isinstance(self.llm_provider, OpenAIProvider):
+            self.llm_provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+        
+        prompt = self._build_fix_prompt(finding, file_content)
+        response = await self.llm_provider.generate(prompt)
+        result = self._parse_ai_response(response, finding)
+        result["ai_generated"] = True
+        result["source"] = "OpenAI"
+        return result
+
+    async def _generate_fix_with_anthropic(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
+        """Generate fix using Anthropic."""
+        if not self.llm_provider or not isinstance(self.llm_provider, AnthropicProvider):
+            self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
+        
+        prompt = self._build_fix_prompt(finding, file_content)
+        response = await self.llm_provider.generate(prompt)
+        result = self._parse_ai_response(response, finding)
+        result["ai_generated"] = True
+        result["source"] = "Anthropic"
+        return result
 
     async def _generate_fix_with_gemini(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
         """
@@ -157,7 +240,7 @@ class AIFixGenerator:
             if not is_valid:
                 logger.warning("AI fix validation failed - using fallback", rule_id=rule_id, error=error_msg)
                 return self._generate_mock_fix(finding)
-            
+
             logger.info("AI fix validated successfully", rule_id=rule_id)
 
             return {
@@ -168,6 +251,8 @@ class AIFixGenerator:
                 "full_example": result.get("full_example", ""),
                 "best_practices": result.get("best_practices", []),
                 "confidence": float(result.get("confidence", 0.8)),
+                "ai_generated": True,
+                "source": "Gemini",
             }
         except json.JSONDecodeError as e:
             logger.warning("Gemini returned invalid JSON", error=str(e), response_preview=response[:200])
@@ -182,7 +267,7 @@ class AIFixGenerator:
                     if not is_valid:
                         logger.warning("AI fix validation failed - using fallback", rule_id=rule_id, error=error_msg)
                         return self._generate_mock_fix(finding)
-                    
+
                     return {
                         "summary": result.get("summary", finding.get("description", "")),
                         "risk": result.get("risk", ""),
@@ -191,6 +276,8 @@ class AIFixGenerator:
                         "full_example": result.get("full_example", ""),
                         "best_practices": result.get("best_practices", []),
                         "confidence": float(result.get("confidence", 0.7)),
+                        "ai_generated": True,
+                        "source": "Gemini",
                     }
                 except:
                     pass
@@ -388,123 +475,6 @@ Before sending your response, verify:
 
 Respond ONLY with valid JSON, no other text."""
 
-Description:
-{description}
-
-Severity:
-{severity}
-
-Category:
-{category}
-
-Technology:
-{file_type}
-
-File Path:
-{file_path}
-
-Recommendation:
-{recommendation}
-
-File Content:
-{file_content if file_content else "N/A - Generate fix based on rule knowledge"}
-
----
-
-TASK:
-
-1. Summarize the issue in 1-2 lines (clear and technical)
-2. Explain WHY this is risky (security + operational impact)
-3. Generate a FIX specific to THIS file and context
-4. Provide FULL corrected file (not partial)
-5. Apply additional best practices if relevant (but do not over-engineer)
-6. Ensure output is directly usable in production
-
----
-
-OUTPUT FORMAT (STRICT JSON ONLY):
-
-{{
-  "summary": "Short technical explanation",
-  "risk": "Why this is dangerous in production",
-  "impact": "Real-world impact if not fixed",
-  "fix_code": "Only the minimal fix snippet",
-  "full_example": "Full corrected file content",
-  "best_practices": [
-    "Optional improvement 1",
-    "Optional improvement 2"
-  ],
-  "confidence": 0.0
-}}
-
----
-
-TECH-SPECIFIC RULES:
-
-Dockerfile:
-- MUST enforce non-root user
-- MUST avoid 'latest' tag
-- Add HEALTHCHECK if missing
-- Ensure proper file ownership
-
-Kubernetes (YAML):
-- Add securityContext (runAsNonRoot, drop capabilities)
-- Add resource requests/limits
-- Add readiness/liveness probes if missing
-- Suggest PodDisruptionBudget if applicable
-- Suggest HPA if scaling is missing (only if relevant)
-
-Terraform:
-- Enforce encryption (S3, EBS, RDS, etc.)
-- Remove hardcoded secrets
-- Use least privilege IAM
-- Use remote state with locking if missing
-
-CI/CD (GitHub Actions, GitLab, Jenkins):
-- NEVER expose secrets in plain text
-- Use secret managers or OIDC
-- Avoid insecure commands or logs
-
-Cloud (AWS / Azure / GCP):
-- Prevent public exposure
-- Enforce encryption
-- Apply least privilege access
-
----
-
-CONTEXT-AWARE REQUIREMENTS:
-
-- If file already partially implements security -> IMPROVE it
-- If multiple issues exist -> focus on the most critical one
-- Keep fix aligned with existing structure (do not rewrite unnecessarily)
-
----
-
-FAILSAFE:
-
-If you cannot confidently generate a valid fix, return EXACTLY:
-
-{{
-  "summary": "Issue detected",
-  "risk": "Potential security or reliability risk",
-  "impact": "May impact system stability or security",
-  "fix_code": "",
-  "full_example": "",
-  "best_practices": [],
-  "confidence": 0.3
-}}
-
----
-
-FINAL INSTRUCTION:
-
-- Output MUST be valid JSON
-- No markdown
-- No explanation outside JSON
-- No additional text before or after JSON
-
-Your response will be directly rendered in a production SaaS UI, so it must be clean, accurate, and actionable."""
-
     def _parse_ai_response(self, response: str, finding: dict[str, Any]) -> dict[str, Any]:
         """Parse AI response into structured format. VALIDATES fix matches rule_id."""
         import json
@@ -521,12 +491,23 @@ Your response will be directly rendered in a production SaaS UI, so it must be c
             # VALIDATE: Ensure fix matches rule_id
             rule_id = finding.get("rule_id", "")
             is_valid, error_msg = self._validate_ai_fix(result, rule_id)
-            
+
             if not is_valid:
                 logger.warning("AI fix validation failed - using fallback", rule_id=rule_id, error=error_msg)
                 return self._generate_mock_fix(finding)
-            
+
             logger.info("AI fix validated successfully", rule_id=rule_id)
+
+            # Determine source from provider
+            source = "AI"
+            if self.llm_provider:
+                provider_name = type(self.llm_provider).__name__
+                if "OpenAI" in provider_name:
+                    source = "OpenAI"
+                elif "Anthropic" in provider_name:
+                    source = "Anthropic"
+                elif "Gemini" in provider_name:
+                    source = "Gemini"
 
             return {
                 "summary": result.get("summary", finding.get("description", "")),
@@ -536,13 +517,18 @@ Your response will be directly rendered in a production SaaS UI, so it must be c
                 "full_example": result.get("full_example", ""),
                 "best_practices": result.get("best_practices", []),
                 "confidence": float(result.get("confidence", 0.8)),
+                "ai_generated": True,
+                "source": source,
             }
         except Exception as e:
             logger.warning("Failed to parse AI response", error=str(e))
             return self._generate_mock_fix(finding)
 
     def _generate_mock_fix(self, finding: dict[str, Any], file_content: str = "") -> dict[str, Any]:
-        """Generate mock fix (fallback when AI unavailable) - Production quality."""
+        """Generate mock fix (fallback when AI unavailable) - Production quality.
+        
+        Sets ai_generated=false and source="Static" to indicate static fallback.
+        """
         rule_id = finding.get("rule_id", "")
         title = finding.get("rule_name", "")
         severity = finding.get("severity", "MEDIUM")
@@ -555,7 +541,13 @@ Your response will be directly rendered in a production SaaS UI, so it must be c
         tech = self._detect_technology(file_path, rule_id, file_type)
 
         # Generate context-aware mock fix based on technology and issue type
-        return self._generate_tech_specific_fix(tech, rule_id, title, description, file_content)
+        result = self._generate_tech_specific_fix(tech, rule_id, title, description, file_content, file_path)
+        
+        # Set static fallback flags
+        result["ai_generated"] = False
+        result["source"] = "Static"
+        
+        return result
 
     def _detect_technology(self, file_path: str, rule_id: str, file_type: str) -> str:
         """Detect technology from file path and rule ID."""
@@ -598,7 +590,8 @@ Your response will be directly rendered in a production SaaS UI, so it must be c
         rule_id: str,
         title: str,
         description: str,
-        file_content: str
+        file_content: str,
+        file_path: str = ""
     ) -> dict[str, Any]:
         """Generate technology-specific fix based on context."""
         desc_lower = description.lower()
@@ -614,7 +607,7 @@ Your response will be directly rendered in a production SaaS UI, so it must be c
 
         # Kubernetes fixes
         if tech == "kubernetes":
-            return self._generate_kubernetes_fix(rule_id, title, description, file_content)
+            return self._generate_kubernetes_fix(rule_id, title, description, file_content, file_path)
 
         # CI/CD fixes
         if tech == "ci_cd":
@@ -1352,7 +1345,8 @@ CMD ["node", "server.js"]''',
         rule_id: str,
         title: str,
         description: str,
-        file_content: str
+        file_content: str,
+        file_path: str = ""
     ) -> dict[str, Any]:
         """Generate Kubernetes-specific fix."""
         desc_lower = description.lower()

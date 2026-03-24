@@ -114,6 +114,15 @@ async def list_findings(
                 "file_path": finding.file_path,
                 "line_number": finding.line_number,
                 "ai_explanation": finding.ai_explanation,
+                "ai_generated": finding.ai_generated,
+                "summary": finding.summary,
+                "risk": finding.risk,
+                "impact": finding.impact,
+                "fix_code": finding.fix_code,
+                "full_example": finding.full_example,
+                "best_practices": finding.best_practices,
+                "confidence_score": finding.confidence_score,
+                "documentation_url": finding.documentation_url,
                 "created_at": finding.created_at.isoformat(),
             }
             for finding in findings

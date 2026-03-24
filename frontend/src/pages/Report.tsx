@@ -269,7 +269,7 @@ export function Report() {
         <AlertCircle className="h-16 w-16 text-muted-foreground/50 mx-auto mb-4" />
         <h2 className="text-2xl font-bold mb-2 text-foreground">Report Not Found</h2>
         <p className="text-muted-foreground mb-6">The requested report could not be found.</p>
-        <Button onClick={() => navigate('/analyze')}>Go Back</Button>
+        <Button onClick={() => navigate('/scan')}>Go Back</Button>
       </Card>
     )
   }
@@ -278,7 +278,7 @@ export function Report() {
     <div className="space-y-8">
       {/* Back Button */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/analyze')}>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/scan')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Analysis
         </Button>

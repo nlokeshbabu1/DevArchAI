@@ -21,8 +21,9 @@ interface Finding {
   file_path: string
   line_number?: number
   ai_explanation?: string
+  ai_generated?: boolean
   documentation_url?: string
-  // AI Fix Generator fields
+  // AI Fix Generator fields (enrichment)
   summary?: string
   risk?: string
   impact?: string
@@ -48,7 +49,7 @@ api.interceptors.request.use((config) => {
 
 export function Findings() {
   const navigate = useNavigate()
-  const { token } = useAuthStore()
+  const { token, isAuthenticated } = useAuthStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [severityFilter, setSeverityFilter] = useState<string[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string[]>([])
@@ -65,10 +66,10 @@ export function Findings() {
   // Get documentation URL
   const getDocumentationUrl = (finding: Finding): string => {
     if (finding.documentation_url) return finding.documentation_url
-    
+
     const category = finding.category.toLowerCase()
     const ruleId = finding.rule_id?.toUpperCase() || ''
-    
+
     if (category.includes('kubernetes') || ruleId.startsWith('K8S')) {
       return 'https://kubernetes.io/docs/'
     }
@@ -81,13 +82,13 @@ export function Findings() {
     if (category.includes('ci') || ruleId.startsWith('CI')) {
       return 'https://docs.github.com/en/actions'
     }
-    
+
     return 'https://kubernetes.io/docs/'
   }
-  
+
   // Get user subscription to determine if AI should be blurred
   const [userPlan, setUserPlan] = useState<string>('free')
-  
+
   useEffect(() => {
     // Fetch user's subscription plan
     const fetchPlan = async () => {
@@ -107,36 +108,20 @@ export function Findings() {
     fetchPlan()
   }, [token])
 
-  // Fetch all scans first, then get findings for each scan
-  const { data: scans, isLoading: scansLoading } = useQuery({
-    queryKey: ['scans'],
+  // Directly fetch findings from the global findings endpoint
+  const { data: findingsData, isLoading: findingsLoading, error: findingsError } = useQuery({
+    queryKey: ['findings'],
     queryFn: async () => {
-      const response = await api.get('/scans?page_size=100')
+      if (!isAuthenticated) return { findings: [], total: 0 }
+      const response = await api.get('/findings?page_size=100')
       return response.data
     },
-    refetchInterval: 5000, // Poll every 5 seconds
-  })
-
-  // Fetch findings for all scans
-  const { data: allFindings = [], isLoading: findingsLoading } = useQuery({
-    queryKey: ['all-findings', scans],
-    queryFn: async () => {
-      if (!scans || scans.length === 0) return []
-
-      // Fetch findings for each scan
-      const findingsPromises = scans.map((scan: any) =>
-        api.get(`/scans/${scan.id}/findings`)
-      )
-
-      const results = await Promise.all(findingsPromises)
-      return results.flatMap(r => r.data || [])
-    },
-    enabled: !!scans && scans.length > 0,
+    enabled: isAuthenticated,
     refetchInterval: 5000, // Poll every 5 seconds for live updates
   })
 
-  const findings = allFindings
-  const isLoading = scansLoading || findingsLoading
+  const findings = findingsData?.findings || []
+  const isLoading = findingsLoading
 
   const severityIcons: Record<string, any> = {
     critical: AlertCircle,
@@ -265,6 +250,27 @@ export function Findings() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
             <p className="text-muted-foreground mt-4">Loading findings...</p>
           </div>
+        ) : findingsError || !isAuthenticated ? (
+          <Card className="p-12 text-center">
+            <AlertCircle className="h-12 w-12 text-orange-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              {!isAuthenticated ? 'Authentication Required' : 'Error Loading Findings'}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {!isAuthenticated 
+                ? 'Please login to view your security findings.'
+                : 'Failed to load findings. Please try again.'}
+            </p>
+            {!isAuthenticated ? (
+              <Button onClick={() => navigate('/login')}>
+                Login to Continue
+              </Button>
+            ) : (
+              <Button onClick={() => window.location.reload()}>
+                Retry
+              </Button>
+            )}
+          </Card>
         ) : filteredFindings?.length === 0 ? (
           <Card className="p-12 text-center">
             <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />

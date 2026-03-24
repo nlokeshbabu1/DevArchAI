@@ -561,23 +561,40 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
 
 
 def get_llm_provider() -> BaseLLMProvider:
-    """Factory function to get configured LLM provider."""
-    provider = settings.LLM_PROVIDER.lower()
-
-    if provider == "openai" and settings.OPENAI_API_KEY:
-        return OpenAIProvider(
-            api_key=settings.OPENAI_API_KEY,
-            model=settings.LLM_MODEL,
-        )
-    elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return AnthropicProvider(
-            api_key=settings.ANTHROPIC_API_KEY,
-            model=settings.LLM_MODEL,
-        )
-    elif provider == "gemini" and settings.GEMINI_API_KEY:
+    """Factory function to get configured LLM provider with automatic fallback.
+    
+    Priority order:
+    1. If GEMINI_API_KEY is set -> Use Gemini
+    2. If OPENAI_API_KEY is set -> Use OpenAI
+    3. If ANTHROPIC_API_KEY is set -> Use Anthropic
+    4. Otherwise -> Use Mock (static fallback)
+    
+    If enrichment fails at any point, fallback to next provider in chain.
+    """
+    # Try Gemini first if API key is available
+    if settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider")
         return GeminiProvider(
             api_key=settings.GEMINI_API_KEY,
             model=settings.LLM_MODEL or "gemini-1.5-flash",
         )
-    else:
-        return MockLLMProvider()
+    
+    # Try OpenAI if API key is available
+    if settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider")
+        return OpenAIProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.LLM_MODEL or "gpt-4-turbo-preview",
+        )
+    
+    # Try Anthropic if API key is available
+    if settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider")
+        return AnthropicProvider(
+            api_key=settings.ANTHROPIC_API_KEY,
+            model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
+        )
+    
+    # Fallback to Mock provider (static examples)
+    logger.info("No LLM API keys configured, using static fallback (Mock provider)")
+    return MockLLMProvider()
