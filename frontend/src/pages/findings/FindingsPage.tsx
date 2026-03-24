@@ -363,7 +363,7 @@ export function Findings() {
                             </div>
                           )}
                           
-                          {finding.best_practices && finding.best_practices.length > 0 && (
+                          {finding.best_practices && Array.isArray(finding.best_practices) && finding.best_practices.length > 0 && (
                             <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
                               <div className="flex items-center gap-2 mb-2">
                                 <Sparkles className="h-4 w-4 text-indigo-400" />

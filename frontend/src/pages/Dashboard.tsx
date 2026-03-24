@@ -2,15 +2,17 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield, FolderGit2, AlertTriangle, TrendingUp, Activity, Zap,
-  Brain, ArrowRight, Play, CheckCircle, Clock
+  Brain, ArrowRight, Play, CheckCircle, Clock, Plus
 } from 'lucide-react'
 import { ScoreCircle, StatCard, Button, Card, RepositoryCard, SkeletonStatCard, SkeletonChart } from '../components/ui-animated'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import { useQuery } from '@tanstack/react-query'
 import { dashboardApi } from '../api/endpoints/dashboard'
+import { EmptyState } from '../components/ui/EmptyState'
+import { InlineScanPanel } from '../components/InlineScanPanel'
 
 const findingsData = [
   { name: 'Mon', critical: 2, high: 5, medium: 12, low: 8 },
@@ -62,6 +64,7 @@ export function Dashboard() {
     criticalIssues: 0,
     aiSuggestions: 0,
   })
+  const [showScanPanel, setShowScanPanel] = useState(false)
 
   // Fetch dashboard summary
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery({
@@ -155,49 +158,50 @@ export function Dashboard() {
   const hasNoData = stats.totalScans === 0 && stats.totalRepositories === 0
   if (hasNoData && !isLoading) {
     return (
-      <div className="space-y-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              Overview of your DevOps security posture
-            </p>
+      <>
+        <div className="space-y-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+              <p className="text-muted-foreground mt-1">
+                Overview of your DevOps security posture
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => setShowScanPanel(true)}
+              icon={<Play className="h-4 w-4" />}
+              glow
+            >
+              New Scan
+            </Button>
           </div>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => navigate('/scan')}
-            icon={<Play className="h-4 w-4" />}
-            glow
-          >
-            New Scan
-          </Button>
+          <Card className="p-12 text-center" hover={false}>
+            <EmptyState
+              icon={FolderGit2}
+              title="Welcome to DevArchAI!"
+              description="Start by scanning your first repository to see security insights, AI suggestions, and more."
+              actionLabel="Start Your First Scan"
+              onAction={() => setShowScanPanel(true)}
+              actionVariant="primary"
+            />
+          </Card>
         </div>
-        <Card className="p-12 text-center" hover={false}>
-          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 mb-4">
-            <FolderGit2 className="h-8 w-8 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            Welcome to DevArchAI!
-          </h2>
-          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            Start by scanning your first repository to see security insights, AI suggestions, and more.
-          </p>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => navigate('/scan')}
-            icon={<Play className="h-5 w-5" />}
-            glow
-          >
-            Start Your First Scan
-          </Button>
-        </Card>
-      </div>
+        <InlineScanPanel
+          isOpen={showScanPanel}
+          onClose={() => setShowScanPanel(false)}
+          onScanComplete={(scanId) => {
+            setShowScanPanel(false)
+            navigate(`/scans`)
+          }}
+        />
+      </>
     )
   }
 
   return (
+    <>
     <div className="space-y-8">
       {/* Header */}
       <motion.div
@@ -214,7 +218,7 @@ export function Dashboard() {
         <Button
           variant="primary"
           size="lg"
-          onClick={() => navigate('/scan')}
+          onClick={() => setShowScanPanel(true)}
           icon={<Play className="h-4 w-4" />}
           glow
         >
@@ -475,5 +479,14 @@ export function Dashboard() {
         </Card>
       </motion.div>
     </div>
+    <InlineScanPanel
+      isOpen={showScanPanel}
+      onClose={() => setShowScanPanel(false)}
+      onScanComplete={(scanId) => {
+        setShowScanPanel(false)
+        navigate(`/scans`)
+      }}
+    />
+    </>
   )
 }

@@ -458,26 +458,24 @@ export function AISuggestionsPage() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [scanId, setScanId] = useState<string | null>(null)
   const { user, isAuthenticated } = useAuthStore()
 
   const userPlan = user?.plan || 'free'
 
-  // For now, show empty state - AI suggestions endpoint needs scan_id
-  // In production, this would fetch from URL params or context
+  // Fetch all AI suggestions on mount
   useEffect(() => {
-    // Don't auto-fetch - wait for user to select a scan
-    setLoading(false)
-  }, [])
+    if (isAuthenticated) {
+      fetchAllSuggestions()
+    }
+  }, [isAuthenticated])
 
-  const fetchSuggestions = async (id: string) => {
+  const fetchAllSuggestions = async () => {
     setLoading(true)
     try {
-      const response = await apiClient.get(`/api/v1/suggestions/${id}`)
+      const response = await apiClient.get('/api/v1/suggestions')
       setSuggestions(response.data.suggestions || [])
     } catch (error) {
       console.error('Failed to fetch suggestions:', error)
-      // Use mock data for demonstration
       setSuggestions([])
     } finally {
       setLoading(false)

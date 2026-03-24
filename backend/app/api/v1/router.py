@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import (
+    ai_suggestions,
     auth,
     billing,
     dashboard,
@@ -19,6 +20,7 @@ from app.api.v1.routes import (
 
 api_router = APIRouter()
 
+api_router.include_router(ai_suggestions.router)
 api_router.include_router(auth.router)
 api_router.include_router(billing.router)
 api_router.include_router(dashboard.router)

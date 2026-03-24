@@ -33,6 +33,40 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/suggestions", tags=["AI Suggestions"])
 
 
+@router.get("", response_model=AISuggestionListResponse)
+async def list_all_suggestions(
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """List ALL AI suggestions from all user's scans."""
+    if not current_user:
+        # For anonymous users, return empty
+        return AISuggestionListResponse(suggestions=[], total=0, status_filter=status_filter)
+    
+    # Get all user's scans
+    scan_result = await db.execute(select(Scan.id).where(Scan.user_id == current_user.id))
+    scan_ids = [str(row[0]) for row in scan_result.all()]
+    
+    if not scan_ids:
+        return AISuggestionListResponse(suggestions=[], total=0, status_filter=status_filter)
+    
+    # Build query for suggestions across all scans
+    query = select(AISuggestion).where(AISuggestion.scan_id.in_(scan_ids))
+    
+    if status_filter:
+        query = query.where(AISuggestion.status == status_filter)
+    
+    result = await db.execute(query)
+    suggestions = result.scalars().all()
+    
+    return AISuggestionListResponse(
+        suggestions=[AISuggestionResponse.model_validate(s) for s in suggestions],
+        total=len(suggestions),
+        status_filter=status_filter,
+    )
+
+
 @router.get("/{scan_id}", response_model=AISuggestionListResponse)
 async def list_suggestions(
     scan_id: str,

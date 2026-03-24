@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
+import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock, Server, Cloud, Layers, Activity } from 'lucide-react'
 import axios from 'axios'
 import { Button, Card } from '../components/ui-animated'
 import { cn } from '../lib/utils'
 import { ScanProgress } from '../components/ScanProgress'
+import { ScanPipeline } from '../components/ScanPipeline'
+import { TechnologyDetectionPanel } from '../components/TechnologyDetectionPanel'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
 import { scansApi } from '../api/endpoints/scans'
@@ -401,13 +403,54 @@ export function ScanPage() {
   // Render progress if loading
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center py-12">
-        <div className="max-w-3xl w-full mx-auto px-4 space-y-6">
-          <ScanProgress
-            progress={progress}
-            currentStep={currentStep}
-            isComplete={progress >= 100}
-          />
+      <div className="min-h-screen py-12">
+        <div className="max-w-4xl w-full mx-auto px-4 space-y-6">
+          {/* Pipeline Visualization */}
+          <Card className="p-8" hover={false}>
+            <div className="space-y-8">
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <h1 className="text-2xl font-bold text-foreground">
+                  Scanning Repository
+                </h1>
+                <p className="text-muted-foreground">
+                  {repoUrl.split('/').slice(-2).join('/') || 'Analyzing...'}
+                </p>
+              </div>
+
+              {/* Pipeline Steps */}
+              <ScanPipeline currentStep={currentStep} progress={progress} />
+
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Overall Progress</span>
+                  <span className="font-medium text-primary">{progress.toFixed(0)}%</span>
+                </div>
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-primary via-indigo-500 to-primary"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+              </div>
+
+              {/* Technology Detection */}
+              <TechnologyDetectionPanel 
+                isDetecting={progress < 90}
+                detectedTechnologies={progress >= 50 ? ['Docker', 'Kubernetes', 'Terraform', 'CI/CD'] : undefined}
+              />
+
+              {/* Live Logs */}
+              <ScanProgress
+                progress={progress}
+                currentStep={currentStep}
+                isComplete={progress >= 100}
+              />
+            </div>
+          </Card>
         </div>
       </div>
     )

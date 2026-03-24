@@ -1,0 +1,51 @@
+/**
+ * EmptyState Component - Reusable empty state for consistent UX
+ */
+
+import { motion } from 'framer-motion'
+import { LucideIcon } from 'lucide-react'
+import { Button } from '../ui'
+
+interface EmptyStateProps {
+  icon: LucideIcon
+  title: string
+  description: string
+  actionLabel?: string
+  onAction?: () => void
+  actionVariant?: 'primary' | 'secondary' | 'ghost'
+}
+
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  actionLabel,
+  onAction,
+  actionVariant = 'primary'
+}: EmptyStateProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-center py-12"
+    >
+      <div className="inline-flex p-4 rounded-2xl bg-white/5 border border-white/10 mb-4">
+        <Icon className="h-12 w-12 text-muted-foreground" />
+      </div>
+      <h3 className="text-xl font-semibold text-foreground mb-2">
+        {title}
+      </h3>
+      <p className="text-muted-foreground mb-6 max-w-md">
+        {description}
+      </p>
+      {actionLabel && onAction && (
+        <Button
+          variant={actionVariant}
+          onClick={onAction}
+        >
+          {actionLabel}
+        </Button>
+      )}
+    </motion.div>
+  )
+}
