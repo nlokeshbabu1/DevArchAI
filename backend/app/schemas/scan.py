@@ -3,8 +3,9 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ScanStatus(str, Enum):
@@ -54,6 +55,10 @@ class ScanResponse(BaseModel):
     reliability_score: Optional[float]
     cost_score: Optional[float]
     observability_score: Optional[float]
+    detected_stack: Optional[dict] = None  # Detected technology stack
+    detected_technologies: Optional[list[str]] = None  # List of detected tech names
+    files_analyzed: Optional[int] = None  # Number of files analyzed
+    findings_count: Optional[int] = None  # Number of findings
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     analysis_duration_seconds: Optional[float]
@@ -62,6 +67,16 @@ class ScanResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator('id', 'user_id', 'repository_id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v):
+        """Convert UUID objects to strings."""
+        if v is None:
+            return None
+        if isinstance(v, UUID):
+            return str(v)
+        return v
 
 
 class ScanListResponse(BaseModel):
@@ -83,6 +98,14 @@ class ScanProgressResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime]
 
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v):
+        """Convert UUID objects to strings."""
+        if isinstance(v, UUID):
+            return str(v)
+        return v
+
 
 class ScanCancelResponse(BaseModel):
     """Scan cancellation response."""
@@ -90,3 +113,11 @@ class ScanCancelResponse(BaseModel):
     id: str
     status: str
     message: str
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v):
+        """Convert UUID objects to strings."""
+        if isinstance(v, UUID):
+            return str(v)
+        return v

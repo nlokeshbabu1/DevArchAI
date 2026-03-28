@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
-import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
+import { AISuggestionBlur } from '../components/billing/AisuggestionBlur'
+import { TechStackDisplay } from '../components/TechStackDisplay'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import { Layout } from '../components/layout/DashboardLayout'
@@ -109,12 +110,21 @@ export function ScanResultsPage() {
 
   const fetchResults = async () => {
     try {
-      const response = await fetch(`/api/v1/public/scan/${sessionId}`)
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/v1/public/scan/${sessionId}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      })
       if (!response.ok) throw new Error('Failed to fetch results')
       const data = await response.json()
+      console.log('✅ Scan results fetched:', data)
       setResults(data)
     } catch (error) {
-      console.error('Error fetching results:', error)
+      console.error('❌ Error fetching results:', error)
     } finally {
       setIsLoading(false)
     }
@@ -221,6 +231,59 @@ export function ScanResultsPage() {
             </div>
           </Card>
         </motion.div>
+
+        {/* Scan Information */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <Card className="p-6" hover={false}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">
+              Scan Information
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Repository</div>
+                <div className="font-medium text-foreground truncate">{results.repository_name}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Branch</div>
+                <div className="font-medium text-foreground">{results.branch || 'main'}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Files Analyzed</div>
+                <div className="font-medium text-foreground">{results.files_analyzed || results.total_findings || 0}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Findings</div>
+                <div className="font-medium text-foreground">{results.total_findings || 0}</div>
+              </div>
+            </div>
+            {results.scan_id && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="text-sm text-muted-foreground">Scan ID</div>
+                <div className="font-mono text-xs text-muted-foreground mt-1">{results.scan_id}</div>
+              </div>
+            )}
+          </Card>
+        </motion.div>
+
+        {/* Detected Technology Stack */}
+        {results.detected_technologies && results.detected_technologies.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18 }}
+          >
+            <Card className="p-6" hover={false}>
+              <h3 className="text-lg font-semibold text-foreground mb-4">
+                Detected Technology Stack
+              </h3>
+              <TechStackDisplay technologies={results.detected_technologies} />
+            </Card>
+          </motion.div>
+        )}
 
         {/* Severity Counts */}
         <motion.div

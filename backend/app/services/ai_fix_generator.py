@@ -101,8 +101,8 @@ class AIFixGenerator:
 
     async def _generate_ai_fix_with_fallback(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
         """Generate AI fix with automatic fallback to next provider on failure."""
-        from app.ai.engine import GeminiProvider, OpenAIProvider, AnthropicProvider, MockLLMProvider
-        
+        from app.ai.engine import GeminiProvider, OpenAIProvider, AnthropicProvider, MistralProvider, MockLLMProvider
+
         # Try Gemini first if available
         if settings.GEMINI_API_KEY and isinstance(self.llm_provider, GeminiProvider):
             try:
@@ -120,7 +120,11 @@ class AIFixGenerator:
                     self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
                     self._provider_name = "Anthropic"
                     return await self._generate_fix_with_anthropic(finding, file_content)
-        
+                elif settings.MISTRAL_API_KEY:
+                    self.llm_provider = get_llm_provider()  # Will return MistralProvider
+                    self._provider_name = "Mistral"
+                    return await self._generate_fix_with_mistral(finding, file_content)
+
         # Try OpenAI
         if settings.OPENAI_API_KEY and isinstance(self.llm_provider, OpenAIProvider):
             try:
@@ -134,7 +138,11 @@ class AIFixGenerator:
                     self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
                     self._provider_name = "Anthropic"
                     return await self._generate_fix_with_anthropic(finding, file_content)
-        
+                elif settings.MISTRAL_API_KEY:
+                    self.llm_provider = get_llm_provider()
+                    self._provider_name = "Mistral"
+                    return await self._generate_fix_with_mistral(finding, file_content)
+
         # Try Anthropic
         if settings.ANTHROPIC_API_KEY and isinstance(self.llm_provider, AnthropicProvider):
             try:
@@ -143,8 +151,22 @@ class AIFixGenerator:
                 result["source"] = "Anthropic"
                 return result
             except Exception as e:
-                logger.warning("Anthropic failed, using static fallback", error=str(e))
-        
+                logger.warning("Anthropic failed, trying next provider", error=str(e))
+                if settings.MISTRAL_API_KEY:
+                    self.llm_provider = get_llm_provider()
+                    self._provider_name = "Mistral"
+                    return await self._generate_fix_with_mistral(finding, file_content)
+
+        # Try Mistral
+        if settings.MISTRAL_API_KEY and isinstance(self.llm_provider, MistralProvider):
+            try:
+                result = await self._generate_fix_with_mistral(finding, file_content)
+                result["ai_generated"] = True
+                result["source"] = "Mistral"
+                return result
+            except Exception as e:
+                logger.warning("Mistral failed, using static fallback", error=str(e))
+
         # Ultimate fallback to Mock
         logger.info("All AI providers failed, using static fallback")
         return self._generate_mock_fix(finding, file_content)
@@ -165,12 +187,24 @@ class AIFixGenerator:
         """Generate fix using Anthropic."""
         if not self.llm_provider or not isinstance(self.llm_provider, AnthropicProvider):
             self.llm_provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
-        
+
         prompt = self._build_fix_prompt(finding, file_content)
         response = await self.llm_provider.generate(prompt)
         result = self._parse_ai_response(response, finding)
         result["ai_generated"] = True
         result["source"] = "Anthropic"
+        return result
+
+    async def _generate_fix_with_mistral(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
+        """Generate fix using Mistral AI."""
+        if not self.llm_provider or not isinstance(self.llm_provider, MistralProvider):
+            self.llm_provider = get_llm_provider()
+
+        prompt = self._build_fix_prompt(finding, file_content)
+        response = await self.llm_provider.generate(prompt)
+        result = self._parse_ai_response(response, finding)
+        result["ai_generated"] = True
+        result["source"] = "Mistral"
         return result
 
     async def _generate_fix_with_gemini(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
@@ -301,25 +335,36 @@ class AIFixGenerator:
     def _get_expected_fix_type(self, rule_id: str, category: str, file_type: str) -> str:
         """Get expected fix type based on rule_id for strict validation."""
         rule_id_upper = rule_id.upper()
-        
+        rule_id_lower = rule_id.lower()
+
         # Check exact match first
         if rule_id_upper in EXPECTED_FIX_TYPES:
             fix_info = EXPECTED_FIX_TYPES[rule_id_upper]
             return f"{fix_info['type']} (must contain: {', '.join(fix_info['keywords'][:3])})"
-        
+
         # Check partial matches
         for pattern, fix_info in EXPECTED_FIX_TYPES.items():
             if pattern.split('-')[0] == rule_id_upper.split('-')[0]:  # Same prefix
                 if pattern.endswith(rule_id_upper.split('-')[-1]):  # Same number
                     fix_info = EXPECTED_FIX_TYPES[pattern]
                     return f"{fix_info['type']} (must contain: {', '.join(fix_info['keywords'][:3])})"
-        
+
+        # Specific handling for known rule patterns
+        if rule_id_upper == "K8S-SEC-001":
+            return "NetworkPolicy (must contain: NetworkPolicy, networking.k8s.io, podSelector)"
+        if rule_id_upper == "K8S-SCALE-001":
+            return "HorizontalPodAutoscaler (must contain: HorizontalPodAutoscaler, autoscaling, minReplicas)"
+
         # Fallback based on category and file_type
         if 'kubernetes' in file_type.lower() or 'k8s' in rule_id_lower:
             if category.lower() == 'security':
-                return "securityContext or NetworkPolicy (based on issue type)"
+                if 'network' in category.lower() or 'policy' in category.lower():
+                    return "NetworkPolicy (must contain: NetworkPolicy, networking.k8s.io)"
+                return "securityContext (must contain: securityContext, runAsNonRoot)"
             elif category.lower() == 'reliability':
                 return "resources, probes, or PDB (based on issue type)"
+            elif category.lower() == 'scalability':
+                return "HorizontalPodAutoscaler (must contain: HorizontalPodAutoscaler, autoscaling)"
         elif 'docker' in file_type.lower():
             if 'user' in category.lower() or 'root' in category.lower():
                 return "USER instruction"
@@ -330,50 +375,67 @@ class AIFixGenerator:
                 return "terraform backend block"
             elif 'encryption' in category.lower():
                 return "encryption configuration"
-        
+
         return "Appropriate fix for the detected issue"
 
     def _validate_ai_fix(self, fix_result: dict[str, Any], rule_id: str) -> tuple[bool, str]:
         """
         Validate AI-generated fix matches the rule_id.
-        
+
         Returns:
             (is_valid, error_message)
         """
         rule_id_upper = rule_id.upper()
         fix_code = fix_result.get("fix_code", "")
-        
+
         # Get expected fix type
         expected = EXPECTED_FIX_TYPES.get(rule_id_upper)
         if not expected:
             # No strict validation for unknown rules
             return True, ""
-        
+
         # Check if fix_code contains expected keywords
         keywords = expected["keywords"]
         found_keywords = [kw for kw in keywords if kw.lower() in fix_code.lower()]
-        
-        if len(found_keywords) < len(keywords) // 2:  # At least 50% of keywords must match
+
+        # STRICT: At least 70% of keywords must match (was 50%)
+        if len(found_keywords) < len(keywords) * 0.7:
             error_msg = f"AI fix mismatch for {rule_id}: expected {expected['type']}, got fix with keywords {found_keywords}"
             return False, error_msg
-        
-        # Specific validations for critical rules
+
+        # Specific validations for critical rules - MUST match exactly
         if rule_id_upper == "K8S-SEC-001":
             if "NetworkPolicy" not in fix_code and "networking.k8s.io" not in fix_code:
                 return False, f"K8S-SEC-001 requires NetworkPolicy, got: {fix_code[:100]}..."
-        
+
+        if rule_id_upper == "K8S-SCALE-001":
+            if "HorizontalPodAutoscaler" not in fix_code and "autoscaling" not in fix_code:
+                return False, f"K8S-SCALE-001 requires HorizontalPodAutoscaler, got: {fix_code[:100]}..."
+
         if rule_id_upper in ["K8S-005", "K8S-006", "K8S-SEC-002"]:
             if "securityContext" not in fix_code and "runAsNonRoot" not in fix_code:
                 return False, f"{rule_id} requires securityContext, got: {fix_code[:100]}..."
-        
+
         if rule_id_upper in ["DKR-SEC-001", "DKR-001"]:
             if "USER" not in fix_code:
                 return False, f"{rule_id} requires USER instruction, got: {fix_code[:100]}..."
-        
+
         if rule_id_upper in ["DKR-REL-001", "DKR-004"]:
             if "HEALTHCHECK" not in fix_code:
                 return False, f"{rule_id} requires HEALTHCHECK, got: {fix_code[:100]}..."
-        
+
+        if rule_id_upper == "K8S-001":
+            if "resources" not in fix_code.lower() or "limits" not in fix_code.lower():
+                return False, f"{rule_id} requires resources.limits, got: {fix_code[:100]}..."
+
+        if rule_id_upper == "K8S-003":
+            if "livenessProbe" not in fix_code:
+                return False, f"{rule_id} requires livenessProbe, got: {fix_code[:100]}..."
+
+        if rule_id_upper == "K8S-004":
+            if "readinessProbe" not in fix_code:
+                return False, f"{rule_id} requires readinessProbe, got: {fix_code[:100]}..."
+
         return True, ""
 
     def _build_fix_prompt(self, finding: dict[str, Any], file_content: str) -> str:

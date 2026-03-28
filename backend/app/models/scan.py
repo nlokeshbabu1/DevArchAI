@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -49,6 +49,7 @@ class Scan(Base):
     reliability_score = Column(Float, nullable=True)
     cost_score = Column(Float, nullable=True)
     observability_score = Column(Float, nullable=True)
+    detected_stack = Column(JSON, nullable=True)  # Detected technology stack
 
     # Timing
     started_at = Column(DateTime(timezone=True), nullable=True)

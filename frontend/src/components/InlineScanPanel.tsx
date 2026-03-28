@@ -8,10 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, GitBranch, Github, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { cn } from '../lib/utils'
-import { ScanPipeline } from './ScanPipeline'
-import { TechnologyDetectionPanel } from './TechnologyDetectionPanel'
 import { ScanProgress } from './ScanProgress'
-import axios from 'axios'
+import apiClient from '../api/endpoints/client'
 import { useQuery } from '@tanstack/react-query'
 
 interface InlineScanPanelProps {
@@ -81,7 +79,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
         })
       }, 500)
 
-      const response = await axios.post('/api/v1/scan/start', {
+      const response = await apiClient.post('/scan/start', {
         repository_url: repoUrl.trim(),
         branch: selectedBranch || 'main',
       })
@@ -94,7 +92,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await axios.get(`/api/v1/scan/status/${data.scan_id}`)
+          const statusResponse = await apiClient.get(`/scan/status/${data.scan_id}`)
           const status = statusResponse.data
 
           const elapsed = Date.now() - startTime
@@ -110,6 +108,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
             setLoading(false)
 
             if (onScanComplete) {
+              // Navigate to scan results page
               onScanComplete(data.scan_id)
             }
           }
@@ -173,32 +172,12 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
             <div className="p-6">
               {loading ? (
                 <div className="space-y-6">
-                  <ScanPipeline currentStep={currentStep} progress={progress} />
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span className="font-medium text-primary">{progress.toFixed(0)}%</span>
-                    </div>
-                    <div className="h-3 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-primary via-indigo-500 to-primary"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </div>
-                  </div>
-
-                  <TechnologyDetectionPanel
-                    isDetecting={progress < 90}
-                    detectedTechnologies={progress >= 50 ? ['Docker', 'Kubernetes', 'Terraform', 'CI/CD'] : undefined}
-                  />
-
+                  {/* Show simple progress - will navigate to results when complete */}
                   <ScanProgress
                     progress={progress}
                     currentStep={currentStep}
                     isComplete={progress >= 100}
+                    detectedTechnologies={[]}  // Will be shown in results page
                   />
                 </div>
               ) : error ? (

@@ -82,11 +82,33 @@ export const scansApi = {
   },
 
   /**
-   * Get scan results
+   * Get scan results (scan details + findings)
+   * Uses /scans/{id} endpoint which is more reliable
    */
   getScanResults: async (scanId: string): Promise<any> => {
-    const response = await apiClient.get(`/scan/results/${scanId}`);
-    return response.data;
+    // Add cache-busting to prevent stale data
+    const timestamp = Date.now();
+    // Get scan details
+    const scanResponse = await apiClient.get(`/scans/${scanId}?t=${timestamp}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
+    // Get findings
+    const findingsResponse = await apiClient.get(`/scans/${scanId}/findings?t=${timestamp}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
+
+    return {
+      ...scanResponse.data,
+      findings: findingsResponse.data,
+    };
   },
 
   /**

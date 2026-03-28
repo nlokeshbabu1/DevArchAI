@@ -73,18 +73,37 @@ async def create_anonymous_scan(
                 if len(url_parts) >= 2:
                     owner = url_parts[-2]
                     repo = url_parts[-1].replace(".git", "")
-                    
+
                     # Try to get default branch from GitHub API
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         api_url = f"https://api.github.com/repos/{owner}/{repo}"
-                        response = await client.get(api_url)
+                        headers = {}
+                        if settings.GITHUB_TOKEN:
+                            headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
+                        response = await client.get(api_url, headers=headers)
                         if response.status_code == 200:
                             repo_data = response.json()
                             branch = repo_data.get("default_branch", "main")
-                            logger.info(f"Detected default branch: {branch} for {owner}/{repo}")
+                            logger.info(f"✅ Detected default branch: {branch} for {owner}/{repo}")
+                        else:
+                            logger.warning(f"GitHub API returned {response.status_code}, trying fallback branches")
+                            # Try common branch names
+                            for fallback in ["master", "main", "develop"]:
+                                try:
+                                    branch_check = await client.get(
+                                        f"https://api.github.com/repos/{owner}/{repo}/branches/{fallback}",
+                                        headers=headers
+                                    )
+                                    if branch_check.status_code == 200:
+                                        branch = fallback
+                                        logger.info(f"✅ Using fallback branch: {branch}")
+                                        break
+                                except:
+                                    continue
             except Exception as e:
-                logger.warning(f"Could not detect branch from GitHub API: {e}")
-                # Will try common branch names as fallback
+                logger.warning(f"❌ Could not detect branch from GitHub API: {e}")
+                # Try common branch names as fallback
+                branch = "master"  # Default to master instead of main
 
         # Create anonymous scan record (for session tracking)
         anon_scan = AnonymousScan(
@@ -283,13 +302,21 @@ async def get_scan_status(
             )
         
         # Return completed scan data
+        detected_techs = []
+        if scan.detected_stack:
+            # scan.detected_stack is a dict with "detected_stack" key containing the list
+            if isinstance(scan.detected_stack, dict):
+                detected_techs = scan.detected_stack.get("detected_stack", [])
+            elif isinstance(scan.detected_stack, list):
+                detected_techs = scan.detected_stack
+
         return {
             "scan_id": str(scan.id),
             "status": scan.status.value,
             "progress": 100 if scan.status == 'completed' else scan.progress,
             "current_step": "Scan completed" if scan.status == 'completed' else scan.status.value,
             "steps": [],
-            "detected_stack": [],
+            "detected_stack": detected_techs,  # Return actual detected technologies list
             "logs": [f"Scan {scan.status.value} at {scan.created_at}"],
             "created_at": scan.created_at.isoformat(),
             "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
@@ -439,6 +466,59 @@ async def get_anonymous_scan_results(
 
     # Calculate security score as string (e.g., "72/100")
     security_score = f"{int(scan.security_score)}/100" if scan.security_score else "N/A"
+    
+    # Calculate files analyzed from detected_stack or findings
+    files_analyzed = 0
+    detected_technologies = []
+    
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        files_analyzed = (
+            len(stack.get('docker_files', [])) +
+            len(stack.get('terraform_files', [])) +
+            len(stack.get('kubernetes_files', [])) +
+            len(stack.get('github_actions_files', [])) +
+            len(stack.get('gitlab_ci_files', [])) +
+            len(stack.get('jenkins_files', [])) +
+            len(stack.get('docker_compose_files', [])) +
+            len(stack.get('helm_files', [])) +
+            len(stack.get('ansible_files', [])) +
+            len(stack.get('circleci_files', [])) +
+            len(stack.get('azure_devops_files', [])) +
+            len(stack.get('travis_files', [])) +
+            len(stack.get('drone_files', []))
+        )
+        
+        # Build detected technologies list
+        if stack.get('has_docker') or stack.get('docker_files'):
+            detected_technologies.append('docker')
+        if stack.get('has_terraform') or stack.get('terraform_files'):
+            detected_technologies.append('terraform')
+        if stack.get('has_kubernetes') or stack.get('kubernetes_files'):
+            detected_technologies.append('kubernetes')
+        if stack.get('has_github_actions') or stack.get('github_actions_files'):
+            detected_technologies.append('github_actions')
+        if stack.get('has_gitlab_ci') or stack.get('gitlab_ci_files'):
+            detected_technologies.append('gitlab_ci')
+        if stack.get('has_jenkins') or stack.get('jenkins_files'):
+            detected_technologies.append('jenkins')
+        if stack.get('has_docker_compose') or stack.get('docker_compose_files'):
+            detected_technologies.append('docker_compose')
+        if stack.get('has_helm') or stack.get('helm_files'):
+            detected_technologies.append('helm')
+        if stack.get('has_ansible') or stack.get('ansible_files'):
+            detected_technologies.append('ansible')
+        if stack.get('has_circleci') or stack.get('circleci_files'):
+            detected_technologies.append('circleci')
+        if stack.get('has_azure_devops') or stack.get('azure_devops_files'):
+            detected_technologies.append('azure_devops')
+        if stack.get('has_travis') or stack.get('travis_files'):
+            detected_technologies.append('travis')
+        if stack.get('has_drone') or stack.get('drone_files'):
+            detected_technologies.append('drone')
+    
+    if files_analyzed == 0:
+        files_analyzed = len(set(f.file_path for f in scan.findings if f.file_path))
 
     # Update anonymous scan record with results
     anon_scan.security_score = security_score
@@ -456,8 +536,11 @@ async def get_anonymous_scan_results(
         "status": "completed",
         "repository_name": anon_scan.repository_name,
         "repository_url": anon_scan.repository_url,
+        "branch": anon_scan.branch,
         "security_score": security_score,
         "severity_counts": severity_counts,
+        "files_analyzed": files_analyzed,
+        "detected_technologies": detected_technologies,
         "findings": findings,
         "user_plan": user_plan,
         "ai_suggestions_blurred": not show_all_ai,

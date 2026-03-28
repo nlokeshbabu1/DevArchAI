@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ScanNotFoundException
@@ -57,18 +57,29 @@ async def list_scans(
     if status_filter:
         query = query.where(Scan.status == status_filter)
 
-    # Filter by user if authenticated, otherwise show recent public scans
+    # Filter by user if authenticated
     if current_user:
-        query = query.where(Scan.user_id == current_user.id)
+        # Show ALL scans for authenticated user (including anonymous scans they made)
+        query = query.where(
+            (Scan.user_id == current_user.id) | (Scan.user_id.is_(None))
+        )
+        logger.info(f"Listing scans for user {current_user.id}")
     else:
-        # For unauthenticated users, show scans without user_id (anonymous scans)
-        query = query.where(Scan.user_id.is_(None))
+        # For unauthenticated users, show only anonymous scans (last 7 days)
+        from datetime import datetime, timedelta
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        query = query.where(
+            (Scan.user_id.is_(None)) & (Scan.created_at >= seven_days_ago)
+        )
+        logger.info("Listing anonymous scans for guest user")
 
     # Apply pagination
     query = query.offset(offset).limit(page_size)
 
     result = await db.execute(query)
     scans = result.scalars().all()
+
+    logger.info(f"Returning {len(scans)} scans")
 
     # Convert to list of dicts for JSON serialization
     return [
@@ -119,7 +130,88 @@ async def get_scan(
     if not scan:
         raise ScanNotFoundException(scan_id)
 
-    return scan
+    # Get findings count
+    from app.models.finding import Finding
+    logger.error(f"DEBUG: Getting scan {scan_id}")  # DEBUG LINE
+    findings_count = await db.execute(
+        select(func.count()).select_from(Finding).where(Finding.scan_id == scan_id)
+    )
+    findings_count = findings_count.scalar() or 0
+    logger.error(f"DEBUG: findings_count={findings_count}")  # DEBUG LINE
+    
+    # Calculate files analyzed from detected_stack
+    files_analyzed = 0
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        files_analyzed = (
+            len(stack.get('docker_files', [])) +
+            len(stack.get('terraform_files', [])) +
+            len(stack.get('kubernetes_files', [])) +
+            len(stack.get('github_actions_files', [])) +
+            len(stack.get('gitlab_ci_files', [])) +
+            len(stack.get('jenkins_files', [])) +
+            len(stack.get('docker_compose_files', [])) +
+            len(stack.get('helm_files', []))
+        )
+    
+    # Convert to dict with additional fields
+    # Build clean detected technologies list
+    detected_tech_names = []
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        if stack.get('has_docker') or stack.get('docker_files'):
+            detected_tech_names.append('Docker')
+        if stack.get('has_terraform') or stack.get('terraform_files'):
+            detected_tech_names.append('Terraform')
+        if stack.get('has_kubernetes') or stack.get('kubernetes_files'):
+            detected_tech_names.append('Kubernetes')
+        if stack.get('has_helm') or stack.get('helm_files'):
+            detected_tech_names.append('Helm')
+        if stack.get('has_github_actions') or stack.get('github_actions_files'):
+            detected_tech_names.append('GitHub Actions')
+        if stack.get('has_gitlab_ci') or stack.get('gitlab_ci_files'):
+            detected_tech_names.append('GitLab CI')
+        if stack.get('has_jenkins') or stack.get('jenkins_files'):
+            detected_tech_names.append('Jenkins')
+        if stack.get('has_docker_compose') or stack.get('docker_compose_files'):
+            detected_tech_names.append('Docker Compose')
+        if stack.get('has_ansible') or stack.get('ansible_files'):
+            detected_tech_names.append('Ansible')
+        if stack.get('has_circleci') or stack.get('circleci_files'):
+            detected_tech_names.append('CircleCI')
+        if stack.get('has_azure_devops') or stack.get('azure_devops_files'):
+            detected_tech_names.append('Azure DevOps')
+        if stack.get('has_travis') or stack.get('travis_files'):
+            detected_tech_names.append('Travis CI')
+        if stack.get('has_drone') or stack.get('drone_files'):
+            detected_tech_names.append('Drone CI')
+    
+    return {
+        "id": str(scan.id),
+        "user_id": str(scan.user_id) if scan.user_id else None,
+        "repository_id": str(scan.repository_id) if scan.repository_id else None,
+        "repository_url": scan.repository_url,
+        "branch": scan.branch,
+        "commit_hash": scan.commit_hash,
+        "status": scan.status.value,
+        "progress": scan.progress,
+        "error_message": scan.error_message,
+        "overall_score": scan.overall_score,
+        "security_score": scan.security_score,
+        "scalability_score": scan.scalability_score,
+        "reliability_score": scan.reliability_score,
+        "cost_score": scan.cost_score,
+        "observability_score": scan.observability_score,
+        "detected_stack": scan.detected_stack,
+        "detected_technologies": detected_tech_names,
+        "files_analyzed": files_analyzed,
+        "findings_count": findings_count,
+        "started_at": scan.started_at.isoformat() if scan.started_at else None,
+        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+        "analysis_duration_seconds": scan.analysis_duration_seconds,
+        "created_at": scan.created_at.isoformat(),
+        "updated_at": scan.updated_at.isoformat(),
+    }
 
 
 @router.get("/{scan_id}/progress", response_model=ScanProgressResponse)
@@ -248,6 +340,7 @@ async def get_scan_findings(
     findings = findings_result.scalars().all()
 
     # Convert to dicts
+    import json
     return [
         {
             "id": str(finding.id),
@@ -268,7 +361,7 @@ async def get_scan_findings(
             "fix_code": finding.fix_code,
             "fix_example": finding.fix_example,
             "full_example": finding.full_example,
-            "best_practices": finding.best_practices,
+            "best_practices": json.loads(finding.best_practices) if finding.best_practices else [],
             "confidence_score": finding.confidence_score,
             "documentation_url": finding.documentation_url,
             "created_at": finding.created_at.isoformat(),
@@ -486,3 +579,4 @@ async def analyze_repository(
         "created_at": scan.created_at.isoformat(),
         "updated_at": scan.updated_at.isoformat(),
     }
+# reload trigger

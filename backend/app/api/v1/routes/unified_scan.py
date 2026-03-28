@@ -55,33 +55,65 @@ async def start_unified_scan(
         scan_id = str(uuid4())
         session_token = None
         
+        # Auto-detect branch from GitHub API if not specified or is 'main'
+        branch = request.branch or "main"
+        logger.error(f"DEBUG: Initial branch={branch}, request.branch={request.branch}")  # DEBUG
+        if branch == "main":
+            try:
+                import httpx
+                # Extract owner and repo from URL
+                url_parts = request.repository_url.rstrip("/").split("/")
+                if len(url_parts) >= 2:
+                    owner = url_parts[-2]
+                    repo = url_parts[-1].replace(".git", "")
+                    logger.error(f"DEBUG: Checking GitHub API for {owner}/{repo}")  # DEBUG
+                    
+                    # Try to get default branch from GitHub API
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        api_url = f"https://api.github.com/repos/{owner}/{repo}"
+                        headers = {}
+                        if settings.GITHUB_TOKEN:
+                            headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
+                        response = await client.get(api_url, headers=headers)
+                        logger.error(f"DEBUG: GitHub API response status={response.status_code}")  # DEBUG
+                        if response.status_code == 200:
+                            repo_data = response.json()
+                            branch = repo_data.get("default_branch", "main")
+                            logger.error(f"DEBUG: Detected branch={branch}")  # DEBUG
+                            logger.info(f"✅ Detected default branch: {branch} for {owner}/{repo}")
+                        else:
+                            logger.warning(f"GitHub API returned {response.status_code}, using default: main")
+            except Exception as e:
+                logger.error(f"DEBUG: Exception in branch detection: {e}")  # DEBUG
+                logger.warning(f"❌ Could not detect branch from GitHub API: {e}, using default: main")
+
         # For guest users, create anonymous scan record
         if not current_user:
             session_token = AnonymousScan.generate_session_token()
             expires_at = AnonymousScan.get_expiry()
-            
+
             # Extract repo name
             repo_name = request.repository_url.rstrip("/").split("/")[-1].replace(".git", "")
-            
+
             # Create anonymous scan session
             anon_scan = AnonymousScan(
                 session_token=session_token,
                 repository_url=request.repository_url,
                 repository_name=repo_name,
-                branch=request.branch,
+                branch=branch,
                 expires_at=expires_at,
                 status="pending",
                 linked_scan_id=scan_id,  # Link to scan_id from the start
             )
             db.add(anon_scan)
             logger.info(f"Anonymous scan session created: {session_token}")
-        
+
         # Create scan record with the SAME ID used for progress tracking
         scan = Scan(
             id=uuid4(),  # This will be converted to string for scan_id
             user_id=current_user.id if current_user else None,
             repository_url=request.repository_url,
-            branch=request.branch,
+            branch=branch,
             status=ScanStatus.PENDING,
             progress=0,
         )
@@ -162,14 +194,14 @@ async def start_unified_scan(
                 detail=f"Scan failed: {error_msg}",
             )
         
-        # Return response
+        # Return response with detected branch
         return {
             "scan_id": scan_id,
             "session_token": session_token,
             "status": "running",
             "message": "Scan started successfully",
             "repository_url": request.repository_url,
-            "branch": request.branch,
+            "branch": branch,  # Use detected branch, not request.branch
         }
         
     except HTTPException:
@@ -224,13 +256,21 @@ async def get_scan_status(
             )
         
         # Return completed scan data
+        detected_techs = []
+        if scan.detected_stack:
+            # scan.detected_stack is a dict with "detected_stack" key containing the list
+            if isinstance(scan.detected_stack, dict):
+                detected_techs = scan.detected_stack.get("detected_stack", [])
+            elif isinstance(scan.detected_stack, list):
+                detected_techs = scan.detected_stack
+
         return {
             "scan_id": str(scan.id),
             "status": scan.status.value,
             "progress": 100 if scan.status == 'completed' else scan.progress,
             "current_step": "Scan completed" if scan.status == 'completed' else scan.status.value,
             "steps": [],
-            "detected_stack": [],
+            "detected_stack": detected_techs,  # Return actual detected technologies list
             "logs": [f"Scan {scan.status.value} at {scan.created_at}"],
             "created_at": scan.created_at.isoformat(),
             "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
@@ -383,6 +423,32 @@ async def get_scan_results(
                 detected_technologies.append('grafana')
             tech_files['grafana'] = tech_files.get('grafana', 0) + 1
 
+    # Calculate files analyzed from detected_stack (stored in scan.detected_stack)
+    # This ensures we show files analyzed even if no findings were detected
+    files_analyzed = 0
+    if scan.detected_stack:
+        # Count total files from all technologies
+        stack = scan.detected_stack
+        files_analyzed = (
+            len(stack.get('docker_files', [])) +
+            len(stack.get('terraform_files', [])) +
+            len(stack.get('kubernetes_files', [])) +
+            len(stack.get('github_actions_files', [])) +
+            len(stack.get('gitlab_ci_files', [])) +
+            len(stack.get('jenkins_files', [])) +
+            len(stack.get('docker_compose_files', [])) +
+            len(stack.get('helm_files', [])) +
+            len(stack.get('ansible_files', [])) +
+            len(stack.get('circleci_files', [])) +
+            len(stack.get('azure_devops_files', [])) +
+            len(stack.get('travis_files', [])) +
+            len(stack.get('drone_files', []))
+        )
+
+    # Fallback to counting from findings if detected_stack is empty
+    if files_analyzed == 0:
+        files_analyzed = len(set(f.file_path for f in findings if f.file_path))
+
     return {
         "scan_id": str(scan.id),
         "repository_url": scan.repository_url,
@@ -396,7 +462,7 @@ async def get_scan_results(
         "observability_score": scan.observability_score,
         "findings_count": len(findings),
         "severity_counts": severity_counts,
-        "files_analyzed": len(set(f.file_path for f in findings if f.file_path)),  # Count unique files
+        "files_analyzed": files_analyzed,
         "detected_technologies": detected_technologies,  # Extracted from findings
         "findings": [
             {

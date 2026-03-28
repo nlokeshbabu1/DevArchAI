@@ -2,13 +2,11 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock, Server, Cloud, Layers, Activity } from 'lucide-react'
+import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
 import axios from 'axios'
 import { Button, Card } from '../components/ui-animated'
 import { cn } from '../lib/utils'
 import { ScanProgress } from '../components/ScanProgress'
-import { ScanPipeline } from '../components/ScanPipeline'
-import { TechnologyDetectionPanel } from '../components/TechnologyDetectionPanel'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
 import { scansApi } from '../api/endpoints/scans'
@@ -88,57 +86,115 @@ export function ScanPage() {
   const [currentStep, setCurrentStep] = useState(0)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scanId, setScanId] = useState<string>('')
+  const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
+  const [filesScanned, setFilesScanned] = useState(0)
 
   // Fetch branches when repo URL changes
-  const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
+  const { data: branchesData, isLoading: isLoadingBranches, error: branchesError, refetch, isFetching } = useQuery({
     queryKey: ['branches', repoUrl],
     queryFn: async () => {
-      if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
+      const trimmedUrl = repoUrl.trim()
+      console.log('🔄 Fetching branches for:', trimmedUrl)
+      if (!trimmedUrl || !trimmedUrl.startsWith('https://github.com/')) {
+        console.log('⏭️ Skipping fetch - invalid URL')
         return { branches: [], default_branch: 'main' }
       }
-      const response = await axios.get('/api/v1/github/branches', {
-        params: { repo_url: repoUrl }
-      })
-      return response.data
+      try {
+        const response = await axios.get('/api/v1/github/branches', {
+          params: { repo_url: trimmedUrl }
+        })
+        console.log('✅ Branches fetched:', response.data)
+        console.log('✅ Branch count:', response.data?.branches?.length)
+        console.log('✅ Default branch:', response.data?.default_branch)
+        return response.data
+      } catch (err: any) {
+        console.error('❌ Failed to fetch branches:', err.response?.data || err.message)
+        // Return default branch even on error so user can proceed
+        return { branches: [], default_branch: 'main', error: err.response?.data?.detail || 'Failed to fetch branches' }
+      }
     },
-    enabled: !!repoUrl && repoUrl.startsWith('https://github.com/'),
-    staleTime: 5 * 60 * 1000,
+    enabled: !!repoUrl && repoUrl.trim().startsWith('https://github.com/'),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    retry: false, // Don't retry on failure
   })
 
   // Update selected branch when branches are loaded
   useEffect(() => {
+    console.log('📊 Branch data changed:', branchesData)
     if (branchesData?.default_branch) {
       setSelectedBranch(branchesData.default_branch)
+      console.log('✅ Default branch set:', branchesData.default_branch)
     }
   }, [branchesData])
 
   const branches: GitHubBranch[] = branchesData?.branches || []
-
-  // Simulate progress while API is running
+  const isFetchingBranches = isLoadingBranches || isFetching
+  const hasBranchesError = !!branchesData?.error || (branchesError && branches.length === 0)
+  
+  // Debug logging
   useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (loading && progress < 90) {
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          const increment = Math.random() * 5 + 2
-          const newProgress = Math.min(prev + increment, 90)
-          
-          // Update current step based on progress
-          const step = Math.floor((newProgress / 100) * 6)
-          setCurrentStep(Math.min(step, 5))
-          
-          return newProgress
-        })
-      }, 500)
+    console.log('🔍 Branch state:', { 
+      branches: branches.length, 
+      isFetchingBranches, 
+      hasBranchesError,
+      branchesError,
+      branchesData 
+    })
+  }, [branches, isFetchingBranches, hasBranchesError, branchesData])
+
+  // Poll real scan progress from API
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout
+    if (loading && scanId) {
+      pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await axios.get(`/api/v1/scan/status/${scanId}`)
+          const status = statusResponse.data
+
+          console.log('📊 Real scan status:', status)
+
+          // Update progress from API
+          if (status.progress) {
+            setProgress(status.progress)
+          }
+
+          // Update current step from API
+          if (status.current_step) {
+            setCurrentStep(status.current_step)
+          }
+
+          // Update detected technologies from API (even after completion)
+          if (status.detected_stack && Array.isArray(status.detected_stack) && status.detected_stack.length > 0) {
+            console.log('✅ Technologies detected:', status.detected_stack)
+            setDetectedTechnologies(status.detected_stack)
+          }
+
+          // Update files scanned count from API (calculate from detected_stack)
+          if (status.detected_stack && Array.isArray(status.detected_stack)) {
+            setFilesScanned(status.detected_stack.length)
+          }
+
+        } catch (error) {
+          console.error('Polling error:', error)
+        }
+      }, 1000) // Poll every 1 second for faster updates
     }
-    return () => clearInterval(interval)
-  }, [loading, progress])
+    return () => clearInterval(pollInterval)
+  }, [loading, scanId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!repoUrl.trim()) {
+    const trimmedUrl = repoUrl.trim()
+    if (!trimmedUrl) {
       setError('Please enter a repository URL')
+      return
+    }
+
+    // Validate URL format
+    if (!trimmedUrl.startsWith('https://github.com/')) {
+      setError('Please enter a valid GitHub repository URL (e.g., https://github.com/user/repo)')
       return
     }
 
@@ -150,9 +206,9 @@ export function ScanPage() {
     setError(null)
 
     try {
-      console.log('Starting scan for:', repoUrl, 'branch:', selectedBranch)
+      console.log('Starting scan for:', trimmedUrl, 'branch:', selectedBranch)
 
-      // Minimum animation duration: 15 seconds
+      // Minimum animation duration: 15 seconds (ensures UI shows for reasonable time)
       const MIN_ANIMATION_DURATION = 15000
       const startTime = Date.now()
 
@@ -160,21 +216,12 @@ export function ScanPage() {
       setProgress(0)
       setCurrentStep(0)
 
-      // Start progress animation - SLOWER (update every 500ms instead of 300ms)
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          // Slower increment: 2-4% per update instead of 6-9%
-          const increment = Math.random() * 2 + 2
-          const newProgress = Math.min(prev + increment, 90)
-          const step = Math.floor((newProgress / 100) * 6)
-          setCurrentStep(Math.min(step, 5))
-          return newProgress
-        })
-      }, 500)
+      // ❌ REMOVED local progress animation - Backend provides REAL progress updates
+      // Progress is now updated ONLY from backend polling (no fake animation)
 
       // Use same endpoint for both authenticated and anonymous users
       const response = await axios.post('/api/v1/scan/start', {
-        repository_url: repoUrl.trim(),
+        repository_url: trimmedUrl,
         branch: selectedBranch || 'main',
       })
 
@@ -185,13 +232,33 @@ export function ScanPage() {
         throw new Error('No scan_id returned from server')
       }
 
-      // Wait for scan to complete on backend (poll every 1000ms instead of 500ms)
+      // Save scan ID for polling
+      setScanId(data.scan_id)
+
+      // Wait for scan to complete on backend (poll every 1000ms)
       const pollInterval = setInterval(async () => {
         try {
           const statusResponse = await axios.get(`/api/v1/scan/status/${data.scan_id}`)
           const status = statusResponse.data
 
           console.log('📊 Scan status:', status.status, 'progress:', status.progress)
+
+          // ✅ Update progress from REAL backend API
+          if (status.progress !== undefined) {
+            setProgress(status.progress)
+          }
+
+          // ✅ Update current step from REAL backend API
+          if (status.current_step !== undefined) {
+            setCurrentStep(status.current_step)
+          }
+
+          // ✅ Update detected technologies from backend
+          if (status.detected_stack && Array.isArray(status.detected_stack)) {
+            console.log('✅ Technologies detected:', status.detected_stack)
+            setDetectedTechnologies(status.detected_stack)
+            setFilesScanned(status.detected_stack.length)
+          }
 
           // Only complete if BOTH backend is done AND minimum animation time has passed
           const elapsed = Date.now() - startTime
@@ -200,7 +267,6 @@ export function ScanPage() {
 
           if (canComplete && minTimePassed) {
             clearInterval(pollInterval)
-            clearInterval(progressInterval)
 
             // Fetch complete results
             const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
@@ -227,16 +293,23 @@ export function ScanPage() {
               },
               findings: results.findings || [],
               total_findings: results.findings_count || results.findings?.length || 0,
-              files_analyzed: results.findings?.length || 0,
+              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
               devops_stack: results.devops_stack,
-              detected_technologies: results.detected_technologies,
+              detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data from polling
               repository_url: results.repository_url || repoUrl,
               repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
               branch: results.branch || selectedBranch,
             }
 
             setResult(scanResult)
+            console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
             console.log('✅ Scan complete! Findings:', scanResult.total_findings)
+            
+            // Wait a moment then navigate to results
+            setTimeout(() => {
+              console.log('📊 Navigating to results page...')
+              navigate(`/scan/result/${scanResult.scan_id}`)
+            }, 1000)
           } else if (canComplete && !minTimePassed) {
             // Backend is done but keep animation running
             console.log('⏳ Backend done, waiting for animation...', Math.round((MIN_ANIMATION_DURATION - elapsed) / 1000) + 's remaining')
@@ -265,9 +338,9 @@ export function ScanPage() {
               severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
               findings: results.findings || [],
               total_findings: results.findings_count || 0,
-              files_analyzed: results.findings?.length || 0,
+              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
               devops_stack: results.devops_stack,
-              detected_technologies: results.detected_technologies,
+              detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data
               repository_url: repoUrl,
               repository_name: repoUrl.split('/').slice(-2).join('/'),
               branch: selectedBranch,
@@ -404,53 +477,14 @@ export function ScanPage() {
   if (loading) {
     return (
       <div className="min-h-screen py-12">
-        <div className="max-w-4xl w-full mx-auto px-4 space-y-6">
-          {/* Pipeline Visualization */}
-          <Card className="p-8" hover={false}>
-            <div className="space-y-8">
-              {/* Header */}
-              <div className="text-center space-y-2">
-                <h1 className="text-2xl font-bold text-foreground">
-                  Scanning Repository
-                </h1>
-                <p className="text-muted-foreground">
-                  {repoUrl.split('/').slice(-2).join('/') || 'Analyzing...'}
-                </p>
-              </div>
-
-              {/* Pipeline Steps */}
-              <ScanPipeline currentStep={currentStep} progress={progress} />
-
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Overall Progress</span>
-                  <span className="font-medium text-primary">{progress.toFixed(0)}%</span>
-                </div>
-                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-gradient-to-r from-primary via-indigo-500 to-primary"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-              </div>
-
-              {/* Technology Detection */}
-              <TechnologyDetectionPanel 
-                isDetecting={progress < 90}
-                detectedTechnologies={progress >= 50 ? ['Docker', 'Kubernetes', 'Terraform', 'CI/CD'] : undefined}
-              />
-
-              {/* Live Logs */}
-              <ScanProgress
-                progress={progress}
-                currentStep={currentStep}
-                isComplete={progress >= 100}
-              />
-            </div>
-          </Card>
+        <div className="max-w-6xl w-full mx-auto px-6">
+          {/* Scan Progress with Logs and File Tree */}
+          <ScanProgress
+            progress={progress}
+            currentStep={currentStep}
+            isComplete={progress >= 100}
+            detectedTechnologies={detectedTechnologies}
+          />
         </div>
       </div>
     )
@@ -501,16 +535,20 @@ export function ScanPage() {
                 <button
                   type="button"
                   onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-                  disabled={isLoadingBranches}
-                  className="input pl-12 text-base py-3 w-full flex items-center justify-between bg-input hover:bg-input/80 transition-colors"
+                  disabled={isFetchingBranches}
+                  className="input pl-12 text-base py-3 w-full flex items-center justify-between bg-input hover:bg-input/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="text-foreground">
-                    {isLoadingBranches ? (
+                    {isFetchingBranches ? (
                       <Loader2 className="h-4 w-4 animate-spin inline" />
                     ) : branches.length > 0 ? (
                       selectedBranch
+                    ) : hasBranchesError ? (
+                      <span className="text-yellow-400">Using default: {selectedBranch}</span>
+                    ) : !repoUrl || !repoUrl.trim().startsWith('https://github.com/') ? (
+                      <span className="text-muted-foreground">Enter GitHub URL</span>
                     ) : (
-                      'Select branch'
+                      <span className="text-muted-foreground">{selectedBranch || 'main'}</span>
                     )}
                   </span>
                   <ChevronDown className={cn('h-4 w-4 transition-transform', showBranchDropdown && 'rotate-180')} />
@@ -519,7 +557,12 @@ export function ScanPage() {
                 {/* Branch Dropdown */}
                 {showBranchDropdown && (
                   <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-lg border border-white/10 bg-card shadow-lg">
-                    {branches.length > 0 ? (
+                    {isFetchingBranches ? (
+                      <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Fetching branches...
+                      </div>
+                    ) : branches.length > 0 ? (
                       branches.map((branch) => (
                         <button
                           key={branch.name}
@@ -542,16 +585,43 @@ export function ScanPage() {
                           )}
                         </button>
                       ))
-                    ) : (
+                    ) : hasBranchesError ? (
+                      <div className="px-4 py-3">
+                        <div className="text-sm text-yellow-400 mb-2">⚠️ Could not fetch branches</div>
+                        <div className="text-xs text-muted-foreground mb-3">
+                          Using default branch. This happens with private repos or API rate limits.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowBranchDropdown(false)}
+                          className="w-full px-3 py-2 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                        >
+                          Use {selectedBranch || 'main'}
+                        </button>
+                      </div>
+                    ) : !repoUrl || !repoUrl.trim().startsWith('https://github.com/') ? (
                       <div className="px-4 py-3 text-sm text-muted-foreground">
-                        No branches found
+                        Enter a GitHub URL to fetch branches
+                      </div>
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading branches...
                       </div>
                     )}
                   </div>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Select the branch to analyze
+                {branches.length > 0
+                  ? `${branches.length} branch${branches.length !== 1 ? 'es' : ''} found • Using: ${selectedBranch}`
+                  : isFetchingBranches
+                    ? 'Fetching branches...'
+                    : hasBranchesError
+                      ? `Using default branch: ${selectedBranch}`
+                      : repoUrl && repoUrl.trim().startsWith('https://github.com/')
+                        ? 'Loading branches...'
+                        : 'Select the branch to analyze'}
               </p>
             </div>
 

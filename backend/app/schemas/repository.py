@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -32,8 +33,8 @@ class RepositoryUpdate(BaseModel):
 class RepositoryResponse(BaseModel):
     """Repository response."""
 
-    id: int
-    user_id: int
+    id: UUID
+    user_id: UUID
     name: str
     full_name: Optional[str]
     url: str

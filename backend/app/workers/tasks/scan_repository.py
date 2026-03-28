@@ -75,6 +75,21 @@ class DetectedTechnologyStack:
         if self.has_docker_compose:
             technologies.append("docker_compose")
         return technologies
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for database storage."""
+        return {
+            'has_docker': self.has_docker,
+            'docker_files': self.docker_files,
+            'has_terraform': self.has_terraform,
+            'terraform_files': self.terraform_files,
+            'has_kubernetes': self.has_kubernetes,
+            'kubernetes_files': self.kubernetes_files,
+            'has_github_actions': self.has_github_actions,
+            'github_actions_files': self.github_actions_files,
+            'has_docker_compose': self.has_docker_compose,
+            'docker_compose_files': self.docker_compose_files,
+        }
 
 
 def detect_technology_stack_from_files(files: list[str]) -> DetectedTechnologyStack:
@@ -265,10 +280,28 @@ class SyncScanService:
             
             # Run async enrichment
             try:
-                rule_findings = asyncio.run(enrich_findings_with_ai(rule_findings, file_contents))
+                # Try to get existing event loop
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Loop is running - need to schedule in existing loop
+                    # This shouldn't happen in sync context, but handle it
+                    logger.warning("Event loop running, this is unexpected in sync context")
+                    raise RuntimeError("Event loop is running")
+                else:
+                    # Loop exists but not running - use it
+                    rule_findings = loop.run_until_complete(enrich_findings_with_ai(rule_findings, file_contents))
             except RuntimeError as e:
-                # Event loop already running - use fallback
-                logger.warning("Async enrichment skipped (loop running), using static enrichment", error=str(e))
+                # No event loop or loop is running - create new one
+                logger.info("Creating new event loop for AI enrichment", error=str(e))
+                try:
+                    rule_findings = asyncio.run(enrich_findings_with_ai(rule_findings, file_contents))
+                except Exception as nested_e:
+                    logger.warning("AI enrichment failed, using static enrichment", error=str(nested_e))
+                    from app.services.findings_enricher import enrich_findings
+                    rule_findings = enrich_findings(rule_findings)
+            except Exception as e:
+                logger.warning("AI enrichment failed, using static enrichment", error=str(e))
                 from app.services.findings_enricher import enrich_findings
                 rule_findings = enrich_findings(rule_findings)
             
@@ -278,6 +311,22 @@ class SyncScanService:
                 with_fix_examples=sum(1 for f in rule_findings if f.fix_example),
                 ai_generated=sum(1 for f in rule_findings if getattr(f, 'ai_generated', False)),
             )
+            
+            # Log individual AI findings for debugging
+            for f in rule_findings:
+                if getattr(f, 'ai_generated', False):
+                    logger.info(
+                        "AI finding generated",
+                        rule_id=f.rule_id,
+                        has_summary=bool(f.summary),
+                        has_risk=bool(f.risk),
+                        has_impact=bool(f.impact),
+                        has_fix_code=bool(f.fix_code),
+                        has_fix_example=bool(f.fix_example),
+                        has_full_example=bool(f.full_example),
+                        has_best_practices=bool(f.best_practices),
+                        confidence=getattr(f, 'confidence', None),
+                    )
 
             if self.progress_store and self.scan_id:
                 _safe_await(self._update_progress_async(80, "Calculating scores...", "Generating AI suggestions"))
@@ -307,6 +356,7 @@ class SyncScanService:
             scan.reliability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.RELIABILITY), None)
             scan.cost_score = next((cs.score for cs in scores.category_scores if cs.category == Category.COST), None)
             scan.observability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.OBSERVABILITY), None)
+            scan.detected_stack = self.detected_stack.to_dict() if self.detected_stack else None  # Save detected technologies
 
             self.db.commit()
 
@@ -477,8 +527,30 @@ class SyncScanService:
         return all_findings
 
     def _save_findings(self, scan_id, findings: list[RuleFinding]):
-        """Save findings to database."""
+        """Save findings to database with deduplication."""
+        # Track unique findings to avoid duplicates
+        seen = set()
+        
         for finding in findings:
+            # Create unique key based on rule_id + file_path + line_number
+            finding_key = (
+                finding.rule_id,
+                finding.file_path or '',
+                finding.line_number or 0
+            )
+            
+            # Skip if we've already seen this exact finding
+            if finding_key in seen:
+                logger.debug(
+                    "Skipping duplicate finding",
+                    rule_id=finding.rule_id,
+                    file_path=finding.file_path,
+                    line_number=finding.line_number
+                )
+                continue
+            
+            seen.add(finding_key)
+            
             db_finding = FindingModel(
                 scan_id=scan_id,
                 rule_id=finding.rule_id,
@@ -509,6 +581,12 @@ class SyncScanService:
             self.db.add(db_finding)
 
         self.db.flush()
+        logger.info(
+            "Findings saved",
+            total_findings=len(findings),
+            unique_findings=len(seen),
+            duplicates_removed=len(findings) - len(seen)
+        )
 
     def _update_progress(self, callback, progress: int, message: str):
         """Update progress if callback provided."""

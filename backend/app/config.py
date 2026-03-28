@@ -69,10 +69,11 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
 
     # LLM Configuration
-    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mock"] = Field(default="mock", env="LLM_PROVIDER")
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mistral", "mock"] = Field(default="mock", env="LLM_PROVIDER")
     OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
     ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     GEMINI_API_KEY: str | None = Field(default=None, env="GEMINI_API_KEY")
+    MISTRAL_API_KEY: str | None = Field(default=None, env="MISTRAL_API_KEY")
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")
@@ -104,6 +105,22 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FORMAT: str = Field(default="json", env="LOG_FORMAT")  # json, console
+
+    # Timeouts (seconds)
+    GITHUB_API_TIMEOUT: float = Field(default=10.0, env="GITHUB_API_TIMEOUT")
+    GITHUB_OAUTH_TIMEOUT: float = Field(default=10.0, env="GITHUB_OAUTH_TIMEOUT")
+    GIT_CLONE_TIMEOUT: int = Field(default=120, env="GIT_CLONE_TIMEOUT")
+    GIT_OPERATION_TIMEOUT: int = Field(default=30, env="GIT_OPERATION_TIMEOUT")
+    HTTP_REQUEST_TIMEOUT: int = Field(default=10, env="HTTP_REQUEST_TIMEOUT")
+    TRIVY_TIMEOUT: int = Field(default=300, env="TRIVY_TIMEOUT")
+    CHECKOV_TIMEOUT: int = Field(default=300, env="CHECKOV_TIMEOUT")
+    SCAN_TIMEOUT: int = Field(default=300, env="SCAN_TIMEOUT")
+
+    # Celery
+    CELERY_RESULT_EXPIRES: int = Field(default=3600, env="CELERY_RESULT_EXPIRES")
+
+    # Anonymous Scans
+    ANONYMOUS_SCAN_EXPIRY_HOURS: int = Field(default=24, env="ANONYMOUS_SCAN_EXPIRY_HOURS")
 
     @field_validator("SECRET_KEY", mode="after")
     @classmethod

@@ -141,26 +141,76 @@ spec:
         image: myapp:1.0.0''',
     },
     "K8S-SEC-001": {
-        "risk": "Pods without security context run with default privileges, potentially as root.",
-        "impact": "Privilege escalation, container breakout, and host compromise risks.",
-        "fix_example": '''apiVersion: v1
-kind: Pod
+        "summary": "Missing NetworkPolicy allows unrestricted pod-to-pod communication in the cluster.",
+        "risk": "Pods without network isolation can communicate freely, increasing attack surface.",
+        "impact": "Lateral movement, data exfiltration, and unauthorized access to sensitive services.",
+        "fix_code": '''apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
-  name: secure-pod
+  name: default-deny-all
+  namespace: default
 spec:
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
-  containers:
-  - name: app
-    image: myapp:1.0.0
-    securityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop:
-          - ALL''',
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress''',
+        "fix_example": '''apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress''',
+    },
+    "K8S-SCALE-001": {
+        "summary": "Missing HorizontalPodAutoscaler prevents automatic scaling based on resource utilization.",
+        "risk": "Application cannot scale automatically during traffic spikes or high load.",
+        "impact": "Service degradation, downtime during peak traffic, and poor resource utilization.",
+        "fix_code": '''apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70''',
+        "fix_example": '''apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70''',
+        "best_practices": [
+            "Set appropriate min/max replicas based on baseline and peak traffic",
+            "Use custom metrics for application-specific scaling",
+            "Configure scale-down stabilization to prevent flapping",
+            "Monitor HPA events and metrics for optimization",
+        ],
     },
     # CI/CD Rules
     "CI-SEC-001": {
@@ -412,6 +462,187 @@ CMD ["node", "server.js"]''',
             "Set appropriate interval and timeout for your application",
             "Use /health or /healthz endpoint for health checks",
             "Ensure health endpoint checks critical dependencies",
+        ],
+        "confidence": 0.95,
+    },
+    "DKR-SCALE-001": {
+        "summary": "Base image uses 'latest' tag which can cause inconsistent deployments and non-reproducible builds.",
+        "risk": "Using 'latest' tag leads to non-deterministic builds, making it impossible to reproduce builds or rollback to known-good versions. Unexpected base image changes can break your application.",
+        "impact": "Your Docker builds will pull different base images over time, potentially introducing breaking changes, security vulnerabilities, or compatibility issues without your knowledge. This makes debugging and rollbacks extremely difficult.",
+        "fix_code": '''# Pin specific version instead of latest
+FROM node:18.17.0-alpine3.18
+
+# Or use digest for complete immutability
+FROM node@sha256:abc123def456...''',
+        "fix_example": '''# Bad: Using latest tag (non-deterministic)
+# FROM node:latest
+
+# Good: Pin specific version
+FROM node:18.17.0-alpine3.18
+
+# Better: Use digest for complete immutability
+# FROM node@sha256:1234567890abcdef...''',
+        "full_example": '''# Production-ready Dockerfile with pinned base image
+FROM node:18.17.0-alpine3.18
+
+WORKDIR /app
+
+# Copy package files first for better layer caching
+COPY package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy application code
+COPY . .
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
+USER appuser
+
+# Add healthcheck for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
+  CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
+
+EXPOSE 3000
+CMD ["node", "server.js"]''',
+        "best_practices": [
+            "Always pin base images to specific versions (e.g., node:18.17.0-alpine3.18)",
+            "Consider using image digests for complete immutability (e.g., node@sha256:...)",
+            "Use automated tools like Dependabot to update base image versions",
+            "Document base image versions in your README or documentation",
+            "Test base image updates in a staging environment before production",
+        ],
+        "confidence": 0.95,
+    },
+    "DKR-SEC-002": {
+        "summary": "Potential secrets exposed in Dockerfile ENV variables which can be accessed by anyone with access to the image.",
+        "risk": "Secrets in Dockerfile ENV variables are stored in image layers and can be extracted by anyone with access to the image. This includes API keys, database passwords, and other sensitive credentials.",
+        "impact": "Exposed credentials can lead to unauthorized access to databases, APIs, cloud resources, and sensitive data. This can result in data breaches, financial loss, and compliance violations.",
+        "fix_code": '''# Use build arguments for build-time secrets (not stored in final image)
+ARG API_KEY
+RUN echo "Building with API key" # Don't echo the actual value
+
+# Or use runtime environment variables (passed at container start)
+# docker run -e API_KEY=secret my-image
+
+# Or use Docker secrets (for Swarm)
+# docker secret create my_secret secret.txt
+# docker service create --secret my_secret my-service''',
+        "fix_example": '''# Bad: Secret in ENV (stored in image layer)
+# ENV API_KEY=sk-1234567890
+# ENV DATABASE_PASSWORD=supersecret
+
+# Good: Use ARG for build-time (not in final image)
+ARG API_KEY
+RUN echo "Building application..."
+
+# Better: Pass secrets at runtime
+# docker run -e API_KEY=$API_KEY my-image
+
+# Best: Use secret management tools (AWS Secrets Manager, HashiCorp Vault)''',
+        "full_example": '''FROM node:18.17.0-alpine3.18
+
+WORKDIR /app
+
+# Use ARG for build-time variables (not stored in final image)
+ARG NPM_TOKEN
+RUN if [ -n "$NPM_TOKEN" ]; then \\
+      echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc; \\
+    fi
+
+# Copy and install dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
+USER appuser
+
+# Don't include secrets in the image!
+# Pass them at runtime: docker run -e API_KEY=secret my-image
+
+EXPOSE 3000
+CMD ["node", "server.js"]''',
+        "best_practices": [
+            "Never hardcode secrets in Dockerfile ENV instructions",
+            "Use build arguments (ARG) for build-time secrets - they're not in final image",
+            "Pass secrets at runtime using environment variables or Docker secrets",
+            "Use secret management tools like AWS Secrets Manager, HashiCorp Vault, or Azure Key Vault",
+            "Scan Dockerfiles with tools like Hadolint or Trivy to detect exposed secrets",
+        ],
+        "confidence": 0.95,
+    },
+    "DKR-COST-001": {
+        "summary": "Using a large base image increases build time, storage costs, and attack surface.",
+        "risk": "Large base images like Ubuntu or Debian take longer to build, pull, and deploy. They also contain more packages that could have security vulnerabilities, increasing your attack surface.",
+        "impact": "Slower CI/CD pipelines, increased storage costs, longer deployment times, and higher security risk from unnecessary packages. Can also increase cloud egress costs for multi-region deployments.",
+        "fix_code": '''# Use Alpine or distroless images for smaller size
+FROM node:18.17.0-alpine3.18
+
+# Or use distroless for minimal attack surface
+FROM gcr.io/distroless/nodejs18-debian11''',
+        "fix_example": '''# Bad: Large base image (~150MB)
+# FROM ubuntu:22.04
+# FROM debian:bullseye
+
+# Good: Alpine image (~50MB)
+FROM node:18.17.0-alpine3.18
+
+# Better: Distroless image (~30MB)
+# FROM gcr.io/distroless/nodejs18-debian11
+
+# Best: Multi-stage build for minimal final image
+FROM node:18.17.0 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:18.17.0-alpine3.18
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+CMD ["node", "dist/index.js"]''',
+        "full_example": '''# Multi-stage build for minimal production image
+FROM node:18.17.0 AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Production image - minimal size
+FROM node:18.17.0-alpine3.18
+
+WORKDIR /app
+
+# Copy only production dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
+USER appuser
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
+  CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]''',
+        "best_practices": [
+            "Use Alpine-based images for smaller size (e.g., node:18-alpine)",
+            "Consider distroless images for minimal attack surface",
+            "Use multi-stage builds to keep production images small",
+            "Regularly scan images for vulnerabilities with Trivy or Snyk",
+            "Remove unnecessary packages and files to reduce image size",
         ],
         "confidence": 0.95,
     },

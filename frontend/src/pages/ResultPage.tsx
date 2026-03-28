@@ -5,10 +5,12 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, RotateCcw, Download, BookOpen, Shield, AlertTriangle,
   AlertCircle, Info, CheckCircle, FileCode, Terminal, ChevronDown,
-  ChevronUp, Filter, SortAsc, Home, FolderGit2
+  ChevronUp, Filter, SortAsc, Home, FolderGit2, Brain, Code, Sparkles,
+  FileText
 } from 'lucide-react'
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
+import { TechStackDisplay } from '../components/TechStackDisplay'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 
@@ -22,15 +24,30 @@ interface Finding {
   recommendation: string
   file_path: string
   line_number?: number
+  // AI Fix Generator fields
+  summary?: string
+  risk?: string
+  impact?: string
+  fix_code?: string
+  fix_example?: string
+  full_example?: string
+  best_practices?: string[]
+  confidence?: number
+  confidence_score?: number
+  documentation_url?: string
+  ai_generated?: boolean
+  // Legacy fields (fallback)
   ai_explanation?: string
+  impact_analysis?: string
   code_fix?: string
 }
 
 interface ScanResult {
   scan_id: string
   repository_url: string
-  repository_name: string
+  repository_name?: string
   security_score: number
+  overall_score?: number
   severity_counts: {
     critical: number
     high: number
@@ -39,10 +56,13 @@ interface ScanResult {
     info: number
   }
   findings: Finding[]
-  total_findings: number
+  findings_count?: number
+  total_findings?: number
   files_analyzed: number
   branch: string
   completed_at: string
+  detected_technologies?: string[]
+  status?: string
 }
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
@@ -65,6 +85,8 @@ export function ResultPage() {
     },
     enabled: !!id,
     retry: 2,
+    staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
+    cacheTime: 10 * 60 * 1000,  // Cache for 10 minutes
   })
 
   // Filter and sort findings
@@ -89,6 +111,17 @@ export function ResultPage() {
 
     return filtered
   }, [result?.findings, severityFilter, sortBy])
+
+  // Calculate severity counts from findings
+  const severity_counts = useMemo(() => {
+    if (!result?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+    
+    return result.findings.reduce((acc, finding) => {
+      const severity = finding.severity || 'info'
+      acc[severity] = (acc[severity] || 0) + 1
+      return acc
+    }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 })
+  }, [result?.findings])
 
   // Get top priority fixes (critical + high, max 3)
   const topPriorityFixes = useMemo(() => {
@@ -248,10 +281,10 @@ export function ResultPage() {
           <Card className="p-6" hover={false}>
             <div className="text-center space-y-4">
               <h3 className="text-lg font-semibold text-foreground">Security Score</h3>
-              <ScoreCircle score={result.security_score} size="xl" animated />
+              <ScoreCircle score={result.security_score || 0} size="xl" animated />
               <div className="text-sm text-muted-foreground">
-                Grade: <span className={cn('font-bold', getScoreColor(result.security_score))}>
-                  {result.security_score >= 90 ? 'A' : result.security_score >= 80 ? 'B' : result.security_score >= 70 ? 'C' : result.security_score >= 60 ? 'D' : 'F'}
+                Grade: <span className={cn('font-bold', getScoreColor(result.security_score || 0))}>
+                  {(result.security_score || 0) >= 90 ? 'A' : (result.security_score || 0) >= 80 ? 'B' : (result.security_score || 0) >= 70 ? 'C' : (result.security_score || 0) >= 60 ? 'D' : 'F'}
                 </span>
               </div>
             </div>
@@ -261,7 +294,7 @@ export function ResultPage() {
           <Card className="p-6" hover={false}>
             <h3 className="text-lg font-semibold text-foreground mb-4">Issues by Severity</h3>
             <div className="grid grid-cols-2 gap-4">
-              {Object.entries(result.severity_counts).map(([severity, count]) => {
+              {Object.entries(severity_counts).map(([severity, count]) => {
                 const Icon = getSeverityIcon(severity)
                 return (
                   <div
@@ -294,7 +327,7 @@ export function ResultPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Total Findings</div>
-                <div className="font-medium text-foreground">{result.total_findings}</div>
+                <div className="font-medium text-foreground">{result.findings_count || result.total_findings || 0}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Scan ID</div>
@@ -302,6 +335,14 @@ export function ResultPage() {
               </div>
             </div>
           </Card>
+
+          {/* Detected Technology Stack */}
+          {result.detected_technologies && result.detected_technologies.length > 0 && (
+            <Card className="p-6" hover={false}>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Detected Technology Stack</h3>
+              <TechStackDisplay technologies={result.detected_technologies} />
+            </Card>
+          )}
         </div>
 
         {/* Top Priority Fixes */}
@@ -485,55 +526,214 @@ export function ResultPage() {
                         className="px-4 pb-4 border-t border-white/10"
                       >
                         <div className="pt-4 space-y-4">
-                          {/* Recommendation */}
-                          <div>
-                            <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                              <Terminal className="h-4 w-4" />
-                              How to Fix
-                            </h5>
-                            <p className="text-sm text-muted-foreground">
-                              {finding.recommendation}
-                            </p>
-                          </div>
+                          {/* AI Suggestion Header */}
+                          {(finding.summary || finding.risk || finding.impact || finding.fix_code || finding.fix_example) && (
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30">
+                                  <Brain className="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                  <h5 className="text-sm font-semibold text-foreground">AI Suggestion</h5>
+                                  {(finding.confidence || finding.confidence_score) && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/30">
+                                        {(finding.confidence || finding.confidence_score) >= 0.8 ? 'High' : (finding.confidence || finding.confidence_score) >= 0.6 ? 'Medium' : 'Low'} Confidence
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        ({Math.round(((finding.confidence || finding.confidence_score) || 0.8) * 100)}%)
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
 
-                          {/* Code Fix Example */}
-                          {finding.code_fix && (
-                            <div>
-                              <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                                <FileCode className="h-4 w-4" />
-                                Example Fix
-                              </h5>
-                              <pre className="text-xs bg-black/50 p-4 rounded-lg overflow-x-auto">
-                                <code className="text-green-400">
-                                  {finding.code_fix}
-                                </code>
-                              </pre>
+                              {/* Summary */}
+                              {finding.summary && (
+                                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    <h6 className="text-xs font-semibold text-primary">Summary</h6>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{finding.summary}</p>
+                                </div>
+                              )}
+
+                              {/* Risk & Impact */}
+                              {(finding.risk || finding.impact) && (
+                                <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <AlertTriangle className="h-4 w-4 text-orange-400" />
+                                    <h6 className="text-xs font-semibold text-orange-400">Risk & Impact</h6>
+                                  </div>
+                                  {finding.risk && (
+                                    <div className="mb-2">
+                                      <span className="text-xs font-medium text-orange-300">Risk: </span>
+                                      <p className="text-sm text-orange-300 inline">{finding.risk}</p>
+                                    </div>
+                                  )}
+                                  {finding.impact && (
+                                    <div>
+                                      <span className="text-xs font-medium text-orange-300">Impact: </span>
+                                      <p className="text-sm text-orange-300 inline">{finding.impact}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Fix Code */}
+                              {(finding.fix_code || finding.fix_example) && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <Code className="h-4 w-4 text-green-400" />
+                                      <h6 className="text-xs font-semibold text-foreground">Suggested Fix</h6>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        navigator.clipboard.writeText(finding.fix_code || finding.fix_example || '')
+                                      }}
+                                    >
+                                      Copy Fix
+                                    </Button>
+                                  </div>
+                                  <div className="rounded-lg bg-black/50 border border-white/10 overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border-b border-white/10">
+                                      <Terminal className="h-4 w-4 text-green-400" />
+                                      <span className="text-xs font-medium text-green-400">Production-Ready Fix</span>
+                                    </div>
+                                    <pre className="p-4 overflow-x-auto max-h-[500px]">
+                                      <code className="text-sm text-green-400 font-mono whitespace-pre">
+                                        {finding.fix_code || finding.fix_example}
+                                      </code>
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Full Example */}
+                              {finding.full_example && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <FileCode className="h-4 w-4 text-blue-400" />
+                                      <h6 className="text-xs font-semibold text-foreground">Full Example</h6>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        navigator.clipboard.writeText(finding.full_example)
+                                      }}
+                                    >
+                                      Copy Full
+                                    </Button>
+                                  </div>
+                                  <pre className="p-4 bg-black/50 border border-white/10 rounded-lg overflow-x-auto max-h-[600px]">
+                                    <code className="text-sm text-blue-300 font-mono whitespace-pre">
+                                      {finding.full_example}
+                                    </code>
+                                  </pre>
+                                </div>
+                              )}
+
+                              {/* Best Practices */}
+                              {finding.best_practices && Array.isArray(finding.best_practices) && finding.best_practices.length > 0 && (
+                                <div className="p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Sparkles className="h-4 w-4 text-indigo-400" />
+                                    <h6 className="text-xs font-semibold text-indigo-400">Best Practices</h6>
+                                  </div>
+                                  <ul className="space-y-2">
+                                    {finding.best_practices.map((practice, idx) => (
+                                      <li key={idx} className="flex items-start gap-2">
+                                        <CheckCircle className="h-4 w-4 text-indigo-400 mt-0.5 flex-shrink-0" />
+                                        <span className="text-sm text-indigo-300">{practice}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                           )}
 
-                          {/* AI Explanation */}
-                          {finding.ai_explanation && (
-                            <div>
-                              <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                                <Shield className="h-4 w-4" />
-                                Security Impact
-                              </h5>
-                              <p className="text-sm text-muted-foreground">
-                                {finding.ai_explanation}
-                              </p>
-                            </div>
+                          {/* Fallback - Show old fields if no AI data */}
+                          {!(finding.summary || finding.risk || finding.impact || finding.fix_code || finding.fix_example) && (
+                            <>
+                              {/* Recommendation */}
+                              <div>
+                                <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                  <Terminal className="h-4 w-4" />
+                                  How to Fix
+                                </h5>
+                                <p className="text-sm text-muted-foreground">
+                                  {finding.recommendation}
+                                </p>
+                              </div>
+
+                              {/* Code Fix Example */}
+                              {finding.code_fix && (
+                                <div>
+                                  <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                    <FileCode className="h-4 w-4" />
+                                    Example Fix
+                                  </h5>
+                                  <pre className="text-xs bg-black/50 p-4 rounded-lg overflow-x-auto">
+                                    <code className="text-green-400">
+                                      {finding.code_fix}
+                                    </code>
+                                  </pre>
+                                </div>
+                              )}
+
+                              {/* AI Explanation */}
+                              {finding.ai_explanation && (
+                                <div>
+                                  <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                    <Shield className="h-4 w-4" />
+                                    Security Impact
+                                  </h5>
+                                  <p className="text-sm text-muted-foreground">
+                                    {finding.ai_explanation}
+                                  </p>
+                                </div>
+                              )}
+                            </>
                           )}
 
                           {/* Actions */}
                           <div className="flex gap-2 pt-4 border-t border-white/10">
-                            <Button variant="secondary" size="sm">
+                            <Button 
+                              variant="secondary" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const code = finding.fix_code || finding.fix_example || finding.code_fix
+                                if (code) navigator.clipboard.writeText(code)
+                              }}
+                            >
                               Copy Fix
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const docUrl = finding.documentation_url || 'https://kubernetes.io/docs/'
+                                window.open(docUrl, '_blank', 'noopener,noreferrer')
+                              }}
+                            >
+                              <BookOpen className="h-4 w-4 mr-2" />
+                              Documentation
                             </Button>
                             <Button variant="ghost" size="sm">
                               Create Issue
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              Ignore
                             </Button>
                           </div>
                         </div>

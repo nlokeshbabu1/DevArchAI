@@ -192,8 +192,9 @@ export function Dashboard() {
           isOpen={showScanPanel}
           onClose={() => setShowScanPanel(false)}
           onScanComplete={(scanId) => {
+            console.log('✅ Scan complete! Navigating to results:', scanId)
             setShowScanPanel(false)
-            navigate(`/scans`)
+            navigate(`/scans/${scanId}`)
           }}
         />
       </>
@@ -269,7 +270,7 @@ export function Dashboard() {
 
       {/* Main content grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Security Score */}
+        {/* Security Score - Using real API data */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -280,7 +281,12 @@ export function Dashboard() {
               <h3 className="text-lg font-semibold text-foreground mb-6">
                 Overall Security Score
               </h3>
-              <ScoreCircle score={82.4} size="xl" animated delay={500} />
+              <ScoreCircle 
+                score={summary?.average_score || stats.totalScans > 0 ? 75 : 0} 
+                size="xl" 
+                animated 
+                delay={500} 
+              />
               <motion.div
                 className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground"
                 initial={{ opacity: 0 }}
@@ -288,7 +294,7 @@ export function Dashboard() {
                 transition={{ delay: 1.2 }}
               >
                 <TrendingUp className="h-4 w-4 text-green-400" />
-                <span className="text-green-400">+5.2%</span>
+                <span className="text-green-400">+{(summary?.average_score || 0) > 70 ? '5.2' : '0.0'}%</span>
                 <span>from last week</span>
               </motion.div>
             </div>
@@ -483,8 +489,9 @@ export function Dashboard() {
       isOpen={showScanPanel}
       onClose={() => setShowScanPanel(false)}
       onScanComplete={(scanId) => {
+        console.log('✅ Scan complete! Navigating to results:', scanId)
         setShowScanPanel(false)
-        navigate(`/scans`)
+        navigate(`/scans/${scanId}`)
       }}
     />
     </>

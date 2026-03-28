@@ -96,10 +96,11 @@ async def list_findings(
     # Apply ordering and pagination
     query = query.order_by(Finding.severity, Finding.created_at.desc())
     query = query.offset(offset).limit(page_size)
-    
+
     result = await db.execute(query)
     findings = result.scalars().all()
-    
+
+    import json
     return {
         "findings": [
             {
@@ -120,7 +121,7 @@ async def list_findings(
                 "impact": finding.impact,
                 "fix_code": finding.fix_code,
                 "full_example": finding.full_example,
-                "best_practices": finding.best_practices,
+                "best_practices": json.loads(finding.best_practices) if finding.best_practices else [],
                 "confidence_score": finding.confidence_score,
                 "documentation_url": finding.documentation_url,
                 "created_at": finding.created_at.isoformat(),

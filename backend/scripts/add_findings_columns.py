@@ -6,7 +6,7 @@ import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 # Get database URL from environment or use default
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lokesh:lokesh@localhost:5432/devarchai")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/devarchai")
 
 # Parse connection string
 if DATABASE_URL.startswith("postgresql://"):

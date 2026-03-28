@@ -1,11 +1,13 @@
 """Create initial admin user for testing."""
 
 import asyncio
+import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = "postgresql+asyncpg://lokesh:2001@localhost:5432/devarchai"
+# Get database URL from environment variable
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/devarchai")
 
 # Admin credentials
 ADMIN_EMAIL = "admin@example.com"

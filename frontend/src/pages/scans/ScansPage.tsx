@@ -306,12 +306,18 @@ export function ScansPage() {
                   <div className="flex flex-col gap-2">
                     {scan.status === 'completed' && (
                       <>
-                        <Link to={`/report/${scan.id}`}>
-                          <Button variant="primary" size="sm" className="w-full">
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Report
-                          </Button>
-                        </Link>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            console.log('📊 View Report - redirecting to /history...')
+                            navigate('/history')
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Report
+                        </Button>
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"

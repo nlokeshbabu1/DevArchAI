@@ -1,10 +1,11 @@
 """Fix missing database columns."""
 
 import asyncio
+import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-DATABASE_URL = "postgresql+asyncpg://lokesh:2001@localhost:5432/devarchai"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/devarchai")
 
 
 async def add_missing_columns():

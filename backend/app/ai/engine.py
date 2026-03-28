@@ -396,6 +396,130 @@ Write a 3-paragraph executive summary."""
             return [f.get("recommendation") for f in findings[:5]]
 
 
+class MistralProvider(BaseLLMProvider):
+    """Mistral AI LLM provider."""
+
+    def __init__(self, api_key: str, model: str = "mistral-large-latest"):
+        self.api_key = api_key
+        self.model = model
+        self._client = None
+
+    @property
+    def client(self):
+        """Lazy load Mistral client."""
+        if self._client is None:
+            from mistralai import Mistral
+            self._client = Mistral(api_key=self.api_key)
+        return self._client
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate explanation using Mistral."""
+        prompt = f"""You are a DevOps expert. Analyze this finding:
+
+Finding: {finding_description}
+Context: {context}
+
+Provide JSON response with: explanation, impact_analysis, remediation_steps (array)"""
+
+        try:
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+            )
+
+            import json
+            content = response.choices[0].message.content
+            data = json.loads(content)
+
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", ""),
+                impact_analysis=data.get("impact_analysis", ""),
+                remediation_steps=data.get("remediation_steps", []),
+                confidence=0.9,
+            )
+        except Exception as e:
+            logger.warning("Mistral explanation generation failed", error=str(e))
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=finding_description,
+                impact_analysis="Impact analysis unavailable.",
+                remediation_steps=["Review recommendation"],
+                confidence=0.5,
+            )
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate executive summary using Mistral."""
+        prompt = f"""Scores: {scores}
+Findings: {findings[:10]}
+
+Write a 3-paragraph executive summary."""
+
+        try:
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning("Mistral summary generation failed", error=str(e))
+            return f"Overall Score: {sum(scores.values()) / len(scores) if scores else 0:.1f}/100"
+
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
+        """Generate risk analysis using Mistral."""
+        prompt = f"Analyze risks: {findings[:15]}"
+
+        try:
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning("Mistral risk analysis failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate recommendations using Mistral."""
+        prompt = f"Top 5 recommendations for: {findings[:15]}"
+
+        try:
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            content = response.choices[0].message.content
+            return [line.strip() for line in content.split("\n") if line.strip()][:5]
+        except Exception as e:
+            logger.warning("Mistral recommendations failed", error=str(e))
+            return [f.get("recommendation") for f in findings[:5]]
+
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response - used by fix generator."""
+        try:
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error("Mistral generation failed", error=str(e))
+            raise
+
+
 class MockLLMProvider(BaseLLMProvider):
     """Mock LLM provider for testing/development."""
 
@@ -562,13 +686,14 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
 
 def get_llm_provider() -> BaseLLMProvider:
     """Factory function to get configured LLM provider with automatic fallback.
-    
+
     Priority order:
     1. If GEMINI_API_KEY is set -> Use Gemini
     2. If OPENAI_API_KEY is set -> Use OpenAI
     3. If ANTHROPIC_API_KEY is set -> Use Anthropic
-    4. Otherwise -> Use Mock (static fallback)
-    
+    4. If MISTRAL_API_KEY is set -> Use Mistral
+    5. Otherwise -> Use Mock (static fallback)
+
     If enrichment fails at any point, fallback to next provider in chain.
     """
     # Try Gemini first if API key is available
@@ -578,7 +703,7 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.GEMINI_API_KEY,
             model=settings.LLM_MODEL or "gemini-1.5-flash",
         )
-    
+
     # Try OpenAI if API key is available
     if settings.OPENAI_API_KEY:
         logger.info("Using OpenAI LLM provider")
@@ -586,7 +711,7 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.OPENAI_API_KEY,
             model=settings.LLM_MODEL or "gpt-4-turbo-preview",
         )
-    
+
     # Try Anthropic if API key is available
     if settings.ANTHROPIC_API_KEY:
         logger.info("Using Anthropic LLM provider")
@@ -594,7 +719,15 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.ANTHROPIC_API_KEY,
             model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
         )
-    
+
+    # Try Mistral if API key is available
+    if settings.MISTRAL_API_KEY:
+        logger.info("Using Mistral LLM provider")
+        return MistralProvider(
+            api_key=settings.MISTRAL_API_KEY,
+            model=settings.LLM_MODEL or "mistral-large-latest",
+        )
+
     # Fallback to Mock provider (static examples)
     logger.info("No LLM API keys configured, using static fallback (Mock provider)")
     return MockLLMProvider()

@@ -20,21 +20,21 @@ interface Finding {
   recommendation: string
   file_path?: string
   line_number?: number
-  // AI Fix Generator fields (production-grade) - Primary fields
+  // AI-generated fields (from backend)
   summary?: string
   risk?: string
-  impact?: string  // Primary impact field
+  impact?: string
   fix_code?: string
-  fix_example?: string  // Primary fix example field
   full_example?: string
   best_practices?: string[]
   confidence?: number
   confidence_score?: number  // Alternative field name
   documentation_url?: string
   ai_generated?: boolean
-  // Legacy fields (fallback only - will be consolidated)
+  // Legacy fallback fields
+  fix_example?: string
   ai_explanation?: string
-  impact_analysis?: string  // Fallback for impact field
+  impact_analysis?: string
 }
 
 interface SeverityCounts {
@@ -90,27 +90,6 @@ interface ResultComponentProps {
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
 type SortOption = 'severity' | 'category' | 'name'
-
-/**
- * Consolidate impact fields - prefer primary 'impact' field, fallback to 'impact_analysis'
- */
-function getImpact(finding: Finding): string | undefined {
-  return finding.impact || finding.impact_analysis
-}
-
-/**
- * Consolidate fix example fields - prefer 'fix_example', fallback to 'fix_code' or 'full_example'
- */
-function getFixExample(finding: Finding): string | undefined {
-  return finding.fix_example || finding.fix_code || finding.full_example
-}
-
-/**
- * Get documentation URL - prefer explicit URL, fallback to recommendation if available
- */
-function getDocumentationUrl(finding: Finding): string | undefined {
-  return finding.documentation_url
-}
 
 // Full Example Section Component (Expandable)
 function FullExampleSection({ fullExample, filePath }: { fullExample: string; filePath?: string }) {
@@ -241,42 +220,26 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
 
     // Kubernetes documentation
     if (category.includes('kubernetes') || filePath.includes('k8s') || filePath.includes('kubernetes') || ruleId.startsWith('K8S')) {
-      const k8sDocs: Record<string, string> = {
-        'security': 'https://kubernetes.io/docs/concepts/security/',
-        'reliability': 'https://kubernetes.io/docs/concepts/workloads/pods/disruptions/',
-        'scalability': 'https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/',
-        'cost': 'https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/',
-      }
-      return k8sDocs[category] || 'https://kubernetes.io/docs/'
+      return 'https://kubernetes.io/docs'
     }
 
     // Docker documentation
     if (category.includes('docker') || filePath.includes('dockerfile') || ruleId.startsWith('DKR') || ruleId.startsWith('DOCKER')) {
-      const dockerDocs: Record<string, string> = {
-        'security': 'https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#security',
-        'reliability': 'https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#healthcheck',
-        'cost': 'https://docs.docker.com/develop/develop-images/multistage-build/',
-      }
-      return dockerDocs[category] || 'https://docs.docker.com/'
+      return 'https://docs.docker.com'
     }
 
     // Terraform documentation
     if (category.includes('terraform') || filePath.endsWith('.tf') || ruleId.startsWith('TF')) {
-      const tfDocs: Record<string, string> = {
-        'security': 'https://developer.hashicorp.com/terraform/docs/security',
-        'reliability': 'https://developer.hashicorp.com/terraform/language/settings/backends',
-        'cost': 'https://developer.hashicorp.com/terraform/cdktf',
-      }
-      return tfDocs[category] || 'https://developer.hashicorp.com/terraform/docs'
+      return 'https://developer.hashicorp.com/terraform'
     }
 
     // CI/CD documentation
     if (category.includes('ci') || category.includes('cd') || category.includes('cicd') || filePath.includes('.github') || filePath.includes('workflow') || ruleId.startsWith('CI')) {
-      return 'https://docs.github.com/en/actions'
+      return 'https://docs.github.com'
     }
 
-    // Default fallback - always return a URL
-    return 'https://kubernetes.io/docs/'
+    // Default fallback
+    return 'https://kubernetes.io/docs'
   }
 
   // Get confidence badge color
@@ -302,28 +265,32 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   }
 
   // Filter and sort findings
-  const filteredAndSortedFindings = result.findings
-    .filter(finding => {
-      if (severityFilter === 'all') return true
-      return finding.severity === severityFilter
-    })
-    .sort((a, b) => {
-      let comparison = 0
-      
-      switch (sortOption) {
-        case 'severity':
-          comparison = severityPriority[a.severity] - severityPriority[b.severity]
-          break
-        case 'category':
-          comparison = a.category.localeCompare(b.category)
-          break
-        case 'name':
-          comparison = a.rule_name.localeCompare(b.rule_name)
-          break
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison
-    })
+  const filteredAndSortedFindings = result?.findings && Array.isArray(result.findings)
+    ? result.findings
+        .filter(finding => {
+          if (!finding) return false  // Skip undefined/null findings
+          if (severityFilter === 'all') return true
+          return finding.severity === severityFilter
+        })
+        .sort((a, b) => {
+          if (!a || !b) return 0
+          let comparison = 0
+
+          switch (sortOption) {
+            case 'severity':
+              comparison = severityPriority[a.severity || 'info'] - severityPriority[b.severity || 'info']
+              break
+            case 'category':
+              comparison = (a.category || '').localeCompare(b.category || '')
+              break
+            case 'name':
+              comparison = (a.rule_name || '').localeCompare(b.rule_name || '')
+              break
+          }
+
+          return sortOrder === 'asc' ? comparison : -comparison
+        })
+    : []
 
   const StackIndicator = ({ label, detected, icon: Icon }: { label: string; detected: boolean; icon: any }) => (
     <div className={cn(
@@ -749,154 +716,164 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                               </div>
                             )}
 
-                            {/* AI Suggestion Block - Production Grade */}
+                            {/* AI Suggestion Block - ALWAYS SHOW when AI data exists */}
                             <div className="space-y-4">
-                              {/* Header with Confidence Badge */}
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30">
-                                  <Brain className="h-5 w-5 text-primary" />
-                                </div>
-                                <div>
-                                  <h5 className="text-sm font-semibold text-foreground">
-                                    AI Suggestion
-                                  </h5>
-                                  {(finding.confidence ?? finding.confidence_score) && (
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className={cn(
-                                        'px-2 py-0.5 rounded-full text-xs font-medium',
-                                        getConfidenceBadge(finding.confidence ?? finding.confidence_score).color
-                                      )}>
-                                        {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        ({Math.round(((finding.confidence ?? finding.confidence_score) || 0.8) * 100)}%)
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                              {/* Debug log - AI DATA */}
+                              {(() => { console.log("AI DATA:", finding); return null })()}
 
-                              {/* Summary */}
-                              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <FileText className="h-4 w-4 text-primary" />
-                                  <h6 className="text-xs font-semibold text-primary">Summary</h6>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                  {finding.summary || finding.description || 'No summary available'}
-                                </p>
-                              </div>
+                              {/* AI Content */}
+                              {(() => {
+                                const hasAIData = finding.summary || finding.risk || finding.impact ||
+                                                 finding.fix_code || finding.fix_example || finding.full_example ||
+                                                 (finding.best_practices && finding.best_practices.length > 0)
 
-                              {/* Risk & Impact (only shown once inside AI block) */}
-                              {(finding.risk || getImpact(finding)) && (
-                                <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <AlertTriangle className="h-4 w-4 text-orange-400" />
-                                    <h6 className="text-xs font-semibold text-orange-400">Risk & Impact</h6>
-                                  </div>
-                                  {finding.risk && (
-                                    <div className="mb-2">
-                                      <span className="text-xs font-medium text-orange-300">Risk: </span>
-                                      <p className="text-sm text-orange-300 inline">{finding.risk}</p>
-                                    </div>
-                                  )}
-                                  {getImpact(finding) && (
-                                    <div>
-                                      <span className="text-xs font-medium text-orange-300">Impact: </span>
-                                      <p className="text-sm text-orange-300 inline">{getImpact(finding)}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                if (hasAIData) {
+                                  return (
+                                    <>
+                                      {/* Header with Confidence Badge */}
+                                      <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-br from-primary/10 to-indigo-600/10 border border-primary/20">
+                                        <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30">
+                                          <Brain className="h-5 w-5 text-primary" />
+                                        </div>
+                                        <div className="flex-1">
+                                          <h5 className="text-sm font-semibold text-foreground">
+                                            🤖 AI Suggestion
+                                          </h5>
+                                          {(finding.confidence ?? finding.confidence_score) && (
+                                            <span className={cn(
+                                              'px-2 py-1 rounded-full text-xs font-medium mt-1 inline-block',
+                                              getConfidenceBadge(finding.confidence ?? finding.confidence_score).color
+                                            )}>
+                                              {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence ({Math.round(((finding.confidence ?? finding.confidence_score) || 0.8) * 100)}%)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
 
-                              {/* Fix Code Snippet */}
-                              {(finding.fix_code || finding.fix_example) && (
-                                <div>
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <Code className="h-4 w-4 text-green-400" />
-                                      <h6 className="text-xs font-semibold text-foreground">
-                                        Suggested Fix
-                                      </h6>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        const codeToCopy = finding.fix_code || finding.fix_example
-                                        if (codeToCopy) {
-                                          navigator.clipboard.writeText(codeToCopy)
-                                        }
-                                      }}
-                                    >
-                                      Copy Fix
-                                    </Button>
-                                  </div>
-                                  <div className="rounded-lg bg-black/50 border border-white/10 overflow-hidden">
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border-b border-white/10">
-                                      <Terminal className="h-4 w-4 text-green-400" />
-                                      <span className="text-xs font-medium text-green-400">
-                                        Production-Ready Fix
-                                      </span>
-                                      {finding.file_path && (
-                                        <span className="text-xs text-muted-foreground ml-auto">
-                                          {getLanguageFromPath(finding.file_path)}
-                                        </span>
+                                      {/* Summary */}
+                                      {finding.summary && (
+                                        <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-lg">📌</span>
+                                            <h6 className="text-sm font-semibold text-primary">Summary</h6>
+                                          </div>
+                                          <p className="text-sm text-muted-foreground">
+                                            {finding.summary}
+                                          </p>
+                                        </div>
                                       )}
+
+                                      {/* Risk */}
+                                      {finding.risk && (
+                                        <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-lg">⚠️</span>
+                                            <h6 className="text-sm font-semibold text-orange-400">Risk</h6>
+                                          </div>
+                                          <p className="text-sm text-orange-300">
+                                            {finding.risk}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/* Impact */}
+                                      {finding.impact && (
+                                        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-lg">💥</span>
+                                            <h6 className="text-sm font-semibold text-red-400">Impact</h6>
+                                          </div>
+                                          <p className="text-sm text-red-300">
+                                            {finding.impact}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/* Fix Code */}
+                                      {(finding.fix_code || finding.fix_example) && (
+                                        <div>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-lg">🛠️</span>
+                                              <h6 className="text-sm font-semibold text-foreground">Fix</h6>
+                                            </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 text-xs"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                navigator.clipboard.writeText(finding.fix_code || finding.fix_example!)
+                                              }}
+                                            >
+                                              Copy
+                                            </Button>
+                                          </div>
+                                          <div className="rounded-lg bg-black/50 border border-white/10 overflow-hidden">
+                                            <pre className="p-4 overflow-x-auto max-h-[500px]">
+                                              <code className="text-sm text-green-400 font-mono whitespace-pre">
+                                                {finding.fix_code || finding.fix_example}
+                                              </code>
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Full Example (Expandable) */}
+                                      {finding.full_example && (
+                                        <FullExampleSection
+                                          fullExample={finding.full_example}
+                                          filePath={finding.file_path}
+                                        />
+                                      )}
+
+                                      {/* Best Practices */}
+                                      {finding.best_practices && finding.best_practices.length > 0 && (
+                                        <div className="p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                                          <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-lg">✅</span>
+                                            <h6 className="text-sm font-semibold text-indigo-400">
+                                              Best Practices
+                                            </h6>
+                                          </div>
+                                          <ul className="space-y-2">
+                                            {finding.best_practices.map((practice, idx) => (
+                                              <li key={idx} className="flex items-start gap-2">
+                                                <CheckCircle className="h-4 w-4 text-indigo-400 mt-0.5 flex-shrink-0" />
+                                                <span className="text-sm text-indigo-300">{practice}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </>
+                                  )
+                                }
+                                return null
+                              })()}
+
+                              {/* Fallback - Show when no AI data */}
+                              {(() => {
+                                const hasAIData = finding.summary || finding.risk || finding.impact ||
+                                                 finding.fix_code || finding.fix_example || finding.full_example ||
+                                                 (finding.best_practices && finding.best_practices.length > 0)
+                                if (!hasAIData) {
+                                  return (
+                                    <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <CheckCircle className="h-4 w-4 text-green-400" />
+                                        <h6 className="text-xs font-semibold text-foreground">
+                                          Why This Matters
+                                        </h6>
+                                      </div>
+                                      <p className="text-sm text-muted-foreground">
+                                        {finding.recommendation}
+                                      </p>
                                     </div>
-                                    <pre className="p-4 overflow-x-auto max-h-[500px]">
-                                      <code className="text-sm text-green-400 font-mono whitespace-pre">
-                                        {finding.fix_code || finding.fix_example}
-                                      </code>
-                                    </pre>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Full Example (Expandable) */}
-                              {finding.full_example && (
-                                <FullExampleSection
-                                  fullExample={finding.full_example}
-                                  filePath={finding.file_path}
-                                />
-                              )}
-
-                              {/* Best Practices */}
-                              {finding.best_practices && Array.isArray(finding.best_practices) && finding.best_practices.length > 0 && (
-                                <div className="p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <Sparkles className="h-4 w-4 text-indigo-400" />
-                                    <h6 className="text-xs font-semibold text-indigo-400">
-                                      Best Practices
-                                    </h6>
-                                  </div>
-                                  <ul className="space-y-2">
-                                    {finding.best_practices.map((practice, idx) => (
-                                      <li key={idx} className="flex items-start gap-2">
-                                        <CheckCircle className="h-4 w-4 text-indigo-400 mt-0.5 flex-shrink-0" />
-                                        <span className="text-sm text-indigo-300">{practice}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Why This Matters (Fallback) */}
-                              {finding.recommendation && !(finding.summary || finding.risk || getImpact(finding)) && (
-                                <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <CheckCircle className="h-4 w-4 text-green-400" />
-                                    <h6 className="text-xs font-semibold text-foreground">
-                                      Why This Matters
-                                    </h6>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">
-                                    {finding.recommendation}
-                                  </p>
-                                </div>
-                              )}
+                                  )
+                                }
+                                return null
+                              })()}
                             </div>
 
                             {/* Action Buttons */}

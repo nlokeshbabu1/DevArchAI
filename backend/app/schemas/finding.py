@@ -38,14 +38,21 @@ class FindingResponse(BaseModel):
     category: Category
     description: str
     recommendation: str
+    summary: Optional[str] = None
     risk: Optional[str] = None
     impact: Optional[str] = None
     fix_example: Optional[str] = None
+    fix_code: Optional[str] = None
+    full_example: Optional[str] = None
+    best_practices: Optional[list[str]] = None
     file_path: Optional[str]
     line_number: Optional[int]
     resource_name: Optional[str]
     ai_explanation: Optional[str]
     impact_analysis: Optional[str]
+    ai_generated: Optional[bool] = False
+    documentation_url: Optional[str] = None
+    confidence: Optional[float] = None
     confidence_score: float
     is_resolved: bool
     resolved_at: Optional[datetime]
@@ -80,6 +87,7 @@ class EnrichedFinding(BaseModel):
     severity: Severity
     category: Category
     description: str
+    summary: Optional[str] = None
     risk: str
     impact: str
     file: str
@@ -87,7 +95,13 @@ class EnrichedFinding(BaseModel):
     resource: Optional[str] = None
     recommendation: str
     fix_example: Optional[str] = None
+    fix_code: Optional[str] = None
+    full_example: Optional[str] = None
+    best_practices: Optional[str] = None
     ai_explanation: Optional[str] = None
+    ai_generated: Optional[bool] = False
+    documentation_url: Optional[str] = None
+    confidence: Optional[float] = None
 
     class Config:
         from_attributes = True

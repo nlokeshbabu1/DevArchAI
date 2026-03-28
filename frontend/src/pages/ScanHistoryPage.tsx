@@ -37,23 +37,26 @@ export function ScanHistoryPage() {
     queryKey: ['scans-history'],
     queryFn: async () => {
       try {
+        console.log('📊 Fetching scan history...')
         // Fetch both authenticated and anonymous scans for demo
         const response = await scansApi.listScans(undefined, 1, 100)
+        console.log('📊 Scan history API response:', response)
         // Ensure scans are sorted by created_at descending (latest first)
         const sortedScans = (response || []).sort((a, b) => {
           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
           return dateB - dateA
         })
-        console.log('Scan history response:', sortedScans)
+        console.log('📊 Sorted scan history (latest first):', sortedScans)
+        console.log('📊 Latest scan:', sortedScans[0])
         return sortedScans
       } catch (err) {
-        console.error('Failed to fetch scan history:', err)
+        console.error('❌ Failed to fetch scan history:', err)
         return []
       }
     },
-    refetchInterval: 5000, // Poll every 5 seconds for real-time updates
-    retry: 2,
+    refetchInterval: 3000, // Poll every 3 seconds for real-time updates (faster)
+    retry: 3,
   })
 
   // Filter and sort scans
@@ -114,6 +117,7 @@ export function ScanHistoryPage() {
   }
 
   const handleScanClick = (scanId: string) => {
+    console.log('🔍 Navigating to scan result:', scanId)
     navigate(`/scan/result/${scanId}`)
   }
 

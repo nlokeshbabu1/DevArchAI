@@ -281,6 +281,7 @@ async def github_callback(
             access_token = token_json.get("access_token")
 
             if not access_token:
+                logger.error("No access token in GitHub response", response=token_json)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No access token received from GitHub",

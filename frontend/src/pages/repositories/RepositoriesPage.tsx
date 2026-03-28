@@ -1,126 +1,133 @@
 import { motion } from 'framer-motion'
-import { Plus, Github, Gitlab, Cloud, Server, Loader2, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
-import { Button, Card, RepositoryCard } from '../../components/ui-animated'
+import { Plus, Github, Gitlab, Cloud, Server, Loader2, CheckCircle, AlertCircle, Trash2, ExternalLink, Play } from 'lucide-react'
+import { Button, Card } from '../../components/ui-animated'
+import { Badge } from '../../components/ui'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { useAuthStore } from '../../stores/auth-store'
 import { useState } from 'react'
-import { Badge } from '../../components/ui'
 import { cn } from '../../lib/utils'
+import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
+import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 
-interface Repository {
-  id: string
-  name: string
-  url: string
-  description?: string
-  default_branch: string
-  is_private: boolean
-  created_at: string
-  updated_at: string
-  last_scan_at?: string
-  scan_status?: 'pending' | 'processing' | 'completed' | 'failed'
-  overall_score?: number
-  tech_stack?: string[]
-  issues?: {
-    critical: number
-    high: number
-    medium: number
-    low: number
-  }
+interface DisplayRepository extends Repository {
+  displayStatus: 'scanned' | 'scanning' | 'pending' | 'error'
 }
-
-const api = axios.create({
-  baseURL: '/api/v1',
-})
-
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
 
 export function RepositoriesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { token } = useAuthStore()
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [techFilter, setTechFilter] = useState<string[]>([])
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [scanningRepoIds, setScanningRepoIds] = useState<Set<string>>(new Set())
 
   // Fetch repositories
   const { data: repositoriesResponse, isLoading, refetch } = useQuery({
     queryKey: ['repositories'],
     queryFn: async () => {
-      const response = await api.get('/repositories')
-      // API returns { repositories: [], total: 0, page: 1, page_size: 20 }
-      return response.data.repositories || []
+      const response = await repositoriesApi.listRepositories(1, 50)
+      return response.repositories || []
     },
-    refetchInterval: 10000, // Poll every 10 seconds
+    refetchInterval: 5000, // Poll every 5 seconds for status updates
   })
 
   const repositories = repositoriesResponse || []
 
-  // Trigger scan mutation
+  // Add repository mutation
+  const addRepositoryMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const response = await repositoriesApi.createRepository({ url })
+      return response
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repositories'] })
+      setShowAddModal(false)
+    },
+  })
+
+  // Trigger scan mutation (using scans API like dashboard)
   const triggerScanMutation = useMutation({
-    mutationFn: async (repoUrl: string) => {
-      const response = await api.post('/scans/analyze', {
-        repository_url: repoUrl,
-        branch: 'main',
-      })
-      return response.data
+    mutationFn: async ({ repoId, repoUrl, branch }: { repoId: string; repoUrl: string; branch?: string }) => {
+      const response = await repositoriesApi.triggerScan(repoId, repoUrl, branch || 'main')
+      return response
+    },
+    onMutate: ({ repoId }) => {
+      setScanningRepoIds(prev => new Set(prev).add(repoId))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repositories'] })
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
+    onSettled: (_, __, { repoId }) => {
+      setScanningRepoIds(prev => {
+        const next = new Set(prev)
+        next.delete(repoId)
+        return next
+      })
+    },
   })
 
-  const handleRescan = (repoUrl: string) => {
-    triggerScanMutation.mutate(repoUrl)
+  // Delete repository mutation
+  const deleteRepositoryMutation = useMutation({
+    mutationFn: async (repoId: string) => {
+      await repositoriesApi.deleteRepository(repoId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repositories'] })
+    },
+  })
+
+  const handleAddRepository = async (url: string) => {
+    await addRepositoryMutation.mutateAsync(url)
   }
 
-  const handleView = (repoId: string) => {
+  const handleScan = (repoId: string, repoUrl: string) => {
+    triggerScanMutation.mutate({ repoId, repoUrl, branch: 'main' })
+  }
+
+  const handleViewResults = (repoId: string) => {
     navigate(`/scans?repo=${repoId}`)
   }
 
+  const handleDelete = async (repoId: string) => {
+    if (window.confirm('Are you sure you want to delete this repository? This will not delete existing scan results.')) {
+      await deleteRepositoryMutation.mutateAsync(repoId)
+    }
+  }
+
   // Transform repositories for display
-  const displayRepos = (repositories || []).map((repo: Repository) => {
-    const techStack = repo.tech_stack || []
-    const issues = repo.issues || { critical: 0, high: 0, medium: 0, low: 0 }
+  const displayRepos: DisplayRepository[] = (repositories || []).map((repo: Repository) => {
+    let displayStatus: 'scanned' | 'scanning' | 'pending' | 'error' = 'pending'
     
-    let status: 'scanned' | 'scanning' | 'pending' | 'error' = 'pending'
-    if (repo.scan_status === 'completed') status = 'scanned'
-    else if (repo.scan_status === 'processing') status = 'scanning'
-    else if (repo.scan_status === 'failed') status = 'error'
+    if (repo.scan_status === 'completed') displayStatus = 'scanned'
+    else if (repo.scan_status === 'processing' || scanningRepoIds.has(repo.id)) displayStatus = 'scanning'
+    else if (repo.scan_status === 'failed') displayStatus = 'error'
+    else if (repo.scan_count && repo.scan_count > 0) displayStatus = 'scanned'
 
     return {
-      name: repo.name,
-      description: repo.description || repo.url,
-      lastScan: repo.last_scan_at ? new Date(repo.last_scan_at).toLocaleString() : undefined,
-      score: repo.overall_score,
-      status,
-      techStack,
-      issues,
-      url: repo.url,
-      id: repo.id,
+      ...repo,
+      displayStatus,
     }
   })
 
-  const filteredRepos = displayRepos.filter((repo: any) => {
-    if (statusFilter !== 'all' && repo.status !== statusFilter) return false
-    if (techFilter.length > 0 && !repo.techStack?.some((tech: string) => techFilter.includes(tech))) return false
+  // Filter repositories
+  const filteredRepos = displayRepos.filter((repo) => {
+    if (statusFilter !== 'all' && repo.displayStatus !== statusFilter) return false
     return true
   })
 
+  // Calculate status counts
   const statusCounts = {
     all: displayRepos.length,
-    scanned: displayRepos.filter((r: any) => r.status === 'scanned').length,
-    scanning: displayRepos.filter((r: any) => r.status === 'scanning').length,
-    pending: displayRepos.filter((r: any) => r.status === 'pending').length,
-    error: displayRepos.filter((r: any) => r.status === 'error').length,
+    scanned: displayRepos.filter(r => r.displayStatus === 'scanned').length,
+    scanning: displayRepos.filter(r => r.displayStatus === 'scanning').length,
+    pending: displayRepos.filter(r => r.displayStatus === 'pending').length,
+    error: displayRepos.filter(r => r.displayStatus === 'error').length,
   }
+
+  const isAdding = addRepositoryMutation.isPending
+  const isScanning = triggerScanMutation.isPending
 
   return (
     <div className="space-y-8">
@@ -139,7 +146,7 @@ export function RepositoriesPage() {
         <Button
           variant="primary"
           icon={<Plus className="h-4 w-4" />}
-          onClick={() => navigate('/scan')}
+          onClick={() => setShowAddModal(true)}
         >
           Add Repository
         </Button>
@@ -155,7 +162,7 @@ export function RepositoriesPage() {
         {[
           { name: 'GitHub', icon: Github, connected: true },
           { name: 'GitLab', icon: Gitlab, connected: false },
-          { name: 'AWS', icon: Cloud, connected: true },
+          { name: 'AWS', icon: Cloud, connected: false },
           { name: 'Azure', icon: Server, connected: false },
         ].map((integration) => (
           <Card key={integration.name} className="p-4" hover>
@@ -185,10 +192,10 @@ export function RepositoriesPage() {
       </motion.div>
 
       {/* Filters */}
-      <Card className="p-4" hover={false}>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">Status:</span>
+      {displayRepos.length > 0 && (
+        <Card className="p-4" hover={false}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-foreground mr-2">Status:</span>
             {(['all', 'scanned', 'scanning', 'pending', 'error'] as const).map((status) => (
               <button
                 key={status}
@@ -204,8 +211,8 @@ export function RepositoriesPage() {
               </button>
             ))}
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Repositories Grid */}
       <motion.div
@@ -220,20 +227,43 @@ export function RepositoriesPage() {
             <p className="text-muted-foreground">Loading repositories...</p>
           </div>
         ) : filteredRepos.length === 0 ? (
-          <Card className="p-12 text-center col-span-full">
-            <Cloud className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No repositories found</h3>
-            <p className="text-muted-foreground mb-4">
-              Start by adding a repository to scan
-            </p>
-            <Button onClick={() => navigate('/scan')}>
-              Add Repository
-            </Button>
-          </Card>
+          displayRepos.length === 0 ? (
+            /* True empty state - no repositories at all */
+            <Card className="p-12 text-center col-span-full" hover={false}>
+              <Cloud className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">No repositories yet</h3>
+              <p className="text-muted-foreground mb-6">
+                Start by adding your first repository to scan
+              </p>
+              <Button 
+                variant="primary" 
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => setShowAddModal(true)}
+              >
+                Add Repository
+              </Button>
+            </Card>
+          ) : (
+            /* Filtered empty state - repositories exist but none match filter */
+            <Card className="p-12 text-center col-span-full" hover={false}>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                No repositories match this filter
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                Try selecting a different status filter
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => setStatusFilter('all')}
+              >
+                Show All
+              </Button>
+            </Card>
+          )
         ) : (
-          filteredRepos.map((repo: any, index: number) => (
+          filteredRepos.map((repo, index) => (
             <motion.div
-              key={repo.id || repo.name}
+              key={repo.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 + index * 0.1 }}
@@ -246,45 +276,47 @@ export function RepositoriesPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-foreground truncate">{repo.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{repo.description}</p>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                        {repo.description || repo.url}
+                      </p>
                     </div>
                   </div>
                   <div className={cn(
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                    repo.status === 'scanned'
+                    repo.displayStatus === 'scanned'
                       ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                      : repo.status === 'scanning'
+                      : repo.displayStatus === 'scanning'
                       ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse'
-                      : repo.status === 'error'
+                      : repo.displayStatus === 'error'
                       ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                       : 'bg-gray-500/15 text-gray-400 border border-gray-500/30'
                   )}>
-                    {repo.status === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {repo.status === 'scanned' && <CheckCircle className="h-3 w-3" />}
-                    {repo.status === 'error' && <AlertCircle className="h-3 w-3" />}
-                    <span className="capitalize">{repo.status}</span>
+                    {repo.displayStatus === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {repo.displayStatus === 'scanned' && <CheckCircle className="h-3 w-3" />}
+                    {repo.displayStatus === 'error' && <AlertCircle className="h-3 w-3" />}
+                    <span className="capitalize">{repo.displayStatus}</span>
                   </div>
                 </div>
 
                 {/* Tech Stack Badges */}
-                {repo.techStack && repo.techStack.length > 0 && (
+                {repo.tech_stack && repo.tech_stack.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {repo.techStack.slice(0, 4).map((tech: string) => (
+                    {repo.tech_stack.slice(0, 4).map((tech) => (
                       <Badge key={tech} variant="secondary" className="text-xs">
                         {tech}
                       </Badge>
                     ))}
-                    {repo.techStack.length > 4 && (
+                    {repo.tech_stack.length > 4 && (
                       <Badge variant="secondary" className="text-xs">
-                        +{repo.techStack.length - 4}
+                        +{repo.tech_stack.length - 4}
                       </Badge>
                     )}
                   </div>
                 )}
 
                 {/* Issue Counts */}
-                {repo.issues && (
-                  <div className="flex gap-3 mb-4 text-xs">
+                {repo.issues && Object.values(repo.issues).some(v => v > 0) && (
+                  <div className="flex flex-wrap gap-3 mb-4 text-xs">
                     {repo.issues.critical > 0 && (
                       <span className="text-red-400">Critical: {repo.issues.critical}</span>
                     )}
@@ -297,50 +329,65 @@ export function RepositoriesPage() {
                     {repo.issues.low > 0 && (
                       <span className="text-blue-400">Low: {repo.issues.low}</span>
                     )}
-                    {Object.values(repo.issues).every(v => v === 0) && (
-                      <span className="text-green-400">No issues found</span>
-                    )}
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                {/* Score and Last Scan */}
+                <div className="flex items-center justify-between pt-4 border-t border-white/10 mb-4">
                   <div className="flex items-center gap-2">
-                    {repo.score !== undefined && (
+                    {repo.overall_score !== undefined && repo.overall_score !== null && (
                       <div className="flex items-center gap-2">
                         <div className={cn(
                           'w-2 h-2 rounded-full',
-                          repo.score >= 80 ? 'bg-green-400' :
-                          repo.score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
+                          repo.overall_score >= 80 ? 'bg-green-400' :
+                          repo.overall_score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
                         )} />
-                        <span className="text-sm font-medium">{repo.score.toFixed(1)}</span>
+                        <span className="text-sm font-medium">{repo.overall_score.toFixed(1)}</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {repo.lastScan || 'Never scanned'}
-                    </span>
+                  <div className="text-xs text-muted-foreground">
+                    {repo.last_scan_at 
+                      ? `Last scan: ${new Date(repo.last_scan_at).toLocaleDateString()}`
+                      : repo.scan_count 
+                      ? `${repo.scan_count} scan${repo.scan_count > 1 ? 's' : ''}`
+                      : 'Never scanned'
+                    }
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-4">
+                {/* Action Buttons */}
+                <div className="flex gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleView(repo.id)}
+                    onClick={() => handleViewResults(repo.id)}
+                    icon={<ExternalLink className="h-3.5 w-3.5" />}
                   >
-                    View
+                    Results
                   </Button>
                   <Button
-                    variant={repo.status === 'scanning' ? 'secondary' : 'primary'}
+                    variant={repo.displayStatus === 'scanning' ? 'secondary' : 'primary'}
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleRescan(repo.url)}
-                    disabled={repo.status === 'scanning' || triggerScanMutation.isPending}
-                    icon={repo.status === 'scanning' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : undefined}
+                    onClick={() => handleScan(repo.id, repo.url)}
+                    disabled={repo.displayStatus === 'scanning' || isScanning}
+                    icon={
+                      repo.displayStatus === 'scanning'
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Play className="h-3.5 w-3.5" />
+                    }
                   >
-                    {repo.status === 'scanning' ? 'Scanning...' : 'Rescan'}
+                    {repo.displayStatus === 'scanning' ? 'Scanning...' : 'Scan'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(repo.id)}
+                    disabled={repo.displayStatus === 'scanning'}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </Card>
@@ -348,6 +395,14 @@ export function RepositoriesPage() {
           ))
         )}
       </motion.div>
+
+      {/* Add Repository Modal */}
+      <AddRepositoryModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddRepository}
+        isLoading={isAdding}
+      />
     </div>
   )
 }

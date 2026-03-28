@@ -36,15 +36,27 @@ export const githubAuthApi = {
    */
   getAuthorizationUrl: async (): Promise<string | null> => {
     try {
-      const response = await apiClient.get<GithubOAuthUrlResponse>('/api/v1/auth/github/url')
-      return response.data.oauth_url
-    } catch (error) {
-      console.error('Failed to get GitHub OAuth URL:', error)
+      // Use environment variable for API URL with fallback for development
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/v1/auth/github/url`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data.oauth_url || null
+    } catch (error: any) {
       // Fallback: try to build URL from env (for development)
       const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
       if (clientId) {
         const redirectUri = encodeURIComponent(`${window.location.origin}/auth/github/callback`)
-        const scope = encodeURIComponent('user:email read:user')
+        const scope = encodeURIComponent(import.meta.env.VITE_GITHUB_OAUTH_SCOPE || 'user:email read:user')
         return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`
       }
       throw error
@@ -55,17 +67,34 @@ export const githubAuthApi = {
    * Exchange GitHub authorization code for JWT token
    */
   exchangeCodeForToken: async (code: string): Promise<GithubTokenResponse> => {
-    const response = await apiClient.post<GithubTokenResponse>('/api/v1/auth/github/callback', {
-      code,
-    })
-    return response.data
+    try {
+      // Use environment variable for API URL with fallback for development
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/v1/auth/github/callback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error: any) {
+      throw error
+    }
   },
 
   /**
    * Get GitHub user info from token
    */
   getUserInfo: async (): Promise<any> => {
-    const response = await apiClient.get('/api/v1/auth/github/user')
+    const response = await apiClient.get('/auth/github/user')
     return response.data
   },
 }
