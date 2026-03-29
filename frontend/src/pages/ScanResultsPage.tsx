@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
-import { AISuggestionBlur } from '../components/billing/AisuggestionBlur'
+import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
 import { TechStackDisplay } from '../components/TechStackDisplay'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
@@ -64,6 +64,13 @@ interface ScanState {
   repoName?: string
   filesAnalyzed?: number
   branch?: string
+  detected_technologies?: string[]
+  files_analyzed?: number
+  findings_count?: number
+  files?: number
+  scan_id?: string
+  repository_name?: string
+  total_findings?: number
 }
 
 export function ScanResultsPage() {
@@ -249,11 +256,11 @@ export function ScanResultsPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Branch</div>
-                <div className="font-medium text-foreground">{results.branch || 'main'}</div>
+                <div className="font-medium text-foreground">{(results as any).branch || 'main'}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Files Analyzed</div>
-                <div className="font-medium text-foreground">{results.files_analyzed || results.total_findings || 0}</div>
+                <div className="font-medium text-foreground">{(results as any).files_analyzed || results.total_findings || 0}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Total Findings</div>
@@ -270,7 +277,7 @@ export function ScanResultsPage() {
         </motion.div>
 
         {/* Detected Technology Stack */}
-        {results.detected_technologies && results.detected_technologies.length > 0 && (
+        {(results as any).detected_technologies && (results as any).detected_technologies.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -280,7 +287,7 @@ export function ScanResultsPage() {
               <h3 className="text-lg font-semibold text-foreground mb-4">
                 Detected Technology Stack
               </h3>
-              <TechStackDisplay technologies={results.detected_technologies} />
+              <TechStackDisplay technologies={(results as any).detected_technologies} />
             </Card>
           </motion.div>
         )}

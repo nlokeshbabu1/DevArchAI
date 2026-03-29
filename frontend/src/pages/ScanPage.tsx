@@ -322,7 +322,6 @@ export function ScanPage() {
       // Timeout after 60 seconds
       setTimeout(() => {
         clearInterval(pollInterval)
-        clearInterval(progressInterval)
 
         // Even if polling fails, try to fetch results
         axios.get(`/api/v1/scan/results/${data.scan_id}`)

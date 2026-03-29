@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import axios from 'axios'
 import { X, GitBranch, Github, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { cn } from '../lib/utils'

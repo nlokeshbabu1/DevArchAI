@@ -120,9 +120,11 @@ async def get_scan(
 
     query = select(Scan).where(Scan.id == scan_uuid)
 
-    # If authenticated, filter by user
+    # If authenticated, filter by user - but also allow scans without user_id (guest scans)
     if current_user:
-        query = query.where(Scan.user_id == current_user.id)
+        query = query.where(
+            (Scan.user_id == current_user.id) | (Scan.user_id == None)
+        )
 
     result = await db.execute(query)
     scan = result.scalar_one_or_none()

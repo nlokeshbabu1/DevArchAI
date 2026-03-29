@@ -47,6 +47,10 @@ interface ScanResult {
   repository_url: string
   repository_name?: string
   security_score: number
+  scalability_score?: number
+  reliability_score?: number
+  cost_score?: number
+  observability_score?: number
   overall_score?: number
   severity_counts: {
     critical: number
@@ -61,6 +65,15 @@ interface ScanResult {
   files_analyzed: number
   branch: string
   completed_at: string
+  detected_stack?: {
+    docker_files?: string[]
+    terraform_files?: string[]
+    kubernetes_files?: string[]
+    github_actions_files?: string[]
+    helm_files?: string[]
+    jenkins_files?: string[]
+    [key: string]: any
+  }
   detected_technologies?: string[]
   status?: string
 }
@@ -86,14 +99,13 @@ export function ResultPage() {
     enabled: !!id,
     retry: 2,
     staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
-    cacheTime: 10 * 60 * 1000,  // Cache for 10 minutes
   })
 
   // Filter and sort findings
   const filteredFindings = useMemo(() => {
     if (!result?.findings) return []
 
-    let filtered = [...result.findings]
+    let filtered = [...(result as ScanResult).findings]
 
     // Apply severity filter
     if (severityFilter !== 'all') {
@@ -101,7 +113,7 @@ export function ResultPage() {
     }
 
     // Apply sorting
-    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
+    const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
     filtered.sort((a, b) => {
       if (sortBy === 'severity') {
         return severityOrder[a.severity] - severityOrder[b.severity]
@@ -115,18 +127,18 @@ export function ResultPage() {
   // Calculate severity counts from findings
   const severity_counts = useMemo(() => {
     if (!result?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-    
-    return result.findings.reduce((acc, finding) => {
+
+    return (result as ScanResult).findings.reduce((acc, finding) => {
       const severity = finding.severity || 'info'
       acc[severity] = (acc[severity] || 0) + 1
       return acc
-    }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 })
-  }, [result?.findings])
+    }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 } as Record<string, number>)
+  }, [(result as ScanResult)?.findings])
 
   // Get top priority fixes (critical + high, max 3)
   const topPriorityFixes = useMemo(() => {
     if (!result?.findings) return []
-    return result.findings
+    return (result as ScanResult).findings
       .filter(f => f.severity === 'critical' || f.severity === 'high')
       .slice(0, 3)
   }, [result?.findings])
@@ -135,6 +147,9 @@ export function ResultPage() {
   const cleanFilePath = (path: string) => {
     return path.replace(/\/tmp\/devarchai\/[^/]+\//, '')
   }
+
+  // Type-safe result access
+  const scanResult = result as ScanResult | undefined
 
   const getSeverityColor = (severity: string) => {
     const colors: Record<string, string> = {
@@ -207,7 +222,7 @@ export function ResultPage() {
     )
   }
 
-  const repoName = result.repository_name || result.repository_url.split('/').slice(-2).join('/')
+  const repoName = (result as ScanResult).repository_name || (result as ScanResult).repository_url.split('/').slice(-2).join('/')
 
   return (
     <div className="min-h-screen bg-background py-8">
@@ -271,7 +286,7 @@ export function ResultPage() {
         >
           <h1 className="text-3xl font-bold text-foreground">{repoName}</h1>
           <p className="text-muted-foreground">
-            Branch: {result.branch || 'main'} • Scanned: {new Date(result.completed_at).toLocaleString()}
+            Branch: {(result as ScanResult).branch || 'main'} • Scanned: {new Date((result as ScanResult).completed_at).toLocaleString()}
           </p>
         </motion.div>
 
@@ -281,11 +296,49 @@ export function ResultPage() {
           <Card className="p-6" hover={false}>
             <div className="text-center space-y-4">
               <h3 className="text-lg font-semibold text-foreground">Security Score</h3>
-              <ScoreCircle score={result.security_score || 0} size="xl" animated />
+              <ScoreCircle score={(result as ScanResult).security_score || 0} size="xl" animated />
               <div className="text-sm text-muted-foreground">
-                Grade: <span className={cn('font-bold', getScoreColor(result.security_score || 0))}>
-                  {(result.security_score || 0) >= 90 ? 'A' : (result.security_score || 0) >= 80 ? 'B' : (result.security_score || 0) >= 70 ? 'C' : (result.security_score || 0) >= 60 ? 'D' : 'F'}
+                Grade: <span className={cn('font-bold', getScoreColor((result as ScanResult).security_score || 0))}>
+                  {((result as ScanResult).security_score || 0) >= 90 ? 'A' : ((result as ScanResult).security_score || 0) >= 80 ? 'B' : ((result as ScanResult).security_score || 0) >= 70 ? 'C' : ((result as ScanResult).security_score || 0) >= 60 ? 'D' : 'F'}
                 </span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Category Scores */}
+          <Card className="p-6" hover={false}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Category Scores</h3>
+            <div className="flex flex-wrap gap-4 justify-start">
+              {/* Scalability */}
+              <div className="min-w-[140px] p-6 rounded-xl border-2 border-blue-500/30 bg-blue-500/10 text-center">
+                <div className={cn('text-4xl font-bold mb-2', getScoreColor((result as ScanResult).scalability_score || 0))}>
+                  {Math.round((result as ScanResult).scalability_score || 0)}%
+                </div>
+                <div className="text-sm font-semibold text-blue-300">Scalability</div>
+              </div>
+              
+              {/* Reliability */}
+              <div className="min-w-[140px] p-6 rounded-xl border-2 border-purple-500/30 bg-purple-500/10 text-center">
+                <div className={cn('text-4xl font-bold mb-2', getScoreColor((result as ScanResult).reliability_score || 0))}>
+                  {Math.round((result as ScanResult).reliability_score || 0)}%
+                </div>
+                <div className="text-sm font-semibold text-purple-300">Reliability</div>
+              </div>
+              
+              {/* Cost */}
+              <div className="min-w-[140px] p-6 rounded-xl border-2 border-green-500/30 bg-green-500/10 text-center">
+                <div className={cn('text-4xl font-bold mb-2', getScoreColor((result as ScanResult).cost_score || 0))}>
+                  {Math.round((result as ScanResult).cost_score || 0)}%
+                </div>
+                <div className="text-sm font-semibold text-green-300">Cost</div>
+              </div>
+              
+              {/* Observability */}
+              <div className="min-w-[140px] p-6 rounded-xl border-2 border-cyan-500/30 bg-cyan-500/10 text-center">
+                <div className={cn('text-4xl font-bold mb-2', getScoreColor((result as ScanResult).observability_score || 0))}>
+                  {Math.round((result as ScanResult).observability_score || 0)}%
+                </div>
+                <div className="text-sm font-semibold text-cyan-300">Observability</div>
               </div>
             </div>
           </Card>
@@ -319,28 +372,76 @@ export function ResultPage() {
             <div className="space-y-4">
               <div>
                 <div className="text-sm text-muted-foreground">Repository</div>
-                <div className="font-medium text-foreground truncate">{result.repository_url}</div>
+                <div className="font-medium text-foreground truncate">{(result as ScanResult).repository_url}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Files Analyzed</div>
-                <div className="font-medium text-foreground">{result.files_analyzed}</div>
+                <div className="font-medium text-foreground">{(result as ScanResult).files_analyzed}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Total Findings</div>
-                <div className="font-medium text-foreground">{result.findings_count || result.total_findings || 0}</div>
+                <div className="font-medium text-foreground">{(result as ScanResult).findings_count || (result as ScanResult).total_findings || 0}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Scan ID</div>
-                <div className="font-mono text-xs text-muted-foreground">{result.scan_id}</div>
+                <div className="font-mono text-xs text-muted-foreground">{(result as ScanResult).scan_id}</div>
               </div>
             </div>
           </Card>
 
           {/* Detected Technology Stack */}
-          {result.detected_technologies && result.detected_technologies.length > 0 && (
+          {(result as ScanResult).detected_stack && (
             <Card className="p-6" hover={false}>
               <h3 className="text-lg font-semibold text-foreground mb-4">Detected Technology Stack</h3>
-              <TechStackDisplay technologies={result.detected_technologies} />
+              <div className="flex flex-wrap gap-4 justify-start">
+                {/* Docker */}
+                {((result as ScanResult).detected_stack as any).docker_files && ((result as ScanResult).detected_stack as any).docker_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-blue-500/30 bg-blue-500/10 text-center">
+                    <div className="text-4xl font-bold text-blue-400 mb-2">{((result as ScanResult).detected_stack as any).docker_files.length}</div>
+                    <div className="text-sm font-semibold text-blue-300">Docker Files</div>
+                  </div>
+                )}
+                
+                {/* Terraform */}
+                {((result as ScanResult).detected_stack as any).terraform_files && ((result as ScanResult).detected_stack as any).terraform_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-purple-500/30 bg-purple-500/10 text-center">
+                    <div className="text-4xl font-bold text-purple-400 mb-2">{((result as ScanResult).detected_stack as any).terraform_files.length}</div>
+                    <div className="text-sm font-semibold text-purple-300">Terraform Files</div>
+                  </div>
+                )}
+                
+                {/* Kubernetes */}
+                {((result as ScanResult).detected_stack as any).kubernetes_files && ((result as ScanResult).detected_stack as any).kubernetes_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-cyan-500/30 bg-cyan-500/10 text-center">
+                    <div className="text-4xl font-bold text-cyan-400 mb-2">{((result as ScanResult).detected_stack as any).kubernetes_files.length}</div>
+                    <div className="text-sm font-semibold text-cyan-300">K8s Files</div>
+                  </div>
+                )}
+                
+                {/* GitHub Actions */}
+                {((result as ScanResult).detected_stack as any).github_actions_files && ((result as ScanResult).detected_stack as any).github_actions_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-orange-500/30 bg-orange-500/10 text-center">
+                    <div className="text-4xl font-bold text-orange-400 mb-2">{((result as ScanResult).detected_stack as any).github_actions_files.length}</div>
+                    <div className="text-sm font-semibold text-orange-300">GitHub Actions</div>
+                  </div>
+                )}
+                
+                {/* Helm */}
+                {((result as ScanResult).detected_stack as any).helm_files && ((result as ScanResult).detected_stack as any).helm_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-green-500/30 bg-green-500/10 text-center">
+                    <div className="text-4xl font-bold text-green-400 mb-2">{((result as ScanResult).detected_stack as any).helm_files.length}</div>
+                    <div className="text-sm font-semibold text-green-300">Helm Charts</div>
+                  </div>
+                )}
+                
+                {/* Jenkins */}
+                {((result as ScanResult).detected_stack as any).jenkins_files && ((result as ScanResult).detected_stack as any).jenkins_files.length > 0 && (
+                  <div className="min-w-[140px] p-6 rounded-xl border-2 border-red-500/30 bg-red-500/10 text-center">
+                    <div className="text-4xl font-bold text-red-400 mb-2">{((result as ScanResult).detected_stack as any).jenkins_files.length}</div>
+                    <div className="text-sm font-semibold text-red-300">Jenkins Files</div>
+                  </div>
+                )}
+              </div>
             </Card>
           )}
         </div>
@@ -538,7 +639,7 @@ export function ResultPage() {
                                   {(finding.confidence || finding.confidence_score) && (
                                     <div className="flex items-center gap-2 mt-1">
                                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/30">
-                                        {(finding.confidence || finding.confidence_score) >= 0.8 ? 'High' : (finding.confidence || finding.confidence_score) >= 0.6 ? 'Medium' : 'Low'} Confidence
+                                        {(finding.confidence || finding.confidence_score || 0) >= 0.8 ? 'High' : (finding.confidence || finding.confidence_score || 0) >= 0.6 ? 'Medium' : 'Low'} Confidence
                                       </span>
                                       <span className="text-xs text-muted-foreground">
                                         ({Math.round(((finding.confidence || finding.confidence_score) || 0.8) * 100)}%)
@@ -629,7 +730,9 @@ export function ResultPage() {
                                       className="h-7 text-xs"
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        navigator.clipboard.writeText(finding.full_example)
+                                        if (finding.full_example) {
+                                          navigator.clipboard.writeText(finding.full_example)
+                                        }
                                       }}
                                     >
                                       Copy Full
