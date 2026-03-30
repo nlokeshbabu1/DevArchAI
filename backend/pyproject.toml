@@ -1,3 +1,9 @@
+[project]
+name = "devarchai-backend"
+version = "1.0.0"
+description = "DevArchAI - AI-Powered DevOps Production Readiness Engine"
+requires-python = ">=3.11"
+
 [tool.ruff]
 # Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`)
 select = [
