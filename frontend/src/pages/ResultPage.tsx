@@ -11,6 +11,7 @@ import {
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { TechStackDisplay } from '../components/TechStackDisplay'
+import { DiffViewer } from '../components/DiffViewer'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 
@@ -36,6 +37,10 @@ interface Finding {
   confidence_score?: number
   documentation_url?: string
   ai_generated?: boolean
+  // Code Diff fields
+  before_code?: string
+  after_code?: string
+  unified_diff?: string
   // Legacy fields (fallback)
   ai_explanation?: string
   impact_analysis?: string
@@ -679,6 +684,18 @@ export function ResultPage() {
                                       <p className="text-sm text-orange-300 inline">{finding.impact}</p>
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {/* Code Diff Viewer */}
+                              {(finding.before_code && finding.after_code) && (
+                                <div className="mt-4">
+                                  <DiffViewer
+                                    beforeCode={finding.before_code}
+                                    afterCode={finding.after_code}
+                                    unifiedDiff={finding.unified_diff}
+                                    filename={finding.file_path || 'file'}
+                                  />
                                 </div>
                               )}
 

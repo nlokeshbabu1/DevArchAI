@@ -30,6 +30,42 @@ from app.workers.celery_config import celery_app
 logger = get_logger(__name__)
 
 
+def _run_ai_enrichment_in_process(findings_data, file_contents_data):
+    """Run AI enrichment in a separate process with its own event loop.
+    
+    This function MUST be at module level for multiprocessing to work.
+    """
+    from app.services.findings_enricher import enrich_findings_with_ai
+    from app.rule_engine.base import RuleFinding, Severity, Category
+    import asyncio
+    
+    # Recreate findings from serialized data
+    findings = []
+    for f_data in findings_data:
+        finding = RuleFinding(
+            rule_id=f_data['rule_id'],
+            rule_name=f_data['rule_name'],
+            severity=Severity(f_data['severity']),
+            category=Category(f_data['category']),
+            description=f_data['description'],
+            recommendation=f_data['recommendation'],
+            file_path=f_data.get('file_path'),
+            line_number=f_data.get('line_number'),
+            resource_name=f_data.get('resource_name'),
+        )
+        findings.append(finding)
+    
+    # Create NEW event loop for this process (avoids uvloop conflict)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        enriched = loop.run_until_complete(enrich_findings_with_ai(findings, file_contents_data))
+        return enriched
+    finally:
+        loop.close()
+
+
 def _safe_await(coro):
     """
     Safely await a coroutine from sync code.
@@ -261,12 +297,10 @@ class SyncScanService:
 
             # Enrich findings with AI fix data
             logger.info("Enriching findings with AI data...", findings_count=len(rule_findings))
-            
+
             # Use AI-powered enrichment (with static fallback)
-            # Run async enrichment in sync context
-            import asyncio
             from app.services.findings_enricher import enrich_findings_with_ai
-            
+
             # Get file contents for AI context
             file_contents = {}
             for finding in rule_findings:
@@ -275,33 +309,81 @@ class SyncScanService:
                         file_path = Path(finding.file_path)
                         if file_path.exists():
                             file_contents[str(file_path)] = file_path.read_text(encoding="utf-8")
+                            logger.debug(f"✅ Read file content for {finding.file_path} ({len(file_contents[str(file_path)])} chars)")
+                        else:
+                            logger.warning(f"❌ File not found: {finding.file_path}")
                     except Exception as e:
-                        logger.debug(f"Could not read file {finding.file_path}: {e}")
-            
-            # Run async enrichment
+                        logger.error(f"❌ Could not read file {finding.file_path}: {e}")
+
+            logger.info(f"File contents loaded: {len(file_contents)} files")
+            logger.info(f"Mistral API key configured: {bool(settings.MISTRAL_API_KEY)}")
+
+            # Run AI enrichment in a SEPARATE PROCESS to avoid uvloop conflicts
             try:
-                # Try to get existing event loop
-                import asyncio
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Loop is running - need to schedule in existing loop
-                    # This shouldn't happen in sync context, but handle it
-                    logger.warning("Event loop running, this is unexpected in sync context")
-                    raise RuntimeError("Event loop is running")
-                else:
-                    # Loop exists but not running - use it
-                    rule_findings = loop.run_until_complete(enrich_findings_with_ai(rule_findings, file_contents))
-            except RuntimeError as e:
-                # No event loop or loop is running - create new one
-                logger.info("Creating new event loop for AI enrichment", error=str(e))
-                try:
-                    rule_findings = asyncio.run(enrich_findings_with_ai(rule_findings, file_contents))
-                except Exception as nested_e:
-                    logger.warning("AI enrichment failed, using static enrichment", error=str(nested_e))
-                    from app.services.findings_enricher import enrich_findings
-                    rule_findings = enrich_findings(rule_findings)
+                logger.info("🚀 Starting AI enrichment in separate process...")
+                
+                import multiprocessing
+                
+                # Serialize findings for multiprocessing
+                findings_data = []
+                for f in rule_findings:
+                    findings_data.append({
+                        'rule_id': f.rule_id,
+                        'rule_name': f.rule_name,
+                        'severity': f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
+                        'category': f.category.value if hasattr(f.category, 'value') else str(f.category),
+                        'description': f.description,
+                        'recommendation': f.recommendation,
+                        'file_path': f.file_path,
+                        'line_number': f.line_number,
+                        'resource_name': f.resource_name,
+                    })
+                
+                # Run AI enrichment in separate process using module-level function
+                with multiprocessing.Pool(processes=1) as pool:
+                    enriched_findings = pool.apply(_run_ai_enrichment_in_process, (findings_data, file_contents))
+                
+                # Merge enriched data back into original findings
+                enriched_map = {f.rule_id: f for f in enriched_findings}
+                for finding in rule_findings:
+                    if finding.rule_id in enriched_map:
+                        enriched = enriched_map[finding.rule_id]
+                        # Copy AI-generated fields
+                        if not finding.summary and enriched.summary:
+                            finding.summary = enriched.summary
+                        if not finding.risk and enriched.risk:
+                            finding.risk = enriched.risk
+                        if not finding.impact and enriched.impact:
+                            finding.impact = enriched.impact
+                        if not finding.fix_code and enriched.fix_code:
+                            finding.fix_code = enriched.fix_code
+                        if not finding.fix_example and enriched.fix_example:
+                            finding.fix_example = enriched.fix_example
+                        if not finding.full_example and enriched.full_example:
+                            finding.full_example = enriched.full_example
+                        if not finding.best_practices and enriched.best_practices:
+                            finding.best_practices = enriched.best_practices
+                        if enriched.ai_generated:
+                            finding.ai_generated = True
+                        if enriched.confidence:
+                            finding.confidence = enriched.confidence
+                        # Copy ai_explanation (IMPORTANT - don't lose this!)
+                        if not finding.ai_explanation and enriched.ai_explanation:
+                            finding.ai_explanation = enriched.ai_explanation
+                        # Copy diff fields from metadata
+                        if enriched.metadata.get('before_code'):
+                            finding.metadata['before_code'] = enriched.metadata['before_code']
+                        if enriched.metadata.get('after_code'):
+                            finding.metadata['after_code'] = enriched.metadata['after_code']
+                        if enriched.metadata.get('unified_diff'):
+                            finding.metadata['unified_diff'] = enriched.metadata['unified_diff']
+                
+                ai_count = sum(1 for f in rule_findings if getattr(f, 'ai_generated', False))
+                logger.info(f"✅ AI enrichment completed successfully! Generated {ai_count}/{len(rule_findings)} AI findings")
+                
             except Exception as e:
-                logger.warning("AI enrichment failed, using static enrichment", error=str(e))
+                logger.error(f"❌ AI enrichment failed: {e}")
+                logger.warning("Using static enrichment as fallback")
                 from app.services.findings_enricher import enrich_findings
                 rule_findings = enrich_findings(rule_findings)
             

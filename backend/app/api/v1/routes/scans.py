@@ -341,8 +341,40 @@ async def get_scan_findings(
     )
     findings = findings_result.scalars().all()
 
-    # Convert to dicts
+    # Get repository info for proper file paths
+    repo_name = scan.repository_url.rstrip("/").split("/")[-2:]
+    repo_path = "/".join(repo_name) if len(repo_name) == 2 else scan.repository_url
+
+    # Convert to dicts with diff generation and proper file paths
     import json
+    import difflib
+    
+    def generate_diff(before: str, after: str, filename: str = "file") -> str:
+        """Generate unified diff between before and after code."""
+        if not before or not after:
+            return ""
+        before_lines = before.splitlines(keepends=True)
+        after_lines = after.splitlines(keepends=True)
+        diff = difflib.unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{filename}",
+            tofile=f"b/{filename}",
+            n=3
+        )
+        return ''.join(diff)
+    
+    def clean_file_path(file_path: str) -> str:
+        """Convert local temp path to GitHub-style path."""
+        if not file_path:
+            return ""
+        # Remove /tmp/devarchai/..._repo_name/ prefix
+        import re
+        match = re.search(r'/tmp/devarchai/[a-zA-Z0-9]+_[^/]+/(.*)', file_path)
+        if match:
+            return f"{repo_path}/{match.group(1)}"
+        return file_path
+    
     return [
         {
             "id": str(finding.id),
@@ -353,7 +385,7 @@ async def get_scan_findings(
             "category": finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
             "description": finding.description,
             "recommendation": finding.recommendation,
-            "file_path": finding.file_path,
+            "file_path": clean_file_path(finding.file_path),
             "line_number": finding.line_number,
             "ai_explanation": finding.ai_explanation,
             "ai_generated": finding.ai_generated,
@@ -367,6 +399,14 @@ async def get_scan_findings(
             "confidence_score": finding.confidence_score,
             "documentation_url": finding.documentation_url,
             "created_at": finding.created_at.isoformat(),
+            # Generate diff fields for Code Diff Viewer with clean paths
+            "before_code": finding.ai_explanation or finding.description,
+            "after_code": finding.fix_code or finding.fix_example,
+            "unified_diff": generate_diff(
+                finding.ai_explanation or finding.description,
+                finding.fix_code or finding.fix_example,
+                clean_file_path(finding.file_path) or "file"
+            ) if finding.ai_generated else "",
         }
         for finding in findings
     ]

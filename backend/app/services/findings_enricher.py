@@ -6,6 +6,7 @@ Now supports:
 - Documentation URL mapping
 """
 
+import difflib
 import hashlib
 import json
 from typing import Any, Optional
@@ -1377,99 +1378,222 @@ spec:
         "confidence": 0.95,
     },
     "K8S-SEC-001": {
-        "summary": "Pod lacks securityContext configuration for secure execution.",
-        "risk": "Pods without security context run with default privileges, potentially as root, increasing attack surface.",
-        "impact": "Privilege escalation, container breakout, and host compromise risks.",
-        "fix_code": '''securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-containers:
-- name: app
-  securityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL''',
-        "fix_example": '''apiVersion: v1
-kind: Pod
+        "summary": "No Kubernetes NetworkPolicies found, allowing unrestricted pod-to-pod communication.",
+        "risk": "Without NetworkPolicies, all pods can communicate freely with each other. If an attacker compromises one pod, they can potentially access all other pods in the cluster.",
+        "impact": "Lateral movement attacks, data exfiltration, unauthorized access to sensitive services, compliance violations.",
+        "fix_code": '''apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
-  name: secure-pod
+  name: default-deny-ingress
 spec:
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
-  containers:
-  - name: app
-    image: myapp:1.0.0
-    securityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop:
-          - ALL''',
-        "full_example": '''apiVersion: apps/v1
-kind: Deployment
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
-  name: secure-deployment
-  labels:
-    app: secure-app
+  name: allow-frontend-ingress
 spec:
-  replicas: 3
-  selector:
+  podSelector:
     matchLabels:
-      app: secure-app
-  template:
-    metadata:
-      labels:
-        app: secure-app
-    spec:
-      # Pod-level security context
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      
-      containers:
-      - name: app
-        image: myapp:1.0.0
-        ports:
-        - containerPort: 3000
-        
-        # Container-level security context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 1000
-          capabilities:
-            drop:
-              - ALL
-        
-        # Volume mounts for writable directories
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-        - name: cache
-          mountPath: /var/cache
-        
-      # Volumes for writable directories
-      volumes:
-      - name: tmp
-        emptyDir: {}
-      - name: cache
-        emptyDir: {}''',
+      app: frontend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000''',
+        "fix_example": '''# Default deny all ingress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+# Allow specific traffic to frontend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-ingress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+      tier: web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 3000
+
+# Allow backend to communicate with database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-db
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+      tier: api
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+          tier: data
+    ports:
+    - protocol: TCP
+      port: 5432''',
+        "full_example": '''# Namespace with NetworkPolicy support
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    name: production
+
+# Default deny all ingress traffic in namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+# Default deny all egress traffic in namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+
+# Allow ingress from ingress controller to frontend pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-ingress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+      tier: web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: backend
+          tier: api
+    ports:
+    - protocol: TCP
+      port: 3000
+
+# Allow frontend to communicate with backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+      tier: web
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend
+          tier: api
+    ports:
+    - protocol: TCP
+      port: 8080
+
+# Allow backend to communicate with database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-db
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+      tier: api
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+          tier: data
+    ports:
+    - protocol: TCP
+      port: 5432
+
+# Allow DNS resolution for all pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53''',
         "best_practices": [
-            "Set runAsNonRoot: true at pod and container level",
-            "Drop all capabilities and add only what's needed",
-            "Use read-only root filesystem with emptyDir for temp files",
-            "Enable seccomp profile (RuntimeDefault or custom)",
-            "Set allowPrivilegeEscalation: false",
+            "Implement default-deny NetworkPolicies for zero-trust networking",
+            "Use namespace-level isolation for multi-tenant clusters",
+            "Allow only required ingress/egress traffic with specific selectors",
+            "Use label selectors to define trust boundaries between services",
+            "Test NetworkPolicies in staging before production deployment",
+            "Monitor and audit network traffic for policy violations",
         ],
         "confidence": 0.95,
     },
@@ -3401,7 +3525,33 @@ class AIFixEnrichmentService:
 
         # Cache result
         self._cache[cache_key] = result
+        
+        # Generate code diff if we have file content
+        if file_content and result.get("fix_code"):
+            result["before_code"] = file_content
+            result["after_code"] = result.get("fix_code", "")
+            result["unified_diff"] = self._generate_unified_diff(
+                file_content, 
+                result.get("fix_code", ""),
+                finding.get("file_path", "file")
+            )
+        
         return result
+    
+    def _generate_unified_diff(self, before: str, after: str, filename: str = "file") -> str:
+        """Generate unified diff between before and after code."""
+        before_lines = before.splitlines(keepends=True)
+        after_lines = after.splitlines(keepends=True)
+        
+        diff = difflib.unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{filename}",
+            tofile=f"b/{filename}",
+            n=3
+        )
+        
+        return ''.join(diff)
 
     async def _generate_ai_fix(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
         """Generate fix using LLM."""
@@ -3581,6 +3731,14 @@ class FindingsEnricher:
             finding.confidence = ai_fix.get("confidence", 0.8)
             finding.ai_generated = True  # Mark as AI-generated
             
+            # Add code diff fields for Code Diff Viewer
+            if ai_fix.get("before_code"):
+                finding.metadata['before_code'] = ai_fix.get("before_code")
+            if ai_fix.get("after_code"):
+                finding.metadata['after_code'] = ai_fix.get("after_code")
+            if ai_fix.get("unified_diff"):
+                finding.metadata['unified_diff'] = ai_fix.get("unified_diff")
+
             # Backwards compatibility: populate ai_explanation from summary
             if not finding.ai_explanation and finding.summary:
                 finding.ai_explanation = finding.summary
