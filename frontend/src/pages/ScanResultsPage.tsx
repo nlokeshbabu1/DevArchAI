@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Shield, AlertTriangle, AlertCircle, Info, CheckCircle,
@@ -8,8 +8,10 @@ import {
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
+import { TechStackDisplay } from '../components/TechStackDisplay'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
+import { Layout } from '../components/layout/DashboardLayout'
 
 interface Finding {
   rule_id: string
@@ -23,12 +25,12 @@ interface Finding {
 }
 
 interface ScanResults {
-  session_token: string
-  scan_id: string
-  status: string
-  repository_name: string
-  repository_url: string
-  security_score?: string
+  session_token?: string
+  scan_id?: string
+  status?: string
+  repository_name?: string
+  repository_url?: string
+  security_score?: number | string
   severity_counts?: {
     critical: number
     high: number
@@ -45,34 +47,91 @@ interface ScanResults {
   total_findings?: number
 }
 
+interface ScanState {
+  findings?: Finding[]
+  scores?: {
+    overall: number
+    grade: string
+    category_scores: {
+      critical?: number
+      high?: number
+      medium?: number
+      low?: number
+      info?: number
+    }
+  }
+  repoUrl?: string
+  repoName?: string
+  filesAnalyzed?: number
+  branch?: string
+  detected_technologies?: string[]
+  files_analyzed?: number
+  findings_count?: number
+  files?: number
+  scan_id?: string
+  repository_name?: string
+  total_findings?: number
+}
+
 export function ScanResultsPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { isAuthenticated, user } = useAuthStore()
+  const location = useLocation()
   const [results, setResults] = useState<ScanResults | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
 
+  // Check if we have scan data from navigation state (logged-in scan)
+  const state = location.state as ScanState | null
+  const hasStateData = !!state?.findings
+
   useEffect(() => {
+    // If we have state data (from logged-in scan), use it directly
+    if (hasStateData) {
+      setResults({
+        scan_id: sessionId,
+        status: 'completed',
+        repository_name: state.repoName || 'Repository',
+        repository_url: state.repoUrl || '',
+        security_score: state.scores?.overall || 0,
+        severity_counts: {
+          critical: state.scores?.category_scores?.critical || 0,
+          high: state.scores?.category_scores?.high || 0,
+          medium: state.scores?.category_scores?.medium || 0,
+          low: state.scores?.category_scores?.low || 0,
+          info: state.scores?.category_scores?.info || 0,
+        },
+        findings: state.findings || [],
+        user_plan: user?.plan || 'free',
+        ai_preview_count: user?.plan === 'free' ? 2 : 0,
+        total_findings: state.findings?.length || 0,
+      })
+      setIsLoading(false)
+      return
+    }
+
+    // Otherwise fetch from API (guest scan)
     fetchResults()
   }, [sessionId])
 
-  // Refetch results when authentication state changes (after login)
-  useEffect(() => {
-    if (isAuthenticated && results) {
-      // User just logged in, refetch to get updated plan-based results
-      fetchResults()
-    }
-  }, [isAuthenticated])
-
   const fetchResults = async () => {
     try {
-      const response = await fetch(`/api/v1/public/scan/${sessionId}`)
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/v1/public/scan/${sessionId}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      })
       if (!response.ok) throw new Error('Failed to fetch results')
       const data = await response.json()
+      console.log('✅ Scan results fetched:', data)
       setResults(data)
     } catch (error) {
-      console.error('Error fetching results:', error)
+      console.error('❌ Error fetching results:', error)
     } finally {
       setIsLoading(false)
     }
@@ -142,7 +201,8 @@ export function ScanResultsPage() {
     )
   }
 
-  return (
+  // Conditional rendering: Dashboard layout for logged-in users, simple layout for guests
+  const content = (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4 max-w-6xl space-y-8">
         {/* Header */}
@@ -171,13 +231,66 @@ export function ScanResultsPage() {
                 Production Readiness Score
               </h2>
               <ScoreCircle
-                score={results.security_score ? parseInt(results.security_score) : 0}
+                score={typeof results.security_score === 'number' ? results.security_score : (results.security_score ? parseInt(results.security_score) : 0)}
                 size="xl"
                 animated
               />
             </div>
           </Card>
         </motion.div>
+
+        {/* Scan Information */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <Card className="p-6" hover={false}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">
+              Scan Information
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Repository</div>
+                <div className="font-medium text-foreground truncate">{results.repository_name}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Branch</div>
+                <div className="font-medium text-foreground">{(results as any).branch || 'main'}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Files Analyzed</div>
+                <div className="font-medium text-foreground">{(results as any).files_analyzed || results.total_findings || 0}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Findings</div>
+                <div className="font-medium text-foreground">{results.total_findings || 0}</div>
+              </div>
+            </div>
+            {results.scan_id && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="text-sm text-muted-foreground">Scan ID</div>
+                <div className="font-mono text-xs text-muted-foreground mt-1">{results.scan_id}</div>
+              </div>
+            )}
+          </Card>
+        </motion.div>
+
+        {/* Detected Technology Stack */}
+        {(results as any).detected_technologies && (results as any).detected_technologies.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18 }}
+          >
+            <Card className="p-6" hover={false}>
+              <h3 className="text-lg font-semibold text-foreground mb-4">
+                Detected Technology Stack
+              </h3>
+              <TechStackDisplay technologies={(results as any).detected_technologies} />
+            </Card>
+          </motion.div>
+        )}
 
         {/* Severity Counts */}
         <motion.div
@@ -223,17 +336,32 @@ export function ScanResultsPage() {
               </h3>
               {(() => {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
-                const totalFindings = results.findings?.length || 0
-                const isLoggedIn = isAuthenticated
                 const isFreeUser = effectivePlan === 'free'
+                const totalFindings = results.findings?.length || 0
                 
-                // Free users see only first 10 findings
+                // Count unique rules (after deduplication)
+                const uniqueRules = new Set(results.findings?.map(f => f.rule_id) || [])
+                const uniqueRuleCount = uniqueRules.size
+                
+                // Free users see only first 10 findings (before deduplication)
                 const maxVisible = isFreeUser ? 10 : totalFindings
+                const visibleFindings = (results.findings || []).slice(0, maxVisible)
                 
-                if (isFreeUser && totalFindings > 10) {
+                // Deduplicate visible findings
+                const deduplicatedVisible = visibleFindings.reduce((acc, finding) => {
+                  const existing = acc.find(f => f.rule_id === finding.rule_id)
+                  if (!existing) {
+                    acc.push(finding)
+                  }
+                  return acc
+                }, [] as typeof visibleFindings)
+                
+                const displayedCount = deduplicatedVisible.length
+                
+                if (isFreeUser && uniqueRuleCount > displayedCount) {
                   return (
                     <div className="text-sm text-muted-foreground">
-                      Showing 10 of {totalFindings} findings
+                      Showing {displayedCount} of {uniqueRuleCount} unique issues
                       <Button
                         variant="ghost"
                         size="sm"
@@ -255,24 +383,47 @@ export function ScanResultsPage() {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
                 const isFreeUser = effectivePlan === 'free'
                 const totalFindings = results.findings?.length || 0
-                
+
                 // Free users see only first 10 findings
                 const maxVisible = isFreeUser ? 10 : totalFindings
                 const visibleFindings = (results.findings || []).slice(0, maxVisible)
-                
-                return visibleFindings.map((finding, index) => {
+
+                // Deduplicate findings by rule_id and count unique files
+                const deduplicatedFindings = visibleFindings.reduce((acc, finding) => {
+                  const existing = acc.find(f => f.rule_id === finding.rule_id)
+                  if (existing && existing.uniqueFiles) {
+                    // Add file to unique files set if not already present
+                    if (finding.file_path && !existing.uniqueFiles.has(finding.file_path)) {
+                      existing.uniqueFiles.add(finding.file_path)
+                      existing.occurrenceCount = existing.uniqueFiles.size
+                    }
+                  } else if (!existing) {
+                    // Add new finding with unique files set
+                    const newFinding = { 
+                      ...finding, 
+                      occurrenceCount: 1,
+                      uniqueFiles: new Set(finding.file_path ? [finding.file_path] : [])
+                    }
+                    acc.push(newFinding)
+                  }
+                  return acc
+                }, [] as (typeof visibleFindings[0] & { occurrenceCount: number; uniqueFiles: Set<string> })[])
+
+                return deduplicatedFindings.map((finding, index) => {
                   const Icon = severityIcons[finding.severity]
-                  const isExpanded = expandedFinding === finding.rule_id
+                  // Use unique key combining rule_id and index
+                  const uniqueKey = `${finding.rule_id}-${index}`
+                  const isExpanded = expandedFinding === uniqueKey
 
                   return (
                     <div
-                      key={finding.rule_id}
+                      key={uniqueKey}
                       className="border border-white/10 rounded-xl overflow-hidden"
                     >
                       <div
                         className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
                         onClick={() => setExpandedFinding(
-                          isExpanded ? null : finding.rule_id
+                          isExpanded ? null : uniqueKey
                         )}
                       >
                         <div className="flex items-start gap-4">
@@ -290,6 +441,11 @@ export function ScanResultsPage() {
                               <span className="text-xs font-mono text-muted-foreground">
                                 {finding.rule_id}
                               </span>
+                              {finding.occurrenceCount && finding.occurrenceCount > 1 && (
+                                <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                                  {finding.occurrenceCount} {finding.occurrenceCount === 1 ? 'file' : 'files'}
+                                </Badge>
+                              )}
                             </div>
                             <h4 className="font-semibold text-foreground mb-1">
                               {finding.rule_name}
@@ -499,4 +655,7 @@ export function ScanResultsPage() {
       </div>
     </div>
   )
+
+  // Wrap with Layout for logged-in users, render directly for guests
+  return isAuthenticated ? <Layout>{content}</Layout> : content
 }

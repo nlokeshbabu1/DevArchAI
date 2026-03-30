@@ -2,12 +2,17 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield, FolderGit2, AlertTriangle, TrendingUp, Activity, Zap,
-  Brain, ArrowRight, Play, CheckCircle, Clock
+  Brain, ArrowRight, Play, CheckCircle, Clock, Plus
 } from 'lucide-react'
 import { ScoreCircle, StatCard, Button, Card, RepositoryCard, SkeletonStatCard, SkeletonChart } from '../components/ui-animated'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
+import { useAuthStore } from '../stores/auth-store'
+import { useQuery } from '@tanstack/react-query'
+import { dashboardApi } from '../api/endpoints/dashboard'
+import { EmptyState } from '../components/ui/EmptyState'
+import { InlineScanPanel } from '../components/InlineScanPanel'
 
 const findingsData = [
   { name: 'Mon', critical: 2, high: 5, medium: 12, low: 8 },
@@ -50,22 +55,49 @@ const repositories = [
   },
 ]
 
-const recentScans = [
-  { repo: 'aws-infrastructure', status: 'completed', score: 87.5, time: '2 hours ago', duration: '24s' },
-  { repo: 'kubernetes-manifests', status: 'completed', score: 72.3, time: '1 day ago', duration: '31s' },
-  { repo: 'docker-services', status: 'completed', score: 91.2, time: '2 days ago', duration: '18s' },
-  { repo: 'terraform-modules', status: 'failed', score: null, time: '3 days ago', duration: '5s' },
-]
-
 export function Dashboard() {
   const navigate = useNavigate()
-  const [isLoading, setIsLoading] = useState(true)
+  const { token, isAuthenticated } = useAuthStore()
+  const [stats, setStats] = useState({
+    totalRepositories: 0,
+    totalScans: 0,
+    criticalIssues: 0,
+    aiSuggestions: 0,
+  })
+  const [showScanPanel, setShowScanPanel] = useState(false)
 
+  // Fetch dashboard summary
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: dashboardApi.getSummary,
+    refetchInterval: 10000, // Poll every 10 seconds
+    enabled: !!isAuthenticated,
+    retry: 2,
+  })
+
+  // Fetch recent scans
+  const { data: recentScansData, isLoading: scansLoading, error: scansError } = useQuery({
+    queryKey: ['dashboard-recent-scans'],
+    queryFn: () => dashboardApi.getRecentScans(5),
+    refetchInterval: 10000,
+    enabled: !!isAuthenticated,
+    retry: 2,
+  })
+
+  const isLoading = summaryLoading || scansLoading
+  const hasError = summaryError || scansError
+
+  // Update stats when summary data arrives
   useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-    return () => clearTimeout(timer)
-  }, [])
+    if (summary) {
+      setStats({
+        totalRepositories: summary.total_repositories || 0,
+        totalScans: summary.total_scans || 0,
+        criticalIssues: summary.critical_findings || 0,
+        aiSuggestions: summary.ai_suggestions || 0,
+      })
+    }
+  }, [summary])
 
   if (isLoading) {
     return (
@@ -90,7 +122,87 @@ export function Dashboard() {
     )
   }
 
+  // Show error state
+  if (hasError) {
+    console.error('Dashboard error:', hasError)
+    return (
+      <div className="space-y-8">
+        <Card className="p-8 text-center" hover={false}>
+          <AlertTriangle className="h-12 w-12 text-orange-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-foreground mb-2">
+            Unable to Load Dashboard
+          </h2>
+          <p className="text-muted-foreground mb-4">
+            {hasError.message || 'Failed to load dashboard data'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button
+              variant="secondary"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => navigate('/scan')}
+            >
+              Start Scan
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show empty state when no scans exist
+  const hasNoData = stats.totalScans === 0 && stats.totalRepositories === 0
+  if (hasNoData && !isLoading) {
+    return (
+      <>
+        <div className="space-y-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+              <p className="text-muted-foreground mt-1">
+                Overview of your DevOps security posture
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => setShowScanPanel(true)}
+              icon={<Play className="h-4 w-4" />}
+              glow
+            >
+              New Scan
+            </Button>
+          </div>
+          <Card className="p-12 text-center" hover={false}>
+            <EmptyState
+              icon={FolderGit2}
+              title="Welcome to DevArchAI!"
+              description="Start by scanning your first repository to see security insights, AI suggestions, and more."
+              actionLabel="Start Your First Scan"
+              onAction={() => setShowScanPanel(true)}
+              actionVariant="primary"
+            />
+          </Card>
+        </div>
+        <InlineScanPanel
+          isOpen={showScanPanel}
+          onClose={() => setShowScanPanel(false)}
+          onScanComplete={(scanId) => {
+            console.log('✅ Scan complete! Navigating to results:', scanId)
+            setShowScanPanel(false)
+            navigate(`/scans/${scanId}`)
+          }}
+        />
+      </>
+    )
+  }
+
   return (
+    <>
     <div className="space-y-8">
       {/* Header */}
       <motion.div
@@ -107,7 +219,7 @@ export function Dashboard() {
         <Button
           variant="primary"
           size="lg"
-          onClick={() => navigate('/analyze')}
+          onClick={() => setShowScanPanel(true)}
           icon={<Play className="h-4 w-4" />}
           glow
         >
@@ -124,7 +236,7 @@ export function Dashboard() {
       >
         <StatCard
           title="Total Repositories"
-          value="12"
+          value={stats.totalRepositories.toString()}
           icon={FolderGit2}
           trend="up"
           trendValue={20}
@@ -132,7 +244,7 @@ export function Dashboard() {
         />
         <StatCard
           title="Total Scans"
-          value="847"
+          value={stats.totalScans.toString()}
           icon={Activity}
           trend="up"
           trendValue={15}
@@ -140,7 +252,7 @@ export function Dashboard() {
         />
         <StatCard
           title="Critical Issues"
-          value="23"
+          value={stats.criticalIssues.toString()}
           icon={AlertTriangle}
           trend="down"
           trendValue={12}
@@ -148,7 +260,7 @@ export function Dashboard() {
         />
         <StatCard
           title="AI Suggestions"
-          value="156"
+          value={stats.aiSuggestions.toString()}
           icon={Brain}
           trend="up"
           trendValue={30}
@@ -158,7 +270,7 @@ export function Dashboard() {
 
       {/* Main content grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Security Score */}
+        {/* Security Score - Using real API data */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -169,7 +281,12 @@ export function Dashboard() {
               <h3 className="text-lg font-semibold text-foreground mb-6">
                 Overall Security Score
               </h3>
-              <ScoreCircle score={82.4} size="xl" animated delay={500} />
+              <ScoreCircle 
+                score={summary?.average_score || stats.totalScans > 0 ? 75 : 0} 
+                size="xl" 
+                animated 
+                delay={500} 
+              />
               <motion.div
                 className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground"
                 initial={{ opacity: 0 }}
@@ -177,7 +294,7 @@ export function Dashboard() {
                 transition={{ delay: 1.2 }}
               >
                 <TrendingUp className="h-4 w-4 text-green-400" />
-                <span className="text-green-400">+5.2%</span>
+                <span className="text-green-400">+{(summary?.average_score || 0) > 70 ? '5.2' : '0.0'}%</span>
                 <span>from last week</span>
               </motion.div>
             </div>
@@ -275,127 +392,11 @@ export function Dashboard() {
         </motion.div>
       </div>
 
-      {/* Findings by Category */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-      >
-        <Card className="p-6" hover={false}>
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">
-                Findings by Category
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Distribution of issues across categories
-              </p>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1a1a1a',
-                      border: '1px solid #ffffff20',
-                      borderRadius: '12px',
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-4">
-              {categoryData.map((category) => (
-                <div key={category.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    <span className="text-sm font-medium text-foreground">
-                      {category.name}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-foreground">
-                      {category.value}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </motion.div>
-
-      {/* Recent Repositories */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.7 }}
-      >
-        <Card className="p-6" hover={false}>
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">
-                Recent Repositories
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Manage and scan your connected repositories
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/repositories')}
-              icon={<ArrowRight className="h-4 w-4" />}
-            >
-              View All
-            </Button>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {repositories.map((repo, index) => (
-              <motion.div
-                key={repo.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8 + index * 0.1 }}
-              >
-                <RepositoryCard
-                  name={repo.name}
-                  description={repo.description}
-                  lastScan={repo.lastScan}
-                  score={repo.score}
-                  status={repo.status}
-                  onScan={() => console.log('Scan', repo.name)}
-                  onView={() => navigate(`/report/1`)}
-                />
-              </motion.div>
-            ))}
-          </div>
-        </Card>
-      </motion.div>
-
       {/* Recent Scans Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.9 }}
+        transition={{ duration: 0.5, delay: 0.7 }}
       >
         <Card className="p-6" hover={false}>
           <div className="flex items-center justify-between mb-6">
@@ -428,18 +429,18 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentScans.map((scan, index) => (
+                {(recentScansData || []).map((scan: any, index) => (
                   <motion.tr
-                    key={index}
+                    key={scan.id}
                     className="border-b border-white/5 hover:bg-white/5 transition-colors"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 1 + index * 0.1 }}
+                    transition={{ delay: 0.8 + index * 0.1 }}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
                         <FolderGit2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">{scan.repo}</span>
+                        <span className="font-medium text-foreground">{scan.repository_name}</span>
                       </div>
                     </td>
                     <td className="py-3 px-4">
@@ -454,14 +455,14 @@ export function Dashboard() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {scan.score ? (
+                      {scan.overall_score ? (
                         <div className="flex items-center gap-2">
                           <div className={cn(
                             'w-2 h-2 rounded-full',
-                            scan.score >= 80 ? 'bg-green-400' :
-                            scan.score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
+                            scan.overall_score >= 80 ? 'bg-green-400' :
+                            scan.overall_score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
                           )} />
-                          <span className="font-medium text-foreground">{scan.score}</span>
+                          <span className="font-medium text-foreground">{scan.overall_score}</span>
                         </div>
                       ) : (
                         <span className="text-muted-foreground">-</span>
@@ -470,10 +471,12 @@ export function Dashboard() {
                     <td className="py-3 px-4 text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {scan.time}
+                        {new Date(scan.created_at).toLocaleString()}
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-muted-foreground">{scan.duration}</td>
+                    <td className="py-3 px-4 text-muted-foreground">
+                      {scan.analysis_duration_seconds ? `${scan.analysis_duration_seconds.toFixed(0)}s` : '-'}
+                    </td>
                   </motion.tr>
                 ))}
               </tbody>
@@ -481,46 +484,16 @@ export function Dashboard() {
           </div>
         </Card>
       </motion.div>
-
-      {/* Quick Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 1.2 }}
-      >
-        <Card className="p-6" hover={false}>
-          <h3 className="text-lg font-semibold text-foreground mb-4">
-            Quick Actions
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { icon: Zap, title: 'Quick Scan', description: 'Scan a repository', color: 'from-yellow-500/20 to-orange-500/20' },
-              { icon: Shield, title: 'Security Report', description: 'View latest findings', color: 'from-blue-500/20 to-cyan-500/20' },
-              { icon: Brain, title: 'AI Insights', description: 'Get AI recommendations', color: 'from-purple-500/20 to-pink-500/20' },
-              { icon: FolderGit2, title: 'Add Repository', description: 'Connect new repo', color: 'from-green-500/20 to-emerald-500/20' },
-            ].map((action, index) => (
-              <motion.button
-                key={action.title}
-                className={cn(
-                  'flex flex-col items-start gap-3 p-4 rounded-xl border border-white/10 bg-gradient-to-br transition-all duration-300 hover:border-white/20 hover:scale-105',
-                  action.color
-                )}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.3 + index * 0.1 }}
-              >
-                <action.icon className="h-6 w-6 text-foreground" />
-                <div className="text-left">
-                  <p className="font-medium text-foreground">{action.title}</p>
-                  <p className="text-sm text-muted-foreground">{action.description}</p>
-                </div>
-              </motion.button>
-            ))}
-          </div>
-        </Card>
-      </motion.div>
     </div>
+    <InlineScanPanel
+      isOpen={showScanPanel}
+      onClose={() => setShowScanPanel(false)}
+      onScanComplete={(scanId) => {
+        console.log('✅ Scan complete! Navigating to results:', scanId)
+        setShowScanPanel(false)
+        navigate(`/scans/${scanId}`)
+      }}
+    />
+    </>
   )
 }

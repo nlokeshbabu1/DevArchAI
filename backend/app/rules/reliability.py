@@ -220,14 +220,14 @@ class MissingMultiAZRule(BaseRule):
         return findings
 
 
-@register_rule
+@register_rule(file_types=["dockerfile"])
 class DockerMissingHealthcheckRule(BaseRule):
     """Check for missing HEALTHCHECK in Dockerfile."""
 
     @property
     def rule(self) -> Rule:
         return Rule(
-            id="REL-005",
+            id="DKR-REL-001",
             name="Missing Docker HEALTHCHECK",
             description="Dockerfile does not have HEALTHCHECK instruction",
             recommendation="Add HEALTHCHECK to enable container health monitoring",

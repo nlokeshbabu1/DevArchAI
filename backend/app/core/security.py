@@ -1,5 +1,6 @@
 """Security module for authentication and authorization."""
 
+import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -14,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.encryption import encrypt_email, decrypt_email
 from app.db.session import get_db
 from app.models.user import User
 
@@ -25,6 +27,23 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Security schemes
 http_bearer = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def hash_email(email: str) -> str:
+    """Create a SHA256 hash of email for database lookups."""
+    return hashlib.sha256(email.lower().strip().encode()).hexdigest()
+
+
+def encrypt_user_email(email: str) -> tuple[str, str]:
+    """Encrypt email and create hash for storage."""
+    encrypted = encrypt_email(email)
+    email_hash = hash_email(email)
+    return encrypted, email_hash
+
+
+def decrypt_user_email(encrypted_email: str) -> str:
+    """Decrypt an encrypted email."""
+    return decrypt_email(encrypted_email)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

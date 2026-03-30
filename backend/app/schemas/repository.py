@@ -1,7 +1,8 @@
 """Repository schemas."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -32,8 +33,8 @@ class RepositoryUpdate(BaseModel):
 class RepositoryResponse(BaseModel):
     """Repository response."""
 
-    id: int
-    user_id: int
+    id: UUID
+    user_id: UUID
     name: str
     full_name: Optional[str]
     url: str
@@ -45,6 +46,12 @@ class RepositoryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     scan_count: int = 0
+    # Enhanced fields for UI
+    last_scan_at: Optional[datetime] = None
+    scan_status: Optional[str] = None
+    overall_score: Optional[float] = None
+    tech_stack: List[str] = Field(default_factory=list)
+    issues: Dict[str, int] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True

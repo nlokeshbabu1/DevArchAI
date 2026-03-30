@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Check, Zap, Shield, Brain, Sparkles, Globe, Lock, ArrowRight, Star, Users, Building2 } from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
 import { cn } from '../../lib/utils'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
 
 // Pricing data with multi-currency support
@@ -155,9 +155,14 @@ const DEFAULT_CURRENCY: keyof typeof PRICING_DATA.free.price = 'USD'
 export function PricingPage() {
   const navigate = useNavigate()
   const { user, token } = useAuthStore()
+  const [searchParams] = useSearchParams()
   const [currency, setCurrency] = useState<keyof typeof PRICING_DATA.free.price>(DEFAULT_CURRENCY)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [loading, setLoading] = useState(true)
+
+  // Get redirect path from URL params (passed from login)
+  const redirectFromUrl = searchParams.get('redirect') || ''
+  const planFromUrl = searchParams.get('plan') || 'plus'
 
   // Detect user's country and set currency
   useEffect(() => {
@@ -182,6 +187,12 @@ export function PricingPage() {
 
   const handleUpgrade = async (plan: string) => {
     if (!token) {
+      // Save the intended destination before login
+      // Use redirect from URL if available, otherwise use default
+      const redirectPath = redirectFromUrl || sessionStorage.getItem('postLoginRedirect') || '/scan-results'
+      sessionStorage.setItem('upgradeIntent', 'true')
+      sessionStorage.setItem('upgradePlan', plan)
+      sessionStorage.setItem('postLoginRedirect', redirectPath)
       navigate('/login')
       return
     }
@@ -192,18 +203,23 @@ export function PricingPage() {
     }
 
     try {
+      // Use redirect from URL if available, otherwise from session storage
+      const redirectPath = redirectFromUrl || sessionStorage.getItem('postLoginRedirect') || '/dashboard'
+      
       const response = await fetch('/api/v1/billing/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, redirect: redirectPath }),
       })
 
       const data = await response.json()
       if (data.checkout_url) {
-        window.location.href = data.checkout_url
+        // Append redirect path to checkout URL
+        const separator = data.checkout_url.includes('?') ? '&' : '?'
+        window.location.href = `${data.checkout_url}${separator}redirect=${encodeURIComponent(redirectPath)}`
       }
     } catch (error) {
       console.error('Failed to create checkout session:', error)

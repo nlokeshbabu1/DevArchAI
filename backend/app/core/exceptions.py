@@ -117,6 +117,17 @@ class ScanNotFoundException(DevArchAIException):
         )
 
 
+class ScanTimeoutError(DevArchAIException):
+    """Exception raised when scan exceeds time limit."""
+
+    def __init__(self, message: str = "Scan timed out"):
+        super().__init__(
+            message,
+            status_code=408,
+            error_code="SCAN_TIMEOUT",
+        )
+
+
 class ReportNotFoundException(DevArchAIException):
     """Exception raised when report is not found."""
 

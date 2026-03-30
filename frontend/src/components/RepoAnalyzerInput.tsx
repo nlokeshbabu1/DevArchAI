@@ -5,6 +5,7 @@ import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap
 import axios from 'axios'
 import { Button, Card } from '../components/ui'
 import { cn } from '../lib/utils'
+import { ScanProgress } from './ScanProgress'
 
 interface DevOpsStack {
   docker: boolean
@@ -36,6 +37,18 @@ interface AnalysisResult {
   files_analyzed: number
   analysis_id: number
   created_at: string
+  // New fields from updated API
+  findings?: any[]
+  security_score?: number
+  severity_counts?: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
+  }
+  total_findings?: number
+  repository_url?: string
 }
 
 interface GitHubBranch {
@@ -64,6 +77,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [showProgress, setShowProgress] = useState(false)
+  const [currentScanId, setCurrentScanId] = useState<string>('')
   const [currentStep, setCurrentStep] = useState(0)
   const [progressPercent, setProgressPercent] = useState(0)
 
@@ -94,66 +108,22 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
 
   const mutation = useMutation({
     mutationFn: async (url: string) => {
-      // Show progress UI
-      setShowProgress(true)
-      setCurrentStep(0)
-      setProgressPercent(0)
-
-      // Simulate progress through steps
-      const stepDuration = 800 // ms per step
-      const totalSteps = scanSteps.length
-
-      for (let i = 0; i < totalSteps; i++) {
-        setCurrentStep(i)
-        const targetProgress = ((i + 1) / totalSteps) * 100
-        const progressIncrement = (targetProgress - progressPercent) / 10
-        for (let j = 0; j < 10; j++) {
-          setProgressPercent(prev => prev + progressIncrement)
-          await new Promise(resolve => setTimeout(resolve, stepDuration / 10))
-        }
-      }
-
-      // First do basic analysis
-      const basicResponse = await axios.post('/api/v1/analyze/repo', {
-        repo_url: url,
-      })
-
-      // Then do deep analysis with rule engine (using correct endpoint with branch support)
-      const deepResponse = await axios.post('/api/v1/analyze/repo/deep', {
+      // Call the unified analysis endpoint and get scan_id
+      const response = await axios.post('/api/v1/analyze/repo', {
         repo_url: url,
         branch: selectedBranch || 'main'
       })
 
-      return {
-        basic: basicResponse.data,
-        deep: deepResponse.data,
-      }
+      const data = response.data
+      const scanId = data.scan_id || `scan-${Date.now()}`
+      setCurrentScanId(scanId)
+      setShowProgress(true)
+
+      return data
     },
     onSuccess: (data) => {
-      setResult(data.basic)
-      setProgressPercent(100)
-      onAnalysisComplete?.(data.basic)
-
-      // Navigate to report page with findings
-      if (data.deep.success) {
-        // Store findings in sessionStorage for the report page
-        sessionStorage.setItem('latestFindings', JSON.stringify(data.deep.findings))
-        sessionStorage.setItem('latestScores', JSON.stringify(data.deep.scores))
-        sessionStorage.setItem('scannedBranch', selectedBranch)
-        setTimeout(() => {
-          navigate(`/report/analysis-${Date.now()}`, {
-            state: {
-              findings: data.deep.findings,
-              scores: data.deep.scores,
-              repoUrl: data.basic.repo_url,
-              repoName: data.basic.repo,
-              filesAnalyzed: data.basic.files_analyzed,
-              branch: selectedBranch,
-              detectedStack: data.deep.detected_stack,
-            }
-          })
-        }, 500)
-      }
+      setResult(data)
+      onAnalysisComplete?.(data)
     },
     onError: () => {
       setShowProgress(false)
@@ -415,14 +385,14 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
       </Card>
 
       {/* Results */}
-      {result && (
+      {result && result.findings && (
         <div className="space-y-6 animate-fade-in">
           {/* Score Card */}
           <Card className="p-8 glow-primary" hover={false}>
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-foreground">{result.repo}</h2>
-                <p className="text-muted-foreground mt-1">{result.repo_url}</p>
+                <h2 className="text-2xl font-bold text-foreground">{result.repo_name || result.repo || 'Repository'}</h2>
+                <p className="text-muted-foreground mt-1">{result.repository_url || result.repo_url || ''}</p>
                 {selectedBranch && (
                   <div className="flex items-center gap-2 mt-2 text-sm">
                     <GitBranch className="h-4 w-4 text-muted-foreground" />
@@ -432,31 +402,31 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                 )}
               </div>
               <div className="text-right">
-                <div className={cn('text-5xl font-bold', getScoreColor(result.devops_score))}>
-                  {result.devops_score?.toFixed(1) ?? 'N/A'}
+                <div className={cn('text-5xl font-bold', getScoreColor(result.security_score || result.devops_score))}>
+                  {(result.security_score || result.devops_score || 0).toFixed(1)}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
-                  Grade: <span className={cn('font-bold', getScoreColor(result.devops_score))}>
-                    {getScoreGrade(result.devops_score)}
+                  Grade: <span className={cn('font-bold', getScoreColor(result.security_score || result.devops_score))}>
+                    {getScoreGrade(result.security_score || result.devops_score)}
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <StackIndicator label="Docker" detected={result.devops_stack.docker} icon={Server} />
-              <StackIndicator label="Terraform" detected={result.devops_stack.terraform} icon={Cloud} />
-              <StackIndicator label="Kubernetes" detected={result.devops_stack.kubernetes} icon={GitBranch} />
-              <StackIndicator label="Helm" detected={result.devops_stack.helm} icon={Cloud} />
-              <StackIndicator label="CI/CD" detected={!!result.devops_stack.cicd} icon={Zap} />
-              <StackIndicator label="Monitoring" detected={result.devops_stack.monitoring} icon={BarChart3} />
-              <StackIndicator label="Security" detected={result.devops_stack.security_scanning} icon={Shield} />
+              <StackIndicator label="Docker" detected={result.devops_stack?.docker || false} icon={Server} />
+              <StackIndicator label="Terraform" detected={result.devops_stack?.terraform || false} icon={Cloud} />
+              <StackIndicator label="Kubernetes" detected={result.devops_stack?.kubernetes || false} icon={GitBranch} />
+              <StackIndicator label="Helm" detected={result.devops_stack?.helm || false} icon={Cloud} />
+              <StackIndicator label="CI/CD" detected={!!(result.devops_stack?.cicd) || false} icon={Zap} />
+              <StackIndicator label="Monitoring" detected={result.devops_stack?.monitoring || false} icon={BarChart3} />
+              <StackIndicator label="Security" detected={result.devops_stack?.security_scanning || false} icon={Shield} />
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Files Analyzed</span>
-                <span className="font-medium text-foreground">{result.files_analyzed}</span>
+                <span className="font-medium text-foreground">{result.files_analyzed || result.total_findings || 0}</span>
               </div>
             </div>
           </Card>
@@ -467,40 +437,40 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
             <Card className="p-6" hover={false}>
               <h3 className="text-lg font-semibold mb-4 text-foreground">DevOps Stack Detected</h3>
               <div className="space-y-3">
-                {result.devops_stack.docker && (
+                {result.devops_stack?.docker && (
                   <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <Server className="h-4 w-4 text-green-400" />
                       <span className="font-medium text-green-400">Docker</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {result.devops_stack.docker_files.length} file(s) found
+                      {result.devops_stack.docker_files?.length || 0} file(s) found
                     </p>
                   </div>
                 )}
-                {result.devops_stack.terraform && (
+                {result.devops_stack?.terraform && (
                   <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <Cloud className="h-4 w-4 text-purple-400" />
                       <span className="font-medium text-purple-400">Terraform</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {result.devops_stack.terraform_files.length} file(s) found
+                      {result.devops_stack.terraform_files?.length || 0} file(s) found
                     </p>
                   </div>
                 )}
-                {result.devops_stack.kubernetes && (
+                {result.devops_stack?.kubernetes && (
                   <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-4 w-4 text-blue-400" />
                       <span className="font-medium text-blue-400">Kubernetes</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {result.devops_stack.kubernetes_files.length} file(s) found
+                      {result.devops_stack.kubernetes_files?.length || 0} file(s) found
                     </p>
                   </div>
                 )}
-                {result.devops_stack.cicd && (
+                {result.devops_stack?.cicd && (
                   <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <Zap className="h-4 w-4 text-orange-400" />
@@ -509,28 +479,28 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {result.devops_stack.cicd_files.length} workflow file(s) found
+                      {result.devops_stack.cicd_files?.length || 0} workflow file(s) found
                     </p>
                   </div>
                 )}
-                {result.devops_stack.monitoring && (
+                {result.devops_stack?.monitoring && (
                   <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <BarChart3 className="h-4 w-4 text-cyan-400" />
                       <span className="font-medium text-cyan-400">Monitoring</span>
                     </div>
-                    {result.devops_stack.prometheus && (
+                    {result.devops_stack?.prometheus && (
                       <span className="text-xs text-cyan-400/80">Prometheus</span>
                     )}
-                    {result.devops_stack.grafana && (
+                    {result.devops_stack?.grafana && (
                       <span className="text-xs text-cyan-400/80 ml-2">Grafana</span>
                     )}
                   </div>
                 )}
-                {!result.devops_stack.docker &&
-                  !result.devops_stack.terraform &&
-                  !result.devops_stack.kubernetes &&
-                  !result.devops_stack.cicd && (
+                {!result.devops_stack?.docker &&
+                  !result.devops_stack?.terraform &&
+                  !result.devops_stack?.kubernetes &&
+                  !result.devops_stack?.cicd && (
                   <p className="text-muted-foreground text-sm">
                     No DevOps configuration detected. Consider adding Docker, Terraform, Kubernetes, or CI/CD pipelines.
                   </p>
@@ -542,7 +512,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
             <Card className="p-6" hover={false}>
               <h3 className="text-lg font-semibold mb-4 text-foreground">Missing Best Practices</h3>
               <div className="space-y-3">
-                {!result.devops_stack.docker && (
+                {!result.devops_stack?.docker && (
                   <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-red-400" />
@@ -553,7 +523,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                     </p>
                   </div>
                 )}
-                {!result.devops_stack.cicd && (
+                {!result.devops_stack?.cicd && (
                   <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-red-400" />
@@ -564,7 +534,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                     </p>
                   </div>
                 )}
-                {!result.devops_stack.monitoring && (
+                {!result.devops_stack?.monitoring && (
                   <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-orange-400" />
@@ -575,7 +545,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                     </p>
                   </div>
                 )}
-                {!result.devops_stack.security_scanning && (
+                {!result.devops_stack?.security_scanning && (
                   <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-yellow-400" />
@@ -586,10 +556,10 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
                     </p>
                   </div>
                 )}
-                {result.devops_stack.docker &&
-                  result.devops_stack.cicd &&
-                  result.devops_stack.monitoring &&
-                  result.devops_stack.security_scanning && (
+                {result.devops_stack?.docker &&
+                  result.devops_stack?.cicd &&
+                  result.devops_stack?.monitoring &&
+                  result.devops_stack?.security_scanning && (
                   <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg text-center">
                     <Check className="h-6 w-6 text-green-400 mx-auto mb-2" />
                     <p className="font-medium text-green-400">All Best Practices Implemented!</p>

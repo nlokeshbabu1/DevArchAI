@@ -77,10 +77,36 @@ class RepositoryScanner:
             Tuple of (repo_path, scan_result)
         """
         import uuid
+        import httpx
 
+        # Extract repo name
+        repo_name = self._extract_repo_name(repo_url)
+        
+        # Try to get default branch from GitHub API if branch is "main" or "master"
+        effective_branch = branch
+        if branch in ["main", "master"]:
+            try:
+                # Extract owner and repo from URL
+                url_parts = repo_url.rstrip("/").split("/")
+                if len(url_parts) >= 2:
+                    owner = url_parts[-2]
+                    repo = url_parts[-1].replace(".git", "")
+                    
+                    # Try to get default branch from GitHub API
+                    with httpx.Client(timeout=5.0) as client:
+                        api_url = f"https://api.github.com/repos/{owner}/{repo}"
+                        response = client.get(api_url)
+                        if response.status_code == 200:
+                            repo_data = response.json()
+                            default_branch = repo_data.get("default_branch", "main")
+                            if default_branch != branch:
+                                logger.info(f"Using default branch from GitHub API: {default_branch}")
+                                effective_branch = default_branch
+            except Exception as e:
+                logger.warning(f"Could not detect default branch from GitHub API: {e}")
+        
         # Create unique directory for this scan
         scan_id = str(uuid.uuid4())[:8]
-        repo_name = self._extract_repo_name(repo_url)
         repo_path = os.path.join(self.temp_dir, f"{scan_id}_{repo_name}")
 
         result = RepositoryScanResult(
@@ -102,21 +128,43 @@ class RepositoryScanner:
                     )
 
             # Clone repository
-            logger.info("Cloning repository", repo_url=repo_url, branch=branch)
-            clone_cmd = ["git", "clone", "--depth", "1"]
-
-            if branch:
-                clone_cmd.extend(["--branch", branch])
+            logger.info("Cloning repository", repo_url=repo_url, branch=effective_branch)
+            clone_cmd = ["git", "clone"]
+            
+            # Only use shallow clone for default branch
+            if effective_branch and effective_branch not in ["main", "master"]:
+                clone_cmd.extend(["--branch", effective_branch])
+            elif effective_branch:
+                clone_cmd.extend(["--depth", "1", "--branch", effective_branch])
 
             clone_cmd.extend([clone_url, repo_path])
 
-            subprocess.run(
-                clone_cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+            try:
+                subprocess.run(
+                    clone_cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+            except subprocess.CalledProcessError as e:
+                # If shallow clone failed, try without depth limit
+                if "--depth" in clone_cmd:
+                    logger.warning("Shallow clone failed, trying full clone")
+                    clone_cmd.remove("--depth")
+                    clone_cmd.remove("1")
+                    subprocess.run(
+                        clone_cmd,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                else:
+                    raise
+                
+            # Update result with actual branch used
+            result.branch = effective_branch
 
             # Checkout specific commit if provided
             if commit_hash:

@@ -1,12 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Shield, Zap, GitBranch, BarChart3, Sparkles, Check, ArrowRight,
-  Github, Star, Users, Globe
+  Shield, Zap, GitBranch, BarChart3, Check, ArrowRight, AlertTriangle,
+  Github, Star, Terminal, Layers, Cloud, Box, Sparkles
 } from 'lucide-react'
 import { Button } from '../components/ui-animated'
 import { cn } from '../lib/utils'
-import { HeroScanner } from '../components/landing/HeroScanner'
 import { DetectedTechStack } from '../components/landing/DetectedTechStack'
 import { TrustSection } from '../components/landing/TrustSection'
 import { PricingSection } from '../components/landing/PricingSection'
@@ -37,6 +36,11 @@ const testimonials = [
 
 export function Landing() {
   const navigate = useNavigate()
+
+  const handleStartScan = () => {
+    // Users must login first to scan
+    navigate('/login')
+  }
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -80,7 +84,7 @@ export function Landing() {
         </div>
       </header>
 
-      {/* Hero Section with Scanner */}
+      {/* Hero Section - TOP */}
       <section className="relative py-20 lg:py-32 overflow-hidden">
         {/* Background gradient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -103,34 +107,266 @@ export function Landing() {
         </div>
 
         <div className="container mx-auto px-4 relative">
-          {/* Hero Scanner Component */}
-          <HeroScanner />
+          <div className="max-w-5xl mx-auto text-center space-y-8">
+            {/* Main Headline */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight">
+                <span className="gradient-text">Detect DevOps Security Risks</span>
+                <br />
+                <span className="text-foreground">Before Production</span>
+              </h1>
+            </motion.div>
+
+            {/* Subheading */}
+            <motion.p
+              className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              Scan Terraform, Kubernetes, Docker, and CI/CD pipelines in seconds
+            </motion.p>
+
+            {/* CTA Buttons */}
+            <motion.div
+              className="flex flex-col sm:flex-row gap-4 justify-center"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+            >
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleStartScan}
+                className="px-8 py-6 text-lg"
+                glow
+              >
+                Start Free Scan
+                <ArrowRight className="h-5 w-5 ml-2" />
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => {
+                  document.getElementById('demo-preview')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                className="px-8 py-6 text-lg"
+              >
+                View Demo
+              </Button>
+            </motion.div>
+
+            {/* Trust Indicators */}
+            <motion.div
+              className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+            >
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-400" />
+                <span>No credit card required</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-400" />
+                <span>Free tier available</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-400" />
+                <span>Instant results</span>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="py-12 border-y border-white/10 bg-white/5">
+      {/* Stats Section - Subtle, below hero */}
+      <section className="py-8 border-y border-white/5 bg-white/[0.02]">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
             {[
               { label: 'Repositories Analyzed', value: '10,000+' },
               { label: 'Security Rules', value: '500+' },
-              { label: 'Avg. Analysis Time', value: '< 30s' },
-              { label: 'Accuracy Rate', value: '99.9%' },
+              { label: 'Technologies Supported', value: '40+' },
+              { label: 'Avg. Scan Time', value: '< 30s' },
             ].map((stat, index) => (
               <motion.div
                 key={stat.label}
                 className="text-center"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
               >
-                <p className="text-3xl md:text-4xl font-bold gradient-text">{stat.value}</p>
-                <p className="text-sm text-muted-foreground mt-2">{stat.label}</p>
+                <p className="text-2xl md:text-3xl font-bold gradient-text">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Demo Preview Card */}
+      <section id="demo-preview" className="py-20 lg:py-32">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12 space-y-4">
+            <motion.h2
+              className="text-4xl font-bold gradient-text"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              See What We Find
+            </motion.h2>
+            <motion.p
+              className="text-lg text-muted-foreground max-w-2xl mx-auto"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+            >
+              Real scan results from production infrastructure
+            </motion.p>
+          </div>
+
+          {/* Mock Scan Result Card */}
+          <motion.div
+            className="max-w-4xl mx-auto"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-sm overflow-hidden">
+              {/* Card Header */}
+              <div className="p-6 border-b border-white/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
+                      <Terminal className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">terraform-infrastructure</h3>
+                      <p className="text-sm text-muted-foreground">github.com/example/terraform-infra</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-green-400">72</div>
+                    <div className="text-xs text-muted-foreground">Security Score</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Severity Stats */}
+              <div className="p-6 border-b border-white/10">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-400">3</div>
+                    <div className="text-xs text-muted-foreground">Critical</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-400">8</div>
+                    <div className="text-xs text-muted-foreground">High</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-400">12</div>
+                    <div className="text-xs text-muted-foreground">Medium</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-400">15</div>
+                    <div className="text-xs text-muted-foreground">Low</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sample Findings */}
+              <div className="p-6 space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="h-5 w-5 text-orange-400" />
+                  <h4 className="font-semibold text-foreground">Sample Findings</h4>
+                </div>
+
+                {/* Finding 1 */}
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1.5 rounded bg-red-500/20">
+                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                          CRITICAL
+                        </span>
+                        <span className="text-xs font-mono text-muted-foreground">TF-STATE-004</span>
+                      </div>
+                      <h5 className="font-medium text-foreground mb-1">Backend State Encryption Required</h5>
+                      <p className="text-sm text-muted-foreground">Terraform state file is not encrypted. State files may contain sensitive data.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Finding 2 */}
+                <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1.5 rounded bg-orange-500/20">
+                      <AlertTriangle className="h-4 w-4 text-orange-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                          HIGH
+                        </span>
+                        <span className="text-xs font-mono text-muted-foreground">DKR-SEC-001</span>
+                      </div>
+                      <h5 className="font-medium text-foreground mb-1">Run Docker Container as Non-Root User</h5>
+                      <p className="text-sm text-muted-foreground">Docker container is running as root user, which poses security risks.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Finding 3 */}
+                <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1.5 rounded bg-yellow-500/20">
+                      <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                          MEDIUM
+                        </span>
+                        <span className="text-xs font-mono text-muted-foreground">K8S-SEC-001</span>
+                      </div>
+                      <h5 className="font-medium text-foreground mb-1">Kubernetes Pod Security Context Missing</h5>
+                      <p className="text-sm text-muted-foreground">Pod does not define security context, allowing privileged containers.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA Footer */}
+              <div className="p-6 bg-gradient-to-r from-primary/10 to-indigo-600/10 border-t border-white/10">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    See all 38 findings with AI-powered fix recommendations
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handleStartScan}
+                    glow
+                  >
+                    Start Your Free Scan
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -293,7 +529,7 @@ export function Landing() {
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/register')}
+                  onClick={() => navigate('/login')}
                   glow
                 >
                   Start Free Scan

@@ -18,6 +18,7 @@ export function BillingSuccess() {
     const processCheckout = async () => {
       const sessionId = searchParams.get('session_id')
       const planParam = searchParams.get('plan')
+      const redirectPath = searchParams.get('redirect')
 
       if (!sessionId || !planParam) {
         setSuccess(false)
@@ -42,6 +43,15 @@ export function BillingSuccess() {
         }
 
         setSuccess(true)
+        
+        // Redirect back to scan results or intended destination after 2 seconds
+        setTimeout(() => {
+          if (redirectPath) {
+            navigate(decodeURIComponent(redirectPath))
+          } else {
+            navigate('/billing')
+          }
+        }, 2000)
       } catch (error) {
         console.error('Failed to process checkout:', error)
         setSuccess(false)
@@ -51,7 +61,7 @@ export function BillingSuccess() {
     }
 
     processCheckout()
-  }, [searchParams, token])
+  }, [searchParams, token, navigate])
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center">

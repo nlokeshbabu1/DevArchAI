@@ -1,5 +1,6 @@
 """Database models package."""
 
+from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
 from app.models.finding import Category, Finding, Severity
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.repo_analysis import RepoAnalysis
@@ -23,4 +24,7 @@ __all__ = [
     "Category",
     "Report",
     "RepoAnalysis",
+    "AISuggestion",
+    "SuggestionStatus",
+    "FixType",
 ]

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from './components/layout/DashboardLayout'
 import { Landing } from './pages/Landing'
 import { Home } from './pages/Home'
@@ -13,12 +13,24 @@ import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
 import { BillingPage } from './pages/billing/BillingPage'
 import { BillingSuccess } from './pages/billing/BillingSuccess'
 import { PricingPage } from './pages/billing/PricingPage'
-import { ScanResultsPage } from './pages/ScanResultsPage'
+import { ScanPage } from './pages/ScanPage'
+import { ResultPage } from './pages/ResultPage'
+import { ScanHistoryPage } from './pages/ScanHistoryPage'
 import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
 import { IntegrationsPage } from './pages/dashboard/Integrations'
 import { SettingsPage } from './pages/settings/SettingsPage'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
+
+// Component to redirect with params preserved
+function NavigateWithParams({ to }: { to: string }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  useEffect(() => {
+    navigate(`${to}/${id}`)
+  }, [id, to, navigate])
+  return null
+}
 
 // Protected route component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -60,11 +72,15 @@ export default function App() {
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
-      <Route path="/scan/results/:sessionId" element={<ScanResultsPage />} />
+      <Route path="/scan" element={<ScanPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
+
+      {/* Redirect old routes */}
+      <Route path="/analyze" element={<Navigate to="/scan" replace />} />
+      <Route path="/scan/result/:id" element={<NavigateWithParams to="/scans" />} />
 
       {/* Protected routes with Layout */}
       <Route path="/dashboard" element={
@@ -74,27 +90,27 @@ export default function App() {
           </Layout>
         </ProtectedRoute>
       } />
-      
-      <Route path="/report/:id" element={
-        <ProtectedRoute>
-          <Layout>
-            <Report />
-          </Layout>
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/analyze" element={
-        <ProtectedRoute>
-          <Layout>
-            <Home />
-          </Layout>
-        </ProtectedRoute>
-      } />
 
       <Route path="/scans" element={
         <ProtectedRoute>
           <Layout>
             <ScansPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/scans/:id" element={
+        <ProtectedRoute>
+          <Layout>
+            <ResultPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/history" element={
+        <ProtectedRoute>
+          <Layout>
+            <ScanHistoryPage />
           </Layout>
         </ProtectedRoute>
       } />
@@ -122,8 +138,6 @@ export default function App() {
           </Layout>
         </ProtectedRoute>
       } />
-
-      <Route path="/pricing" element={<PricingPage />} />
 
       <Route path="/billing/success" element={
         <ProtectedRoute>

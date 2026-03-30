@@ -11,9 +11,15 @@ export function GithubCallback() {
   const { login, setUser } = useAuthStore()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
+  const [hasProcessed, setHasProcessed] = useState(false)
 
   useEffect(() => {
+    // Prevent double processing
+    if (hasProcessed) return
+    
     const handleCallback = async () => {
+      setHasProcessed(true)
+      
       const code = searchParams.get('code')
       const errorParam = searchParams.get('error')
 
@@ -53,7 +59,7 @@ export function GithubCallback() {
         // Redirect to dashboard after short delay
         setTimeout(() => {
           navigate('/dashboard')
-        }, 1500)
+        }, 1000)
       } catch (err: any) {
         console.error('GitHub OAuth error:', err)
         setStatus('error')
@@ -64,7 +70,7 @@ export function GithubCallback() {
     }
 
     handleCallback()
-  }, [searchParams, navigate, login, setUser])
+  }, [searchParams, navigate, login, setUser, hasProcessed])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

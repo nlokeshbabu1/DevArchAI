@@ -139,10 +139,17 @@ export function ScansPage() {
     return 'text-red-400'
   }
 
-  const filteredScans = scans?.filter((scan: Scan) => {
+  const filteredScans = (scans || []).filter((scan: Scan) => {
     if (statusFilter === 'all') return true
     return scan.status === statusFilter
   })
+
+  const stats = {
+    completed: (scans || []).filter((s: Scan) => s.status === 'completed').length,
+    inProgress: (scans || []).filter((s: Scan) => s.status === 'processing' || s.status === 'queued' || s.status === 'pending').length,
+    failed: (scans || []).filter((s: Scan) => s.status === 'failed').length,
+    total: (scans || []).length,
+  }
 
   const handleQuickScan = () => {
     const repoUrl = prompt('Enter GitHub repository URL:')
@@ -171,25 +178,25 @@ export function ScansPage() {
       <div className="grid gap-4 sm:grid-cols-4">
         <Card className="p-4">
           <div className="text-2xl font-bold text-foreground">
-            {scans?.filter((s: Scan) => s.status === 'completed').length || 0}
+            {stats.completed}
           </div>
           <div className="text-sm text-muted-foreground">Completed</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-foreground">
-            {scans?.filter((s: Scan) => s.status === 'processing' || s.status === 'queued').length || 0}
+            {stats.inProgress}
           </div>
           <div className="text-sm text-muted-foreground">In Progress</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-foreground">
-            {scans?.filter((s: Scan) => s.status === 'failed').length || 0}
+            {stats.failed}
           </div>
           <div className="text-sm text-muted-foreground">Failed</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold text-foreground">
-            {scans?.length || 0}
+            {stats.total}
           </div>
           <div className="text-sm text-muted-foreground">Total</div>
         </Card>
@@ -198,11 +205,11 @@ export function ScansPage() {
       {/* Filter */}
       <Card className="p-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Filter:</span>
+          <span className="text-sm text-foreground font-medium">Filter:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground focus:outline-none"
+            className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="all">All</option>
             <option value="pending">Pending</option>
@@ -269,7 +276,7 @@ export function ScansPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-6">
-                          {scan.overall_score !== undefined && (
+                          {scan.overall_score !== undefined && scan.overall_score !== null && (
                             <div>
                               <div className="text-sm text-muted-foreground">Score</div>
                               <div className={`text-xl font-bold ${getScoreColor(scan.overall_score)}`}>
@@ -277,7 +284,7 @@ export function ScansPage() {
                               </div>
                             </div>
                           )}
-                          {scan.analysis_duration_seconds && (
+                          {scan.analysis_duration_seconds !== null && scan.analysis_duration_seconds !== undefined && (
                             <div>
                               <div className="text-sm text-muted-foreground">Duration</div>
                               <div className="text-foreground">
@@ -299,12 +306,18 @@ export function ScansPage() {
                   <div className="flex flex-col gap-2">
                     {scan.status === 'completed' && (
                       <>
-                        <Link to={`/report/${scan.id}`}>
-                          <Button variant="primary" size="sm" className="w-full">
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Report
-                          </Button>
-                        </Link>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            console.log('📊 View Report - redirecting to /history...')
+                            navigate('/history')
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Report
+                        </Button>
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"

@@ -234,10 +234,11 @@ class AnalysisService:
             # Extract resources for rule evaluation
             resources = parsed_file.parsed_data  # Simplified - parsers should extract resources
 
-            # Run all rules
+            # Run all rules with file type for proper filtering
             file_findings = self.rule_registry.evaluate_all(
                 [resources],
                 str(parsed_file.file_path),
+                file_type=parsed_file.file_type,
             )
             all_findings.extend(file_findings)
 

@@ -11,28 +11,28 @@ interface TrustBadge {
 
 const trustBadges: TrustBadge[] = [
   {
-    name: 'CIS Kubernetes Benchmark',
+    name: 'Terraform Security',
     icon: Shield,
-    description: '200+ CIS compliance checks',
+    description: '15+ Terraform security rules',
+    color: 'from-purple-500/20 to-indigo-500/20 border-purple-500/30',
+  },
+  {
+    name: 'Docker Security',
+    icon: Lock,
+    description: '8+ Docker security checks',
     color: 'from-blue-500/20 to-cyan-500/20 border-blue-500/30',
   },
   {
-    name: 'AWS Security Best Practices',
+    name: 'Kubernetes Best Practices',
     icon: Award,
-    description: 'AWS Well-Architected Framework',
-    color: 'from-orange-500/20 to-amber-500/20 border-orange-500/30',
-  },
-  {
-    name: 'OWASP DevSecOps',
-    icon: FileCheck,
-    description: 'OWASP Top 10 coverage',
+    description: '12+ K8s reliability rules',
     color: 'from-green-500/20 to-emerald-500/20 border-green-500/30',
   },
   {
-    name: 'Terraform Security',
-    icon: Lock,
-    description: 'Terraform Security Rules',
-    color: 'from-purple-500/20 to-indigo-500/20 border-purple-500/30',
+    name: 'CI/CD Security',
+    icon: FileCheck,
+    description: '9+ CI/CD pipeline checks',
+    color: 'from-orange-500/20 to-amber-500/20 border-orange-500/30',
   },
 ]
 
@@ -101,13 +101,13 @@ export function TrustSection() {
         viewport={{ once: true }}
       >
         {[
-          { label: 'Security Rules', value: '500+', icon: Shield },
-          { label: 'Compliance Checks', value: '200+', icon: FileCheck },
+          { label: 'Security Rules', value: '39', icon: Shield },
+          { label: 'Categories', value: '4', icon: FileCheck },
           { label: 'Avg. Analysis Time', value: '< 30s', icon: Zap },
-          { label: 'Accuracy Rate', value: '99.9%', icon: Award },
+          { label: 'File Types', value: '5', icon: Award },
         ].map((stat, index) => {
           const Icon = stat.icon
-          
+
           return (
             <div key={stat.label} className="text-center space-y-2">
               <Icon className="h-8 w-8 text-primary mx-auto" />

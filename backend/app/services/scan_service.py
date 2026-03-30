@@ -1,5 +1,6 @@
 """Scan service for orchestrating repository analysis with stack detection."""
 
+import json
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -243,6 +244,19 @@ class ScanService:
                     rule_findings,
                     max_findings=20,
                 )
+
+            # Enrich findings with AI-powered or static enrichment
+            self._update_progress(progress_callback, 70, "Generating AI fixes...")
+            # Use static enrichment (AI enrichment requires async which doesn't work with sync session)
+            from app.services.findings_enricher import enrich_findings
+            logger.error(f"DEBUG: About to enrich {len(rule_findings)} findings")
+            rule_findings = enrich_findings(rule_findings)
+            logger.error(f"DEBUG: Enriched {len(rule_findings)} findings, with_fix_examples={sum(1 for f in rule_findings if f.fix_example)}")
+            logger.info(
+                "Findings enriched",
+                findings_count=len(rule_findings),
+                with_fix_examples=sum(1 for f in rule_findings if f.fix_example),
+            )
 
             self._update_progress(progress_callback, 80, "Calculating scores...")
 
@@ -590,12 +604,23 @@ class ScanService:
                 category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
                 description=finding.description,
                 recommendation=finding.recommendation,
+                # AI Fix Generator fields
+                summary=finding.summary,
+                risk=finding.risk,
+                impact=finding.impact,
+                fix_code=finding.fix_code,
+                fix_example=finding.fix_example,
+                full_example=finding.full_example,
+                best_practices=json.dumps(finding.best_practices) if finding.best_practices else None,
+                confidence=finding.confidence,
+                documentation_url=finding.documentation_url,
                 file_path=finding.file_path,
                 line_number=finding.line_number,
                 resource_name=finding.resource_name,
                 ai_explanation=finding.ai_explanation,
                 impact_analysis=finding.impact_analysis,
-                confidence_score=finding.confidence,
+                ai_generated=getattr(finding, 'ai_generated', False),  # Track AI usage
+                confidence_score=finding.confidence or 1.0,
             )
             self.db.add(db_finding)
 

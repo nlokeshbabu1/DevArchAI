@@ -60,9 +60,13 @@ class Finding(Base):
     # Details
     description = Column(Text, nullable=False)
     recommendation = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)  # AI-generated summary
     risk = Column(Text, nullable=True)
     impact = Column(Text, nullable=True)
     fix_example = Column(Text, nullable=True)
+    fix_code = Column(Text, nullable=True)  # AI-generated fix code snippet
+    full_example = Column(Text, nullable=True)  # AI-generated full file example
+    best_practices = Column(Text, nullable=True)  # JSON array of best practices
 
     # Location
     file_path = Column(String(500), nullable=True)
@@ -72,6 +76,9 @@ class Finding(Base):
     # AI enhancements
     ai_explanation = Column(Text, nullable=True)
     impact_analysis = Column(Text, nullable=True)
+    ai_generated = Column(Boolean, default=False, nullable=False)  # Track if AI was used
+    documentation_url = Column(Text, nullable=True)  # Official vendor documentation link
+    confidence = Column(Float, default=1.0, nullable=True)  # AI confidence score
 
     # Metadata
     confidence_score = Column(Float, default=1.0, nullable=False)
@@ -83,6 +90,12 @@ class Finding(Base):
 
     # Relationship
     scan = relationship("Scan", back_populates="findings")
+    # Use string for back_populates only - foreign_keys not needed here
+    ai_suggestions = relationship(
+        "AISuggestion",
+        back_populates="finding",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Finding(id={self.id}, rule_id={self.rule_id}, severity={self.severity})>"
