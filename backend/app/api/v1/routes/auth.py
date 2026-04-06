@@ -346,7 +346,7 @@ async def github_callback(
             if not user:
                 # Encrypt email and create hash
                 email_encrypted, email_hash = encrypt_user_email(email)
-                
+
                 # Create new user
                 user = User(
                     email_encrypted=email_encrypted,
@@ -356,6 +356,7 @@ async def github_callback(
                     full_name=full_name or "",
                     avatar_url=avatar_url or "",
                     github_id=github_id,
+                    github_access_token=access_token,  # Store GitHub token for API access
                     is_verified=True,  # GitHub emails are verified
                 )
                 db.add(user)
@@ -364,6 +365,7 @@ async def github_callback(
             else:
                 # Update existing user with GitHub info
                 user.github_id = github_id
+                user.github_access_token = access_token  # Update token
                 if avatar_url:
                     user.avatar_url = avatar_url
                 if full_name and not user.full_name:

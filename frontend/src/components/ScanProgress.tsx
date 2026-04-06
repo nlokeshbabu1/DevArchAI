@@ -22,14 +22,26 @@ interface ScanProgressProps {
   isComplete: boolean
   detectedFiles?: FileBeingScanned[]  // Dynamic files from scan
   detectedTechnologies?: string[]  // Technologies detected by backend
+  steps?: string[]  // Custom step names
 }
+
+// Default pipeline steps
+const DEFAULT_STEPS = [
+  'Connecting to GitHub',
+  'Fetching repository',
+  'Detecting technologies',
+  'Running security rules',
+  'Generating AI suggestions',
+  'Calculating score',
+]
 
 export function ScanProgress({ 
   progress, 
   currentStep, 
-  isComplete,
+  isComplete, 
   detectedFiles = [],  // Default to empty array
-  detectedTechnologies = []  // Default to empty array
+  detectedTechnologies = [],  // Default to empty array
+  steps = DEFAULT_STEPS
 }: ScanProgressProps) {
   const [logs, setLogs] = useState<ScanLog[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -71,6 +83,16 @@ export function ScanProgress({
         'Monitoring': {type: 'monitoring', path: 'prometheus.yml'},
         'prometheus': {type: 'monitoring', path: 'prometheus.yml'},
         'grafana': {type: 'monitoring', path: 'grafana/dashboards.yml'},
+        'jenkins': {type: 'cicd', path: 'Jenkinsfile'},
+        'Jenkins': {type: 'cicd', path: 'Jenkinsfile'},
+        'gitlab_ci': {type: 'cicd', path: '.gitlab-ci.yml'},
+        'GitLab CI': {type: 'cicd', path: '.gitlab-ci.yml'},
+        'circleci': {type: 'cicd', path: '.circleci/config.yml'},
+        'CircleCI': {type: 'cicd', path: '.circleci/config.yml'},
+        'azure_devops': {type: 'cicd', path: 'azure-pipelines.yml'},
+        'Azure DevOps': {type: 'cicd', path: 'azure-pipelines.yml'},
+        'ansible': {type: 'cicd', path: 'ansible.cfg'},
+        'Ansible': {type: 'cicd', path: 'ansible.cfg'},
       }
 
       detectedTechnologies.forEach(tech => {
@@ -219,6 +241,93 @@ export function ScanProgress({
           />
         </div>
       </div>
+
+      {/* PHASE 3B: Pipeline Steps Visualization */}
+      {!isComplete && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div className="flex items-center justify-between">
+            {steps.map((step, index) => {
+              const stepNumber = index + 1
+              const isCompleted = currentStep > stepNumber || (currentStep === stepNumber && progress >= 100)
+              const isCurrent = currentStep === stepNumber
+              const isPending = currentStep < stepNumber
+
+              return (
+                <div key={step} className="flex items-center flex-1">
+                  {/* Step Circle */}
+                  <div className="flex flex-col items-center">
+                    <motion.div
+                      className={cn(
+                        'w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all',
+                        isCompleted && 'bg-green-500 border-green-500 text-white',
+                        isCurrent && 'bg-primary border-primary text-white animate-pulse',
+                        isPending && 'bg-white/5 border-white/20 text-muted-foreground'
+                      )}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle className="h-5 w-5" />
+                      ) : (
+                        <span className="text-sm font-bold">{stepNumber}</span>
+                      )}
+                    </motion.div>
+                    <span className={cn(
+                      'text-xs mt-2 text-center max-w-[80px]',
+                      isCompleted && 'text-green-400',
+                      isCurrent && 'text-primary font-semibold',
+                      isPending && 'text-muted-foreground'
+                    )}>
+                      {step}
+                    </span>
+                  </div>
+
+                  {/* Connector Line */}
+                  {index < steps.length - 1 && (
+                    <div className={cn(
+                      'flex-1 h-0.5 mx-2 mb-6',
+                      isCompleted ? 'bg-green-500' : 'bg-white/10'
+                    )} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* PHASE 3B: Technology Badges */}
+      {detectedTechnologies.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Layers className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold text-foreground">Detected Technologies</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {detectedTechnologies.map((tech, index) => (
+              <motion.div
+                key={tech}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.05 }}
+                className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-primary text-sm font-medium capitalize flex items-center gap-2"
+              >
+                <Terminal className="h-3 w-3" />
+                {tech.replace('_', ' ')}
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Two Column Layout: Logs (left) + File Tree (right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

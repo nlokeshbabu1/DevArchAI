@@ -156,7 +156,7 @@ export function ScanPage() {
 
           // Update progress from API
           if (status.progress) {
-            setProgress(status.progress)
+            setProgress(Math.round(status.progress))
           }
 
           // Update current step from API
@@ -170,9 +170,9 @@ export function ScanPage() {
             setDetectedTechnologies(status.detected_stack)
           }
 
-          // Update files scanned count from API (calculate from detected_stack)
-          if (status.detected_stack && Array.isArray(status.detected_stack)) {
-            setFilesScanned(status.detected_stack.length)
+          // Update files scanned count from API
+          if (status.files_scanned !== undefined) {
+            setFilesScanned(status.files_scanned)
           }
 
         } catch (error) {
@@ -245,7 +245,7 @@ export function ScanPage() {
 
           // ✅ Update progress from REAL backend API
           if (status.progress !== undefined) {
-            setProgress(status.progress)
+            setProgress(Math.round(status.progress))
           }
 
           // ✅ Update current step from REAL backend API
@@ -257,7 +257,7 @@ export function ScanPage() {
           if (status.detected_stack && Array.isArray(status.detected_stack)) {
             console.log('✅ Technologies detected:', status.detected_stack)
             setDetectedTechnologies(status.detected_stack)
-            setFilesScanned(status.detected_stack.length)
+            setFilesScanned(status.files_scanned || status.detected_stack.length)
           }
 
           // Only complete if BOTH backend is done AND minimum animation time has passed
@@ -304,12 +304,10 @@ export function ScanPage() {
             setResult(scanResult)
             console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
             console.log('✅ Scan complete! Findings:', scanResult.total_findings)
-            
-            // Wait a moment then navigate to results
-            setTimeout(() => {
-              console.log('📊 Navigating to results page...')
-              navigate(`/scan/result/${scanResult.scan_id}`)
-            }, 1000)
+
+            // ✅ PHASE 3A: DO NOT navigate away - show results on same page
+            // Results are already displayed inline via the `result` state
+            // User can click "New Scan" button to start another scan
           } else if (canComplete && !minTimePassed) {
             // Backend is done but keep animation running
             console.log('⏳ Backend done, waiting for animation...', Math.round((MIN_ANIMATION_DURATION - elapsed) / 1000) + 's remaining')

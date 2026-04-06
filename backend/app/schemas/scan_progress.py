@@ -39,6 +39,10 @@ class ScanProgressResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    # Enhanced fields for better UI feedback
+    stage: Optional[str] = None  # cloned, detecting, scanning, ai, completed
+    files_scanned: int = 0
+    total_files: int = 0
     
     class Config:
         json_schema_extra = {

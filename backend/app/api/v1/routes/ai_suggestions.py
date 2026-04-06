@@ -39,30 +39,69 @@ async def list_all_suggestions(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
-    """List ALL AI suggestions from all user's scans."""
+    """List ALL AI suggestions from all user's scans.
+
+    Returns both AISuggestion records AND AI-enriched findings.
+    """
     if not current_user:
         # For anonymous users, return empty
         return AISuggestionListResponse(suggestions=[], total=0, status_filter=status_filter)
-    
+
     # Get all user's scans
     scan_result = await db.execute(select(Scan.id).where(Scan.user_id == current_user.id))
     scan_ids = [str(row[0]) for row in scan_result.all()]
-    
+
     if not scan_ids:
         return AISuggestionListResponse(suggestions=[], total=0, status_filter=status_filter)
-    
-    # Build query for suggestions across all scans
+
+    # Get AISuggestion records
     query = select(AISuggestion).where(AISuggestion.scan_id.in_(scan_ids))
-    
     if status_filter:
         query = query.where(AISuggestion.status == status_filter)
-    
     result = await db.execute(query)
     suggestions = result.scalars().all()
-    
+
+    # Also get AI-enriched findings (findings with ai_generated=true or ai_explanation)
+    findings_query = (
+        select(Finding)
+        .where(Finding.scan_id.in_(scan_ids))
+        .where(
+            (Finding.ai_generated == True) |
+            (Finding.ai_explanation.isnot(None)) |
+            (Finding.summary.isnot(None))
+        )
+    )
+    findings_result = await db.execute(findings_query)
+    ai_findings = findings_result.scalars().all()
+
+    # Convert findings to suggestion-like format if they're not already in suggestions
+    existing_finding_ids = {s.finding_id for s in suggestions if s.finding_id}
+    finding_suggestions = []
+    for finding in ai_findings:
+        if str(finding.id) not in existing_finding_ids:
+            # Create a suggestion-like response from the finding
+            finding_suggestions.append(AISuggestionResponse(
+                id=str(finding.id),
+                title=finding.rule_name or f"Finding: {finding.rule_id}",
+                description=finding.description or "",
+                severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
+                confidence=finding.confidence or 0.8,
+                category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
+                fix_type="ai_enriched",
+                file_path=finding.file_path or "",
+                line_number=finding.line_number,
+                fix_code=finding.fix_code or finding.fix_example,
+                auto_fix_available=bool(finding.fix_code or finding.fix_example),
+                status="open",
+                created_at=finding.created_at.isoformat() if finding.created_at else datetime.utcnow().isoformat(),
+                updated_at=finding.created_at.isoformat() if finding.created_at else datetime.utcnow().isoformat(),
+            ))
+
+    all_suggestions = [AISuggestionResponse.model_validate(s) for s in suggestions] + finding_suggestions
+
     return AISuggestionListResponse(
-        suggestions=[AISuggestionResponse.model_validate(s) for s in suggestions],
-        total=len(suggestions),
+        suggestions=all_suggestions,
+        total=len(all_suggestions),
         status_filter=status_filter,
     )
 

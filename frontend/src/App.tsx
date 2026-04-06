@@ -22,16 +22,6 @@ import { SettingsPage } from './pages/settings/SettingsPage'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
 
-// Component to redirect with params preserved
-function NavigateWithParams({ to }: { to: string }) {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  useEffect(() => {
-    navigate(`${to}/${id}`)
-  }, [id, to, navigate])
-  return null
-}
-
 // Protected route component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -62,6 +52,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Redirect component for old scan result routes: /scan/result/:id -> /scans/:id
+function ScanResultRedirect() {
+  const { id } = useParams<{ id: string }>()
+  if (!id || id === ':id') {
+    return <Navigate to="/scans" replace />
+  }
+  return <Navigate to={`/scans/${id}`} replace />
+}
+
 export default function App() {
   // Check auth on app mount
   useEffect(() => {
@@ -80,7 +79,7 @@ export default function App() {
 
       {/* Redirect old routes */}
       <Route path="/analyze" element={<Navigate to="/scan" replace />} />
-      <Route path="/scan/result/:id" element={<NavigateWithParams to="/scans" />} />
+      <Route path="/scan/result/:id" element={<ScanResultRedirect />} />
 
       {/* Protected routes with Layout */}
       <Route path="/dashboard" element={

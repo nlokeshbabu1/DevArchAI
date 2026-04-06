@@ -96,6 +96,22 @@ class DetectedTechnologyStack:
         self.github_actions_files: list[str] = []
         self.has_docker_compose = False
         self.docker_compose_files: list[str] = []
+        self.has_jenkins = False
+        self.jenkins_files: list[str] = []
+        self.has_gitlab_ci = False
+        self.gitlab_ci_files: list[str] = []
+        self.has_circleci = False
+        self.circleci_files: list[str] = []
+        self.has_azure_devops = False
+        self.azure_devops_files: list[str] = []
+        self.has_ansible = False
+        self.ansible_files: list[str] = []
+        self.has_helm = False
+        self.helm_files: list[str] = []
+        self.has_prometheus = False
+        self.prometheus_files: list[str] = []
+        self.has_grafana = False
+        self.grafana_files: list[str] = []
 
     def get_detected_technologies(self) -> list[str]:
         """Get list of detected technology names."""
@@ -110,8 +126,24 @@ class DetectedTechnologyStack:
             technologies.append("github_actions")
         if self.has_docker_compose:
             technologies.append("docker_compose")
+        if self.has_jenkins:
+            technologies.append("jenkins")
+        if self.has_gitlab_ci:
+            technologies.append("gitlab_ci")
+        if self.has_circleci:
+            technologies.append("circleci")
+        if self.has_azure_devops:
+            technologies.append("azure_devops")
+        if self.has_ansible:
+            technologies.append("ansible")
+        if self.has_helm:
+            technologies.append("helm")
+        if self.has_prometheus:
+            technologies.append("prometheus")
+        if self.has_grafana:
+            technologies.append("grafana")
         return technologies
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database storage."""
         return {
@@ -125,6 +157,22 @@ class DetectedTechnologyStack:
             'github_actions_files': self.github_actions_files,
             'has_docker_compose': self.has_docker_compose,
             'docker_compose_files': self.docker_compose_files,
+            'has_jenkins': self.has_jenkins,
+            'jenkins_files': self.jenkins_files,
+            'has_gitlab_ci': self.has_gitlab_ci,
+            'gitlab_ci_files': self.gitlab_ci_files,
+            'has_circleci': self.has_circleci,
+            'circleci_files': self.circleci_files,
+            'has_azure_devops': self.has_azure_devops,
+            'azure_devops_files': self.azure_devops_files,
+            'has_ansible': self.has_ansible,
+            'ansible_files': self.ansible_files,
+            'has_helm': self.has_helm,
+            'helm_files': self.helm_files,
+            'has_prometheus': self.has_prometheus,
+            'prometheus_files': self.prometheus_files,
+            'has_grafana': self.has_grafana,
+            'grafana_files': self.grafana_files,
         }
 
 
@@ -162,6 +210,50 @@ def detect_technology_stack_from_files(files: list[str]) -> DetectedTechnologySt
             stack.has_github_actions = True
             stack.github_actions_files.append(file_path)
 
+        # Jenkins
+        if file_name == "jenkinsfile" or file_name.startswith("jenkinsfile.") or file_name.startswith("jenkinsfile-"):
+            stack.has_jenkins = True
+            stack.jenkins_files.append(file_path)
+
+        # GitLab CI
+        if file_name == ".gitlab-ci.yml" or file_name == ".gitlab-ci.yaml":
+            stack.has_gitlab_ci = True
+            stack.gitlab_ci_files.append(file_path)
+
+        # CircleCI
+        if ".circleci/" in file_path and file_path.endswith((".yml", ".yaml")):
+            stack.has_circleci = True
+            stack.circleci_files.append(file_path)
+
+        # Azure DevOps
+        if file_name in ["azure-pipelines.yml", "azure-pipelines.yaml"]:
+            stack.has_azure_devops = True
+            stack.azure_devops_files.append(file_path)
+
+        # Ansible
+        if file_name in ["ansible.cfg", ".ansible.cfg"] or file_path.endswith((".ansible.yml", ".ansible.yaml")):
+            stack.has_ansible = True
+            stack.ansible_files.append(file_path)
+        if "/roles/" in file_path or "/playbooks/" in file_path:
+            if file_path.endswith((".yml", ".yaml")):
+                stack.has_ansible = True
+                stack.ansible_files.append(file_path)
+
+        # Helm
+        if file_name == "chart.yaml" or file_name == "helmfile.yaml" or file_name == "helmfile.yml":
+            stack.has_helm = True
+            stack.helm_files.append(file_path)
+
+        # Prometheus
+        if file_name in ["prometheus.yml", "prometheus.yaml", "prometheus.rules.yml", "prometheus.rules.yaml"]:
+            stack.has_prometheus = True
+            stack.prometheus_files.append(file_path)
+
+        # Grafana
+        if "grafana" in file_lower and file_path.endswith((".yml", ".yaml", ".json")):
+            stack.has_grafana = True
+            stack.grafana_files.append(file_path)
+
     return stack
 
 
@@ -198,12 +290,14 @@ class SyncScanService:
         self.parser_registry = self._setup_parsers()
         self.detected_stack = DetectedTechnologyStack()
 
-    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None):
+    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None, stage: Optional[str] = None, files_scanned: int = 0, total_files: int = 0):
         """Update progress in the store (async)."""
         if self.progress_store and self.scan_id:
             await self.progress_store.update_status(self.scan_id, "running", progress, message)
             if message:
                 await self.progress_store.add_log(self.scan_id, message)
+            if stage:
+                await self.progress_store.update_stage(self.scan_id, stage, files_scanned, total_files)
             if step_name:
                 from app.schemas.scan_progress import StepStatus
                 # Mark previous running step as completed
@@ -230,9 +324,16 @@ class SyncScanService:
     ) -> Scan:
         """Execute a complete scan workflow synchronously with dynamic scanner execution."""
         import asyncio
-        
+
         start_time = time.time()
         repo_path = None
+
+        # PHASE 6: Record scan start (NEW - Observability)
+        try:
+            from app.services.metrics import record_scan_start, record_scan
+            record_scan_start()
+        except Exception:
+            pass  # Don't break scan if metrics fail
 
         try:
             # Update status to processing
@@ -242,7 +343,7 @@ class SyncScanService:
 
             # Initialize progress tracking
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub"))
+                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub", stage="cloning"))
 
             self._update_progress(progress_callback, 10, "Cloning repository...")
 
@@ -255,7 +356,7 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository"))
+                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository", stage="detecting"))
 
             self._update_progress(progress_callback, 20, "Detecting technology stack...")
 
@@ -276,7 +377,7 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies"))
+                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies", stage="detecting"))
 
             self._update_progress(progress_callback, 30, "Loading files...")
 
@@ -286,8 +387,9 @@ class SyncScanService:
             if not parsed_files:
                 raise ValueError("No analyzable files found in repository")
 
+            # Update progress with actual file count
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(50, f"Running rule engine ({len(parsed_files)} files)...", "Running security rules"))
+                _safe_await(self._update_progress_async(50, f"Running rule engine ({len(parsed_files)} files)...", "Running security rules", stage="scanning", files_scanned=len(parsed_files), total_files=len(parsed_files)))
 
             self._update_progress(progress_callback, 50, f"Running rule engine ({len(parsed_files)} files)...")
 
@@ -386,7 +488,37 @@ class SyncScanService:
                 logger.warning("Using static enrichment as fallback")
                 from app.services.findings_enricher import enrich_findings
                 rule_findings = enrich_findings(rule_findings)
-            
+
+            # PHASE 1C: Deduplicate findings (NEW - Production Grade)
+            try:
+                from app.services.findings_deduplicator import deduplicate_findings
+                rule_findings, dedup_stats = deduplicate_findings(rule_findings)
+                logger.info(
+                    "Findings deduplicated",
+                    original_count=dedup_stats.original_count,
+                    deduplicated_count=dedup_stats.deduplicated_count,
+                    duplicates_removed=dedup_stats.duplicates_removed,
+                    dedup_ratio=f"{dedup_stats.dedup_ratio:.1f}%",
+                )
+            except Exception as e:
+                logger.error(f"❌ Deduplication failed: {e}")
+                # Continue with non-deduplicated findings - don't break pipeline
+
+            # PHASE 4: Validate findings before DB insert (NEW - Production Grade)
+            try:
+                from app.services.finding_validator import validate_findings
+                rule_findings, validation_stats = validate_findings(rule_findings)
+                logger.info(
+                    "Findings validated",
+                    total_count=validation_stats.total_count,
+                    valid_count=validation_stats.valid_count,
+                    fallbacks_applied=validation_stats.fallbacks_applied,
+                    fallback_rate=f"{validation_stats.fallback_rate:.1f}%",
+                )
+            except Exception as e:
+                logger.error(f"❌ Validation failed: {e}")
+                # Continue with non-validated findings - don't break pipeline
+
             logger.info(
                 "Findings enriched",
                 findings_count=len(rule_findings),
@@ -411,7 +543,7 @@ class SyncScanService:
                     )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(80, "Calculating scores...", "Generating AI suggestions"))
+                _safe_await(self._update_progress_async(80, "Generating AI suggestions...", "Generating AI suggestions", stage="ai"))
 
             self._update_progress(progress_callback, 80, "Calculating scores...")
 
@@ -419,7 +551,7 @@ class SyncScanService:
             scores = self.scoring_engine.calculate_scores(rule_findings)
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(90, "Saving results...", "Calculating score"))
+                _safe_await(self._update_progress_async(90, "Saving results...", "Calculating score", stage="completed"))
 
             self._update_progress(progress_callback, 90, "Saving results...")
 
@@ -448,6 +580,28 @@ class SyncScanService:
                 _safe_await(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
 
             self._update_progress(progress_callback, 100, "Scan complete")
+
+            # PHASE 6: Record scan metrics (NEW - Observability)
+            try:
+                from app.services.metrics import record_scan, record_scan_end
+                duration = time.time() - start_time
+                record_scan_end()
+                
+                # Record for each detected technology
+                detected = self.detected_stack.get_detected_technologies() if self.detected_stack else []
+                if detected:
+                    for tech in detected:
+                        record_scan(status="completed", technology=tech, duration=duration)
+                else:
+                    record_scan(status="completed", technology="none", duration=duration)
+                
+                logger.info(
+                    "Scan metrics recorded",
+                    duration=duration,
+                    technologies=detected,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record scan metrics: {e}")
 
             logger.info(
                 "Scan completed successfully",

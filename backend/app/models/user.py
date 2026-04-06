@@ -39,6 +39,7 @@ class User(Base):
 
     # GitHub OAuth
     github_id = Column(String(100), unique=True, index=True, nullable=True)
+    github_access_token = Column(String(500), nullable=True)  # Store OAuth token for API access
 
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)
