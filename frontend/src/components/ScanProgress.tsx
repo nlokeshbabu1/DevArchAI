@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, GitBranch, Terminal, FileCode, FolderGit2, Loader2 } from 'lucide-react'
+import { CheckCircle, GitBranch, Terminal, FileCode, FolderGit2, Loader2, Layers } from 'lucide-react'
 import { Card } from './ui-animated'
 import { cn } from '../lib/utils'
 

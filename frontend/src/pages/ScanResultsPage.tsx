@@ -596,7 +596,8 @@ export function ScanResultsPage() {
                 })
               })()}
             </div>
-          </Card>
+          )}
+        </Card>
         </motion.div>
 
         {/* Login/Upgrade CTA */}

@@ -211,7 +211,7 @@ def detect_technology_stack_from_files(files: list[str]) -> DetectedTechnologySt
             stack.github_actions_files.append(file_path)
 
         # Jenkins
-        if file_name == "jenkinsfile" or file_name.startswith("jenkinsfile.") or file_name.startswith("jenkinsfile-"):
+        if file_name.lower() == "jenkinsfile" or file_name.lower().startswith("jenkinsfile.") or file_name.lower().startswith("jenkinsfile-"):
             stack.has_jenkins = True
             stack.jenkins_files.append(file_path)
 

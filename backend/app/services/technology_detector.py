@@ -195,7 +195,7 @@ def detect_technology_stack(files: list[str]) -> TechnologyStack:
             stack.gitlab_ci_files.append(file_path)
 
         # Jenkins (Jenkinsfile, Jenkinsfile-Backend, etc.)
-        if file_name == "jenkinsfile" or file_name.startswith("jenkinsfile-"):
+        if file_name.lower() == "jenkinsfile" or file_name.lower().startswith("jenkinsfile-"):
             stack.has_jenkins = True
             stack.jenkins_files.append(file_path)
 

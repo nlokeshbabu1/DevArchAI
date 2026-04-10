@@ -258,7 +258,7 @@ class RepositoryScanner:
             ".github/workflows/*.yaml",
             ".gitlab-ci.yml",
             ".circleci/config.yml",
-            "Jenkinsfile",
+            "Jenkinsfile*",
             "azure-pipelines.yml",
         ]
 

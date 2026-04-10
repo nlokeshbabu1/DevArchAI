@@ -49,6 +49,11 @@ class User(Base):
     # Subscription plan
     subscription_plan = Column(String(50), default="free", nullable=False)  # free, plus, pro, enterprise
 
+    # Billing fields (added for payment system)
+    country = Column(String(2), default="US", nullable=True)  # ISO 3166-1 alpha-2
+    billing_email = Column(String(255), nullable=True)
+    tax_id = Column(String(100), nullable=True)  # GST, VAT, etc.
+
     # Current organization
     current_org_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
 
@@ -70,6 +75,11 @@ class User(Base):
     )
     repositories = relationship("Repository", back_populates="user", cascade="all, delete-orphan")
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")
+    subscription = relationship("Subscription", foreign_keys="Subscription.organization_id",
+                                primaryjoin="User.current_org_id==Subscription.organization_id",
+                                uselist=False, viewonly=True)
+    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email_hash={self.email_hash})>"

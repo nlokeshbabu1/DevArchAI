@@ -46,12 +46,39 @@ export function Login() {
         const upgradeIntent = sessionStorage.getItem('upgradeIntent')
 
         if (upgradeIntent === 'true') {
-          // User came from upgrade click, redirect to pricing with plan selected
+          // User came from upgrade click, redirect to checkout API directly
           const plan = sessionStorage.getItem('upgradePlan') || 'plus'
+          const targetRedirect = redirectPath || '/dashboard'
+          
+          // Clear session storage
           sessionStorage.removeItem('upgradeIntent')
           sessionStorage.removeItem('upgradePlan')
           sessionStorage.removeItem('postLoginRedirect')
-          navigate(`/pricing?plan=${plan}&redirect=${encodeURIComponent(redirectPath || '')}`)
+          
+          // Call checkout API to get payment URL
+          try {
+            const response = await fetch('/api/v1/billing/checkout', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${tokenResponse.access_token}`,
+              },
+              body: JSON.stringify({ plan, billing: 'monthly' }),
+            })
+
+            const data = await response.json()
+            if (data.checkout_url) {
+              // Redirect to payment gateway
+              const separator = data.checkout_url.includes('?') ? '&' : '?'
+              window.location.href = `${data.checkout_url}${separator}redirect=${encodeURIComponent(targetRedirect)}`
+              return
+            }
+          } catch (checkoutError) {
+            console.error('Checkout creation failed, falling back to pricing page:', checkoutError)
+          }
+          
+          // Fallback: redirect to pricing page if checkout fails
+          navigate(`/pricing?plan=${plan}&redirect=${encodeURIComponent(targetRedirect)}`)
         } else if (redirectPath) {
           // Return to intended destination
           sessionStorage.removeItem('postLoginRedirect')
@@ -63,7 +90,7 @@ export function Login() {
       } catch (err) {
         // User info fetch failed but login succeeded
         console.warn('Failed to fetch user info', err)
-        
+
         // Default to dashboard on error
         navigate('/dashboard')
       }

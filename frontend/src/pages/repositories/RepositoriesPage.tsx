@@ -138,7 +138,7 @@ export function RepositoriesPage() {
   }
 
   // Transform repositories for display with proper status logic
-  const displayRepos: DisplayRepository[] = (allRepos || []).map((repo: DisplayRepository) => {
+  const displayRepos: DisplayRepository[] = (allRepos || []).map((repo) => {
     let displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed' = 'not_scanned'
 
     // Determine status from latest scan

@@ -19,6 +19,7 @@ export function BillingSuccess() {
       const sessionId = searchParams.get('session_id')
       const planParam = searchParams.get('plan')
       const redirectPath = searchParams.get('redirect')
+      const isMock = searchParams.get('mock') === 'true'
 
       if (!sessionId || !planParam) {
         setSuccess(false)
@@ -29,21 +30,62 @@ export function BillingSuccess() {
       setPlan(planParam)
 
       try {
-        // In production, verify the session with backend
-        // For mock, just simulate success
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        if (isMock) {
+          // Mock/dev mode: activate subscription directly
+          await new Promise(resolve => setTimeout(resolve, 1500))
 
-        // Update subscription on backend
-        if (token) {
-          await axios.post('/api/v1/billing/subscription', {
-            plan: planParam,
-          }, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
+          if (token) {
+            await axios.post('/api/v1/billing/subscription', {
+              plan: planParam,
+              billing: 'monthly',
+            }, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+          }
+        } else {
+          // Real payment: wait for webhook to activate subscription
+          // Just verify the session exists
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          
+          // Check if subscription was activated by webhook
+          if (token) {
+            try {
+              const response = await axios.get('/api/v1/billing/subscription', {
+                headers: { Authorization: `Bearer ${token}` }
+              })
+              if (response.data.plan && response.data.plan !== 'free') {
+                setSuccess(true)
+                // Redirect after showing success message
+                setTimeout(() => {
+                  if (redirectPath) {
+                    navigate(decodeURIComponent(redirectPath))
+                  } else {
+                    navigate('/billing')
+                  }
+                }, 2000)
+                setIsProcessing(false)
+                return
+              }
+            } catch (err) {
+              console.log('Subscription not yet activated by webhook')
+            }
+            
+            // If webhook hasn't processed yet, show success anyway (will be activated soon)
+            setSuccess(true)
+            setTimeout(() => {
+              if (redirectPath) {
+                navigate(decodeURIComponent(redirectPath))
+              } else {
+                navigate('/billing')
+              }
+            }, 2000)
+            setIsProcessing(false)
+            return
+          }
         }
 
         setSuccess(true)
-        
+
         // Redirect back to scan results or intended destination after 2 seconds
         setTimeout(() => {
           if (redirectPath) {
@@ -52,9 +94,23 @@ export function BillingSuccess() {
             navigate('/billing')
           }
         }, 2000)
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to process checkout:', error)
-        setSuccess(false)
+        
+        // If direct activation is blocked (payment providers configured), 
+        // tell user to wait for webhook
+        if (error.response?.status === 403) {
+          setSuccess(true)
+          setTimeout(() => {
+            if (redirectPath) {
+              navigate(decodeURIComponent(redirectPath))
+            } else {
+              navigate('/billing')
+            }
+          }, 2000)
+        } else {
+          setSuccess(false)
+        }
       } finally {
         setIsProcessing(false)
       }

@@ -2,10 +2,10 @@
 FROM python:3.11-slim as base
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+# ENV PYTHONDONTWRITEBYTECODE=1 \
+#     PYTHONUNBUFFERED=1 \
+#     PIP_NO_CACHE_DIR=1 \
+#     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -62,17 +62,17 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 # ===========================================
 # Development Stage
 # ===========================================
-FROM base as development
+# FROM base as development
 
-# Install development dependencies
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# # Install development dependencies
+# COPY requirements.txt .
+# RUN pip install -r requirements.txt
 
-# Copy application code
-COPY . .
+# # Copy application code
+# COPY . .
 
-# Install app for development
-RUN pip install -e .
+# # Install app for development
+# RUN pip install -e .
 
-# Default command for development
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# # Default command for development
+# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
