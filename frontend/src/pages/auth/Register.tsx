@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Shield, Mail, Lock, User, Eye, EyeOff, Check, Github, Loader2 } from 'lucide-react'
+import { Shield, Mail, Lock, User, Eye, EyeOff, Check, Github, Loader2, Globe } from 'lucide-react'
 import { Button, Input, Card } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
@@ -19,6 +19,7 @@ export function Register() {
     password: '',
     confirmPassword: '',
     organization_name: '',
+    country: 'IN', // Default to India for better payment routing
     agreeToTerms: false,
   })
 
@@ -69,6 +70,7 @@ export function Register() {
         username: formData.username,
         password: formData.password,
         organization_name: formData.organization_name,
+        country: formData.country,
       })
 
       // Auto-login after registration
@@ -218,6 +220,34 @@ export function Register() {
                     className="pl-10"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Country
+                </label>
+                <div className="relative">
+                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <select
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-white/20 bg-white/5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+                  >
+                    <option value="IN">🇮🇳 India</option>
+                    <option value="US">🇺🇸 United States</option>
+                    <option value="GB">🇬🇧 United Kingdom</option>
+                    <option value="CA">🇨🇦 Canada</option>
+                    <option value="AU">🇦🇺 Australia</option>
+                    <option value="DE">🇩🇪 Germany</option>
+                    <option value="FR">🇫🇷 France</option>
+                    <option value="SG">🇸🇬 Singapore</option>
+                    <option value="JP">🇯🇵 Japan</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This helps us route payments to the correct payment provider
+                </p>
               </div>
 
               <div>

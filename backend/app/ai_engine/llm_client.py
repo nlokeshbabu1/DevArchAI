@@ -276,7 +276,10 @@ class MistralProvider(BaseLLMProvider):
     def client(self):
         """Lazy load Mistral client."""
         if self._client is None:
-            from mistralai import Mistral
+            try:
+                from mistralai.client import Mistral
+            except ImportError:
+                from mistralai import Mistral
             self._client = Mistral(api_key=self.api_key)
         return self._client
 
@@ -890,9 +893,13 @@ def get_llm_provider() -> BaseLLMProvider:
         )
     elif provider == "mistral" and settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider")
+        # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
+        mistral_model = "mistral-large-latest"
+        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+            mistral_model = settings.LLM_MODEL
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
-            model=settings.LLM_MODEL if settings.LLM_MODEL != "gpt-4-turbo-preview" else "mistral-large-latest",
+            model=mistral_model,
         )
     else:
         # Fallback chain: try available providers in order
@@ -907,7 +914,11 @@ def get_llm_provider() -> BaseLLMProvider:
             return GeminiProvider(api_key=settings.GEMINI_API_KEY)
         elif settings.MISTRAL_API_KEY:
             logger.info("Using Mistral LLM provider (fallback)")
-            return MistralProvider(api_key=settings.MISTRAL_API_KEY)
+            # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
+            mistral_model = "mistral-large-latest"
+            if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+                mistral_model = settings.LLM_MODEL
+            return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=mistral_model)
         else:
             logger.warning("No LLM API keys configured, using Mock provider")
             return MockLLMProvider()

@@ -1,8 +1,209 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, GitBranch, Terminal, FileCode, FolderGit2, Loader2, Layers } from 'lucide-react'
+import { CheckCircle, GitBranch, Terminal, FileCode, FolderGit2, Loader2, Layers, FolderOpen } from 'lucide-react'
 import { Card } from './ui-animated'
 import { cn } from '../lib/utils'
+
+// Helper function to convert absolute paths to relative paths
+function convertToRelativePath(filePath: string): string {
+  // Remove /tmp/scan-xxx/ or similar prefixes
+  const parts = filePath.split('/')
+  
+  // Find common repository directory patterns
+  // Look for patterns like: scan-xxx, repos, tmp
+  const repoIndex = parts.findIndex(part => 
+    part.startsWith('scan-') || 
+    part === 'tmp' || 
+    part === 'repos' ||
+    part === 'workspace'
+  )
+  
+  if (repoIndex !== -1 && repoIndex < parts.length - 1) {
+    // Return everything after the repo directory
+    return parts.slice(repoIndex + 1).join('/')
+  }
+  
+  // If path contains common tech directories, extract from there
+  const commonPatterns = [
+    'terraform', 'k8s', 'kubernetes', 'helm', 'docker', 
+    '.github', '.gitlab', 'src', 'app', 'config',
+    'Dockerfile', 'Makefile', 'README'
+  ]
+  
+  for (const pattern of commonPatterns) {
+    const patternIndex = parts.findIndex(part => 
+      part.toLowerCase() === pattern.toLowerCase() || 
+      part.toLowerCase().endsWith(pattern.toLowerCase())
+    )
+    if (patternIndex !== -1) {
+      return parts.slice(patternIndex).join('/')
+    }
+  }
+  
+  // Fallback: if it looks like a file (has extension), return just the filename
+  const lastPart = parts[parts.length - 1]
+  if (lastPart.includes('.') && !lastPart.startsWith('.')) {
+    return lastPart
+  }
+  
+  // Last resort: return the last 2-3 parts
+  return parts.slice(-Math.min(3, parts.length)).join('/')
+}
+
+// Build tree structure from flat file list
+interface TreeNode {
+  name: string
+  type: 'file' | 'folder'
+  children?: TreeNode[]
+  fileData?: FileBeingScanned
+}
+
+function buildFileTree(files: FileBeingScanned[]): TreeNode[] {
+  const root: TreeNode[] = []
+  const folderMap = new Map<string, TreeNode>()
+
+  // Sort files to ensure consistent ordering
+  const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
+
+  for (const file of sortedFiles) {
+    const parts = file.path.split('/')
+    let currentPath = ''
+    let parentArray = root
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isFile = i === parts.length - 1
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+
+      if (isFile) {
+        // It's a file
+        parentArray.push({
+          name: part,
+          type: 'file',
+          fileData: file
+        })
+      } else {
+        // It's a folder
+        if (!folderMap.has(currentPath)) {
+          const folderNode: TreeNode = {
+            name: part,
+            type: 'folder',
+            children: []
+          }
+          folderMap.set(currentPath, folderNode)
+          parentArray.push(folderNode)
+        }
+        parentArray = folderMap.get(currentPath)!.children!
+      }
+    }
+  }
+
+  return root
+}
+
+// Tree View Component to display file hierarchy
+function FileTreeView({ nodes, depth = 0 }: { nodes: TreeNode[]; depth?: number }) {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+
+  const toggleFolder = (folderName: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev)
+      if (next.has(folderName)) {
+        next.delete(folderName)
+      } else {
+        next.add(folderName)
+      }
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-1">
+      {nodes.map((node, index) => {
+        const isExpanded = expandedFolders.has(node.name)
+        
+        if (node.type === 'folder') {
+          return (
+            <div key={`${node.name}-${index}`}>
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
+                style={{ paddingLeft: `${depth * 16 + 8}px` }}
+                onClick={() => toggleFolder(node.name)}
+              >
+                <FolderOpen 
+                  className={cn(
+                    'h-4 w-4 flex-shrink-0 transition-transform',
+                    isExpanded ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+                <span className="text-sm font-mono text-foreground flex-1">{node.name}/</span>
+              </motion.div>
+              {isExpanded && node.children && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <FileTreeView nodes={node.children} depth={depth + 1} />
+                </motion.div>
+              )}
+            </div>
+          )
+        }
+
+        // It's a file
+        const fileData = node.fileData
+        if (!fileData) return null
+
+        const Icon = fileData.type === 'docker' ? FileCode :
+                    fileData.type === 'k8s' ? FileCode :
+                    fileData.type === 'terraform' ? FileCode :
+                    fileData.type === 'helm' ? FileCode :
+                    fileData.type === 'monitoring' ? FileCode : FileCode
+
+        return (
+          <motion.div
+            key={`${node.name}-${index}`}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.03 }}
+            className={cn(
+              'flex items-center gap-2 p-2 rounded-lg transition-all',
+              fileData.status === 'scanning' ? 'bg-primary/10 border border-primary/30' :
+              fileData.status === 'completed' ? 'bg-green-500/10 border border-green-500/30' :
+              'bg-white/5 border border-transparent hover:bg-white/10'
+            )}
+            style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          >
+            <Icon className={cn(
+              'h-4 w-4 flex-shrink-0',
+              fileData.status === 'scanning' ? 'text-primary animate-pulse' :
+              fileData.status === 'completed' ? 'text-green-400' :
+              'text-muted-foreground'
+            )} />
+            <span className={cn(
+              'text-sm font-mono flex-1',
+              fileData.status === 'scanning' ? 'text-primary' :
+              fileData.status === 'completed' ? 'text-green-400' :
+              'text-muted-foreground'
+            )}>
+              {node.name}
+            </span>
+            {fileData.status === 'scanning' && (
+              <Loader2 className="h-3 w-3 text-primary animate-spin" />
+            )}
+            {fileData.status === 'completed' && (
+              <CheckCircle className="h-3 w-3 text-green-400" />
+            )}
+          </motion.div>
+        )
+      })}
+    </div>
+  )
+}
 
 interface ScanLog {
   message: string
@@ -23,6 +224,7 @@ interface ScanProgressProps {
   detectedFiles?: FileBeingScanned[]  // Dynamic files from scan
   detectedTechnologies?: string[]  // Technologies detected by backend
   steps?: string[]  // Custom step names
+  backendLogs?: string[]  // ✅ Real logs from backend API
 }
 
 // Default pipeline steps
@@ -35,13 +237,14 @@ const DEFAULT_STEPS = [
   'Calculating score',
 ]
 
-export function ScanProgress({ 
-  progress, 
-  currentStep, 
-  isComplete, 
+export function ScanProgress({
+  progress,
+  currentStep,
+  isComplete,
   detectedFiles = [],  // Default to empty array
   detectedTechnologies = [],  // Default to empty array
-  steps = DEFAULT_STEPS
+  steps = DEFAULT_STEPS,
+  backendLogs = []  // ✅ Real logs from backend
 }: ScanProgressProps) {
   const [logs, setLogs] = useState<ScanLog[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -52,16 +255,23 @@ export function ScanProgress({
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
-  // Update files when detectedFiles prop changes
+  // Update files when detectedFiles prop changes (PRIORITY - actual file paths from backend)
   useEffect(() => {
     if (detectedFiles && detectedFiles.length > 0) {
-      setFiles(detectedFiles)
+      console.log('📁 Setting files from detectedFiles prop:', detectedFiles.length, 'first file:', detectedFiles[0]?.path)
+      // Convert absolute paths to relative and sort
+      const processedFiles = detectedFiles.map(file => ({
+        ...file,
+        path: convertToRelativePath(file.path)
+      })).sort((a, b) => a.path.localeCompare(b.path))
+      setFiles(processedFiles)
     }
+    // Removed verbose logging for empty state - it's normal during initial scan
   }, [detectedFiles])
 
-  // Update files when detectedTechnologies changes (from API)
+  // Update files when detectedTechnologies changes (from API) - ONLY if no detectedFiles
   useEffect(() => {
-    if (detectedTechnologies && detectedTechnologies.length > 0) {
+    if (detectedTechnologies && detectedTechnologies.length > 0 && (!detectedFiles || detectedFiles.length === 0)) {
       // Convert technology names to file paths
       const detected: FileBeingScanned[] = []
 
@@ -101,10 +311,10 @@ export function ScanProgress({
           detected.push({ path: mapping.path, type: mapping.type, status: 'completed' })
         } else if (!mapping && !detected.some(f => f.path === tech)) {
           // Fallback: Add unknown technologies as generic files
-          detected.push({ 
-            path: `${tech}/config`, 
-            type: 'monitoring', 
-            status: 'completed' 
+          detected.push({
+            path: `${tech}/config`,
+            type: 'monitoring',
+            status: 'completed'
           })
         }
       })
@@ -114,12 +324,44 @@ export function ScanProgress({
         console.log('📁 Files detected from technologies:', detected)
       }
     }
-  }, [detectedTechnologies])
+  }, [detectedTechnologies, detectedFiles])
 
-  // Generate realistic scan logs based on progress
+  // ✅ Use REAL backend logs when available, fallback to generated logs
   useEffect(() => {
     if (isComplete) return
 
+    // If we have backend logs, use them directly
+    if (backendLogs && backendLogs.length > 0) {
+      const parsedLogs = backendLogs.map(log => {
+        // Parse log format: "[HH:MM:SS] message"
+        const match = log.match(/^\[([^\]]+)\]\s+(.+)$/)
+        if (match) {
+          return {
+            timestamp: match[1],
+            message: match[2],
+            type: match[2].includes('✓') || match[2].includes('success') || match[2].includes('completed') ? 'success' as const :
+                  match[2].includes('warning') || match[2].includes('Warning') ? 'warning' as const :
+                  'info' as const
+          }
+        }
+        // Fallback for unparseable logs
+        return {
+          timestamp: new Date().toLocaleTimeString('en-US', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          }),
+          message: log,
+          type: 'info' as const
+        }
+      })
+
+      setLogs(parsedLogs)
+      return
+    }
+
+    // Fallback: Generate local logs only if no backend logs
     const addLog = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
       const timestamp = new Date().toLocaleTimeString('en-US', {
         hour12: false,
@@ -174,7 +416,7 @@ export function ScanProgress({
       addLog('Finalizing results...', 'info')
     }
 
-  }, [progress, isComplete, files, detectedTechnologies])
+  }, [progress, isComplete, files, detectedTechnologies, backendLogs])
 
   return (
     // PRODUCTION SCAN PROGRESS - Logs + File Tree ONLY (No Pipeline)
@@ -364,58 +606,16 @@ export function ScanProgress({
           </div>
         </Card>
 
-        {/* File Tree (Right Column) - DYNAMIC */}
+        {/* File Tree (Right Column) - DYNAMIC TREE STRUCTURE */}
         <Card className="p-5 bg-black/50 border-white/10 hover:border-white/20 transition-colors" hover={false}>
           <div className="flex items-center gap-2 mb-4">
             <FolderGit2 className="h-5 w-5 text-primary" />
             <h4 className="text-sm font-semibold text-foreground uppercase tracking-wide">Files Being Scanned</h4>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1">
             {files.length > 0 ? (
-              files.map((file, index) => {
-                const Icon = file.type === 'docker' ? FileCode :
-                            file.type === 'k8s' ? FileCode :
-                            file.type === 'terraform' ? FileCode :
-                            file.type === 'helm' ? FileCode :
-                            file.type === 'monitoring' ? FileCode : FileCode
-
-                return (
-                  <motion.div
-                    key={file.path}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg border transition-all',
-                      file.status === 'scanning' ? 'bg-primary/10 border-primary/30' :
-                      file.status === 'completed' ? 'bg-green-500/10 border-green-500/30' :
-                      'bg-white/5 border-white/10'
-                    )}
-                  >
-                    <Icon className={cn(
-                      'h-4 w-4 flex-shrink-0',
-                      file.status === 'scanning' ? 'text-primary animate-pulse' :
-                      file.status === 'completed' ? 'text-green-400' :
-                      'text-muted-foreground'
-                    )} />
-                    <span className={cn(
-                      'text-sm font-mono flex-1',
-                      file.status === 'scanning' ? 'text-primary' :
-                      file.status === 'completed' ? 'text-green-400' :
-                      'text-muted-foreground'
-                    )}>
-                      {file.path}
-                    </span>
-                    {file.status === 'scanning' && (
-                      <Loader2 className="h-3 w-3 text-primary animate-spin" />
-                    )}
-                    {file.status === 'completed' && (
-                      <CheckCircle className="h-3 w-3 text-green-400" />
-                    )}
-                  </motion.div>
-                )
-              })
+              <FileTreeView nodes={buildFileTree(files)} />
             ) : (
               <div className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
                 <Loader2 className="h-4 w-4 text-primary animate-spin" />
@@ -432,7 +632,7 @@ export function ScanProgress({
                 <div className="text-xs text-muted-foreground">Files Scanned</div>
               </div>
               <div>
-                <div className="text-lg font-bold text-primary">{currentStep + 1}/5</div>
+                <div className="text-lg font-bold text-primary">{Math.min(currentStep + 1, 6)}/6</div>
                 <div className="text-xs text-muted-foreground">Current Step</div>
               </div>
               <div>

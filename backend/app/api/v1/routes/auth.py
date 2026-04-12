@@ -121,6 +121,7 @@ async def register(
             username=user_data.username,
             hashed_password=get_password_hash(user_data.password),
             full_name=user_data.full_name,
+            country=user_data.country or "US",
             current_org_id=organization.id if organization else None,
         )
         db.add(user)

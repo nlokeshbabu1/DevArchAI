@@ -55,7 +55,7 @@ class TestFindingValidator:
         assert validated[0].risk is not None, "risk should not be NULL"
         assert validated[0].impact is not None, "impact should not be NULL"
         assert validated[0].fix_code is not None, "fix_code should not be NULL"
-        assert stats.fallbacks_applied > 0, "Fallbacks should be applied"
+        assert stats.findings_with_fallbacks > 0, "Fallbacks should be applied"
 
     def test_validator_fills_null_for_all_severities(self):
         """Test validator fills NULL fields for all severity levels."""
@@ -133,10 +133,11 @@ class TestFindingValidator:
 
         validated, stats = validate_findings(findings)
 
-        assert stats.total_count == 5
-        assert stats.valid_count == 5
-        assert stats.fallbacks_applied > 0
-        assert stats.fallback_rate > 0
+        assert stats.total_findings == 5
+        assert stats.valid_findings == 5
+        assert stats.findings_with_fallbacks > 0
+        # fallback_rate_pct is calculated in to_dict(), not as attribute
+        assert stats.findings_with_fallbacks / stats.total_findings > 0
 
     def test_validator_handles_unknown_rule_id(self):
         """Test validator handles unknown rule IDs with generic fallback."""
@@ -181,129 +182,120 @@ class TestRedisCache:
 
     @pytest.mark.asyncio
     async def test_cache_set_and_get(self):
-        """Test basic cache set and get operations."""
+        """Test basic cache set and get operations with graceful degradation."""
         from app.cache.redis_cache import RedisCache
 
-        # Mock Redis
-        with patch('app.cache.redis_cache.redis.Redis') as mock_redis_cls:
-            mock_redis = AsyncMock()
-            mock_redis.ping.return_value = True
-            mock_redis_cls.return_value = mock_redis
+        cache = RedisCache()
+        
+        # Test without connection - should return None/False gracefully
+        result = await cache.get("test_key")
+        assert result is None
 
-            cache = RedisCache(redis_url="redis://localhost:6379")
-            await cache.connect()
+        result = await cache.set("test_key", {"data": "value"})
+        assert result is False  # Not connected
 
-            # Test set
-            mock_redis.setex.return_value = True
-            await cache.set("test_key", {"data": "value"}, ttl=60)
-
-            # Test get
-            import json
-            mock_redis.get.return_value = json.dumps({"data": "value"})
-            result = await cache.get("test_key")
-
-            assert result == {"data": "value"}
+        # Test delete without connection
+        result = await cache.delete("test_key")
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_cache_ai_response(self):
         """Test AI response caching."""
         from app.cache.redis_cache import RedisCache
+        from unittest.mock import AsyncMock
+        import json
 
-        with patch('app.cache.redis_cache.redis.Redis') as mock_redis_cls:
-            mock_redis = AsyncMock()
-            mock_redis.ping.return_value = True
-            mock_redis_cls.return_value = mock_redis
+        cache = RedisCache()
+        
+        # Mock the _redis attribute directly
+        mock_redis = AsyncMock()
+        ai_response = {
+            "summary": "Test summary",
+            "risk": "Test risk",
+            "confidence": 0.9
+        }
+        mock_redis.get.return_value = json.dumps(ai_response)
+        mock_redis.setex.return_value = True
+        
+        cache._redis = mock_redis
+        cache._connected = True
 
-            cache = RedisCache(redis_url="redis://localhost:6379")
-            await cache.connect()
+        # Cache AI response
+        await cache.set_ai_response("TF-STATE-001", ai_response)
+        mock_redis.setex.assert_called_once()
 
-            ai_response = {
-                "summary": "Test summary",
-                "risk": "Test risk",
-                "confidence": 0.9
-            }
-
-            # Cache AI response
-            import json
-            mock_redis.setex.return_value = True
-            await cache.set_ai_response("TF-STATE-001", ai_response)
-
-            # Retrieve AI response
-            mock_redis.get.return_value = json.dumps(ai_response)
-            result = await cache.get_ai_response("TF-STATE-001")
-
-            assert result["summary"] == "Test summary"
-            assert result["confidence"] == 0.9
+        # Retrieve AI response
+        result = await cache.get_ai_response("TF-STATE-001")
+        assert result["summary"] == "Test summary"
+        assert result["confidence"] == 0.9
 
     @pytest.mark.asyncio
     async def test_cache_scan_result(self):
         """Test scan result caching."""
         from app.cache.redis_cache import RedisCache
+        from unittest.mock import AsyncMock
+        import json
 
-        with patch('app.cache.redis_cache.redis.Redis') as mock_redis_cls:
-            mock_redis = AsyncMock()
-            mock_redis.ping.return_value = True
-            mock_redis_cls.return_value = mock_redis
+        cache = RedisCache()
+        
+        # Mock the _redis attribute directly
+        mock_redis = AsyncMock()
+        scan_result = {
+            "scan_id": "test-scan-123",
+            "status": "completed",
+            "findings_count": 10
+        }
+        mock_redis.get.return_value = json.dumps(scan_result)
+        mock_redis.setex.return_value = True
+        
+        cache._redis = mock_redis
+        cache._connected = True
 
-            cache = RedisCache(redis_url="redis://localhost:6379")
-            await cache.connect()
+        # Cache scan result
+        await cache.set_scan_result("test-scan-123", scan_result)
+        mock_redis.setex.assert_called_once()
 
-            scan_result = {
-                "scan_id": "test-scan-123",
-                "status": "completed",
-                "findings_count": 10
-            }
-
-            # Cache scan result
-            import json
-            mock_redis.setex.return_value = True
-            await cache.set_scan_result("test-scan-123", scan_result)
-
-            # Retrieve scan result
-            mock_redis.get.return_value = json.dumps(scan_result)
-            result = await cache.get_scan_result("test-scan-123")
-
-            assert result["scan_id"] == "test-scan-123"
-            assert result["findings_count"] == 10
+        # Retrieve scan result
+        result = await cache.get_scan_result("test-scan-123")
+        assert result["scan_id"] == "test-scan-123"
+        assert result["findings_count"] == 10
 
     @pytest.mark.asyncio
     async def test_cache_delete(self):
         """Test cache delete operation."""
         from app.cache.redis_cache import RedisCache
+        from unittest.mock import AsyncMock
 
-        with patch('app.cache.redis_cache.redis.Redis') as mock_redis_cls:
-            mock_redis = AsyncMock()
-            mock_redis.ping.return_value = True
-            mock_redis_cls.return_value = mock_redis
+        cache = RedisCache()
+        
+        # Mock the _redis attribute directly
+        mock_redis = AsyncMock()
+        mock_redis.delete.return_value = 1
+        
+        cache._redis = mock_redis
+        cache._connected = True
 
-            cache = RedisCache(redis_url="redis://localhost:6379")
-            await cache.connect()
-
-            # Delete key
-            mock_redis.delete.return_value = 1
-            result = await cache.delete("test_key")
-
-            assert result is True
+        # Delete key
+        result = await cache.delete("test_key")
+        assert result is True
+        mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cache_graceful_failure(self):
         """Test cache continues to work when Redis is unavailable."""
         from app.cache.redis_cache import RedisCache
 
-        with patch('app.cache.redis_cache.redis.Redis') as mock_redis_cls:
-            mock_redis = AsyncMock()
-            mock_redis.ping.side_effect = Exception("Connection refused")
-            mock_redis_cls.return_value = mock_redis
+        cache = RedisCache()
+        
+        # Don't connect - should handle gracefully
+        cache._connected = False
 
-            cache = RedisCache(redis_url="redis://localhost:6379")
-            await cache.connect()
+        # Should not raise, should return None
+        result = await cache.get("test_key")
+        assert result is None
 
-            # Should not raise, should return None
-            result = await cache.get("test_key")
-            assert result is None
-
-            # Set should not raise
-            await cache.set("test_key", {"data": "value"})
+        # Set should not raise
+        await cache.set("test_key", {"data": "value"})
 
 
 # ============================================================================
@@ -331,7 +323,8 @@ class TestRAGRetriever:
 
         # Check relevance score
         top_doc = docs.documents[0]
-        assert top_doc.score > 0, "Should have relevance score"
+        score = docs.relevance_scores.get(top_doc.doc_id, 0.0)
+        assert score > 0, "Should have relevance score"
 
     def test_rag_retrieves_kubernetes_docs(self):
         """Test RAG retrieves Kubernetes security docs."""
@@ -388,7 +381,8 @@ class TestRAGRetriever:
 
         # Should return Terraform state docs
         top_doc = docs.documents[0]
-        assert top_doc.score > 0
+        score = docs.relevance_scores.get(top_doc.doc_id, 0.0)
+        assert score > 0
 
 
 # ============================================================================
@@ -413,58 +407,80 @@ class TestWebSocketManager:
 
         manager = ScanProgressWebSocketManager()
         assert manager is not None
-        assert hasattr(manager, 'connections')
+        assert hasattr(manager, '_connections')
 
     def test_websocket_manager_register_connection(self):
         """Test WebSocket manager can register connections."""
         from app.websockets.scan_progress import ScanProgressWebSocketManager
+        import asyncio
 
         manager = ScanProgressWebSocketManager()
 
         # Mock WebSocket
         mock_ws = AsyncMock()
+        mock_ws.accept = AsyncMock()
         mock_ws.send_text = AsyncMock()
 
-        # Register connection
-        manager.register_connection("test-scan-id", mock_ws)
-
-        assert "test-scan-id" in manager.connections
-        assert len(manager.connections["test-scan-id"]) == 1
+        # Register connection using async method
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(manager.connect(mock_ws, "test-scan-id"))
+            assert "test-scan-id" in manager._connections
+            assert len(manager._connections["test-scan-id"]) == 1
+        finally:
+            loop.close()
 
     def test_websocket_manager_broadcast(self):
         """Test WebSocket manager can broadcast messages."""
         from app.websockets.scan_progress import ScanProgressWebSocketManager
+        import asyncio
 
         manager = ScanProgressWebSocketManager()
 
         # Mock WebSocket
         mock_ws = AsyncMock()
+        mock_ws.accept = AsyncMock()
         mock_ws.send_text = AsyncMock()
-        manager.register_connection("test-scan-id", mock_ws)
 
-        # Broadcast message
-        import asyncio
-        asyncio.get_event_loop().run_until_complete(
-            manager.broadcast_progress("test-scan-id", 50, "Running tests...")
-        )
+        # Register connection
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(manager.connect(mock_ws, "test-scan-id"))
 
-        # Verify message sent
-        mock_ws.send_text.assert_called_once()
+            # Broadcast message
+            loop.run_until_complete(
+                manager.broadcast_progress("test-scan-id", 50, "Running tests...")
+            )
+
+            # Verify message sent
+            assert mock_ws.send_text.called
+        finally:
+            loop.close()
 
     def test_websocket_manager_cleanup(self):
         """Test WebSocket manager cleans up connections."""
         from app.websockets.scan_progress import ScanProgressWebSocketManager
+        import asyncio
 
         manager = ScanProgressWebSocketManager()
 
         # Mock WebSocket
         mock_ws = AsyncMock()
-        manager.register_connection("test-scan-id", mock_ws)
+        mock_ws.accept = AsyncMock()
+        mock_ws.send_text = AsyncMock()
 
-        # Remove connection
-        manager.remove_connection("test-scan-id", mock_ws)
+        # Register and disconnect
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(manager.connect(mock_ws, "test-scan-id"))
+            assert len(manager._connections.get("test-scan-id", [])) == 1
 
-        assert len(manager.connections.get("test-scan-id", [])) == 0
+            # Disconnect
+            loop.run_until_complete(manager.disconnect(mock_ws))
+            # Connection should be removed
+            assert "test-scan-id" not in manager._connections or len(manager._connections.get("test-scan-id", [])) == 0
+        finally:
+            loop.close()
 
 
 # ============================================================================

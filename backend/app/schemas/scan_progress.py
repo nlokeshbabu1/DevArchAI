@@ -43,6 +43,7 @@ class ScanProgressResponse(BaseModel):
     stage: Optional[str] = None  # cloned, detecting, scanning, ai, completed
     files_scanned: int = 0
     total_files: int = 0
+    files_list: List[str] = []  # Actual file paths being scanned
     
     class Config:
         json_schema_extra = {

@@ -30,6 +30,39 @@ interface SeverityCounts {
   info: number
 }
 
+interface FileBeingScanned {
+  path: string
+  type: 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
+  status: 'pending' | 'scanning' | 'completed'
+}
+
+// Helper function to determine file type from path
+function getFileTypeFromPath(path: string): FileBeingScanned['type'] {
+  const lowerPath = path.toLowerCase()
+  
+  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
+    return 'docker'
+  }
+  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
+    return 'k8s'
+  }
+  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
+    return 'terraform'
+  }
+  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
+    return 'helm'
+  }
+  if (lowerPath.includes('.github') || lowerPath.includes('.gitlab') || lowerPath.includes('jenkins') || 
+      lowerPath.includes('ci/') || lowerPath.includes('pipeline') || lowerPath.includes('azure-pipelines')) {
+    return 'cicd'
+  }
+  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
+    return 'monitoring'
+  }
+  
+  return 'cicd' // Default fallback
+}
+
 interface DevOpsStack {
   docker: boolean
   docker_files: string[]
@@ -89,6 +122,8 @@ export function ScanPage() {
   const [scanId, setScanId] = useState<string>('')
   const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
   const [filesScanned, setFilesScanned] = useState(0)
+  const [filesList, setFilesList] = useState<string[]>([])
+  const [scanLogs, setScanLogs] = useState<string[]>([])  // Real logs from backend
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches, error: branchesError, refetch, isFetching } = useQuery({
@@ -152,7 +187,16 @@ export function ScanPage() {
           const statusResponse = await axios.get(`/api/v1/scan/status/${scanId}`)
           const status = statusResponse.data
 
-          console.log('📊 Real scan status:', status)
+          console.log('📊 Real scan status:', {
+            progress: status.progress,
+            status: status.status,
+            current_step: status.current_step,
+            logs_count: status.logs?.length || 0,
+            files_list_length: status.files_list?.length || 0,
+            files_scanned: status.files_scanned,
+            has_files_list: 'files_list' in status,
+            first_3_files: status.files_list?.slice(0, 3)
+          })
 
           // Update progress from API
           if (status.progress) {
@@ -161,7 +205,37 @@ export function ScanPage() {
 
           // Update current step from API
           if (status.current_step) {
-            setCurrentStep(status.current_step)
+            // Backend returns current_step as a string, map it to a step number
+            const stepMap: Record<string, number> = {
+              'Connecting to GitHub': 1,
+              'Fetching repository': 2,
+              'Detecting technologies': 3,
+              'Running security rules': 4,
+              'Generating AI suggestions': 5,
+              'Generating AI fixes': 5,
+              'AI enrichment': 5,
+              'Calculating score': 6,
+              'Calculating scores': 6,
+              'Saving results': 7,
+              'Scan completed': 7,
+              'completed': 7,
+            }
+            
+            // If it's already a number, use it directly
+            if (typeof status.current_step === 'number') {
+              setCurrentStep(status.current_step)
+            } else {
+              // Map string to step number
+              const stepStr = status.current_step.toLowerCase()
+              let mappedStep = 1
+              for (const [key, value] of Object.entries(stepMap)) {
+                if (stepStr.includes(key.toLowerCase())) {
+                  mappedStep = value
+                  break
+                }
+              }
+              setCurrentStep(mappedStep)
+            }
           }
 
           // Update detected technologies from API (even after completion)
@@ -173,6 +247,35 @@ export function ScanPage() {
           // Update files scanned count from API
           if (status.files_scanned !== undefined) {
             setFilesScanned(status.files_scanned)
+          }
+
+          // Update files list from API
+          if (status.files_list && Array.isArray(status.files_list) && status.files_list.length > 0) {
+            console.log('📁 Files detected:', status.files_list.length, 'First files:', status.files_list.slice(0, 3))
+            setFilesList(status.files_list)
+          }
+
+          // ✅ CRITICAL: Accumulate REAL logs from backend (don't replace)
+          if (status.logs && Array.isArray(status.logs)) {
+            setScanLogs(prevLogs => {
+              // Use Set to prevent duplicates while preserving order
+              const logSet = new Set(prevLogs)
+              let hasNewLogs = false
+              
+              for (const log of status.logs) {
+                if (!logSet.has(log)) {
+                  logSet.add(log)
+                  hasNewLogs = true
+                }
+              }
+              
+              // Only update if there are new logs
+              if (!hasNewLogs) return prevLogs
+              
+              // Performance optimization: Limit to last 200 logs to prevent memory issues
+              const allLogs = Array.from(logSet)
+              return allLogs.length > 200 ? allLogs.slice(-200) : allLogs
+            })
           }
 
         } catch (error) {
@@ -250,7 +353,35 @@ export function ScanPage() {
 
           // ✅ Update current step from REAL backend API
           if (status.current_step !== undefined) {
-            setCurrentStep(status.current_step)
+            // Backend returns current_step as a string, map it to a step number
+            const stepMap: Record<string, number> = {
+              'Connecting to GitHub': 1,
+              'Fetching repository': 2,
+              'Detecting technologies': 3,
+              'Running security rules': 4,
+              'Generating AI suggestions': 5,
+              'Generating AI fixes': 5,
+              'AI enrichment': 5,
+              'Calculating score': 6,
+              'Calculating scores': 6,
+              'Saving results': 7,
+              'Scan completed': 7,
+              'completed': 7,
+            }
+            
+            if (typeof status.current_step === 'number') {
+              setCurrentStep(status.current_step)
+            } else {
+              const stepStr = String(status.current_step).toLowerCase()
+              let mappedStep = 1
+              for (const [key, value] of Object.entries(stepMap)) {
+                if (stepStr.includes(key.toLowerCase())) {
+                  mappedStep = value
+                  break
+                }
+              }
+              setCurrentStep(mappedStep)
+            }
           }
 
           // ✅ Update detected technologies from backend
@@ -268,42 +399,64 @@ export function ScanPage() {
           if (canComplete && minTimePassed) {
             clearInterval(pollInterval)
 
-            // Fetch complete results
-            const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
-            const results = resultsResponse.data
+            // Fetch complete results with retry logic for race condition
+            let attempts = 0
+            const maxAttempts = 5
+            let fetchSuccess = false
 
-            console.log('✅ Complete results:', results)
+            while (attempts < maxAttempts && !fetchSuccess) {
+              try {
+                const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+                const results = resultsResponse.data
 
-            // Show 100% and complete
-            setProgress(100)
-            setCurrentStep(6)
-            setLoading(false)
+                console.log('✅ Complete results:', results)
 
-            // Create result object with detected technologies
-            const scanResult: ScanResult = {
-              success: true,
-              scan_id: results.scan_id || data.scan_id,
-              security_score: results.security_score || results.overall_score || 0,
-              severity_counts: results.severity_counts || {
-                critical: 0,
-                high: 0,
-                medium: 0,
-                low: 0,
-                info: 0,
-              },
-              findings: results.findings || [],
-              total_findings: results.findings_count || results.findings?.length || 0,
-              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
-              devops_stack: results.devops_stack,
-              detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data from polling
-              repository_url: results.repository_url || repoUrl,
-              repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
-              branch: results.branch || selectedBranch,
+                // Show 100% and complete
+                setProgress(100)
+                setCurrentStep(6)
+                setLoading(false)
+
+                // Create result object with detected technologies
+                const scanResult: ScanResult = {
+                  success: true,
+                  scan_id: results.scan_id || data.scan_id,
+                  security_score: results.security_score || results.overall_score || 0,
+                  severity_counts: results.severity_counts || {
+                    critical: 0,
+                    high: 0,
+                    medium: 0,
+                    low: 0,
+                    info: 0,
+                  },
+                  findings: results.findings || [],
+                  total_findings: results.findings_count || results.findings?.length || 0,
+                  files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
+                  devops_stack: results.devops_stack,
+                  detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data from polling
+                  repository_url: results.repository_url || repoUrl,
+                  repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
+                  branch: results.branch || selectedBranch,
+                }
+
+                setResult(scanResult)
+                console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
+                console.log('✅ Scan complete! Findings:', scanResult.total_findings)
+
+                fetchSuccess = true
+              } catch (fetchError: any) {
+                attempts++
+                console.warn(`⚠️ Fetch attempt ${attempts}/${maxAttempts} failed:`, fetchError.response?.data?.detail || fetchError.message)
+                
+                if (attempts >= maxAttempts) {
+                  throw new Error(`Failed to fetch results after ${maxAttempts} attempts: ${fetchError.response?.data?.detail || fetchError.message}`)
+                }
+                
+                // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+                const waitTime = Math.pow(2, attempts - 1) * 1000
+                console.log(`⏳ Waiting ${waitTime}ms before retry...`)
+                await new Promise(resolve => setTimeout(resolve, waitTime))
+              }
             }
-
-            setResult(scanResult)
-            console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
-            console.log('✅ Scan complete! Findings:', scanResult.total_findings)
 
             // ✅ PHASE 3A: DO NOT navigate away - show results on same page
             // Results are already displayed inline via the `result` state
@@ -318,13 +471,18 @@ export function ScanPage() {
       }, 1000)
 
       // Timeout after 60 seconds
-      setTimeout(() => {
+      setTimeout(async () => {
         clearInterval(pollInterval)
 
-        // Even if polling fails, try to fetch results
-        axios.get(`/api/v1/scan/results/${data.scan_id}`)
-          .then(resultsResponse => {
+        // Even if polling fails, try to fetch results with retry logic
+        let attempts = 0
+        const maxAttempts = 5
+        
+        while (attempts < maxAttempts) {
+          try {
+            const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
             const results = resultsResponse.data
+            
             setProgress(100)
             setCurrentStep(6)
             setLoading(false)
@@ -342,12 +500,21 @@ export function ScanPage() {
               repository_name: repoUrl.split('/').slice(-2).join('/'),
               branch: selectedBranch,
             })
-          })
-          .catch(fetchError => {
-            console.error('Fetch error:', fetchError)
-            setError('Scan timed out. Please try again.')
-            setLoading(false)
-          })
+            break
+          } catch (fetchError: any) {
+            attempts++
+            console.warn(`⚠️ Timeout fetch attempt ${attempts}/${maxAttempts} failed:`, fetchError.response?.data?.detail || fetchError.message)
+            
+            if (attempts >= maxAttempts) {
+              console.error('Fetch error:', fetchError)
+              setError('Scan timed out. Please try again.')
+              setLoading(false)
+            } else {
+              const waitTime = Math.pow(2, attempts - 1) * 1000
+              await new Promise(resolve => setTimeout(resolve, waitTime))
+            }
+          }
+        }
       }, 60000)
 
     } catch (err: any) {
@@ -481,6 +648,12 @@ export function ScanPage() {
             currentStep={currentStep}
             isComplete={progress >= 100}
             detectedTechnologies={detectedTechnologies}
+            detectedFiles={filesList.map(path => ({
+              path,
+              type: getFileTypeFromPath(path),
+              status: 'completed'
+            }))}
+            backendLogs={scanLogs}  // ✅ Pass real logs from backend
           />
         </div>
       </div>

@@ -14,6 +14,7 @@ export interface RegisterRequest {
   username: string
   password: string
   organization_name?: string
+  country?: string  // ISO 3166-1 alpha-2 country code (default: "US")
 }
 
 export interface TokenResponse {

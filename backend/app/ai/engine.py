@@ -408,7 +408,10 @@ class MistralProvider(BaseLLMProvider):
     def client(self):
         """Lazy load Mistral client."""
         if self._client is None:
-            from mistralai import Mistral
+            try:
+                from mistralai.client import Mistral
+            except ImportError:
+                from mistralai import Mistral
             self._client = Mistral(api_key=self.api_key)
         return self._client
 
@@ -723,9 +726,13 @@ def get_llm_provider() -> BaseLLMProvider:
     # Try Mistral if API key is available
     if settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider")
+        # Use correct Mistral model, not gemini-pro or other provider defaults
+        mistral_model = "mistral-large-latest"
+        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+            mistral_model = settings.LLM_MODEL
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
-            model=settings.LLM_MODEL or "mistral-large-latest",
+            model=mistral_model,
         )
 
     # Fallback to Mock provider (static examples)

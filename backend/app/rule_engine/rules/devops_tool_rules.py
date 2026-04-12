@@ -2260,6 +2260,61 @@ class AzureNoRetryRule(BaseRule):
 # ANSIBLE RULES (15 rules)
 # ============================================================================
 
+def _is_ansible_file(file_path: str, content: str) -> bool:
+    """Check if a file is actually an Ansible playbook (not GitHub Actions or other CI/CD).
+    
+    Ansible playbooks typically have:
+    - hosts: keyword (most reliable indicator)
+    - tasks: keyword
+    - File path contains 'ansible', 'playbook', or is in 'roles/' directory
+    - File extension is .yml or .yaml
+    
+    GitHub Actions workflows have:
+    - 'on:' or 'jobs:' at the top level
+    - Located in .github/workflows/
+    """
+    if not file_path:
+        return False
+    
+    # Skip GitHub Actions workflows explicitly
+    if '.github/workflows/' in file_path:
+        return False
+    
+    # Skip GitLab CI
+    if file_path.endswith('.gitlab-ci.yml'):
+        return False
+    
+    # Skip Jenkinsfile
+    if 'Jenkinsfile' in file_path:
+        return False
+    
+    # Check for Ansible-specific keywords in content
+    if content:
+        # Must have 'hosts:' or 'tasks:' to be considered Ansible
+        has_hosts = 'hosts:' in content
+        has_tasks = 'tasks:' in content
+        has_plays = 'name:' in content and ('- name:' in content or '  - name:' in content)
+        
+        # If it has GitHub Actions keywords, it's NOT Ansible
+        has_github_actions = ('on:' in content and 'jobs:' in content) or 'uses:' in content
+        
+        if has_github_actions:
+            return False
+        
+        # If it has Ansible keywords, it IS Ansible
+        if has_hosts or has_tasks:
+            return True
+    
+    # Check file path for Ansible indicators
+    path_lower = file_path.lower()
+    if 'ansible' in path_lower or 'playbook' in path_lower:
+        return True
+    if '/roles/' in path_lower or path_lower.endswith('/roles'):
+        return True
+    
+    return False
+
+
 @register_rule(file_types=["cicd"])
 class AnsibleNoBecomeRule(BaseRule):
     """ANSIBLE_001: Check for missing become."""
@@ -2278,8 +2333,8 @@ class AnsibleNoBecomeRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'become:' not in content and 'sudo:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2311,8 +2366,8 @@ class AnsibleNoHandlerRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'notify:' in content and 'handlers:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2344,8 +2399,8 @@ class AnsibleNoTagsRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'tags:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2377,8 +2432,8 @@ class AnsibleNoVarsRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'vars:' not in content and 'vars_files:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2410,8 +2465,8 @@ class AnsibleNoRolesRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'roles:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2443,8 +2498,8 @@ class AnsibleNoCheckModeRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'check_mode' not in content and 'ansible_check_mode' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2476,8 +2531,8 @@ class AnsibleNoDiffRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'diff:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2509,8 +2564,8 @@ class AnsibleNoSerialRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'hosts:' in content and 'serial:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2542,8 +2597,8 @@ class AnsibleNoGatherFactsRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'gather_facts:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2575,8 +2630,8 @@ class AnsibleNoIgnoreErrorsRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'ignore_errors:' in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2608,8 +2663,8 @@ class AnsibleNoChangedWhenRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'changed_when:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2641,8 +2696,8 @@ class AnsibleNoFailedWhenRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'failed_when:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2674,8 +2729,8 @@ class AnsibleNoLoopRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'loop:' not in content and 'with_items:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2707,8 +2762,8 @@ class AnsibleNoBlockRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             if 'block:' not in content:
                 findings.append(RuleFinding(
                     rule_id=self.rule.id,
@@ -2740,8 +2795,8 @@ class AnsibleNoVaultRule(BaseRule):
 
     def evaluate(self, resources: list[dict[str, Any]], file_path: str) -> list[RuleFinding]:
         findings = []
-        if file_path and ('ansible' in file_path.lower() or file_path.endswith('.yml') or file_path.endswith('.yaml')):
-            content = resources[0].get("raw_content", "") if resources else ""
+        content = resources[0].get("raw_content", "") if resources else ""
+        if _is_ansible_file(file_path, content):
             secret_patterns = [
                 r'(?i)(password|passwd|pwd)\s*:\s*["\']?[^\s$]+',
                 r'(?i)(secret|token)\s*:\s*["\']?[^\s$]+',

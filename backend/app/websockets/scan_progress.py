@@ -157,6 +157,7 @@ class ScanProgressWebSocketManager:
         logs: Optional[list[str]] = None,
         detected_stack: Optional[list[str]] = None,
         error_message: Optional[str] = None,
+        files_list: Optional[list[str]] = None,
     ) -> int:
         """
         Broadcast a progress update to all clients watching a scan.
@@ -170,6 +171,7 @@ class ScanProgressWebSocketManager:
             logs: Recent log messages.
             detected_stack: Detected technology stack.
             error_message: Error message if the scan failed.
+            files_list: List of file paths being scanned.
 
         Returns:
             The number of clients the message was sent to.
@@ -189,6 +191,8 @@ class ScanProgressWebSocketManager:
             data["detected_stack"] = detected_stack
         if error_message is not None:
             data["error_message"] = error_message
+        if files_list is not None:
+            data["files_list"] = files_list
 
         # Determine message type based on status
         if status == "completed":
@@ -389,6 +393,7 @@ async def scan_progress_websocket(
                 ],
                 "detected_stack": progress.detected_stack,
                 "logs": progress.logs[-20:],  # Last 20 log entries
+                "files_list": progress.files_list if hasattr(progress, 'files_list') else [],
             }
             message = _make_message(WSMessageType.PROGRESS_UPDATE, initial_data)
             await websocket.send_text(message)

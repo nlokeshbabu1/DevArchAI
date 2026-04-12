@@ -136,7 +136,7 @@ rules:
     severity: low
     category: cost
     description: Untagged resources make cost allocation and management difficult
-    remediation: Add standard tags: Name, Environment, Owner, CostCenter
+    remediation: "Add standard tags: Name, Environment, Owner, CostCenter"
     check_logic:
       field: tags
       operator: has_required_tags
