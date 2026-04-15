@@ -12,6 +12,7 @@ import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { TechStackDisplay } from '../components/TechStackDisplay'
 import { DiffViewer } from '../components/DiffViewer'
+import { CreatePRButton } from '../components/CreatePRButton'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 
@@ -48,6 +49,7 @@ interface Finding {
 }
 
 interface ScanResult {
+  id?: string  // Backend returns 'id' not 'scan_id'
   scan_id: string
   repository_url: string
   repository_name?: string
@@ -500,6 +502,24 @@ export function ResultPage() {
                 })}
               </div>
             </Card>
+          </motion.div>
+        )}
+
+        {/* Automated PR Creation */}
+        {result && result.findings.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <CreatePRButton
+              scanId={result.id || result.scan_id}
+              findingIds={result.findings
+                .filter(f => f.severity === 'critical' || f.severity === 'high')
+                .map(f => f.id)}
+              scoreBefore={result.security_score || 0}
+              scoreAfter={Math.min(100, (result.security_score || 0) + 15)}
+            />
           </motion.div>
         )}
 

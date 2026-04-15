@@ -120,11 +120,11 @@ class RepositoryScanner:
             # Build clone URL with token if provided
             clone_url = repo_url
             if github_token:
-                # Insert token into URL
+                # Insert token into URL using oauth2 which is more reliable for OAuth tokens
                 if repo_url.startswith("https://github.com/"):
                     clone_url = repo_url.replace(
                         "https://github.com/",
-                        f"https://x-access-token:{github_token}@github.com/",
+                        f"https://oauth2:{github_token}@github.com/",
                     )
 
             # Clone repository

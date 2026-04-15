@@ -9,8 +9,6 @@ import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
-import { GitHubRepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
-import apiClient from '../../api/endpoints/client'
 
 interface DisplayRepository extends Repository {
   displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed'
@@ -30,10 +28,9 @@ export function RepositoriesPage() {
   const { token } = useAuthStore()
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showAddModal, setShowAddModal] = useState(false)
-  const [showGithubSelection, setShowGithubSelection] = useState(false)
   const [scanningRepoIds, setScanningRepoIds] = useState<Set<string>>(new Set())
 
-  // Fetch manual repositories
+  // Fetch imported repositories (only repos user has explicitly added/imported)
   const { data: repositoriesResponse, isLoading, refetch } = useQuery({
     queryKey: ['repositories'],
     queryFn: async () => {
@@ -43,32 +40,11 @@ export function RepositoriesPage() {
     refetchInterval: 5000, // Poll every 5 seconds for status updates
   })
 
-  // Fetch GitHub repositories
-  const { data: githubReposResponse, isLoading: isLoadingGithub } = useQuery({
-    queryKey: ['github-repos'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.get<GitHubRepoResponse>('/github/repos')
-        return response.data
-      } catch (error) {
-        console.warn('Failed to fetch GitHub repos:', error)
-        return { github_connected: false, github_repositories: [] }
-      }
-    },
-    refetchInterval: 60000, // Refresh every minute
-  })
-
   const repositories = repositoriesResponse || []
-  const githubRepos = githubReposResponse?.github_repositories || []
-  const githubConnected = githubReposResponse?.github_connected || false
+  const githubConnected = repositories.some((r: any) => r.source === 'github' || r.url?.includes('github.com'))
 
-  // Show GitHub selection modal if connected but no repos imported yet
-  const hasUnimportedGithubRepos = githubConnected && githubRepos.length > 0 && repositories.length === 0
-
-  // Merge GitHub repos with manual repos (avoid duplicates by URL)
-  const manualRepoUrls = new Set(repositories.map(r => r.url))
-  const uniqueGithubRepos = githubRepos.filter(ghRepo => !manualRepoUrls.has(ghRepo.url))
-  const allRepos = [...repositories.map(r => ({ ...r, source: 'manual' as const })), ...uniqueGithubRepos]
+  // All repos are just the imported/added ones - no automatic GitHub fetch
+  const allRepos = repositories.map((r: any) => ({ ...r, source: r.source || (r.url?.includes('github.com') ? 'github' : 'manual') }))
 
   // Add repository mutation
   const addRepositoryMutation = useMutation({
@@ -120,7 +96,6 @@ export function RepositoriesPage() {
 
   const handleGithubImportSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['repositories'] })
-    queryClient.invalidateQueries({ queryKey: ['github-repos'] })
   }
 
   const handleScan = (repoId: string, repoUrl: string) => {
@@ -508,15 +483,6 @@ export function RepositoriesPage() {
         onClose={() => setShowAddModal(false)}
         onAdd={handleAddRepository}
         isLoading={isAdding}
-      />
-
-      {/* GitHub Repo Selection Modal */}
-      <GitHubRepoSelectionModal
-        isOpen={showGithubSelection || hasUnimportedGithubRepos}
-        onClose={() => setShowGithubSelection(false)}
-        onSuccess={handleGithubImportSuccess}
-        repos={githubRepos as any}
-        isLoading={isLoadingGithub}
       />
     </div>
   )

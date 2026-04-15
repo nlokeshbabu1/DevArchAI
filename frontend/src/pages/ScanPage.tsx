@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -178,113 +178,142 @@ export function ScanPage() {
     })
   }, [branches, isFetchingBranches, hasBranchesError, branchesData])
 
-  // Poll real scan progress from API
-  useEffect(() => {
-    let pollInterval: NodeJS.Timeout
-    if (loading && scanId) {
-      pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await axios.get(`/api/v1/scan/status/${scanId}`)
-          const status = statusResponse.data
+  // WebSocket connection for real-time scan progress
+  const wsRef = useRef<WebSocket | null>(null)
 
-          console.log('📊 Real scan status:', {
-            progress: status.progress,
-            status: status.status,
-            current_step: status.current_step,
-            logs_count: status.logs?.length || 0,
-            files_list_length: status.files_list?.length || 0,
-            files_scanned: status.files_scanned,
-            has_files_list: 'files_list' in status,
-            first_3_files: status.files_list?.slice(0, 3)
-          })
-
-          // Update progress from API
-          if (status.progress) {
-            setProgress(Math.round(status.progress))
-          }
-
-          // Update current step from API
-          if (status.current_step) {
-            // Backend returns current_step as a string, map it to a step number
-            const stepMap: Record<string, number> = {
-              'Connecting to GitHub': 1,
-              'Fetching repository': 2,
-              'Detecting technologies': 3,
-              'Running security rules': 4,
-              'Generating AI suggestions': 5,
-              'Generating AI fixes': 5,
-              'AI enrichment': 5,
-              'Calculating score': 6,
-              'Calculating scores': 6,
-              'Saving results': 7,
-              'Scan completed': 7,
-              'completed': 7,
-            }
-            
-            // If it's already a number, use it directly
-            if (typeof status.current_step === 'number') {
-              setCurrentStep(status.current_step)
-            } else {
-              // Map string to step number
-              const stepStr = status.current_step.toLowerCase()
-              let mappedStep = 1
-              for (const [key, value] of Object.entries(stepMap)) {
-                if (stepStr.includes(key.toLowerCase())) {
-                  mappedStep = value
-                  break
-                }
-              }
-              setCurrentStep(mappedStep)
-            }
-          }
-
-          // Update detected technologies from API (even after completion)
-          if (status.detected_stack && Array.isArray(status.detected_stack) && status.detected_stack.length > 0) {
-            console.log('✅ Technologies detected:', status.detected_stack)
-            setDetectedTechnologies(status.detected_stack)
-          }
-
-          // Update files scanned count from API
-          if (status.files_scanned !== undefined) {
-            setFilesScanned(status.files_scanned)
-          }
-
-          // Update files list from API
-          if (status.files_list && Array.isArray(status.files_list) && status.files_list.length > 0) {
-            console.log('📁 Files detected:', status.files_list.length, 'First files:', status.files_list.slice(0, 3))
-            setFilesList(status.files_list)
-          }
-
-          // ✅ CRITICAL: Accumulate REAL logs from backend (don't replace)
-          if (status.logs && Array.isArray(status.logs)) {
-            setScanLogs(prevLogs => {
-              // Use Set to prevent duplicates while preserving order
-              const logSet = new Set(prevLogs)
-              let hasNewLogs = false
-              
-              for (const log of status.logs) {
-                if (!logSet.has(log)) {
-                  logSet.add(log)
-                  hasNewLogs = true
-                }
-              }
-              
-              // Only update if there are new logs
-              if (!hasNewLogs) return prevLogs
-              
-              // Performance optimization: Limit to last 200 logs to prevent memory issues
-              const allLogs = Array.from(logSet)
-              return allLogs.length > 200 ? allLogs.slice(-200) : allLogs
-            })
-          }
-
-        } catch (error) {
-          console.error('Polling error:', error)
-        }
-      }, 1000) // Poll every 1 second for faster updates
+  // Helper to map step string to number
+  const mapStepToNumber = useCallback((step: string | number): number => {
+    if (typeof step === 'number') return step
+    const stepMap: Record<string, number> = {
+      'Connecting to GitHub': 1,
+      'Fetching repository': 2,
+      'Detecting technologies': 3,
+      'Running security rules': 4,
+      'Generating AI suggestions': 5,
+      'Generating AI fixes': 5,
+      'AI enrichment': 5,
+      'Calculating score': 6,
+      'Calculating scores': 6,
+      'Saving results': 7,
+      'Scan completed': 7,
+      'completed': 7,
     }
-    return () => clearInterval(pollInterval)
-  }, [loading, scanId])
+    const stepStr = step.toLowerCase()
+    for (const [key, value] of Object.entries(stepMap)) {
+      if (stepStr.includes(key.toLowerCase())) return value
+    }
+    return 1
+  }, [])
+
+  // Connect to WebSocket for real-time updates
+  useEffect(() => {
+    if (!loading || !scanId) return
+
+    // Use relative path - Vite will proxy to backend
+    const wsUrl = `/ws/scan/${scanId}`
+
+    console.log('🔌 Connecting to WebSocket:', wsUrl)
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log('✅ WebSocket connected')
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        const { type, data } = message
+
+        switch (type) {
+          case 'progress_update':
+            if (data.progress !== undefined) {
+              setProgress(Math.round(data.progress))
+            }
+            if (data.current_step) {
+              setCurrentStep(mapStepToNumber(data.current_step))
+            }
+            if (data.detected_stack && Array.isArray(data.detected_stack) && data.detected_stack.length > 0) {
+              setDetectedTechnologies(data.detected_stack)
+            }
+            if (data.files_list && Array.isArray(data.files_list) && data.files_list.length > 0) {
+              setFilesList(data.files_list)
+            }
+            if (data.logs && Array.isArray(data.logs)) {
+              setScanLogs(prevLogs => {
+                const logSet = new Set(prevLogs)
+                let hasNew = false
+                for (const log of data.logs) {
+                  if (!logSet.has(log)) {
+                    logSet.add(log)
+                    hasNew = true
+                  }
+                }
+                if (!hasNew) return prevLogs
+                const all = Array.from(logSet)
+                return all.length > 200 ? all.slice(-200) : all
+              })
+            }
+            break
+
+          case 'log_message':
+            if (data.message) {
+              const logEntry = data.timestamp ? `[${data.timestamp}] ${data.message}` : data.message
+              setScanLogs(prev => {
+                if (prev.includes(logEntry)) return prev
+                const updated = [...prev, logEntry]
+                return updated.length > 200 ? updated.slice(-200) : updated
+              })
+            }
+            break
+
+          case 'step_update':
+            if (data.step_name) {
+              setCurrentStep(mapStepToNumber(data.step_name))
+            }
+            break
+
+          case 'stack_detected':
+            if (data.technology) {
+              setDetectedTechnologies(prev => {
+                if (prev.includes(data.technology)) return prev
+                return [...prev, data.technology]
+              })
+            }
+            break
+
+          case 'scan_complete':
+            setProgress(100)
+            setCurrentStep(7)
+            break
+
+          case 'scan_failed':
+            setError(data.error || 'Scan failed')
+            setLoading(false)
+            break
+        }
+      } catch (err) {
+        console.error('WebSocket message parse error:', err)
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+
+    ws.onclose = () => {
+      console.log('🔌 WebSocket disconnected')
+      wsRef.current = null
+    }
+
+    return () => {
+      if (wsRef.current) {
+        console.log('🔌 Closing WebSocket')
+        wsRef.current.close()
+        wsRef.current = null
+      }
+    }
+  }, [loading, scanId, mapStepToNumber])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -335,187 +364,126 @@ export function ScanPage() {
         throw new Error('No scan_id returned from server')
       }
 
-      // Save scan ID for polling
+      // Save scan ID - WebSocket will handle real-time updates
       setScanId(data.scan_id)
 
-      // Wait for scan to complete on backend (poll every 1000ms)
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await axios.get(`/api/v1/scan/status/${data.scan_id}`)
-          const status = statusResponse.data
+      // WebSocket connection (defined in useEffect above) will handle:
+      // - Progress updates
+      // - Step updates  
+      // - Log accumulation
+      // - Technology detection
+      // - Completion detection
 
-          console.log('📊 Scan status:', status.status, 'progress:', status.progress)
-
-          // ✅ Update progress from REAL backend API
-          if (status.progress !== undefined) {
-            setProgress(Math.round(status.progress))
-          }
-
-          // ✅ Update current step from REAL backend API
-          if (status.current_step !== undefined) {
-            // Backend returns current_step as a string, map it to a step number
-            const stepMap: Record<string, number> = {
-              'Connecting to GitHub': 1,
-              'Fetching repository': 2,
-              'Detecting technologies': 3,
-              'Running security rules': 4,
-              'Generating AI suggestions': 5,
-              'Generating AI fixes': 5,
-              'AI enrichment': 5,
-              'Calculating score': 6,
-              'Calculating scores': 6,
-              'Saving results': 7,
-              'Scan completed': 7,
-              'completed': 7,
-            }
-            
-            if (typeof status.current_step === 'number') {
-              setCurrentStep(status.current_step)
-            } else {
-              const stepStr = String(status.current_step).toLowerCase()
-              let mappedStep = 1
-              for (const [key, value] of Object.entries(stepMap)) {
-                if (stepStr.includes(key.toLowerCase())) {
-                  mappedStep = value
-                  break
-                }
-              }
-              setCurrentStep(mappedStep)
-            }
-          }
-
-          // ✅ Update detected technologies from backend
-          if (status.detected_stack && Array.isArray(status.detected_stack)) {
-            console.log('✅ Technologies detected:', status.detected_stack)
-            setDetectedTechnologies(status.detected_stack)
-            setFilesScanned(status.files_scanned || status.detected_stack.length)
-          }
-
-          // Only complete if BOTH backend is done AND minimum animation time has passed
+      // Monitor WebSocket completion and fetch results
+      const completionCheck = setInterval(async () => {
+        // Check if WebSocket has marked scan as complete
+        if (progress >= 100 || currentStep >= 7) {
+          clearInterval(completionCheck)
+          
+          // Minimum display time
           const elapsed = Date.now() - startTime
-          const canComplete = status.status === 'completed' || status.progress >= 100
-          const minTimePassed = elapsed >= MIN_ANIMATION_DURATION
-
-          if (canComplete && minTimePassed) {
-            clearInterval(pollInterval)
-
-            // Fetch complete results with retry logic for race condition
-            let attempts = 0
-            const maxAttempts = 5
-            let fetchSuccess = false
-
-            while (attempts < maxAttempts && !fetchSuccess) {
-              try {
-                const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
-                const results = resultsResponse.data
-
-                console.log('✅ Complete results:', results)
-
-                // Show 100% and complete
-                setProgress(100)
-                setCurrentStep(6)
-                setLoading(false)
-
-                // Create result object with detected technologies
-                const scanResult: ScanResult = {
-                  success: true,
-                  scan_id: results.scan_id || data.scan_id,
-                  security_score: results.security_score || results.overall_score || 0,
-                  severity_counts: results.severity_counts || {
-                    critical: 0,
-                    high: 0,
-                    medium: 0,
-                    low: 0,
-                    info: 0,
-                  },
-                  findings: results.findings || [],
-                  total_findings: results.findings_count || results.findings?.length || 0,
-                  files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
-                  devops_stack: results.devops_stack,
-                  detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data from polling
-                  repository_url: results.repository_url || repoUrl,
-                  repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
-                  branch: results.branch || selectedBranch,
-                }
-
-                setResult(scanResult)
-                console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
-                console.log('✅ Scan complete! Findings:', scanResult.total_findings)
-
-                fetchSuccess = true
-              } catch (fetchError: any) {
-                attempts++
-                console.warn(`⚠️ Fetch attempt ${attempts}/${maxAttempts} failed:`, fetchError.response?.data?.detail || fetchError.message)
-                
-                if (attempts >= maxAttempts) {
-                  throw new Error(`Failed to fetch results after ${maxAttempts} attempts: ${fetchError.response?.data?.detail || fetchError.message}`)
-                }
-                
-                // Wait before retrying (exponential backoff: 1s, 2s, 4s)
-                const waitTime = Math.pow(2, attempts - 1) * 1000
-                console.log(`⏳ Waiting ${waitTime}ms before retry...`)
-                await new Promise(resolve => setTimeout(resolve, waitTime))
-              }
-            }
-
-            // ✅ PHASE 3A: DO NOT navigate away - show results on same page
-            // Results are already displayed inline via the `result` state
-            // User can click "New Scan" button to start another scan
-          } else if (canComplete && !minTimePassed) {
-            // Backend is done but keep animation running
-            console.log('⏳ Backend done, waiting for animation...', Math.round((MIN_ANIMATION_DURATION - elapsed) / 1000) + 's remaining')
+          const MIN_DISPLAY_TIME = 2000
+          const remaining = Math.max(0, MIN_DISPLAY_TIME - elapsed)
+          
+          if (remaining > 0) {
+            await new Promise(resolve => setTimeout(resolve, remaining))
           }
-        } catch (pollError) {
-          console.error('Polling error:', pollError)
-        }
-      }, 1000)
 
-      // Timeout after 60 seconds
-      setTimeout(async () => {
-        clearInterval(pollInterval)
+          // Fetch complete results with retry logic
+          let attempts = 0
+          const maxAttempts = 5
+          let fetchSuccess = false
 
-        // Even if polling fails, try to fetch results with retry logic
-        let attempts = 0
-        const maxAttempts = 5
-        
-        while (attempts < maxAttempts) {
-          try {
-            const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
-            const results = resultsResponse.data
-            
-            setProgress(100)
-            setCurrentStep(6)
-            setLoading(false)
-            setResult({
-              success: true,
-              scan_id: results.scan_id,
-              security_score: results.security_score || 0,
-              severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-              findings: results.findings || [],
-              total_findings: results.findings_count || 0,
-              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,  // Use backend value
-              devops_stack: results.devops_stack,
-              detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),  // Use real data
-              repository_url: repoUrl,
-              repository_name: repoUrl.split('/').slice(-2).join('/'),
-              branch: selectedBranch,
-            })
-            break
-          } catch (fetchError: any) {
-            attempts++
-            console.warn(`⚠️ Timeout fetch attempt ${attempts}/${maxAttempts} failed:`, fetchError.response?.data?.detail || fetchError.message)
-            
-            if (attempts >= maxAttempts) {
-              console.error('Fetch error:', fetchError)
-              setError('Scan timed out. Please try again.')
+          while (attempts < maxAttempts && !fetchSuccess) {
+            try {
+              const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+              const results = resultsResponse.data
+
+              console.log('✅ Complete results:', results)
+
+              setProgress(100)
+              setCurrentStep(7)
               setLoading(false)
-            } else {
+
+              const scanResult: ScanResult = {
+                success: true,
+                scan_id: results.scan_id || data.scan_id,
+                security_score: results.security_score || results.overall_score || 0,
+                severity_counts: results.severity_counts || {
+                  critical: 0,
+                  high: 0,
+                  medium: 0,
+                  low: 0,
+                  info: 0,
+                },
+                findings: results.findings || [],
+                total_findings: results.findings_count || results.findings?.length || 0,
+                files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
+                devops_stack: results.devops_stack,
+                detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),
+                repository_url: results.repository_url || repoUrl,
+                repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
+                branch: results.branch || selectedBranch,
+              }
+
+              setResult(scanResult)
+              console.log('✅ Scan complete! Technologies:', scanResult.detected_technologies)
+              console.log('✅ Scan complete! Findings:', scanResult.total_findings)
+
+              fetchSuccess = true
+            } catch (fetchError: any) {
+              attempts++
+              console.warn(`⚠️ Fetch attempt ${attempts}/${maxAttempts} failed:`, fetchError.response?.data?.detail || fetchError.message)
+
+              if (attempts >= maxAttempts) {
+                throw new Error(`Failed to fetch results after ${maxAttempts} attempts: ${fetchError.response?.data?.detail || fetchError.message}`)
+              }
+
               const waitTime = Math.pow(2, attempts - 1) * 1000
+              console.log(`⏳ Waiting ${waitTime}ms before retry...`)
               await new Promise(resolve => setTimeout(resolve, waitTime))
             }
           }
         }
-      }, 60000)
+      }, 500) // Check every 500ms
+
+      // Timeout after 120 seconds (WebSocket should complete before this)
+      const timeout = setTimeout(async () => {
+        clearInterval(completionCheck)
+        
+        // Fallback: try to fetch results anyway
+        try {
+          const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+          const results = resultsResponse.data
+
+          setProgress(100)
+          setCurrentStep(7)
+          setLoading(false)
+          setResult({
+            success: true,
+            scan_id: results.scan_id,
+            security_score: results.security_score || 0,
+            severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+            findings: results.findings || [],
+            total_findings: results.findings_count || 0,
+            files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
+            devops_stack: results.devops_stack,
+            detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),
+            repository_url: repoUrl,
+            repository_name: repoUrl.split('/').slice(-2).join('/'),
+            branch: selectedBranch,
+          })
+        } catch (fetchError: any) {
+          console.error('Timeout fetch error:', fetchError)
+          setError('Scan timed out. Please try again.')
+          setLoading(false)
+        }
+      }, 120000)
+
+      return () => {
+        clearInterval(completionCheck)
+        clearTimeout(timeout)
+      }
 
     } catch (err: any) {
       console.error('Scan error:', err)

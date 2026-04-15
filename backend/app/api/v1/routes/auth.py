@@ -218,7 +218,7 @@ async def get_github_oauth_url():
         f"https://github.com/login/oauth/authorize"
         f"?client_id={settings.GITHUB_CLIENT_ID}"
         f"&redirect_uri={settings.GITHUB_REDIRECT_URI}"
-        f"&scope=user:email%20read:user"
+        f"&scope=user:email%20read:user%20repo"
     )
 
     return {"oauth_url": oauth_url}

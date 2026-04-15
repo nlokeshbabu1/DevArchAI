@@ -16,6 +16,7 @@ from app.models.payment import (
     PlanInterval,
     WebhookEvent,
 )
+from app.models.pull_request import PRStatus, PullRequest
 from app.models.repo_analysis import RepoAnalysis
 from app.models.report import Report
 from app.models.repository import Repository
@@ -38,6 +39,8 @@ __all__ = [
     "Category",
     "Report",
     "RepoAnalysis",
+    "PullRequest",
+    "PRStatus",
     "AISuggestion",
     "SuggestionStatus",
     "FixType",

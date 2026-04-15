@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_ID: str | None = Field(default=None, env="GITHUB_CLIENT_ID")
     GITHUB_CLIENT_SECRET: str | None = Field(default=None, env="GITHUB_CLIENT_SECRET")
     GITHUB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/github/callback", env="GITHUB_REDIRECT_URI")
+    
+    # GitHub App Configuration (for SaaS platform with repo access)
+    GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")
+    GITHUB_APP_PRIVATE_KEY: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY")
+    GITHUB_APP_WEBHOOK_SECRET: str | None = Field(default=None, env="GITHUB_APP_WEBHOOK_SECRET")
+    GITHUB_APP_SLUG: str | None = Field(default=None, env="GITHUB_APP_SLUG")
 
     # Analysis Settings
     MAX_REPO_SIZE_MB: int = Field(default=100, env="MAX_REPO_SIZE_MB")
