@@ -4,6 +4,7 @@ Application Configuration
 
 import secrets
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -108,6 +109,7 @@ class Settings(BaseSettings):
     # GitHub App Configuration (for SaaS platform with repo access)
     GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")
     GITHUB_APP_PRIVATE_KEY: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY")
+    GITHUB_APP_PRIVATE_KEY_PATH: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY_PATH")
     GITHUB_APP_WEBHOOK_SECRET: str | None = Field(default=None, env="GITHUB_APP_WEBHOOK_SECRET")
     GITHUB_APP_SLUG: str | None = Field(default=None, env="GITHUB_APP_SLUG")
 
@@ -178,7 +180,8 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        #env_file = ".env"
+        env_file = str(Path(__file__).resolve().parents[1] / ".env")
         env_file_encoding = "utf-8"
         case_sensitive = True
 

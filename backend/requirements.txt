@@ -52,6 +52,8 @@ python-jose[cryptography]==3.5.0
 # ecdsa will be upgraded automatically as dependency of python-jose
 # Security fix: ecdsa 0.19.1 has CVE-2026-33936 (DoS via malformed DER)
 ecdsa==0.19.2
+# JWT library for GitHub App authentication
+PyJWT[crypto]==2.9.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 # Security fix: cryptography 46.0.5 has CVE-2026-34073 (name constraint bypass)

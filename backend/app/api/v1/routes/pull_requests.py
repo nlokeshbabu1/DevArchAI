@@ -1,8 +1,6 @@
 """Pull Request creation endpoint."""
 
 import structlog
-from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.finding import Finding
+from app.models.github_installation import GitHubInstallation
 from app.models.pull_request import PullRequest, PRStatus
 from app.models.scan import Scan
 from app.models.user import User
 from app.schemas.pull_request import CreatePRRequest, CreatePRResponse
+from app.services.github_app_service import GitHubAppService, GitHubAppServiceError
 from app.services.github_pr import (
     GitHubPRService,
     generate_pr_title,
@@ -36,6 +36,20 @@ def _parse_uuid(uuid_str: str) -> UUID:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid UUID format: {uuid_str}"
         )
+
+
+def _extract_repo_full_name(repo_url: str) -> str:
+    """Extract owner/repo from a GitHub URL."""
+    cleaned = repo_url.replace("https://github.com/", "").rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    parts = cleaned.split("/")
+    if len(parts) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid GitHub repository URL: {repo_url}",
+        )
+    return f"{parts[0]}/{parts[1]}"
 
 
 @router.post("/create-pr", response_model=CreatePRResponse)
@@ -120,12 +134,105 @@ async def create_pull_request(
             detail="No findings to fix. Specify finding_ids or ensure scan has critical/high severity findings."
         )
 
-    # Step 3: Check user has GitHub token
-    if not current_user.github_access_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GitHub account not connected. Please login with GitHub first."
+    # Step 3: Resolve GitHub App installation and short-lived installation token
+    repo_full_name = _extract_repo_full_name(scan.repository_url)
+    install_result = await db.execute(
+        select(GitHubInstallation).where(
+            GitHubInstallation.user_id == current_user.id,
+            GitHubInstallation.repo_full_name == repo_full_name,
         )
+    )
+    installation = install_result.scalar_one_or_none()
+
+    github_app_service = GitHubAppService()
+
+    # Try DB first, then GitHub API as fallback
+    if not installation:
+        owner, repo = repo_full_name.split("/", 1)
+
+        logger.info(
+            "GitHub App installation not found in database, resolving via GitHub API",
+            repo_full_name=repo_full_name,
+        )
+
+        try:
+            installation_id = await github_app_service.get_installation_id(
+                owner=owner,
+                repo=repo,
+            )
+        except GitHubAppServiceError as exc:
+            logger.error(
+                "Failed to resolve installation_id from GitHub API",
+                repo_full_name=repo_full_name,
+                error=exc.message,
+                status_code=exc.status_code,
+            )
+
+            if exc.status_code in (404, 403):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="GitHub App is not installed on this repository",
+                ) from exc
+
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=exc.message,
+            ) from exc
+
+        logger.info(
+            "Dynamically resolved installation_id from GitHub API",
+            repo_full_name=repo_full_name,
+            installation_id=installation_id,
+        )
+
+        # Best-effort: persist installation mapping for future requests
+        installation = GitHubInstallation(
+            user_id=current_user.id,
+            repo_full_name=repo_full_name,
+            installation_id=installation_id,
+        )
+        db.add(installation)
+
+    try:
+        installation_token_data = await github_app_service.get_installation_token(
+            installation.installation_id
+        )
+    except GitHubAppServiceError as exc:
+        logger.error(
+            "Failed to get GitHub installation token",
+            installation_id=installation.installation_id,
+            error=exc.message,
+        )
+        # Map error status codes to appropriate HTTP status codes
+        http_status = status.HTTP_502_BAD_GATEWAY
+        if exc.status_code == 404:
+            http_status = status.HTTP_400_BAD_REQUEST
+        elif exc.status_code == 401:
+            http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+        elif exc.status_code == 403:
+            http_status = status.HTTP_403_FORBIDDEN
+
+        raise HTTPException(
+            status_code=http_status,
+            detail=exc.message,
+        ) from exc
+
+    installation_token = installation_token_data.get("token")
+    if not installation_token:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="GitHub installation token response missing token",
+        )
+
+    # Log token type for debugging
+    token_type = github_app_service.detect_token_type(installation_token)
+    logger.info(
+        "Installation token obtained",
+        installation_id=installation.installation_id,
+        token_type=token_type,
+        token_prefix=installation_token[:10] if len(installation_token) > 10 else "invalid",
+        expires_at=installation_token_data.get("expires_at"),
+    )
 
     # Step 4: Prepare fixes
     fixes = []
@@ -153,8 +260,7 @@ async def create_pull_request(
         )
 
     # Step 5: Generate branch name, title, and description
-    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    branch_name = request.branch_name or f"devarchai/fix-{request.scan_id[:8]}-{timestamp}"
+    branch_name = request.branch_name or f"devarchai/fix-{request.scan_id}"
     
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for finding in findings:
@@ -187,18 +293,19 @@ async def create_pull_request(
     # Step 6: Create PR using GitHub service
     try:
         # Log token info for debugging (not the token itself)
-        token_length = len(current_user.github_access_token) if current_user.github_access_token else 0
-        token_prefix = current_user.github_access_token[:10] if current_user.github_access_token and len(current_user.github_access_token) > 10 else "invalid"
+        token_length = len(installation_token)
+        token_prefix = installation_token[:10] if token_length > 10 else "invalid"
 
         logger.info(
             "Initializing GitHub PR service",
             repo_url=scan.repository_url,
             token_length=token_length,
-            token_prefix=token_prefix
+            token_prefix=token_prefix,
+            installation_id=installation.installation_id,
         )
 
         pr_service = GitHubPRService(
-            github_token=current_user.github_access_token,
+            github_token=installation_token,
             repo_url=scan.repository_url,
         )
 
@@ -238,25 +345,34 @@ async def create_pull_request(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    f"Permission denied (403).\n\n{error_msg}\n\n"
-                    "This usually means your GitHub token doesn't have "
-                    "the required permissions or has expired."
+                    f"Permission denied.\n\n{error_msg}\n\n"
+                    "This usually means:\n"
+                    "- Your GitHub App installation lacks repository permissions\n"
+                    "- The app doesn't have 'Contents' and 'Pull requests' write permissions\n"
+                    "- The installation doesn't have access to this repository\n\n"
+                    "To fix:\n"
+                    "1. Go to your GitHub App settings\n"
+                    "2. Ensure 'Contents: Read & write' permission is granted\n"
+                    "3. Ensure 'Pull requests: Read & write' permission is granted\n"
+                    "4. Reinstall the GitHub App to the repository\n"
+                    "5. Try creating the PR again"
                 )
             )
         elif "authentication failed" in error_msg.lower() or "401" in error_msg or "invalid or expired" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
-                    f"Authentication failed (401).\n\n{error_msg}\n\n"
-                    "Your GitHub token may be expired."
+                    f"Authentication failed.\n\n{error_msg}\n\n"
+                    "Your GitHub App JWT may be invalid or expired.\n"
+                    "Check your App ID and private key configuration."
                 )
             )
-        elif "lacks required" in error_msg.lower() or "scope" in error_msg.lower():
+        elif "installation" in error_msg.lower() and "not found" in error_msg.lower():
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"GitHub token permission error.\n\n{error_msg}\n\n"
-                    "Your GitHub token doesn't have the required 'repo' scope."
+                    f"GitHub App installation not found.\n\n{error_msg}\n\n"
+                    "Please install the GitHub App on this repository first."
                 )
             )
         elif "access denied" in error_msg.lower():
@@ -264,7 +380,7 @@ async def create_pull_request(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
                     f"Repository access denied.\n\n{error_msg}\n\n"
-                    "Please verify you have access to this repository."
+                    "Please verify the GitHub App has access to this repository."
                 )
             )
         else:

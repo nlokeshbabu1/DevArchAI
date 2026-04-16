@@ -63,8 +63,9 @@ class GitHubPRService:
             token_prefix=self.github_token[:10] if len(self.github_token) > 10 else "invalid"
         )
 
-        # Use oauth2 as username which is the recommended approach for OAuth tokens
-        # This works more reliably than x-access-token for OAuth flow tokens
+        token_type = self._detect_token_type()
+        if token_type == "github_app":
+            return f"https://x-access-token:{self.github_token}@github.com/{self.owner}/{self.repo_name}.git"
         return f"https://oauth2:{self.github_token}@github.com/{self.owner}/{self.repo_name}.git"
 
     def _detect_token_type(self) -> str:
@@ -131,27 +132,38 @@ class GitHubPRService:
 
         try:
             async with httpx.AsyncClient() as client:
-                # Step 1: Validate token by getting user/app info
-                response = await client.get(
-                    "https://api.github.com/user",
-                    headers=headers,
-                    timeout=10.0
-                )
-
-                if response.status_code == 401:
-                    validation_result["error"] = (
-                        "GitHub token is invalid or expired. "
-                        "Please logout and login with GitHub again to get a fresh token."
+                # Step 1: Basic token validation by type.
+                #
+                # For GitHub App installation tokens, the most reliable check is whether
+                # the token can access the target repository (performed in Step 3).
+                # The previously used `/installation` endpoint returns 404 for
+                # installation tokens, which caused false validation failures.
+                if token_type == "github_app":
+                    # Skip calling `/installation` with an installation token.
+                    # We still record a generic user identifier for logging.
+                    validation_result["user"] = "github-app-installation"
+                    validation_result["scopes"] = []
+                else:
+                    response = await client.get(
+                        "https://api.github.com/user",
+                        headers=headers,
+                        timeout=10.0
                     )
-                    raise Exception(validation_result["error"])
 
-                if response.status_code != 200:
-                    validation_result["error"] = f"GitHub API error: {response.status_code}"
-                    raise Exception(validation_result["error"])
+                    if response.status_code == 401:
+                        validation_result["error"] = (
+                            "GitHub token is invalid or expired. "
+                            "Please logout and login with GitHub again to get a fresh token."
+                        )
+                        raise Exception(validation_result["error"])
 
-                user_data = response.json()
-                validation_result["user"] = user_data.get("login")
-                validation_result["scopes"] = self._parse_scopes(response.headers.get("X-OAuth-Scopes", ""))
+                    if response.status_code != 200:
+                        validation_result["error"] = f"GitHub API error: {response.status_code}"
+                        raise Exception(validation_result["error"])
+
+                    user_data = response.json()
+                    validation_result["user"] = user_data.get("login")
+                    validation_result["scopes"] = self._parse_scopes(response.headers.get("X-OAuth-Scopes", ""))
 
                 logger.info(
                     "Token validated successfully",
@@ -253,7 +265,10 @@ class GitHubPRService:
         Returns:
             Path to cloned repository
         """
-        logger.info("Cloning repository", owner=self.owner, repo=self.repo_name, branch=branch)
+        if self._detect_token_type() == "github_app":
+            logger.info("Cloning repo with installation token", owner=self.owner, repo=self.repo_name, branch=branch)
+        else:
+            logger.info("Cloning repository", owner=self.owner, repo=self.repo_name, branch=branch)
 
         self.temp_dir = tempfile.mkdtemp(prefix=f"devarchai_pr_{self.repo_name}_")
         auth_url = self._get_auth_url()

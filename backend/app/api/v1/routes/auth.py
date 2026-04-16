@@ -357,6 +357,7 @@ async def github_callback(
                     full_name=full_name or "",
                     avatar_url=avatar_url or "",
                     github_id=github_id,
+                    github_login=username,  # Store GitHub username for webhook lookups
                     github_access_token=access_token,  # Store GitHub token for API access
                     is_verified=True,  # GitHub emails are verified
                 )
@@ -366,6 +367,7 @@ async def github_callback(
             else:
                 # Update existing user with GitHub info
                 user.github_id = github_id
+                user.github_login = username  # Store/update GitHub username
                 user.github_access_token = access_token  # Update token
                 if avatar_url:
                     user.avatar_url = avatar_url

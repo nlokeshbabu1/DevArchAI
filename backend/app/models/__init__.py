@@ -2,6 +2,7 @@
 
 from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
 from app.models.finding import Category, Finding, Severity
+from app.models.github_installation import GitHubInstallation
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.payment import (
     Coupon,
@@ -37,6 +38,7 @@ __all__ = [
     "Finding",
     "Severity",
     "Category",
+    "GitHubInstallation",
     "Report",
     "RepoAnalysis",
     "PullRequest",

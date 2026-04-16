@@ -14,7 +14,13 @@ from app.db.base import Base
 alembic_config = context.config
 
 # Set the database URL from settings
-alembic_config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Convert asyncpg URL to psycopg2 for Alembic CLI
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+elif db_url.startswith("postgresql://"):
+    pass  # Already sync driver
+alembic_config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging
 if alembic_config.config_file_name is not None:

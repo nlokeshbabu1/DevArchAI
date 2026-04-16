@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Github, ExternalLink, Loader2, CheckCircle, AlertCircle, GitBranch, FileCode, Upload, GitPullRequest } from 'lucide-react';
 import { Button, Card } from '../components/ui-animated';
@@ -55,20 +55,42 @@ export function CreatePRButton({ scanId, findingIds, scoreBefore, scoreAfter, on
   const [prUrl, setPrUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [progress, setProgress] = useState(0);
+  const progressIntervalRef = useRef<number | null>(null);
+  const stepTimeoutsRef = useRef<number[]>([]);
 
   const isProcessing = step !== 'idle' && step !== 'success' && step !== 'error';
 
+  const clearProgressTimers = () => {
+    if (progressIntervalRef.current !== null) {
+      window.clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+
+    stepTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    stepTimeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      clearProgressTimers();
+    };
+  }, []);
+
   const handleCreatePR = async () => {
+    clearProgressTimers();
     setStep('preparing');
     setError('');
     setProgress(0);
 
     try {
       // Simulate progress updates for better UX
-      const progressInterval = setInterval(() => {
+      progressIntervalRef.current = window.setInterval(() => {
         setProgress(prev => {
           if (prev >= 95) {
-            clearInterval(progressInterval);
+            if (progressIntervalRef.current !== null) {
+              window.clearInterval(progressIntervalRef.current);
+              progressIntervalRef.current = null;
+            }
             return 95;
           }
           return prev + 5;
@@ -76,12 +98,14 @@ export function CreatePRButton({ scanId, findingIds, scoreBefore, scoreAfter, on
       }, 500);
 
       // Update steps based on typical timing
-      setTimeout(() => setStep('cloning'), 500);
-      setTimeout(() => setStep('applying_fixes'), 2000);
-      setTimeout(() => setStep('creating_branch'), 4000);
-      setTimeout(() => setStep('committing'), 6000);
-      setTimeout(() => setStep('pushing'), 8000);
-      setTimeout(() => setStep('creating_pr'), 10000);
+      stepTimeoutsRef.current = [
+        window.setTimeout(() => setStep('cloning'), 500),
+        window.setTimeout(() => setStep('applying_fixes'), 2000),
+        window.setTimeout(() => setStep('creating_branch'), 4000),
+        window.setTimeout(() => setStep('committing'), 6000),
+        window.setTimeout(() => setStep('pushing'), 8000),
+        window.setTimeout(() => setStep('creating_pr'), 10000),
+      ];
 
       const response = await prApi.createPR({
         scan_id: scanId,
@@ -89,7 +113,7 @@ export function CreatePRButton({ scanId, findingIds, scoreBefore, scoreAfter, on
         is_draft: false,
       });
 
-      clearInterval(progressInterval);
+      clearProgressTimers();
       setProgress(100);
       setPrUrl(response.github_pr_url);
       setStep('success');
@@ -98,6 +122,7 @@ export function CreatePRButton({ scanId, findingIds, scoreBefore, scoreAfter, on
         onSuccess(response.github_pr_url);
       }
     } catch (err: any) {
+      clearProgressTimers();
       console.error('PR creation failed:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to create PR');
       setStep('error');
@@ -105,6 +130,7 @@ export function CreatePRButton({ scanId, findingIds, scoreBefore, scoreAfter, on
   };
 
   const handleReset = () => {
+    clearProgressTimers();
     setStep('idle');
     setError('');
     setPrUrl('');
