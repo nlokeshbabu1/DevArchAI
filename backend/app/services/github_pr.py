@@ -4,8 +4,9 @@ import os
 import re
 import tempfile
 import shutil
+import difflib
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 
 import httpx
@@ -15,6 +16,278 @@ from git import Repo, GitCommandError
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
+
+
+class FixApplicationError(Exception):
+    """Base class for fix application failures."""
+
+
+class PartialFixError(FixApplicationError):
+    """Raised when AI output is likely a partial file patch."""
+
+
+class FixValidationError(FixApplicationError):
+    """Raised when AI output fails production validation rules."""
+
+
+def normalize_path(full_path: str | os.PathLike[str] | None, repo_root: str | os.PathLike[str] | None) -> str:
+    """
+    Normalize a path for user-facing output.
+
+    - Removes internal paths (e.g. /tmp/devarchai_.../Dockerfile)
+    - Returns repository-relative paths whenever possible
+    - Falls back to a safe, non-leaking filename
+    """
+    if not full_path:
+        return "unknown"
+
+    try:
+        p = Path(str(full_path))
+    except Exception:
+        return "unknown"
+
+    if repo_root:
+        try:
+            root = Path(str(repo_root)).resolve()
+            if p.is_absolute():
+                try:
+                    return p.resolve().relative_to(root).as_posix()
+                except Exception:
+                    pass
+            try:
+                return (root / p).resolve().relative_to(root).as_posix()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    # Never return absolute temp/system paths to users
+    if p.is_absolute():
+        return p.name
+
+    return p.as_posix().lstrip("./")
+
+
+def normalize_repo_path(
+    input_path: str | os.PathLike[str] | None,
+    repo_root: str | os.PathLike[str] | None,
+    repo_name: str | None = None,
+) -> str:
+    """
+    Normalize scan-reported paths into repository-relative paths for file lookup.
+    """
+    if not input_path:
+        return ""
+
+    raw = str(input_path).strip()
+    if not raw:
+        return ""
+
+    p = Path(raw)
+
+    # Best case: absolute path already under cloned repo root.
+    if repo_root:
+        try:
+            root = Path(str(repo_root)).resolve()
+            if p.is_absolute():
+                try:
+                    return p.resolve().relative_to(root).as_posix()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    normalized = raw.replace("\\", "/").lstrip("./")
+    normalized_no_lead_slash = normalized.lstrip("/")
+
+    # Preserve important repo subpaths when present in absolute scanner output.
+    # Example: /tmp/devarchai/.../.github/workflows/iac.yml -> .github/workflows/iac.yml
+    anchor_markers = [
+        ".github/workflows/",
+        ".github/",
+    ]
+    lowered = normalized_no_lead_slash.lower()
+    for marker in anchor_markers:
+        idx = lowered.find(marker.lower())
+        if idx >= 0:
+            return normalized_no_lead_slash[idx:]
+
+    # Strip owner/repo or repo prefix from absolute paths (e.g. /tmp/.../my-repo/path/file).
+    parts = [seg for seg in normalized_no_lead_slash.split("/") if seg]
+    if repo_name and repo_name in parts:
+        idx = parts.index(repo_name)
+        tail = parts[idx + 1 :]
+        if tail:
+            return "/".join(tail)
+
+    # Fallback to non-absolute value or basename.
+    if not p.is_absolute():
+        return normalized_no_lead_slash
+
+    # Keep full path structure for absolute paths by dropping only tmp/system prefixes.
+    for prefix in ("tmp/", "var/tmp/", "private/tmp/"):
+        pos = lowered.find(prefix)
+        if pos >= 0:
+            candidate = normalized_no_lead_slash[pos + len(prefix):]
+            if "/" in candidate:
+                return candidate
+
+    # Final safe fallback.
+    return normalized_no_lead_slash if "/" in normalized_no_lead_slash else p.name
+
+
+def _is_dockerfile(path: str) -> bool:
+    p = path.lower()
+    return Path(p).name == "dockerfile"
+
+
+def _is_cicd_file(path: str) -> bool:
+    p = path.lower()
+    if "/.github/workflows/" in p and (p.endswith(".yml") or p.endswith(".yaml")):
+        return True
+    return Path(p).name in {".gitlab-ci.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml"}
+
+
+def _validate_full_file_output(original: str, updated: str, *, min_ratio: float = 0.60) -> dict[str, Any]:
+    original_len = len(original or "")
+    updated_len = len(updated or "")
+    ratio = (updated_len / original_len) if original_len > 0 else 1.0
+    return {
+        "original_len": original_len,
+        "updated_len": updated_len,
+        "ratio": ratio,
+        "min_ratio": min_ratio,
+        "is_full": ratio >= min_ratio,
+    }
+
+
+def _validate_dockerfile(content: str) -> dict[str, Any]:
+    lines = content.splitlines()
+    has_from = any(re.match(r"^\s*from\s+", ln, flags=re.IGNORECASE) for ln in lines)
+    user_instructions = [ln for ln in lines if re.match(r"^\s*user\s+", ln, flags=re.IGNORECASE)]
+    has_user = bool(user_instructions)
+
+    last_user = None
+    for ln in reversed(user_instructions):
+        m = re.match(r"^\s*user\s+(.+?)\s*$", ln, flags=re.IGNORECASE)
+        if m:
+            last_user = m.group(1).strip().strip('"').strip("'")
+            break
+
+    user_is_root = False
+    if last_user:
+        lu = last_user.lower()
+        user_is_root = lu in {"root", "0", "0:0"} or lu.startswith("root:")
+
+    valid = has_from and has_user and not user_is_root
+    return {
+        "has_from": has_from,
+        "has_user": has_user,
+        "last_user": last_user,
+        "user_is_root": user_is_root,
+        "valid": valid,
+        "error": None if valid else (
+            "Dockerfile validation failed: must include FROM and a non-root USER instruction (USER root is not allowed)."
+        ),
+    }
+
+
+def _validate_cicd(content: str) -> dict[str, Any]:
+    lowered = content.lower()
+    test_markers = [
+        "pytest",
+        "npm test",
+        "pnpm test",
+        "yarn test",
+        "go test",
+        "mvn test",
+        "gradle test",
+        "dotnet test",
+        "cargo test",
+        "bundle exec rspec",
+        " name: test",
+        "run: test",
+    ]
+    security_markers = [
+        "trivy",
+        "semgrep",
+        "snyk",
+        "gitleaks",
+        "bandit",
+        "gosec",
+        "checkov",
+        "tfsec",
+        "grype",
+        "codeql",
+    ]
+
+    has_test_step = any(m in lowered for m in test_markers)
+    has_security_scan = any(m in lowered for m in security_markers)
+    valid = has_test_step and has_security_scan
+    return {
+        "has_test_step": has_test_step,
+        "has_security_scan_step": has_security_scan,
+        "valid": valid,
+        "error": None if valid else (
+            "CI/CD validation failed: must include at least one test step and at least one security scan step."
+        ),
+    }
+
+
+def _build_unified_diff(path: str, original: str, updated: str) -> str:
+    diff_lines = difflib.unified_diff(
+        original.splitlines(keepends=True),
+        updated.splitlines(keepends=True),
+        fromfile=f"a/{path}",
+        tofile=f"b/{path}",
+        lineterm="",
+        n=3,
+    )
+    return "".join(diff_lines)
+
+
+def resolve_file_path(
+    repo_root: str,
+    input_path: str,
+    repo_name: str | None = None,
+) -> tuple[Path | None, str]:
+    """
+    Resolve a scan-reported path within a cloned repository.
+
+    Resolution order:
+    1) Exact normalized relative match
+    2) Case-insensitive relative path match
+    3) Filename fallback search (case-insensitive)
+    """
+    root = Path(repo_root)
+    normalized_path = normalize_repo_path(input_path, repo_root, repo_name)
+    if not normalized_path:
+        return None, normalized_path
+
+    # 1) Exact match
+    candidate = root / normalized_path
+    if candidate.exists() and candidate.is_file():
+        return candidate, normalized_path
+
+    # 2) Case-insensitive full relative path match
+    target_rel_lower = normalized_path.replace("\\", "/").lower()
+    for r, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != '.git']
+        for f in files:
+            found_path = Path(r) / f
+            rel_lower = str(found_path.relative_to(root)).replace("\\", "/").lower()
+            if rel_lower == target_rel_lower:
+                return found_path, normalized_path
+
+    # 3) Filename fallback search
+    target_name_lower = Path(normalized_path).name.lower()
+    for r, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != '.git']
+        for f in files:
+            if f.lower() == target_name_lower:
+                return Path(r) / f, normalized_path
+
+    return None, normalized_path
 
 
 class GitHubPRService:
@@ -306,21 +579,45 @@ class GitHubPRService:
             List of modified file paths
         """
         logger.info("Applying fixes", count=len(fixes))
-        modified_files = []
+        if not self.temp_dir:
+            raise FixApplicationError("Repository is not cloned. Cannot apply fixes.")
+
+        modified_files: list[str] = []
+        applied: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
 
         for fix in fixes:
             file_path = fix.get("file_path")
-            fix_code = fix.get("fix_code") or fix.get("after_code")
+            fix_code = fix.get("full_file") or fix.get("fix_code") or fix.get("after_code")
+            finding_id = fix.get("finding_id") or fix.get("id")
 
             if not file_path or not fix_code:
-                logger.warning("Skipping fix - missing data", file_path=file_path)
+                failures.append({"finding_id": finding_id, "requested_path": file_path, "reason": "missing_fix_data"})
+                logger.warning("Fix rejected - missing data", finding_id=finding_id, requested_path=file_path)
                 continue
 
-            # Try to find the file in the repository
-            full_path = self._find_file_in_repo(file_path)
+            # Try to find the file in the repository using normalized repo-relative path.
+            full_path, normalized_repo_path = resolve_file_path(
+                self.temp_dir,
+                str(file_path),
+                self.repo_name,
+            )
+            logger.info(
+                "Resolved fix path",
+                finding_id=finding_id,
+                original_path=str(file_path),
+                normalized_path=normalized_repo_path,
+                resolved_path=normalize_path(full_path, self.temp_dir) if full_path else None,
+            )
 
             if not full_path:
-                logger.warning("File not found in repository, skipping", file_path=file_path)
+                # Path resolution miss should not fail the whole PR flow.
+                logger.warning(
+                    "Skipping fix - file not found in repo",
+                    finding_id=finding_id,
+                    original_path=str(file_path),
+                    normalized_path=normalized_repo_path,
+                )
                 continue
 
             try:
@@ -328,19 +625,105 @@ class GitHubPRService:
                 with open(full_path, 'r', encoding='utf-8') as f:
                     original_content = f.read()
 
+                rel_path = normalize_path(full_path, self.temp_dir)
+
+                # Validation 1: enforce full-file output (reject partial patches).
+                size_check = _validate_full_file_output(original_content, fix_code, min_ratio=0.60)
+                logger.info(
+                    "AI output size validation",
+                    finding_id=finding_id,
+                    file_path=rel_path,
+                    original_len=size_check["original_len"],
+                    updated_len=size_check["updated_len"],
+                    ratio=round(float(size_check["ratio"]), 4),
+                    min_ratio=size_check["min_ratio"],
+                    passed=size_check["is_full"],
+                )
+                if not size_check["is_full"]:
+                    raise PartialFixError(
+                        f"AI output rejected as partial for '{rel_path}' "
+                        f"(updated/original={size_check['updated_len']}/{size_check['original_len']} "
+                        f"= {size_check['ratio']:.2%}, min {size_check['min_ratio']:.0%})."
+                    )
+
+                # Validation 2: file-type specific production checks.
+                validation: dict[str, Any] = {}
+                if _is_dockerfile(rel_path):
+                    docker_val = _validate_dockerfile(fix_code)
+                    validation["dockerfile"] = docker_val
+                    logger.info(
+                        "Dockerfile validation",
+                        finding_id=finding_id,
+                        file_path=rel_path,
+                        valid=docker_val["valid"],
+                        has_from=docker_val["has_from"],
+                        has_user=docker_val["has_user"],
+                        last_user=docker_val["last_user"],
+                        user_is_root=docker_val["user_is_root"],
+                    )
+                    if not docker_val["valid"]:
+                        raise FixValidationError(docker_val["error"])
+
+                if _is_cicd_file(rel_path):
+                    cicd_val = _validate_cicd(fix_code)
+                    validation["cicd"] = cicd_val
+                    logger.info(
+                        "CI/CD validation",
+                        finding_id=finding_id,
+                        file_path=rel_path,
+                        valid=cicd_val["valid"],
+                        has_test_step=cicd_val["has_test_step"],
+                        has_security_scan_step=cicd_val["has_security_scan_step"],
+                    )
+                    if not cicd_val["valid"]:
+                        raise FixValidationError(cicd_val["error"])
+
                 # Apply fix
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(fix_code)
 
-                # Get relative path for logging
-                rel_path = str(full_path.relative_to(self.temp_dir))
+                diff_text = _build_unified_diff(rel_path, original_content, fix_code)
                 modified_files.append(rel_path)
-                logger.info("Fix applied", file_path=rel_path)
+                applied.append(
+                    {
+                        "finding_id": finding_id,
+                        "requested_path": str(file_path),
+                        "file_path": rel_path,
+                        "size_check": size_check,
+                        "validation": validation,
+                        "diff": diff_text,
+                    }
+                )
+                logger.info("Fix applied", file_path=rel_path, finding_id=finding_id)
 
             except Exception as e:
-                logger.error("Failed to apply fix", file_path=file_path, error=str(e))
+                failures.append(
+                    {
+                        "finding_id": finding_id,
+                        "requested_path": str(file_path),
+                        "resolved_path": normalize_path(full_path, self.temp_dir) if full_path else None,
+                        "reason": "apply_failed",
+                        "error": str(e),
+                    }
+                )
+                logger.error(
+                    "Failed to apply fix",
+                    finding_id=finding_id,
+                    requested_path=file_path,
+                    resolved_path=normalize_path(full_path, self.temp_dir) if full_path else None,
+                    error=str(e),
+                )
                 continue
 
+        if failures:
+            logger.warning(
+                "Fix application had partial failures - continuing with resolved files",
+                applied=len(applied),
+                failed=len(failures),
+                failures=failures[:10],
+            )
+
+        self._applied_fixes = applied  # type: ignore[attr-defined]
         logger.info("Fixes applied successfully", modified_files=len(modified_files))
         return modified_files
 
@@ -355,24 +738,38 @@ class GitHubPRService:
             Full path to the file if found, None otherwise
         """
         temp_path = Path(self.temp_dir)
+        requested_path = str(file_path)
+        normalized_path = normalize_repo_path(requested_path, self.temp_dir, self.repo_name)
 
         # Strategy 1: Try the path as-is (might already be relative to repo root)
-        candidate = temp_path / file_path
+        candidate = temp_path / normalized_path
         if candidate.exists() and candidate.is_file():
+            logger.info(
+                "File resolved by normalized path",
+                original_path=requested_path,
+                normalized_path=normalized_path,
+                final_resolved_path=str(candidate.relative_to(temp_path)),
+            )
             return candidate
 
         # Strategy 2: Try stripping common prefixes (e.g., repo name)
         # e.g., "myrepo/terraform/backend.tf" -> "terraform/backend.tf"
-        parts = Path(file_path).parts
+        parts = Path(normalized_path).parts
         if len(parts) > 1:
             # Try removing first component
             stripped_path = Path(*parts[1:])
             candidate = temp_path / stripped_path
             if candidate.exists() and candidate.is_file():
+                logger.info(
+                    "File resolved by stripped prefix",
+                    original_path=requested_path,
+                    normalized_path=normalized_path,
+                    final_resolved_path=str(candidate.relative_to(temp_path)),
+                )
                 return candidate
 
         # Strategy 3: Search for the file by name in the entire repo
-        filename = Path(file_path).name
+        filename = Path(normalized_path).name
         for root, dirs, files in os.walk(self.temp_dir):
             # Skip hidden directories and .git
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '.git']
@@ -387,21 +784,28 @@ class GitHubPRService:
                 return found_path
 
         # Strategy 4: Try case-insensitive match
-        file_path_lower = file_path.lower()
+        file_path_lower = normalized_path.lower()
+        requested_name_lower = Path(normalized_path).name.lower()
         for root, dirs, files in os.walk(self.temp_dir):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '.git']
 
             for f in files:
-                if f.lower() == file_path_lower or f.lower() == Path(file_path).name.lower():
-                    found_path = Path(root) / f
+                found_path = Path(root) / f
+                rel_lower = str(found_path.relative_to(temp_path)).replace("\\", "/").lower()
+                if rel_lower == file_path_lower or f.lower() == requested_name_lower:
                     logger.info(
                         "Found file by case-insensitive match",
-                        requested=file_path,
+                        requested=requested_path,
+                        normalized=normalized_path,
                         found=str(found_path.relative_to(temp_path))
                     )
                     return found_path
 
-        logger.warning("File not found in repository", file_path=file_path)
+        logger.warning(
+            "File not found in repository",
+            original_path=requested_path,
+            normalized_path=normalized_path,
+        )
         return None
 
     def create_branch(self, branch_name: str) -> str:
@@ -653,9 +1057,15 @@ echo "password={self.github_token}"
         branch_name: str,
         base_branch: str,
         title: str,
-        description: str,
+        description: Optional[str],
         commit_message: str,
-        is_draft: bool = False
+        is_draft: bool = False,
+        *,
+        scan_id: Optional[str] = None,
+        findings: Optional[list[dict]] = None,
+        score_before: Optional[float] = None,
+        score_after: Optional[float] = None,
+        app_url: str = "https://app.devarchai.com",
     ) -> dict:
         """
         Complete PR creation workflow: validate → clone → apply fixes → commit → push → create PR.
@@ -706,6 +1116,19 @@ echo "password={self.github_token}"
             self.push_branch(branch_name)
 
             # Step 6: Create Pull Request
+            if not description:
+                applied = getattr(self, "_applied_fixes", [])
+                description = generate_pr_description(
+                    scan_id=scan_id or "unknown",
+                    findings=findings or [],
+                    score_before=float(score_before or 0.0),
+                    score_after=float(score_after or 0.0),
+                    app_url=app_url,
+                    repo_root=self.temp_dir,
+                    applied_fixes=applied,
+                )
+                self._generated_description = description  # type: ignore[attr-defined]
+
             pr_info = await self.create_pull_request(
                 branch_name=branch_name,
                 title=title,
@@ -749,29 +1172,45 @@ def generate_pr_description(
     findings: list[dict],
     score_before: float,
     score_after: float,
-    app_url: str = "https://app.devarchai.com"
+    app_url: str = "https://app.devarchai.com",
+    *,
+    repo_root: Optional[str] = None,
+    applied_fixes: Optional[list[dict]] = None,
 ) -> str:
-    """Generate comprehensive PR description."""
+    """Generate production-grade PR description (no internal path leakage)."""
 
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for finding in findings:
         severity = finding.get("severity", "info")
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-    description = f"""## 🔒 DevArchAI Security Fix
+    conf_values: list[float] = []
+    for f in findings:
+        c = f.get("confidence")
+        if isinstance(c, (int, float)):
+            conf_values.append(float(c))
+    confidence = (sum(conf_values) / len(conf_values)) if conf_values else None
 
-This Pull Request was automatically generated by DevArchAI to address security and production readiness issues detected in your infrastructure code.
+    improvement = score_after - score_before
+    improvement_note = (
+        "This is an estimate based on issue severity and typical remediation impact. "
+        "Validate by re-scanning after merge."
+    )
+
+    description = f"""## 🔒 Security Improvements
+
+This Pull Request was generated by DevArchAI to apply **full-file, production-grade** remediations. It includes validation to prevent partial patches and to enforce key security controls (where applicable).
 
 ### 📊 Scan Summary
 
 - **Scan ID**: `{scan_id}`
 - **Score Before**: {score_before:.1f}/100
-- **Expected Score After**: {score_after:.1f}/100
-- **Improvement**: +{score_after - score_before:.1f} points
-- **Issues Fixed**: {len(findings)}
+- **Estimated Score After**: {score_after:.1f}/100
+- **Estimated Improvement**: +{improvement:.1f} points
+- **Why it’s estimated**: {improvement_note}
+- **Issues Addressed**: {len(findings)}
 
 ### 🚨 Issues Fixed
-
 """
 
     # Group findings by severity
@@ -792,7 +1231,7 @@ This Pull Request was automatically generated by DevArchAI to address security a
         description += f"#### {emoji.get(severity, '⚪')} {severity.upper()} Severity ({len(severity_findings)} issues)\n\n"
 
         for finding in severity_findings:
-            file_path = finding.get("file_path", "unknown")
+            file_path = normalize_path(finding.get("file_path", "unknown"), repo_root)
             line_number = finding.get("line_number", "")
             line_info = f":{line_number}" if line_number else ""
 
@@ -801,33 +1240,53 @@ This Pull Request was automatically generated by DevArchAI to address security a
             description += f"- **Issue**: {finding.get('description')}\n"
             description += f"- **Fix**: {finding.get('recommendation')}\n\n"
 
-    description += f"""### 📝 Changes Made
+    applied_fixes = applied_fixes or []
+    modified_files = sorted({fx.get("file_path") for fx in applied_fixes if fx.get("file_path")})
 
-"""
+    description += "\n### 📝 Changes Made\n\n"
+    if modified_files:
+        for p in modified_files:
+            description += f"- Modified: `{normalize_path(p, repo_root)}`\n"
+    else:
+        description += "- Modified: `unknown` (no file metadata recorded)\n"
 
-    # List modified files
-    modified_files = set()
-    for finding in findings:
-        file_path = finding.get("file_path")
-        if file_path:
-            modified_files.add(file_path)
+    description += "\n### ⚠️ Review Notes\n\n"
+    description += "- All changes are applied as **full file updates** (partial patches are rejected).\n"
+    description += "- Dockerfiles are validated to include `FROM` and a **non-root `USER`**.\n"
+    description += "- CI/CD workflows are validated to include **tests** and a **security scan** step.\n"
+    description += "- Please review for environment-specific requirements (secrets, deployment targets, org policies).\n"
 
-    for file_path in sorted(modified_files):
-        description += f"- Modified: `{file_path}`\n"
+    description += "\n### 🤖 AI Confidence Score\n\n"
+    if confidence is not None:
+        description += f"- **Average confidence**: {confidence:.2f} (0.00–1.00)\n"
+    else:
+        description += "- Not available for this scan.\n"
+
+    description += "\n### 🧾 Patch Preview (truncated)\n\n"
+    max_total_lines = 400
+    max_lines_per_file = 160
+    total_lines = 0
+    for fx in applied_fixes[:25]:
+        path = normalize_path(fx.get("file_path"), repo_root)
+        diff_text = fx.get("diff") or ""
+        if not diff_text:
+            continue
+        diff_lines = diff_text.splitlines()
+        if not diff_lines:
+            continue
+        take = min(max_lines_per_file, len(diff_lines), max_total_lines - total_lines)
+        if take <= 0:
+            break
+        description += f"#### `{path}`\n\n```diff\n" + "\n".join(diff_lines[:take]) + "\n```\n\n"
+        total_lines += take
+        if total_lines >= max_total_lines:
+            description += "_Diff preview truncated. Review the full PR diff in GitHub._\n"
+            break
 
     description += f"""
+### 🔗 References
 
-### ✅ Review Checklist
-
-- [ ] Review all changes before merging
-- [ ] Test in staging/development environment
-- [ ] Verify Terraform plan output (if applicable)
-- [ ] Confirm Kubernetes deployments work as expected
-- [ ] Run CI/CD pipeline checks
-
-### 🔗 View Full Report
-
-[View DevArchAI Scan Report]({app_url}/scans/{scan_id})
+- [View DevArchAI Scan Report]({app_url}/scans/{scan_id})
 
 ---
 

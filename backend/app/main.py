@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.router import api_router
+from app.api.v1.routes.billing import create_checkout_session, get_billing_gateway, verify_payment
 from app.config import settings
 from app.core.exceptions import setup_exception_handlers
 from app.core.logging import setup_logging
@@ -114,6 +115,9 @@ def create_app() -> FastAPI:
 
     # Include API v1 router
     app.include_router(api_router, prefix="/api/v1")
+    app.add_api_route("/api/payment/checkout", create_checkout_session, methods=["POST"], response_model=dict)
+    app.add_api_route("/api/payment/gateway", get_billing_gateway, methods=["GET"], response_model=dict)
+    app.add_api_route("/api/payment/verify", verify_payment, methods=["POST"], response_model=dict)
 
     # PHASE 6: Add Prometheus metrics endpoint (NEW - Observability)
     try:

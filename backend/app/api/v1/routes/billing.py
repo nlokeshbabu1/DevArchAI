@@ -1,11 +1,8 @@
 """Billing and subscription endpoints — production payment integration."""
 
-import hashlib
-import hmac
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -17,7 +14,8 @@ from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
 from app.models.user import User
 from app.services.payment_clients import RazorpayClient, StripeClient
-from app.services.payment_router import PaymentRouter
+from app.services.organization_provisioning import ensure_user_organization_membership
+from app.services.payment_service import PaymentService
 from app.services.webhook_handler import WebhookIdempotencyGuard
 
 logger = logging.getLogger(__name__)
@@ -31,14 +29,27 @@ class CheckoutRequest(BaseModel):
     plan: str
     billing: str = "monthly"  # monthly | yearly
     coupon: Optional[str] = None
+    gateway: Optional[str] = None  # Optional user gateway override
 
 
 class RazorpayVerifyRequest(BaseModel):
-    razorpay_payment_id: str
-    razorpay_order_id: str
-    razorpay_signature: str
-    plan: str
-    billing: str = "monthly"
+    payment_id: Optional[str] = None
+    order_id: Optional[str] = None
+    signature: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_signature: Optional[str] = None
+    plan: Optional[str] = None
+    billing: Optional[str] = None
+
+    def resolved_payment_id(self) -> str:
+        return (self.payment_id or self.razorpay_payment_id or "").strip()
+
+    def resolved_order_id(self) -> str:
+        return (self.order_id or self.razorpay_order_id or "").strip()
+
+    def resolved_signature(self) -> str:
+        return (self.signature or self.razorpay_signature or "").strip()
 
 
 class SubscriptionResponse(BaseModel):
@@ -54,6 +65,201 @@ class SubscriptionResponse(BaseModel):
     repositories_count: int
     team_members_count: int
     features: dict
+
+
+PLAN_NAME_MAP = {
+    "free": "free",
+    "plus": "plus",
+    "pro": "pro",
+    "enterprise": "enterprise",
+}
+
+
+def _normalize_country_code(country: Optional[str]) -> Optional[str]:
+    if not country:
+        return None
+    normalized = country.strip().upper()
+    if len(normalized) != 2:
+        return None
+    return normalized
+
+
+def _detect_user_country(current_user: User, request: Request) -> str:
+    """Resolve user country using request headers first, then persisted fields."""
+    for header_name in ("CF-IPCountry", "CloudFront-Viewer-Country", "X-Country-Code"):
+        header_country = _normalize_country_code(request.headers.get(header_name))
+        if header_country:
+            return header_country
+
+    selected_country = _normalize_country_code(getattr(current_user, "selected_country", None))
+    if selected_country:
+        return selected_country
+
+    user_country = _normalize_country_code(getattr(current_user, "country", None))
+    if user_country:
+        return user_country
+
+    return "US"
+
+
+def _normalize_gateway(gateway: Optional[str]) -> Optional[str]:
+    if not gateway:
+        return None
+    normalized = gateway.strip().lower()
+    if normalized not in {"stripe", "razorpay"}:
+        return None
+    return normalized
+
+
+def _resolve_billing_gateway(current_user: User, request: Request) -> str:
+    """Resolve the payment gateway entirely on the backend."""
+    payment_svc = PaymentService()
+    country = _detect_user_country(current_user, request)
+    if country == "IN":
+        return "razorpay"
+    return payment_svc.get_payment_gateway(current_user)
+
+
+def _map_plan_name(plan_name: str) -> str:
+    normalized = (plan_name or "").strip().lower()
+    return PLAN_NAME_MAP.get(normalized, "free")
+
+
+def _normalize_billing_interval(billing_interval: Optional[str]) -> str:
+    normalized = (billing_interval or "monthly").strip().lower()
+    return normalized if normalized in {"monthly", "yearly"} else "monthly"
+
+
+def _apply_user_subscription_state(user: User, plan_name: str, gateway: str, status_value: str) -> None:
+    user.subscription_plan = _map_plan_name(plan_name)
+    user.subscription_status = status_value.lower()
+    user.payment_provider = gateway
+
+
+def _map_plan_tier(plan_name: str):
+    from app.models.subscription import PlanTier
+
+    normalized = _map_plan_name(plan_name)
+    if normalized == "enterprise":
+        return PlanTier.ENTERPRISE
+    if normalized in {"plus", "pro"}:
+        return PlanTier.PRO
+    return PlanTier.FREE
+
+
+async def _ensure_user_membership(db: AsyncSession, user: User):
+    return await ensure_user_organization_membership(db, user)
+
+
+async def _get_plan_record(db: AsyncSession, plan_name: str, billing_interval: str):
+    from app.models.payment import Plan
+
+    normalized_plan = _map_plan_name(plan_name)
+    normalized_interval = _normalize_billing_interval(billing_interval)
+    result = await db.execute(
+        select(Plan).where(
+            Plan.name == normalized_plan,
+            Plan.interval == normalized_interval,
+            Plan.is_active == True,
+        ).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _get_plan_name_by_id(db: AsyncSession, plan_id) -> Optional[str]:
+    from app.models.payment import Plan
+
+    if not plan_id:
+        return None
+
+    result = await db.execute(
+        select(Plan.name).where(Plan.id == plan_id).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _resolve_public_plan_name(db: AsyncSession, user: User, subscription) -> str:
+    user_plan = _map_plan_name(getattr(user, "subscription_plan", ""))
+    if user_plan != "free":
+        return user_plan
+
+    plan_name = await _get_plan_name_by_id(db, getattr(subscription, "plan_id", None))
+    if plan_name:
+        return _map_plan_name(plan_name)
+
+    return _map_plan_name(subscription.plan.value if hasattr(subscription.plan, "value") else str(subscription.plan))
+
+
+async def _resolve_razorpay_order_context(
+    db: AsyncSession,
+    razorpay_client: RazorpayClient,
+    current_user: User,
+    verify_request: RazorpayVerifyRequest,
+) -> dict[str, Any]:
+    payment_id = verify_request.resolved_payment_id()
+    order_id = verify_request.resolved_order_id()
+    fallback_plan = (verify_request.plan or "").strip().lower()
+    fallback_billing = _normalize_billing_interval(verify_request.billing)
+
+    logger.info(
+        "Fetching Razorpay order for verification",
+        extra={
+            "user_id": str(current_user.id),
+            "order_id": order_id,
+            "payment_id": payment_id,
+        },
+    )
+
+    order = await razorpay_client.fetch_order(order_id)
+    notes = order.get("notes") or {}
+    order_user_id = (notes.get("user_id") or "").strip()
+    if order_user_id and order_user_id != str(current_user.id):
+        logger.warning(
+            "Razorpay order user mismatch",
+            extra={
+                "current_user_id": str(current_user.id),
+                "order_user_id": order_user_id,
+                "order_id": order_id,
+            },
+        )
+        raise HTTPException(status_code=403, detail="Payment does not belong to the current user")
+
+    raw_plan_name = ((notes.get("plan") or fallback_plan) or "").strip().lower()
+    if raw_plan_name not in PLAN_NAME_MAP:
+        logger.warning(
+            "Unable to resolve plan metadata from Razorpay order",
+            extra={
+                "user_id": str(current_user.id),
+                "order_id": order_id,
+                "raw_plan_name": raw_plan_name,
+            },
+        )
+        raise HTTPException(status_code=400, detail="Unable to resolve subscription plan for payment")
+
+    plan_name = _map_plan_name(raw_plan_name)
+    billing_interval = _normalize_billing_interval(notes.get("interval") or notes.get("billing") or fallback_billing)
+    plan_record = await _get_plan_record(db, plan_name, billing_interval)
+
+    logger.info(
+        "Resolved Razorpay order context",
+        extra={
+            "user_id": str(current_user.id),
+            "order_id": order_id,
+            "plan": plan_name,
+            "billing_interval": billing_interval,
+            "currency": (order.get("currency") or "INR").upper(),
+        },
+    )
+
+    return {
+        "order": order,
+        "notes": notes,
+        "plan_name": plan_name,
+        "billing_interval": billing_interval,
+        "plan_record": plan_record,
+        "amount": int(order.get("amount") or 0),
+        "currency": (order.get("currency") or "INR").upper(),
+    }
 
 
 # ─── Plans ─────────────────────────────────────────────────────────────
@@ -102,18 +308,9 @@ async def enterprise_contact_sales(
     Enterprise plan: No payment gateway. Contact sales flow.
     Creates a pending enterprise subscription for admin review.
     """
-    from app.models.subscription import Subscription, PlanTier
-    from app.models.organization import OrganizationMember
+    from app.models.subscription import Subscription
 
-    # Get user's org
-    org_result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    membership = org_result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=404, detail="No organization found")
+    membership = await _ensure_user_membership(db, current_user)
 
     # Check for existing active subscription
     result = await db.execute(
@@ -152,8 +349,17 @@ async def enterprise_contact_sales(
 
 # ─── Checkout ──────────────────────────────────────────────────────────
 
+@router.get("/gateway", response_model=dict)
+async def get_billing_gateway(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Return the backend-selected payment gateway for the current user."""
+    return {"gateway": _resolve_billing_gateway(current_user, request)}
+
 @router.post("/checkout", response_model=dict)
 async def create_checkout_session(
+    http_request: Request,
     request: CheckoutRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -163,23 +369,48 @@ async def create_checkout_session(
 
     Routes to Razorpay for India, Stripe for all other countries.
     """
-    router_svc = PaymentRouter()
-    user_country = getattr(current_user, "country", None) or "US"
+    payment_svc = PaymentService()
+    user_country = _detect_user_country(current_user, http_request)
+    selected_gateway = _resolve_billing_gateway(current_user, http_request)
+
+    if request.gateway and _normalize_gateway(request.gateway) is None:
+        raise HTTPException(status_code=400, detail="Invalid gateway. Use 'stripe' or 'razorpay'.")
 
     try:
-        result = await router_svc.create_checkout(
+        current_user.selected_country = user_country
+        current_user.selected_gateway = selected_gateway
+        await db.flush()
+
+        result = await payment_svc.create_checkout(
             db=db,
             user=current_user,
             plan_name=request.plan,
             billing_interval=request.billing,
             user_country=user_country,
             coupon_code=request.coupon,
+            selected_gateway=selected_gateway,
         )
+        checkout_provider = result.get("gateway", selected_gateway)
+
+        logger.info(
+            "Billing gateway selected",
+            extra={
+                "user_id": str(current_user.id),
+                "country": user_country,
+                "selected_gateway": selected_gateway,
+                "checkout_provider": checkout_provider,
+                "plan": request.plan,
+                "billing_interval": request.billing,
+            },
+        )
+        await db.commit()
         return result
     except ValueError as e:
+        await db.rollback()
         logger.warning(f"Checkout validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        await db.rollback()
         logger.exception(f"Checkout creation failed with exception: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
 
@@ -193,99 +424,171 @@ async def verify_payment(
     db: AsyncSession = Depends(get_db),
 ):
     """Verify a Razorpay payment signature and activate subscription."""
-    from app.models.subscription import Subscription, PlanTier
-    from app.models.organization import OrganizationMember
+    from app.models.subscription import Subscription
     from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
     from datetime import timedelta
 
-    rzp = RazorpayClient()
-    valid = rzp.verify_payment_signature(
-        razorpay_payment_id=request.razorpay_payment_id,
-        razorpay_order_id=request.razorpay_order_id,
-        razorpay_signature=request.razorpay_signature,
+    payment_id = request.resolved_payment_id()
+    order_id = request.resolved_order_id()
+    signature = request.resolved_signature()
+
+    if not payment_id or not order_id or not signature:
+        raise HTTPException(status_code=400, detail="Missing Razorpay payment verification fields")
+
+    logger.info(
+        "Starting Razorpay payment verification",
+        extra={
+            "user_id": str(current_user.id),
+            "payment_id": payment_id,
+            "order_id": order_id,
+        },
     )
-    if not valid:
-        raise HTTPException(status_code=400, detail="Invalid payment signature")
 
-    # Get user's org
-    org_result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    membership = org_result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=404, detail="No organization found")
-
-    # Determine plan tier
-    plan_map = {
-        "free": PlanTier.FREE,
-        "plus": PlanTier.PRO,
-        "pro": PlanTier.PRO,
-        "enterprise": PlanTier.ENTERPRISE,
-    }
-    plan_tier = plan_map.get(request.plan.lower(), PlanTier.FREE)
-
-    now = datetime.now(timezone.utc)
-    period_end = now + timedelta(days=30 if request.billing == "monthly" else 365)
-
-    # Create payment record
-    payment = Payment(
-        user_id=current_user.id,
-        provider=PaymentProvider.RAZORPAY,
-        type=PaymentType.INITIAL,
-        status=PaymentStatus.COMPLETED,
-        amount=0,  # Amount stored in Razorpay order
-        currency="INR",
-        provider_payment_id=request.razorpay_payment_id,
-        provider_order_id=request.razorpay_order_id,
-    )
-    db.add(payment)
-    await db.flush()
-
-    # Create or update subscription
-    result = await db.execute(
-        select(Subscription)
-        .where(Subscription.organization_id == membership.organization_id)
-        .order_by(Subscription.created_at.desc())
-        .limit(1)
-    )
-    sub = result.scalar_one_or_none()
-
-    if sub:
-        sub.plan = plan_tier
-        sub.status = "ACTIVE"
-        sub.billing_interval = request.billing
-        sub.current_period_start = now
-        sub.current_period_end = period_end
-        sub.cancel_at_period_end = False
-        sub.cancelled_at = None
-        sub.last_payment_at = now
-        sub.last_payment_id = payment.id
-    else:
-        sub = Subscription(
-            organization_id=membership.organization_id,
-            plan=plan_tier,
-            status="ACTIVE",
-            billing_interval=request.billing,
-            current_period_start=now,
-            current_period_end=period_end,
-            cancel_at_period_end=False,
-            last_payment_at=now,
-            last_payment_id=payment.id,
+    try:
+        rzp = RazorpayClient()
+        valid = rzp.verify_payment_signature(
+            razorpay_payment_id=payment_id,
+            razorpay_order_id=order_id,
+            razorpay_signature=signature,
         )
-        db.add(sub)
+        if not valid:
+            logger.warning(
+                "Razorpay payment signature verification failed",
+                extra={
+                    "user_id": str(current_user.id),
+                    "payment_id": payment_id,
+                    "order_id": order_id,
+                },
+            )
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
 
-    await db.commit()
+        membership = await _ensure_user_membership(db, current_user)
+        if not membership:
+            raise HTTPException(status_code=404, detail="No organization found")
 
-    return {
-        "success": True,
-        "payment_id": request.razorpay_payment_id,
-        "subscription_id": str(sub.id),
-        "plan": request.plan,
-        "current_period_end": period_end.isoformat(),
-        "message": "Payment verified and subscription activated",
-    }
+        order_context = await _resolve_razorpay_order_context(db, rzp, current_user, request)
+        plan_name = order_context["plan_name"]
+        billing_interval = order_context["billing_interval"]
+        plan_record = order_context["plan_record"]
+        plan_tier = _map_plan_tier(plan_name)
+
+        now = datetime.now(timezone.utc)
+        period_end = now + timedelta(days=30 if billing_interval == "monthly" else 365)
+
+        result = await db.execute(
+            select(Subscription)
+            .where(Subscription.organization_id == membership.organization_id)
+            .order_by(Subscription.created_at.desc())
+            .limit(1)
+        )
+        sub = result.scalar_one_or_none()
+
+        payment_result = await db.execute(
+            select(Payment).where(
+                Payment.provider == PaymentProvider.RAZORPAY,
+                Payment.provider_payment_id == payment_id,
+            ).limit(1)
+        )
+        payment = payment_result.scalar_one_or_none()
+
+        if payment is None:
+            payment_type = PaymentType.INITIAL if sub is None else PaymentType.UPGRADE
+            payment = Payment(
+                user_id=current_user.id,
+                provider=PaymentProvider.RAZORPAY,
+                type=payment_type,
+                status=PaymentStatus.COMPLETED,
+                amount=order_context["amount"],
+                currency=order_context["currency"],
+                provider_payment_id=payment_id,
+                provider_order_id=order_id,
+                provider_response={
+                    "order": order_context["order"],
+                    "notes": order_context["notes"],
+                },
+            )
+            db.add(payment)
+            await db.flush()
+        else:
+            payment.status = PaymentStatus.COMPLETED
+            payment.amount = order_context["amount"]
+            payment.currency = order_context["currency"]
+            payment.provider_order_id = order_id
+            payment.provider_response = {
+                "order": order_context["order"],
+                "notes": order_context["notes"],
+            }
+
+        if sub:
+            sub.plan = plan_tier
+            sub.plan_id = getattr(plan_record, "id", None)
+            sub.status = "ACTIVE"
+            sub.provider = "razorpay"
+            sub.billing_interval = billing_interval
+            sub.current_period_start = now
+            sub.current_period_end = period_end
+            sub.cancel_at_period_end = False
+            sub.cancelled_at = None
+            sub.last_payment_at = now
+            sub.last_payment_id = payment.id
+        else:
+            sub = Subscription(
+                organization_id=membership.organization_id,
+                plan=plan_tier,
+                plan_id=getattr(plan_record, "id", None),
+                status="ACTIVE",
+                provider="razorpay",
+                billing_interval=billing_interval,
+                current_period_start=now,
+                current_period_end=period_end,
+                cancel_at_period_end=False,
+                last_payment_at=now,
+                last_payment_id=payment.id,
+            )
+            db.add(sub)
+            await db.flush()
+
+        payment.subscription_id = sub.id
+        _apply_user_subscription_state(current_user, plan_name, "razorpay", "active")
+        await db.commit()
+
+        logger.info(
+            "Razorpay payment verified and subscription activated",
+            extra={
+                "user_id": str(current_user.id),
+                "payment_id": payment_id,
+                "order_id": order_id,
+                "plan": plan_name,
+                "billing_interval": billing_interval,
+                "subscription_id": str(sub.id),
+            },
+        )
+
+        return {
+            "success": True,
+            "payment_id": payment_id,
+            "order_id": order_id,
+            "subscription_id": str(sub.id),
+            "plan": plan_name,
+            "status": "active",
+            "current_period_end": period_end.isoformat(),
+            "message": "Payment verified and subscription activated",
+        }
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:
+        await db.rollback()
+        logger.exception(
+            "Unexpected Razorpay verification failure",
+            extra={
+                "user_id": str(current_user.id),
+                "payment_id": payment_id,
+                "order_id": order_id,
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise HTTPException(status_code=500, detail="Failed to verify payment")
 
 
 # ─── Stripe Webhook ────────────────────────────────────────────────────
@@ -335,12 +638,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 )
                 user = user_result.scalar_one_or_none()
                 if user:
-                    org_result = await db.execute(
-                        select(OrganizationMember).where(
-                            OrganizationMember.user_id == user.id,
-                        ).limit(1)
-                    )
-                    membership = org_result.scalar_one_or_none()
+                    membership = await _ensure_user_membership(db, user)
                     if membership:
                         sub_result = await db.execute(
                             select(Subscription).where(
@@ -350,8 +648,28 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                         sub = sub_result.scalar_one_or_none()
                         if sub:
                             sub.stripe_subscription_id = subscription_id
+                            sub.provider = "stripe"
                             sub.status = SubscriptionStatus.ACTIVE.value
                             sub.last_payment_at = datetime.now(timezone.utc)
+                            payment = Payment(
+                                user_id=user.id,
+                                subscription_id=sub.id,
+                                provider=PaymentProvider.STRIPE,
+                                type=PaymentType.INITIAL,
+                                status=PaymentStatus.COMPLETED,
+                                amount=data.get("amount_total", 0) or 0,
+                                currency=(data.get("currency", "USD") or "USD").upper(),
+                                provider_payment_id=data.get("payment_intent") or data.get("id"),
+                                provider_order_id=data.get("id"),
+                                provider_response=data,
+                            )
+                            db.add(payment)
+                            _apply_user_subscription_state(
+                                user,
+                                metadata.get("plan", "pro"),
+                                "stripe",
+                                SubscriptionStatus.ACTIVE.value,
+                            )
 
         elif event_type == "invoice.payment_succeeded":
             # Renewal payment succeeded
@@ -364,9 +682,21 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 )
                 sub = sub_result.scalar_one_or_none()
                 if sub:
+                    user_result = await db.execute(
+                        select(User).where(User.current_org_id == sub.organization_id).limit(1)
+                    )
+                    user = user_result.scalar_one_or_none()
                     sub.status = SubscriptionStatus.ACTIVE.value
+                    sub.provider = "stripe"
                     sub.dunning_attempts = 0
                     sub.last_payment_at = datetime.now(timezone.utc)
+                    if user:
+                        _apply_user_subscription_state(
+                            user,
+                            "pro" if getattr(sub.plan, "value", str(sub.plan)) != "ENTERPRISE" else "enterprise",
+                            "stripe",
+                            SubscriptionStatus.ACTIVE.value,
+                        )
 
         elif event_type == "invoice.payment_failed":
             # Renewal payment failed
@@ -379,8 +709,19 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 )
                 sub = sub_result.scalar_one_or_none()
                 if sub:
+                    user_result = await db.execute(
+                        select(User).where(User.current_org_id == sub.organization_id).limit(1)
+                    )
+                    user = user_result.scalar_one_or_none()
                     sub.status = SubscriptionStatus.PAST_DUE.value
                     sub.dunning_attempts += 1
+                    if user:
+                        _apply_user_subscription_state(
+                            user,
+                            user.subscription_plan or "free",
+                            "stripe",
+                            SubscriptionStatus.PAST_DUE.value,
+                        )
 
         elif event_type == "customer.subscription.deleted":
             # Subscription cancelled
@@ -393,8 +734,14 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 )
                 sub = sub_result.scalar_one_or_none()
                 if sub:
+                    user_result = await db.execute(
+                        select(User).where(User.current_org_id == sub.organization_id).limit(1)
+                    )
+                    user = user_result.scalar_one_or_none()
                     sub.status = SubscriptionStatus.CANCELED.value
                     sub.cancelled_at = datetime.now(timezone.utc)
+                    if user:
+                        _apply_user_subscription_state(user, "free", "stripe", SubscriptionStatus.CANCELED.value)
 
         # Record the event (inside same transaction)
         await guard.record_event(db, "stripe", event["id"], event_type, event)
@@ -442,12 +789,11 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
             notes = payment_data.get("notes", {})
             user_id = notes.get("user_id")
             if user_id:
-                org_result = await db.execute(
-                    select(OrganizationMember).where(
-                        OrganizationMember.user_id == user_id,
-                    ).limit(1)
+                user_result = await db.execute(
+                    select(User).where(User.id == user_id).limit(1)
                 )
-                membership = org_result.scalar_one_or_none()
+                user = user_result.scalar_one_or_none()
+                membership = await _ensure_user_membership(db, user) if user else None
                 if membership:
                     sub_result = await db.execute(
                         select(Subscription).where(
@@ -460,6 +806,13 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
                         sub.last_payment_at = datetime.now(timezone.utc)
                         sub.provider = "razorpay"
                         sub.razorpay_subscription_id = notes.get("subscription_id")
+                        if user:
+                            _apply_user_subscription_state(
+                                user,
+                                notes.get("plan", "pro"),
+                                "razorpay",
+                                SubscriptionStatus.ACTIVE.value,
+                            )
 
                         # Create payment record
                         payment = Payment(
@@ -481,12 +834,11 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
             notes = payment_data.get("notes", {})
             user_id = notes.get("user_id")
             if user_id:
-                org_result = await db.execute(
-                    select(OrganizationMember).where(
-                        OrganizationMember.user_id == user_id,
-                    ).limit(1)
+                user_result = await db.execute(
+                    select(User).where(User.id == user_id).limit(1)
                 )
-                membership = org_result.scalar_one_or_none()
+                user = user_result.scalar_one_or_none()
+                membership = await _ensure_user_membership(db, user) if user else None
                 if membership:
                     sub_result = await db.execute(
                         select(Subscription).where(
@@ -497,6 +849,13 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
                     if sub:
                         sub.status = SubscriptionStatus.PAST_DUE.value
                         sub.dunning_attempts += 1
+                        if user:
+                            _apply_user_subscription_state(
+                                user,
+                                user.subscription_plan or "free",
+                                "razorpay",
+                                SubscriptionStatus.PAST_DUE.value,
+                            )
 
         elif event_type == "subscription.charged":
             # Subscription renewal charged
@@ -532,19 +891,8 @@ async def get_subscription(
     if not current_user:
         return _free_plan_response("anonymous")
 
-    # Check DB for active subscription (subscriptions are org-based)
     from app.models.subscription import Subscription
-    from app.models.organization import OrganizationMember
-
-    # Get user's org
-    org_result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    membership = org_result.scalar_one_or_none()
-    if not membership:
-        return _free_plan_response(str(current_user.id))
+    membership = await _ensure_user_membership(db, current_user)
 
     result = await db.execute(
         select(Subscription)
@@ -560,10 +908,12 @@ async def get_subscription(
     if not sub:
         return _free_plan_response(str(current_user.id))
 
+    public_plan_name = await _resolve_public_plan_name(db, current_user, sub)
+
     return {
         "id": str(sub.id),
         "user_id": str(current_user.id),
-        "plan": sub.plan.value if hasattr(sub.plan, "value") else str(sub.plan),
+        "plan": public_plan_name,
         "status": sub.status,
         "current_period_start": sub.current_period_start.isoformat() if sub.current_period_start else "",
         "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
@@ -572,7 +922,7 @@ async def get_subscription(
         "scans_this_period": sub.scans_this_period,
         "repositories_count": sub.repositories_count,
         "team_members_count": getattr(sub, "team_members_count", 1),
-        "features": _plan_features(sub.plan),
+        "features": _plan_features(public_plan_name),
     }
 
 
@@ -589,21 +939,11 @@ async def activate_subscription(
     In production, subscription activation should happen via webhooks only.
     This endpoint is for mock/dev mode or manual activation.
     """
-    from app.models.subscription import Subscription, PlanTier
-    from app.models.organization import OrganizationMember
-    from app.models.payment import Plan
+    from app.models.subscription import Subscription
     from datetime import datetime, timezone, timedelta
     from app.config import settings
 
-    # Get user's org
-    org_result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    membership = org_result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=404, detail="No organization found")
+    membership = await _ensure_user_membership(db, current_user)
 
     # Check if payment providers are configured
     stripe_configured = bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_SECRET_KEY != "sk_test_xxx")
@@ -634,22 +974,17 @@ async def activate_subscription(
     )
     sub = result.scalar_one_or_none()
 
-    # Determine plan tier (map frontend names to DB enum values)
-    plan_map = {
-        "free": PlanTier.FREE,
-        "plus": PlanTier.PRO,      # DB doesn't have PLUS, use PRO
-        "pro": PlanTier.PRO,
-        "enterprise": PlanTier.ENTERPRISE,
-    }
-    plan_tier = plan_map.get(request.plan.lower(), PlanTier.FREE)
-
     now = datetime.now(timezone.utc)
-    billing_interval = getattr(request, "billing", "monthly")
+    billing_interval = _normalize_billing_interval(getattr(request, "billing", "monthly"))
     period_end = now + timedelta(days=30 if billing_interval == "monthly" else 365)
+    plan_name = _map_plan_name(request.plan)
+    plan_tier = _map_plan_tier(plan_name)
+    plan_record = await _get_plan_record(db, plan_name, billing_interval)
 
     if sub:
         # Update existing subscription
         sub.plan = plan_tier
+        sub.plan_id = getattr(plan_record, "id", None)
         sub.status = "ACTIVE"
         sub.billing_interval = billing_interval
         sub.current_period_start = now
@@ -662,6 +997,7 @@ async def activate_subscription(
         sub = Subscription(
             organization_id=membership.organization_id,
             plan=plan_tier,
+            plan_id=getattr(plan_record, "id", None),
             status="ACTIVE",
             billing_interval=billing_interval,
             current_period_start=now,
@@ -670,11 +1006,12 @@ async def activate_subscription(
         )
         db.add(sub)
 
+    _apply_user_subscription_state(current_user, plan_name, "mock", "active")
     await db.commit()
 
     return {
         "message": "Subscription activated successfully",
-        "plan": request.plan,
+        "plan": plan_name,
         "status": "active",
         "current_period_end": period_end.isoformat(),
         "mode": "mock",
@@ -688,17 +1025,8 @@ async def cancel_subscription(
 ):
     """Cancel subscription at end of current billing period."""
     from app.models.subscription import Subscription
-    from app.models.organization import OrganizationMember
 
-    # Get user's org
-    org_result = await db.execute(
-        select(OrganizationMember).where(
-            OrganizationMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    membership = org_result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=404, detail="No organization found")
+    membership = await _ensure_user_membership(db, current_user)
 
     result = await db.execute(
         select(Subscription).where(
@@ -811,7 +1139,7 @@ def _free_plan_response(user_id: str) -> dict:
 
 def _plan_features(plan) -> dict:
     """Extract features from a plan. Handles both enum and string plans."""
-    plan_name = plan.value if hasattr(plan, "value") else str(plan)
+    plan_name = _map_plan_name(plan.value if hasattr(plan, "value") else str(plan))
     features = {
         "free": {
             "max_repositories": 5,

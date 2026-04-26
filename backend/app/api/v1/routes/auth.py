@@ -23,7 +23,6 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.user import User
 from app.schemas.auth import (
     APIKeyResponse,
@@ -34,6 +33,7 @@ from app.schemas.auth import (
     UserUpdate,
 )
 from app.schemas.common import MessageResponse
+from app.services.organization_provisioning import ensure_user_organization_membership
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -86,31 +86,6 @@ async def register(
         )
 
     try:
-        # Create organization first if organization_name provided
-        organization = None
-        if user_data.organization_name and user_data.organization_name.strip():
-            org_name = user_data.organization_name.strip()
-            org_slug = org_name.lower().replace(" ", "-")[:100]
-
-            # Ensure unique slug
-            counter = 1
-            original_slug = org_slug
-            while True:
-                result = await db.execute(select(Organization).where(Organization.slug == org_slug))
-                if not result.scalar_one_or_none():
-                    break
-                org_slug = f"{original_slug}-{counter}"
-                counter += 1
-
-            organization = Organization(
-                name=org_name,
-                slug=org_slug,
-                plan=PlanType.FREE,
-            )
-            db.add(organization)
-            await db.flush()  # Get organization ID
-            logger.info("Organization created", name=org_name, slug=org_slug)
-
         # Encrypt email and create hash
         email_encrypted, email_hash = encrypt_user_email(user_data.email)
 
@@ -122,22 +97,16 @@ async def register(
             hashed_password=get_password_hash(user_data.password),
             full_name=user_data.full_name,
             country=user_data.country or "US",
-            current_org_id=organization.id if organization else None,
         )
         db.add(user)
         await db.flush()  # Get user ID
         logger.info("User created", user_id=user.id)
 
-        # Create organization membership if organization exists
-        if organization:
-            membership = OrganizationMember(
-                organization_id=organization.id,
-                user_id=user.id,
-                role=MembershipRole.OWNER,
-                joined_at=datetime.utcnow(),
-            )
-            db.add(membership)
-            logger.info("Organization membership created", user_id=user.id, org_id=organization.id)
+        await ensure_user_organization_membership(
+            db,
+            user,
+            organization_name=user_data.organization_name,
+        )
 
         await db.commit()
         await db.refresh(user)
@@ -182,6 +151,7 @@ async def login(
 
     # Update last login
     user.last_login_at = datetime.utcnow()
+    await ensure_user_organization_membership(db, user)
     await db.commit()
 
     # Decrypt email for token
@@ -376,6 +346,7 @@ async def github_callback(
 
             # Update last login
             user.last_login_at = datetime.utcnow()
+            await ensure_user_organization_membership(db, user)
             await db.commit()
             await db.refresh(user)
 

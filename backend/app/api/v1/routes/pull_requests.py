@@ -18,8 +18,10 @@ from app.schemas.pull_request import CreatePRRequest, CreatePRResponse
 from app.services.github_app_service import GitHubAppService, GitHubAppServiceError
 from app.services.github_pr import (
     GitHubPRService,
+    FixApplicationError,
+    PartialFixError,
+    FixValidationError,
     generate_pr_title,
-    generate_pr_description,
 )
 
 logger = structlog.get_logger(__name__)
@@ -237,7 +239,8 @@ async def create_pull_request(
     # Step 4: Prepare fixes
     fixes = []
     for finding in findings:
-        fix_code = finding.fix_code or finding.fix_example
+        # Prefer full-file output when available to avoid partial patch PRs.
+        fix_code = finding.full_example or finding.fix_code or finding.fix_example
         if not fix_code:
             logger.warning(
                 "Skipping finding - no fix code available",
@@ -273,20 +276,9 @@ async def create_pull_request(
     estimated_improvement = (severity_counts.get("critical", 0) * 5) + (severity_counts.get("high", 0) * 3)
     score_after = min(100.0, score_before + estimated_improvement)
 
-    pr_description = request.pr_description or generate_pr_description(
-        scan_id=request.scan_id,
-        findings=[{
-            "rule_id": f.rule_id,
-            "rule_name": f.rule_name,
-            "severity": f.severity.value,
-            "description": f.description,
-            "recommendation": f.recommendation,
-            "file_path": f.file_path,
-            "line_number": f.line_number,
-        } for f in findings],
-        score_before=score_before,
-        score_after=score_after,
-    )
+    # If no description is provided, we generate a production-grade one after
+    # fixes are applied (so we can include normalized paths + diffs + validation).
+    pr_description = request.pr_description or None
 
     commit_message = f"fix: apply DevArchAI fixes for scan {request.scan_id[:8]}\n\n{pr_title}"
 
@@ -317,7 +309,24 @@ async def create_pull_request(
             description=pr_description,
             commit_message=commit_message,
             is_draft=request.is_draft,
+            scan_id=request.scan_id,
+            findings=[{
+                "rule_id": f.rule_id,
+                "rule_name": f.rule_name,
+                "severity": f.severity.value,
+                "description": f.description,
+                "recommendation": f.recommendation,
+                "file_path": f.file_path,
+                "line_number": f.line_number,
+                "confidence": f.confidence_score or f.confidence,
+            } for f in findings],
+            score_before=score_before,
+            score_after=score_after,
         )
+
+        # Ensure we persist the actual PR description used.
+        if not pr_description:
+            pr_description = getattr(pr_service, "_generated_description", None)
 
         logger.info(
             "PR created successfully",
@@ -331,6 +340,14 @@ async def create_pull_request(
 
         # Provide helpful error messages
         error_msg = str(e)
+        if isinstance(e, (FixApplicationError, PartialFixError, FixValidationError)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "AI-generated fix output failed validation and the PR was not created.\n\n"
+                    f"{error_msg}"
+                ),
+            )
         if "branch already exists" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

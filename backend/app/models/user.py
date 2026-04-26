@@ -49,9 +49,13 @@ class User(Base):
 
     # Subscription plan
     subscription_plan = Column(String(50), default="free", nullable=False)  # free, plus, pro, enterprise
+    subscription_status = Column(String(50), default="inactive", nullable=False)
+    payment_provider = Column(String(50), nullable=True)
 
     # Billing fields (added for payment system)
     country = Column(String(2), default="US", nullable=True)  # ISO 3166-1 alpha-2
+    selected_country = Column(String(2), nullable=True)  # User-selected country preference
+    selected_gateway = Column(String(20), nullable=True)  # User-selected payment gateway override
     billing_email = Column(String(255), nullable=True)
     tax_id = Column(String(100), nullable=True)  # GST, VAT, etc.
 

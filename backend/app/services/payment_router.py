@@ -31,6 +31,7 @@ COUNTRY_CURRENCY = {
 
 # Countries that MUST use Razorpay
 RAZORPAY_COUNTRIES = {"IN"}
+SUPPORTED_GATEWAYS = {"stripe", "razorpay"}
 
 
 class PaymentRouter:
@@ -42,13 +43,22 @@ class PaymentRouter:
 
     def resolve_provider(self, user_country: str | None) -> str:
         """Determine payment provider for user based on country."""
-        if user_country in RAZORPAY_COUNTRIES:
+        country = (user_country or "").upper()
+        if country in RAZORPAY_COUNTRIES:
+            return "razorpay"
+        return "stripe"
+
+    def get_payment_gateway(self, user) -> str:
+        """Resolve payment gateway from user billing fields with safe fallback."""
+        country = (getattr(user, "selected_country", None) or getattr(user, "country", None) or "US").upper()
+        if country == "IN":
             return "razorpay"
         return "stripe"
 
     def resolve_currency(self, user_country: str | None) -> Currency:
         """Resolve currency from country code."""
-        return COUNTRY_CURRENCY.get(user_country or "US", Currency.USD)
+        country = (user_country or "US").upper()
+        return COUNTRY_CURRENCY.get(country, Currency.USD)
 
     def get_plan_price(self, plan: Plan, currency: Currency) -> int:
         """Get plan price in smallest currency unit (cents/paise)."""
@@ -60,6 +70,13 @@ class PaymentRouter:
         }
         return price_map.get(currency, plan.price_usd)
 
+    def _build_razorpay_receipt(self, user, plan: Plan) -> str:
+        """Build a Razorpay-safe receipt string with max length 40."""
+        receipt = f"user_{user.id}_{plan.name}"[:40]
+        if len(receipt) > 40:
+            raise ValueError("Razorpay receipt exceeds 40 characters")
+        return receipt
+
     async def create_checkout(
         self,
         db: AsyncSession,
@@ -68,14 +85,27 @@ class PaymentRouter:
         billing_interval: str,
         user_country: str | None = None,
         coupon_code: str | None = None,
+        selected_gateway: str | None = None,
     ) -> dict[str, Any]:
         """
         Create a checkout session/order with the appropriate provider.
 
         Returns provider-specific checkout data for the frontend.
         """
-        provider = self.resolve_provider(user_country)
-        currency = self.resolve_currency(user_country)
+        resolved_country = (user_country or getattr(user, "selected_country", None) or getattr(user, "country", None) or "US").upper()
+        provider = (selected_gateway or self.get_payment_gateway(user)).lower()
+        if provider not in SUPPORTED_GATEWAYS:
+            raise ValueError("Invalid payment gateway selection")
+        currency = self.resolve_currency(resolved_country)
+
+        logger.info(
+            "Resolved payment gateway",
+            extra={
+                "user_id": str(getattr(user, "id", "")),
+                "country": resolved_country,
+                "selected_gateway": provider,
+            },
+        )
 
         # Fetch plan from DB
         result = await db.execute(
@@ -93,23 +123,41 @@ class PaymentRouter:
         frontend_url = settings.FRONTEND_URL.rstrip("/")
 
         if provider == "razorpay":
+            logger.info(
+                "Creating checkout provider",
+                extra={
+                    "user_id": str(getattr(user, "id", "")),
+                    "provider": "razorpay",
+                    "country": resolved_country,
+                },
+            )
             return await self._create_razorpay_order(
                 user=user,
                 plan=plan,
                 amount=amount,
-                currency=currency.value,
+                currency=Currency.INR.value,
                 billing_interval=billing_interval,
                 frontend_url=frontend_url,
+                country=resolved_country,
             )
-        else:
-            return await self._create_stripe_session(
-                user=user,
-                plan=plan,
-                amount=amount,
-                currency=currency.value,
-                billing_interval=billing_interval,
-                frontend_url=frontend_url,
-            )
+
+        logger.info(
+            "Creating checkout provider",
+            extra={
+                "user_id": str(getattr(user, "id", "")),
+                "provider": "stripe",
+                "country": resolved_country,
+            },
+        )
+        return await self._create_stripe_session(
+            user=user,
+            plan=plan,
+            amount=amount,
+            currency=currency.value,
+            billing_interval=billing_interval,
+            frontend_url=frontend_url,
+            country=resolved_country,
+        )
 
     async def _create_razorpay_order(
         self,
@@ -119,9 +167,12 @@ class PaymentRouter:
         currency: str,
         billing_interval: str,
         frontend_url: str,
+        country: str | None = None,
     ) -> dict[str, Any]:
         """Create Razorpay order for one-time or subscription payment."""
-        receipt = f"sub_{plan.name}_{billing_interval}_{user.id}"
+        receipt = self._build_razorpay_receipt(user, plan)
+        if len(receipt) > 40:
+            raise ValueError("Razorpay receipt exceeds 40 characters")
         notes = {
             "user_id": str(user.id),
             "plan": plan.name,
@@ -134,10 +185,12 @@ class PaymentRouter:
             notes=notes,
         )
         return {
+            "gateway": "razorpay",
             **result,
             "plan": plan.name,
             "billing_interval": billing_interval,
             "trial_days": plan.trial_days,
+            "country": (country or "US").upper(),
         }
 
     async def _create_stripe_session(
@@ -148,6 +201,7 @@ class PaymentRouter:
         currency: str,
         billing_interval: str,
         frontend_url: str,
+        country: str | None = None,
     ) -> dict[str, Any]:
         """Create Stripe Checkout session."""
         price_id = (
@@ -173,14 +227,15 @@ class PaymentRouter:
                 )
                 session_id = f"dev_session_{plan.name}_{billing_interval}_{user.id}"
                 return {
-                    "checkout_url": f"{frontend_url}/billing/success?session_id={session_id}&plan={plan.name}&mock=true",
+                    "session_url": f"{frontend_url}/billing/success?session_id={session_id}&plan={plan.name}&mock=true",
                     "session_id": session_id,
-                    "provider": "stripe",
+                    "gateway": "stripe",
                     "plan": plan.name,
                     "billing_interval": billing_interval,
                     "amount": amount,
                     "currency": currency,
                     "mock": True,
+                    "country": (country or "US").upper(),
                 }
 
         success_url = f"{frontend_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
@@ -197,11 +252,20 @@ class PaymentRouter:
             success_url=success_url,
             cancel_url=cancel_url,
             trial_days=plan.trial_days,
+            metadata={
+                "user_id": str(getattr(user, "id", "")),
+                "plan": plan.name,
+                "billing_interval": billing_interval,
+                "gateway": "stripe",
+                "country": (country or "US").upper(),
+            },
         )
         return {
+            "gateway": "stripe",
             **result,
             "plan": plan.name,
             "billing_interval": billing_interval,
             "amount": amount,
             "currency": currency,
+            "country": (country or "US").upper(),
         }

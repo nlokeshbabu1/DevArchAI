@@ -5,6 +5,7 @@ import { Button, Card } from '../../components/ui-animated'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { useAuthStore } from '../../stores/auth-store'
+import { verifyRazorpayPayment } from '../../lib/payment-gateway'
 
 export function BillingSuccess() {
   const navigate = useNavigate()
@@ -20,21 +21,64 @@ export function BillingSuccess() {
       const planParam = searchParams.get('plan')
       const redirectPath = searchParams.get('redirect')
       const isMock = searchParams.get('mock') === 'true'
+      const gateway = searchParams.get('gateway')
+      const isVerified = searchParams.get('verified') === 'true'
+      const razorpayPaymentId = searchParams.get('razorpay_payment_id')
+      const razorpayOrderId = searchParams.get('razorpay_order_id')
+      const razorpaySignature = searchParams.get('razorpay_signature')
 
-      if (!sessionId || !planParam) {
+      const finishSuccess = (resolvedPlan?: string) => {
+        setPlan(resolvedPlan || planParam || 'subscription')
+        setSuccess(true)
+        setIsProcessing(false)
+        setTimeout(() => {
+          if (redirectPath) {
+            navigate(decodeURIComponent(redirectPath))
+          } else {
+            navigate('/billing')
+          }
+        }, 2000)
+      }
+
+      if (gateway === 'razorpay' && isVerified) {
+        finishSuccess(planParam || 'plus')
+        return
+      }
+
+      if (razorpayPaymentId && razorpayOrderId && razorpaySignature && token) {
+        try {
+          const verification = await verifyRazorpayPayment(
+            {
+              payment_id: razorpayPaymentId,
+              order_id: razorpayOrderId,
+              signature: razorpaySignature,
+            },
+            token,
+          )
+          finishSuccess(verification.plan || planParam || 'plus')
+          return
+        } catch (error) {
+          console.error('Failed to verify Razorpay payment:', error)
+          setSuccess(false)
+          setIsProcessing(false)
+          return
+        }
+      }
+
+      if (!sessionId) {
         setSuccess(false)
         setIsProcessing(false)
         return
       }
 
-      setPlan(planParam)
+      setPlan(planParam || 'subscription')
 
       try {
         if (isMock) {
           // Mock/dev mode: activate subscription directly
           await new Promise(resolve => setTimeout(resolve, 1500))
 
-          if (token) {
+          if (token && planParam) {
             await axios.post('/api/v1/billing/subscription', {
               plan: planParam,
               billing: 'monthly',
@@ -54,16 +98,7 @@ export function BillingSuccess() {
                 headers: { Authorization: `Bearer ${token}` }
               })
               if (response.data.plan && response.data.plan !== 'free') {
-                setSuccess(true)
-                // Redirect after showing success message
-                setTimeout(() => {
-                  if (redirectPath) {
-                    navigate(decodeURIComponent(redirectPath))
-                  } else {
-                    navigate('/billing')
-                  }
-                }, 2000)
-                setIsProcessing(false)
+                finishSuccess(response.data.plan)
                 return
               }
             } catch (err) {
@@ -71,48 +106,23 @@ export function BillingSuccess() {
             }
             
             // If webhook hasn't processed yet, show success anyway (will be activated soon)
-            setSuccess(true)
-            setTimeout(() => {
-              if (redirectPath) {
-                navigate(decodeURIComponent(redirectPath))
-              } else {
-                navigate('/billing')
-              }
-            }, 2000)
-            setIsProcessing(false)
+            finishSuccess(planParam || 'subscription')
             return
           }
         }
 
-        setSuccess(true)
-
-        // Redirect back to scan results or intended destination after 2 seconds
-        setTimeout(() => {
-          if (redirectPath) {
-            navigate(decodeURIComponent(redirectPath))
-          } else {
-            navigate('/billing')
-          }
-        }, 2000)
+        finishSuccess(planParam || 'subscription')
       } catch (error: any) {
         console.error('Failed to process checkout:', error)
         
         // If direct activation is blocked (payment providers configured), 
         // tell user to wait for webhook
         if (error.response?.status === 403) {
-          setSuccess(true)
-          setTimeout(() => {
-            if (redirectPath) {
-              navigate(decodeURIComponent(redirectPath))
-            } else {
-              navigate('/billing')
-            }
-          }, 2000)
+          finishSuccess(planParam || 'subscription')
         } else {
           setSuccess(false)
+          setIsProcessing(false)
         }
-      } finally {
-        setIsProcessing(false)
       }
     }
 

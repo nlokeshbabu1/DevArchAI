@@ -10,6 +10,7 @@ import { Button, Input, Card } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
+import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
 
 // Trust signals data
 const trustSignals = [
@@ -112,24 +113,14 @@ export function Login() {
           sessionStorage.removeItem('upgradePlan')
           sessionStorage.removeItem('postLoginRedirect')
 
-          // Call checkout API to get payment URL
+          // Call checkout API to let the backend pick the payment gateway
           try {
-            const response = await fetch('/api/v1/billing/checkout', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${tokenResponse.access_token}`,
-              },
-              body: JSON.stringify({ plan, billing: 'monthly' }),
-            })
-
-            const data = await response.json()
-            if (data.checkout_url) {
-              // Redirect to payment gateway
-              const separator = data.checkout_url.includes('?') ? '&' : '?'
-              window.location.href = `${data.checkout_url}${separator}redirect=${encodeURIComponent(targetRedirect)}`
-              return
-            }
+            const data = await createCheckout(
+              { plan, billing: 'monthly' },
+              tokenResponse.access_token
+            )
+            await handleCheckoutResponse(data)
+            return
           } catch (checkoutError) {
             console.error('Checkout creation failed, falling back to pricing page:', checkoutError)
           }

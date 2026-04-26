@@ -32,6 +32,7 @@ class StripeClient:
         cancel_url: str,
         coupon_id: str | None = None,
         trial_days: int = 0,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a Stripe Checkout session."""
         stripe = self._get_stripe()
@@ -41,7 +42,7 @@ class StripeClient:
             "line_items": [{"price": price_id, "quantity": 1}],
             "success_url": success_url,
             "cancel_url": cancel_url,
-            "metadata": {"source": "devarchai"},
+            "metadata": {"source": "devarchai", **(metadata or {})},
         }
         if coupon_id:
             session_params["discounts"] = [{"coupon": coupon_id}]
@@ -50,9 +51,9 @@ class StripeClient:
 
         session = stripe.checkout.Session.create(**session_params)
         return {
-            "checkout_url": session.url,
+            "session_url": session.url,
             "session_id": session.id,
-            "provider": "stripe",
+            "gateway": "stripe",
         }
 
     async def create_customer(self, email: str, name: str | None = None) -> str:
@@ -111,11 +112,16 @@ class RazorpayClient:
         })
         return {
             "order_id": order["id"],
-            "key_id": settings.RAZORPAY_KEY_ID,
+            "key": settings.RAZORPAY_KEY_ID,
             "amount": order["amount"],
             "currency": order["currency"],
-            "provider": "razorpay",
+            "gateway": "razorpay",
         }
+
+    async def fetch_order(self, order_id: str) -> dict[str, Any]:
+        """Fetch an existing Razorpay order."""
+        rzp = self._get_razorpay()
+        return rzp.order.fetch(order_id)
 
     async def create_customer(self, email: str, name: str | None = None) -> str:
         """Create a Razorpay customer."""
@@ -155,7 +161,7 @@ class RazorpayClient:
             payload,
             hashlib.sha256,
         ).hexdigest()
-        if expected != signature:
+        if not hmac.compare_digest(expected, signature):
             logger.error("Invalid Razorpay webhook signature")
             return None
         import json
@@ -167,15 +173,19 @@ class RazorpayClient:
         razorpay_order_id: str,
         razorpay_signature: str,
     ) -> bool:
-        """Verify Razorpay payment signature after checkout."""
-        rzp = self._get_razorpay()
-        try:
-            rzp.utility.verify_payment_signature({
-                "razorpay_order_id": razorpay_order_id,
-                "razorpay_payment_id": razorpay_payment_id,
-                "razorpay_signature": razorpay_signature,
-            })
-            return True
-        except Exception as e:
-            logger.error(f"Razorpay signature verification failed: {e}")
+        """Verify Razorpay payment signature after checkout using HMAC SHA256."""
+        secret = settings.RAZORPAY_KEY_SECRET
+        if not secret:
+            logger.error("Razorpay key secret not configured")
             return False
+
+        payload = f"{razorpay_order_id}|{razorpay_payment_id}".encode()
+        expected_signature = hmac.new(
+            secret.encode(),
+            payload,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_signature, razorpay_signature):
+            logger.error("Razorpay signature verification failed")
+            return False
+        return True
