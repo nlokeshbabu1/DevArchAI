@@ -92,9 +92,29 @@ class ScanProgressStore:
         async with self._lock:
             if scan_id not in self._store:
                 return
-            
+
             progress_obj = self._store[scan_id]
             progress_obj.detected_stack = stack
+
+    async def update_stage(self, scan_id: str, stage: str, files_scanned: int = 0, total_files: int = 0):
+        """Update scan stage and file counts."""
+        async with self._lock:
+            if scan_id not in self._store:
+                return
+
+            progress_obj = self._store[scan_id]
+            progress_obj.stage = stage
+            progress_obj.files_scanned = files_scanned
+            progress_obj.total_files = total_files
+
+    async def update_files_list(self, scan_id: str, file_paths: List[str]):
+        """Update the list of files being scanned."""
+        async with self._lock:
+            if scan_id not in self._store:
+                return
+
+            progress_obj = self._store[scan_id]
+            progress_obj.files_list = file_paths
     
     async def get_progress(self, scan_id: str) -> Optional[ScanProgressResponse]:
         """Get current scan progress."""

@@ -37,7 +37,8 @@ def get_engine():
                 settings.DATABASE_URL,
                 pool_size=settings.DB_POOL_SIZE,
                 max_overflow=settings.DB_MAX_OVERFLOW,
-                pool_pre_ping=False,  # Disable pre-ping for asyncpg compatibility
+                pool_pre_ping=True,  # Verify connections before use
+                pool_recycle=3600,   # Recycle connections every hour
                 echo=settings.DEBUG,
             )
 
@@ -91,7 +92,7 @@ async def init_db() -> None:
     try:
         async with engine.begin() as conn:
             # Import all models to ensure they're registered
-            from app.models import Finding, Report, Repository, Scan, User  # noqa: F401
+            from app.models import Finding, GitHubInstallation, Report, Repository, Scan, User  # noqa: F401
 
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created successfully")

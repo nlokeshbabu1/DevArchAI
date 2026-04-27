@@ -69,17 +69,27 @@ def _run_ai_enrichment_in_process(findings_data, file_contents_data):
 def _safe_await(coro):
     """
     Safely await a coroutine from sync code.
-    If there's a running event loop, schedule the coroutine; otherwise run it.
+    ALWAYS runs synchronously to ensure progress updates complete.
     """
     try:
-        loop = asyncio.get_running_loop()
-        # Running in async context - schedule the task but don't await
-        # This is a fire-and-forget approach for progress updates
-        asyncio.create_task(coro)
-        return None
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Use run_until_complete in a new thread or run synchronously
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result(timeout=5.0)  # 5 second timeout
+        else:
+            return loop.run_until_complete(coro)
     except RuntimeError:
-        # No running loop - safe to run synchronously
+        # No event loop - safe to run synchronously
         return asyncio.run(coro)
+    except Exception as e:
+        # Log error but don't break scan
+        import structlog
+        logger = structlog.get_logger(__name__)
+        logger.warning(f"Progress update failed: {e}")
+        return None
 
 
 class DetectedTechnologyStack:
@@ -96,6 +106,22 @@ class DetectedTechnologyStack:
         self.github_actions_files: list[str] = []
         self.has_docker_compose = False
         self.docker_compose_files: list[str] = []
+        self.has_jenkins = False
+        self.jenkins_files: list[str] = []
+        self.has_gitlab_ci = False
+        self.gitlab_ci_files: list[str] = []
+        self.has_circleci = False
+        self.circleci_files: list[str] = []
+        self.has_azure_devops = False
+        self.azure_devops_files: list[str] = []
+        self.has_ansible = False
+        self.ansible_files: list[str] = []
+        self.has_helm = False
+        self.helm_files: list[str] = []
+        self.has_prometheus = False
+        self.prometheus_files: list[str] = []
+        self.has_grafana = False
+        self.grafana_files: list[str] = []
 
     def get_detected_technologies(self) -> list[str]:
         """Get list of detected technology names."""
@@ -110,8 +136,24 @@ class DetectedTechnologyStack:
             technologies.append("github_actions")
         if self.has_docker_compose:
             technologies.append("docker_compose")
+        if self.has_jenkins:
+            technologies.append("jenkins")
+        if self.has_gitlab_ci:
+            technologies.append("gitlab_ci")
+        if self.has_circleci:
+            technologies.append("circleci")
+        if self.has_azure_devops:
+            technologies.append("azure_devops")
+        if self.has_ansible:
+            technologies.append("ansible")
+        if self.has_helm:
+            technologies.append("helm")
+        if self.has_prometheus:
+            technologies.append("prometheus")
+        if self.has_grafana:
+            technologies.append("grafana")
         return technologies
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database storage."""
         return {
@@ -125,6 +167,22 @@ class DetectedTechnologyStack:
             'github_actions_files': self.github_actions_files,
             'has_docker_compose': self.has_docker_compose,
             'docker_compose_files': self.docker_compose_files,
+            'has_jenkins': self.has_jenkins,
+            'jenkins_files': self.jenkins_files,
+            'has_gitlab_ci': self.has_gitlab_ci,
+            'gitlab_ci_files': self.gitlab_ci_files,
+            'has_circleci': self.has_circleci,
+            'circleci_files': self.circleci_files,
+            'has_azure_devops': self.has_azure_devops,
+            'azure_devops_files': self.azure_devops_files,
+            'has_ansible': self.has_ansible,
+            'ansible_files': self.ansible_files,
+            'has_helm': self.has_helm,
+            'helm_files': self.helm_files,
+            'has_prometheus': self.has_prometheus,
+            'prometheus_files': self.prometheus_files,
+            'has_grafana': self.has_grafana,
+            'grafana_files': self.grafana_files,
         }
 
 
@@ -162,6 +220,50 @@ def detect_technology_stack_from_files(files: list[str]) -> DetectedTechnologySt
             stack.has_github_actions = True
             stack.github_actions_files.append(file_path)
 
+        # Jenkins
+        if file_name.lower() == "jenkinsfile" or file_name.lower().startswith("jenkinsfile.") or file_name.lower().startswith("jenkinsfile-"):
+            stack.has_jenkins = True
+            stack.jenkins_files.append(file_path)
+
+        # GitLab CI
+        if file_name == ".gitlab-ci.yml" or file_name == ".gitlab-ci.yaml":
+            stack.has_gitlab_ci = True
+            stack.gitlab_ci_files.append(file_path)
+
+        # CircleCI
+        if ".circleci/" in file_path and file_path.endswith((".yml", ".yaml")):
+            stack.has_circleci = True
+            stack.circleci_files.append(file_path)
+
+        # Azure DevOps
+        if file_name in ["azure-pipelines.yml", "azure-pipelines.yaml"]:
+            stack.has_azure_devops = True
+            stack.azure_devops_files.append(file_path)
+
+        # Ansible
+        if file_name in ["ansible.cfg", ".ansible.cfg"] or file_path.endswith((".ansible.yml", ".ansible.yaml")):
+            stack.has_ansible = True
+            stack.ansible_files.append(file_path)
+        if "/roles/" in file_path or "/playbooks/" in file_path:
+            if file_path.endswith((".yml", ".yaml")):
+                stack.has_ansible = True
+                stack.ansible_files.append(file_path)
+
+        # Helm
+        if file_name == "chart.yaml" or file_name == "helmfile.yaml" or file_name == "helmfile.yml":
+            stack.has_helm = True
+            stack.helm_files.append(file_path)
+
+        # Prometheus
+        if file_name in ["prometheus.yml", "prometheus.yaml", "prometheus.rules.yml", "prometheus.rules.yaml"]:
+            stack.has_prometheus = True
+            stack.prometheus_files.append(file_path)
+
+        # Grafana
+        if "grafana" in file_lower and file_path.endswith((".yml", ".yaml", ".json")):
+            stack.has_grafana = True
+            stack.grafana_files.append(file_path)
+
     return stack
 
 
@@ -198,12 +300,14 @@ class SyncScanService:
         self.parser_registry = self._setup_parsers()
         self.detected_stack = DetectedTechnologyStack()
 
-    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None):
+    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None, stage: Optional[str] = None, files_scanned: int = 0, total_files: int = 0):
         """Update progress in the store (async)."""
         if self.progress_store and self.scan_id:
             await self.progress_store.update_status(self.scan_id, "running", progress, message)
             if message:
                 await self.progress_store.add_log(self.scan_id, message)
+            if stage:
+                await self.progress_store.update_stage(self.scan_id, stage, files_scanned, total_files)
             if step_name:
                 from app.schemas.scan_progress import StepStatus
                 # Mark previous running step as completed
@@ -230,9 +334,17 @@ class SyncScanService:
     ) -> Scan:
         """Execute a complete scan workflow synchronously with dynamic scanner execution."""
         import asyncio
-        
+        import time  # Explicit import to avoid scoping issues
+
         start_time = time.time()
         repo_path = None
+
+        # PHASE 6: Record scan start (NEW - Observability)
+        try:
+            from app.services.metrics import record_scan_start, record_scan
+            record_scan_start()
+        except Exception:
+            pass  # Don't break scan if metrics fail
 
         try:
             # Update status to processing
@@ -242,7 +354,7 @@ class SyncScanService:
 
             # Initialize progress tracking
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub"))
+                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub", stage="cloning"))
 
             self._update_progress(progress_callback, 10, "Cloning repository...")
 
@@ -255,7 +367,7 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository"))
+                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository", stage="detecting"))
 
             self._update_progress(progress_callback, 20, "Detecting technology stack...")
 
@@ -276,24 +388,85 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies"))
+                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies", stage="detecting"))
 
             self._update_progress(progress_callback, 30, "Loading files...")
 
-            # Load and parse files
+            # Load and parse files with progress tracking
+            logger.info("Starting file parsing...")
             parsed_files = self._load_and_parse_files(Path(repo_path))
-
+            
             if not parsed_files:
                 raise ValueError("No analyzable files found in repository")
-
+            
+            logger.info(f"✅ File parsing completed: {len(parsed_files)} files parsed")
+            
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(50, f"Running rule engine ({len(parsed_files)} files)...", "Running security rules"))
+                _safe_await(self._update_progress_async(40, f"Parsed {len(parsed_files)} files...", "Detecting technologies", stage="detecting"))
+            self._update_progress(progress_callback, 40, f"Parsed {len(parsed_files)} files...")
+
+            # Extract file paths from parsed files
+            file_paths = [str(pf.file_path) for pf in parsed_files]
+            logger.info(f"📁 Extracted {len(file_paths)} file paths from parsed files")
+            
+            # Clean file paths for display (remove /tmp/devarchai/... prefix)
+            import re
+            cleaned_file_paths = []
+            for fp in file_paths:
+                # Remove /tmp/devarchai/{hash}_{repo_name}/ prefix
+                match = re.search(r'/tmp/devarchai/[a-zA-Z0-9]+_[^/]+/(.*)', fp)
+                if match:
+                    cleaned_file_paths.append(match.group(1))
+                else:
+                    cleaned_file_paths.append(fp)
+            
+            logger.info(f"📁 Cleaned file paths example: {cleaned_file_paths[:3] if len(cleaned_file_paths) >= 3 else cleaned_file_paths}")
+
+            # Update progress with actual file count and file list
+            if self.progress_store and self.scan_id:
+                # Store the file list in the progress store (use cleaned paths)
+                logger.info(f"📁 Updating files_list with {len(cleaned_file_paths)} files")
+                _safe_await(self.progress_store.update_files_list(self.scan_id, cleaned_file_paths))
+                _safe_await(self._update_progress_async(
+                    50,
+                    f"Running rule engine ({len(parsed_files)} files)...",
+                    "Running security rules",
+                    stage="scanning",
+                    files_scanned=len(parsed_files),
+                    total_files=len(parsed_files)
+                ))
+                # Broadcast file list via WebSocket (fire and forget, don't block on it)
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    _safe_await(
+                        scan_progress_manager.broadcast_progress(
+                            self.scan_id,
+                            50,
+                            "running",
+                            current_step="Running security rules",
+                            files_list=cleaned_file_paths
+                        )
+                    )
+                except Exception as broadcast_error:
+                    logger.warning(f"WebSocket broadcast failed (non-critical): {broadcast_error}")
 
             self._update_progress(progress_callback, 50, f"Running rule engine ({len(parsed_files)} files)...")
 
-            # Extract resources and run rules
+            # Extract resources and run rules with progress updates
+            logger.info("Extracting resources from parsed files...")
             resources = self._extract_resources(parsed_files)
+            logger.info(f"Extracted {len(resources)} resources")
+            
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(60, "Running security rules...", "Running security rules", stage="scanning"))
+            self._update_progress(progress_callback, 60, "Running security rules...")
+            
             rule_findings = self._run_rules(resources, parsed_files)
+            logger.info(f"Rule engine completed with {len(rule_findings)} findings")
+
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(70, "Enriching findings with AI...", "Generating AI suggestions", stage="ai"))
+            self._update_progress(progress_callback, 70, "Preparing AI enrichment...")
 
             # Enrich findings with AI fix data
             logger.info("Enriching findings with AI data...", findings_count=len(rule_findings))
@@ -318,12 +491,22 @@ class SyncScanService:
             logger.info(f"File contents loaded: {len(file_contents)} files")
             logger.info(f"Mistral API key configured: {bool(settings.MISTRAL_API_KEY)}")
 
+            # Update progress before starting AI enrichment
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(72, "Loading AI models...", "Initializing AI enrichment", stage="ai"))
+                _safe_await(self.progress_store.add_log(self.scan_id, "🤖 Starting AI-powered fix generation..."))
+
             # Run AI enrichment in a SEPARATE PROCESS to avoid uvloop conflicts
             try:
                 logger.info("🚀 Starting AI enrichment in separate process...")
                 
+                if self.progress_store and self.scan_id:
+                    _safe_await(self._update_progress_async(75, "Generating AI fixes...", "Processing rules", stage="ai"))
+                    _safe_await(self.progress_store.add_log(self.scan_id, f"📝 Analyzing {len(rule_findings)} security rules..."))
+
                 import multiprocessing
-                
+                import signal
+
                 # Serialize findings for multiprocessing
                 findings_data = []
                 for f in rule_findings:
@@ -338,37 +521,66 @@ class SyncScanService:
                         'line_number': f.line_number,
                         'resource_name': f.resource_name,
                     })
-                
-                # Run AI enrichment in separate process using module-level function
+
+                # Run AI enrichment in separate process with TIMEOUT
+                enriched_findings = None
                 with multiprocessing.Pool(processes=1) as pool:
-                    enriched_findings = pool.apply(_run_ai_enrichment_in_process, (findings_data, file_contents))
+                    try:
+                        # Use async result with timeout (5 minutes)
+                        async_result = pool.apply_async(_run_ai_enrichment_in_process, (findings_data, file_contents))
+                        
+                        # Poll for completion with progress updates
+                        if self.progress_store and self.scan_id:
+                            start_time = time.time()
+                            ai_progress = 75
+                            while not async_result.ready():
+                                elapsed = time.time() - start_time
+                                # Update progress every 5 seconds (75% → 85%)
+                                if int(elapsed) % 5 == 0 and ai_progress < 85:
+                                    ai_progress = min(85, 75 + (elapsed / 60) * 10)  # Gradual increase
+                                    _safe_await(self._update_progress_async(
+                                        int(ai_progress), 
+                                        f"Generating AI fixes... ({int(elapsed)}s)", 
+                                        f"Processing {len(rule_findings)} rules", 
+                                        stage="ai"
+                                    ))
+                                time.sleep(0.5)  # Check every 500ms
+                        
+                        enriched_findings = async_result.get(timeout=300)  # 5 minute timeout
+                        logger.info("✅ AI enrichment completed successfully")
+                    except multiprocessing.TimeoutError:
+                        logger.error("❌ AI enrichment timed out after 300 seconds")
+                        pool.terminate()
+                        pool.join()
+                        raise TimeoutError("AI enrichment took too long, using static fallback")
                 
                 # Merge enriched data back into original findings
+                # PRIORITY: AI-generated content should override static content
                 enriched_map = {f.rule_id: f for f in enriched_findings}
                 for finding in rule_findings:
                     if finding.rule_id in enriched_map:
                         enriched = enriched_map[finding.rule_id]
-                        # Copy AI-generated fields
-                        if not finding.summary and enriched.summary:
+                        # Always prefer AI-generated content over static
+                        if enriched.summary:
                             finding.summary = enriched.summary
-                        if not finding.risk and enriched.risk:
+                        if enriched.risk:
                             finding.risk = enriched.risk
-                        if not finding.impact and enriched.impact:
+                        if enriched.impact:
                             finding.impact = enriched.impact
-                        if not finding.fix_code and enriched.fix_code:
+                        if enriched.fix_code:
                             finding.fix_code = enriched.fix_code
-                        if not finding.fix_example and enriched.fix_example:
+                        if enriched.fix_example:
                             finding.fix_example = enriched.fix_example
-                        if not finding.full_example and enriched.full_example:
+                        if enriched.full_example:
                             finding.full_example = enriched.full_example
-                        if not finding.best_practices and enriched.best_practices:
+                        if enriched.best_practices:
                             finding.best_practices = enriched.best_practices
                         if enriched.ai_generated:
                             finding.ai_generated = True
                         if enriched.confidence:
                             finding.confidence = enriched.confidence
-                        # Copy ai_explanation (IMPORTANT - don't lose this!)
-                        if not finding.ai_explanation and enriched.ai_explanation:
+                        # Always copy ai_explanation if AI generated it
+                        if enriched.ai_explanation:
                             finding.ai_explanation = enriched.ai_explanation
                         # Copy diff fields from metadata
                         if enriched.metadata.get('before_code'):
@@ -377,23 +589,79 @@ class SyncScanService:
                             finding.metadata['after_code'] = enriched.metadata['after_code']
                         if enriched.metadata.get('unified_diff'):
                             finding.metadata['unified_diff'] = enriched.metadata['unified_diff']
-                
+
                 ai_count = sum(1 for f in rule_findings if getattr(f, 'ai_generated', False))
                 logger.info(f"✅ AI enrichment completed successfully! Generated {ai_count}/{len(rule_findings)} AI findings")
                 
+                # Update progress after successful AI enrichment
+                if self.progress_store and self.scan_id:
+                    _safe_await(self._update_progress_async(85, f"AI fixes generated: {ai_count}/{len(rule_findings)}", "AI enrichment complete", stage="ai"))
+                    _safe_await(self.progress_store.add_log(self.scan_id, f"✅ AI analysis complete: {ai_count} fixes generated"))
+
+            except TimeoutError as e:
+                logger.error(f"❌ AI enrichment timed out: {e}")
+                logger.warning("Using static enrichment as fallback due to timeout")
+                from app.services.findings_enricher import enrich_findings
+                rule_findings = enrich_findings(rule_findings)
+                
+                if self.progress_store and self.scan_id:
+                    _safe_await(self.progress_store.add_log(self.scan_id, "⚠️ AI timeout - using static analysis"))
+
             except Exception as e:
                 logger.error(f"❌ AI enrichment failed: {e}")
                 logger.warning("Using static enrichment as fallback")
                 from app.services.findings_enricher import enrich_findings
                 rule_findings = enrich_findings(rule_findings)
-            
+                
+                if self.progress_store and self.scan_id:
+                    _safe_await(self.progress_store.add_log(self.scan_id, f"⚠️ AI failed: {str(e)[:50]} - using static analysis"))
+
+            # PHASE 1C: Deduplicate findings (NEW - Production Grade)
+            try:
+                from app.services.findings_deduplicator import deduplicate_findings
+                rule_findings, dedup_stats = deduplicate_findings(rule_findings)
+                dedup_ratio = (dedup_stats.original_count - dedup_stats.deduplicated_count) / max(dedup_stats.original_count, 1) * 100
+                logger.info(
+                    "Findings deduplicated",
+                    original_count=dedup_stats.original_count,
+                    deduplicated_count=dedup_stats.deduplicated_count,
+                    duplicates_removed=dedup_stats.duplicates_removed,
+                    dedup_ratio=f"{dedup_ratio:.1f}%",
+                )
+                
+                if self.progress_store and self.scan_id:
+                    _safe_await(self.progress_store.add_log(self.scan_id, f"🔍 Deduplicated: {dedup_stats.deduplicated_count} findings ({dedup_stats.duplicates_removed} duplicates removed)"))
+            except Exception as e:
+                logger.error(f"❌ Deduplication failed: {e}")
+                # Continue with non-deduplicated findings - don't break pipeline
+
+            # PHASE 4: Validate findings before DB insert (NEW - Production Grade)
+            try:
+                from app.services.finding_validator import validate_findings
+                rule_findings, validation_stats = validate_findings(rule_findings)
+                fallback_rate = validation_stats.findings_with_fallbacks / max(validation_stats.total_findings, 1) * 100
+                logger.info(
+                    "Findings validated",
+                    total_count=validation_stats.total_findings,
+                    valid_count=validation_stats.valid_findings,
+                    fallbacks_applied=validation_stats.total_fallbacks_applied,
+                    fallback_rate=f"{fallback_rate:.1f}%",
+                )
+                
+                if self.progress_store and self.scan_id:
+                    _safe_await(self._update_progress_async(88, "Validating findings...", "Quality check", stage="ai"))
+                    _safe_await(self.progress_store.add_log(self.scan_id, f"✅ Validated {validation_stats.total_findings} findings"))
+            except Exception as e:
+                logger.error(f"❌ Validation failed: {e}")
+                # Continue with non-validated findings - don't break pipeline
+
             logger.info(
                 "Findings enriched",
                 findings_count=len(rule_findings),
                 with_fix_examples=sum(1 for f in rule_findings if f.fix_example),
                 ai_generated=sum(1 for f in rule_findings if getattr(f, 'ai_generated', False)),
             )
-            
+
             # Log individual AI findings for debugging
             for f in rule_findings:
                 if getattr(f, 'ai_generated', False):
@@ -411,20 +679,34 @@ class SyncScanService:
                     )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(80, "Calculating scores...", "Generating AI suggestions"))
+                _safe_await(self._update_progress_async(90, "Calculating scores...", "Computing metrics", stage="completed"))
 
-            self._update_progress(progress_callback, 80, "Calculating scores...")
+            self._update_progress(progress_callback, 90, "Calculating scores...")
 
             # Calculate scores
             scores = self.scoring_engine.calculate_scores(rule_findings)
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(90, "Saving results...", "Calculating score"))
+                _safe_await(self._update_progress_async(92, f"Security score: {scores.score:.0f}%", "Score calculation complete", stage="completed"))
 
-            self._update_progress(progress_callback, 90, "Saving results...")
+            self._update_progress(progress_callback, 92, f"Security score: {scores.score:.0f}%")
 
             # Save findings to database
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(94, "Saving findings to database...", "Persisting results", stage="completed"))
+                _safe_await(self.progress_store.add_log(self.scan_id, "💾 Saving findings to database..."))
+            
             self._save_findings(scan.id, rule_findings)
+
+            # Create AI suggestions from findings
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(96, "Creating AI suggestions...", "Generating recommendations", stage="ai"))
+
+            self._create_ai_suggestions(scan.id, rule_findings)
+            
+            if self.progress_store and self.scan_id:
+                _safe_await(self._update_progress_async(98, "Finalizing scan...", "Almost done", stage="completed"))
+                _safe_await(self.progress_store.add_log(self.scan_id, "✅ Scan complete! Preparing results..."))
 
             # Update scan with results
             analysis_duration = time.time() - start_time
@@ -442,12 +724,37 @@ class SyncScanService:
 
             self.db.commit()
 
+            # Small delay to ensure database commit is visible to other connections
+            time.sleep(0.1)
+
             # Mark scan as complete in progress store
             if self.progress_store and self.scan_id:
                 _safe_await(self.progress_store.complete_scan(self.scan_id))
                 _safe_await(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
 
             self._update_progress(progress_callback, 100, "Scan complete")
+
+            # PHASE 6: Record scan metrics (NEW - Observability)
+            try:
+                from app.services.metrics import record_scan, record_scan_end
+                duration = time.time() - start_time
+                record_scan_end()
+                
+                # Record for each detected technology
+                detected = self.detected_stack.get_detected_technologies() if self.detected_stack else []
+                if detected:
+                    for tech in detected:
+                        record_scan(status="completed", technology=tech, duration=duration)
+                else:
+                    record_scan(status="completed", technology="none", duration=duration)
+                
+                logger.info(
+                    "Scan metrics recorded",
+                    duration=duration,
+                    technologies=detected,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record scan metrics: {e}")
 
             logger.info(
                 "Scan completed successfully",
@@ -609,66 +916,202 @@ class SyncScanService:
         return all_findings
 
     def _save_findings(self, scan_id, findings: list[RuleFinding]):
-        """Save findings to database with deduplication."""
-        # Track unique findings to avoid duplicates
-        seen = set()
-        
-        for finding in findings:
-            # Create unique key based on rule_id + file_path + line_number
-            finding_key = (
-                finding.rule_id,
-                finding.file_path or '',
-                finding.line_number or 0
-            )
-            
-            # Skip if we've already seen this exact finding
-            if finding_key in seen:
-                logger.debug(
-                    "Skipping duplicate finding",
-                    rule_id=finding.rule_id,
-                    file_path=finding.file_path,
-                    line_number=finding.line_number
-                )
-                continue
-            
-            seen.add(finding_key)
-            
-            db_finding = FindingModel(
-                scan_id=scan_id,
-                rule_id=finding.rule_id,
-                rule_name=finding.rule_name,
-                severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
-                category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
-                description=finding.description,
-                recommendation=finding.recommendation,
-                # AI Fix Generator fields
-                summary=finding.summary,
-                risk=finding.risk,
-                impact=finding.impact,
-                fix_code=finding.fix_code,
-                fix_example=finding.fix_example,
-                full_example=finding.full_example,
-                best_practices=json.dumps(finding.best_practices) if finding.best_practices else None,
-                confidence=finding.confidence,
-                confidence_score=finding.confidence or 1.0,
-                documentation_url=finding.documentation_url,
-                ai_generated=getattr(finding, 'ai_generated', False),
-                # Legacy fields
-                file_path=finding.file_path,
-                line_number=finding.line_number,
-                resource_name=finding.resource_name,
-                ai_explanation=finding.ai_explanation,
-                impact_analysis=finding.impact_analysis,
-            )
-            self.db.add(db_finding)
+        """Save findings to database with deduplication and error handling."""
+        try:
+            # Track unique findings to avoid duplicates
+            seen = set()
 
-        self.db.flush()
-        logger.info(
-            "Findings saved",
-            total_findings=len(findings),
-            unique_findings=len(seen),
-            duplicates_removed=len(findings) - len(seen)
-        )
+            for finding in findings:
+                try:
+                    # Create unique key based on rule_id + file_path + line_number
+                    finding_key = (
+                        finding.rule_id,
+                        finding.file_path or '',
+                        finding.line_number or 0
+                    )
+
+                    # Skip if we've already seen this exact finding
+                    if finding_key in seen:
+                        logger.debug(
+                            "Skipping duplicate finding",
+                            rule_id=finding.rule_id,
+                            file_path=finding.file_path,
+                            line_number=finding.line_number
+                        )
+                        continue
+
+                    seen.add(finding_key)
+
+                    # ✅ CRITICAL FIX: Ensure ALL text fields are strings, not dicts/lists
+                    def ensure_text_field(value, field_name=""):
+                        """Ensure a field value is always a string or None."""
+                        if value is None:
+                            return None
+                        if isinstance(value, str):
+                            return value
+                        if isinstance(value, (dict, list)):
+                            logger.debug(f"Converting {field_name} from {type(value).__name__} to JSON string")
+                            return json.dumps(value)
+                        return str(value)
+
+                    # Debug: Check for dict values before creating model
+                    text_fields = {
+                        'description': finding.description,
+                        'recommendation': finding.recommendation,
+                        'summary': finding.summary,
+                        'risk': finding.risk,
+                        'impact': finding.impact,
+                        'fix_code': finding.fix_code,
+                        'fix_example': finding.fix_example,
+                        'full_example': finding.full_example,
+                        'best_practices': finding.best_practices,
+                        'documentation_url': finding.documentation_url,
+                        'ai_explanation': finding.ai_explanation,
+                        'impact_analysis': finding.impact_analysis,
+                    }
+
+                    # Log any dict/list values
+                    for field_name, value in text_fields.items():
+                        if isinstance(value, (dict, list)):
+                            logger.warning(
+                                f"⚠️ Field '{field_name}' is {type(value).__name__}, converting to string"
+                            )
+
+                    db_finding = FindingModel(
+                        scan_id=scan_id,
+                        rule_id=finding.rule_id,
+                        rule_name=finding.rule_name,
+                        severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
+                        category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
+                        description=ensure_text_field(finding.description, 'description'),
+                        recommendation=ensure_text_field(finding.recommendation, 'recommendation'),
+                        # AI Fix Generator fields - ALL ensured to be strings
+                        summary=ensure_text_field(finding.summary, 'summary'),
+                        risk=ensure_text_field(finding.risk, 'risk'),
+                        impact=ensure_text_field(finding.impact, 'impact'),
+                        fix_code=ensure_text_field(finding.fix_code, 'fix_code'),
+                        fix_example=ensure_text_field(finding.fix_example, 'fix_example'),
+                        full_example=ensure_text_field(finding.full_example, 'full_example'),
+                        best_practices=ensure_text_field(finding.best_practices, 'best_practices'),
+                        confidence=finding.confidence,
+                        confidence_score=finding.confidence or 1.0,
+                        documentation_url=ensure_text_field(finding.documentation_url, 'documentation_url'),
+                        ai_generated=getattr(finding, 'ai_generated', False),
+                        # Legacy fields
+                        file_path=finding.file_path,
+                        line_number=finding.line_number,
+                        resource_name=finding.resource_name,
+                        ai_explanation=ensure_text_field(finding.ai_explanation, 'ai_explanation'),
+                        impact_analysis=ensure_text_field(finding.impact_analysis, 'impact_analysis'),
+                    )
+                    self.db.add(db_finding)
+                except Exception as finding_error:
+                    logger.warning(
+                        f"Failed to save finding {finding.rule_id}: {finding_error}"
+                    )
+                    import traceback
+                    logger.warning(traceback.format_exc())
+                    # Continue with next finding - don't break the pipeline
+
+            self.db.flush()
+            logger.info(
+                "Findings saved",
+                total_findings=len(findings),
+                unique_findings=len(seen),
+                duplicates_removed=len(findings) - len(seen)
+            )
+        except Exception as e:
+            logger.error(f"Error in _save_findings: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Rollback the session to clear the error state
+            try:
+                self.db.rollback()
+                logger.info("Session rolled back after error")
+            except Exception as rollback_error:
+                logger.error(f"Rollback failed: {rollback_error}")
+            # Re-raise to stop the pipeline if save fails
+            raise
+
+    def _create_ai_suggestions(self, scan_id, findings: list[RuleFinding]):
+        """Create AI suggestions from findings and store in PostgreSQL."""
+        try:
+            from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
+            
+            # Get all findings from database for this scan
+            from sqlalchemy import select
+            from app.models.finding import Finding as FindingModel
+            
+            result = self.db.execute(
+                select(FindingModel).where(FindingModel.scan_id == scan_id)
+            )
+            db_findings = result.scalars().all()
+            
+            suggestions_created = 0
+            
+            for db_finding in db_findings:
+                try:
+                    # Skip if suggestion already exists
+                    existing = self.db.execute(
+                        select(AISuggestion).where(AISuggestion.finding_id == db_finding.id)
+                    )
+                    if existing.scalars().first():
+                        continue
+                    
+                    # Determine fix type based on file path or category
+                    fix_type = FixType.GENERAL
+                    if db_finding.file_path:
+                        path_lower = db_finding.file_path.lower()
+                        if '.tf' in path_lower or 'terraform' in path_lower:
+                            fix_type = FixType.TERRAFORM
+                        elif 'dockerfile' in path_lower or 'docker' in path_lower:
+                            fix_type = FixType.DOCKERFILE
+                        elif 'kubernetes' in path_lower or 'k8s' in path_lower or '.yaml' in path_lower:
+                            fix_type = FixType.KUBERNETES
+                        elif '.github' in path_lower or 'jenkins' in path_lower or 'ci' in path_lower:
+                            fix_type = FixType.CI_CD
+                    
+                    # Create AI suggestion
+                    ai_suggestion = AISuggestion(
+                        finding_id=db_finding.id,
+                        scan_id=scan_id,
+                        title=db_finding.summary or db_finding.rule_name or f"Fix {db_finding.rule_id}",
+                        description=db_finding.ai_explanation or db_finding.description or "",
+                        severity=db_finding.severity,
+                        confidence=db_finding.confidence_score or db_finding.confidence or 0.8,
+                        category=db_finding.category,
+                        fix_type=fix_type,
+                        file_path=db_finding.file_path or "",
+                        line_number=db_finding.line_number,
+                        fix_code=db_finding.fix_code,
+                        auto_fix_available=bool(db_finding.fix_code or db_finding.fix_example),
+                        status=SuggestionStatus.OPEN,
+                        # ✅ CRITICAL FIX: Ensure additional_data is always a JSON string
+                        additional_data=json.dumps({
+                            "rule_id": db_finding.rule_id,
+                            "recommendation": db_finding.recommendation,
+                            "best_practices": db_finding.best_practices,
+                            "ai_generated": db_finding.ai_generated,
+                        }) if db_finding.best_practices or db_finding.recommendation else None,
+                    )
+                    
+                    self.db.add(ai_suggestion)
+                    suggestions_created += 1
+                except Exception as suggestion_error:
+                    logger.warning(
+                        f"Failed to create AI suggestion for finding {db_finding.id}: {suggestion_error}"
+                    )
+                    continue
+            
+            self.db.flush()
+            logger.info(
+                "AI suggestions created",
+                scan_id=scan_id,
+                suggestions_count=suggestions_created,
+            )
+        except Exception as e:
+            logger.error(f"Failed to create AI suggestions: {e}")
+            # Don't break the pipeline if AI suggestion creation fails
 
     def _update_progress(self, callback, progress: int, message: str):
         """Update progress if callback provided."""

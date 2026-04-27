@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { Card, Button } from '../../components/ui'
@@ -11,15 +11,16 @@ export function GithubCallback() {
   const { login, setUser } = useAuthStore()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
-  const [hasProcessed, setHasProcessed] = useState(false)
+  
+  // Use ref to prevent double processing in React StrictMode
+  const hasProcessedRef = useRef(false)
 
   useEffect(() => {
-    // Prevent double processing
-    if (hasProcessed) return
-    
+    // Prevent double processing (React StrictMode)
+    if (hasProcessedRef.current) return
+    hasProcessedRef.current = true
+
     const handleCallback = async () => {
-      setHasProcessed(true)
-      
       const code = searchParams.get('code')
       const errorParam = searchParams.get('error')
 
@@ -70,7 +71,7 @@ export function GithubCallback() {
     }
 
     handleCallback()
-  }, [searchParams, navigate, login, setUser, hasProcessed])
+  }, []) // Empty deps - only run once on mount
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

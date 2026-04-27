@@ -68,6 +68,430 @@ class BaseLLMProvider(ABC):
         pass
 
 
+class GeminiProvider(BaseLLMProvider):
+    """Google Gemini LLM provider."""
+
+    def __init__(self, api_key: str, model: str = "gemini-pro"):
+        self.api_key = api_key
+        self.model = model
+        self._client = None
+
+    @property
+    def client(self):
+        """Lazy load Gemini client."""
+        if self._client is None:
+            from google.genai import Client
+            self._client = Client(api_key=self.api_key)
+        return self._client
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate detailed explanation for a finding."""
+        prompt = f"""You are a DevOps expert analyzing infrastructure issues.
+
+Finding: {finding_description}
+Context: {context}
+
+Provide a detailed explanation including:
+1. What this issue means in practical terms
+2. The potential impact on security, reliability, or cost
+3. Specific steps to remediate this issue
+
+Format your response as JSON with keys: explanation, impact_analysis, remediation_steps"""
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+            )
+
+            import json
+            content = response.text
+            data = json.loads(content)
+
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", ""),
+                impact_analysis=data.get("impact_analysis", ""),
+                remediation_steps=data.get("remediation_steps", []),
+                confidence=0.9,
+            )
+        except Exception as e:
+            logger.warning("Gemini explanation generation failed", error=str(e))
+            return self._fallback_explanation(context)
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate executive summary."""
+        prompt = f"""You are a DevOps consultant providing an executive summary.
+
+Overall Scores:
+{scores}
+
+Critical Findings:
+{self._format_findings(findings, "critical")}
+
+High Severity Findings:
+{self._format_findings(findings, "high")}
+
+Write a concise executive summary (3-4 paragraphs) covering:
+1. Overall production readiness assessment
+2. Key risk areas
+3. Priority recommendations"""
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+            )
+
+            return response.text
+        except Exception as e:
+            logger.warning("Executive summary generation failed", error=str(e))
+            return self._fallback_summary(scores)
+
+    async def generate_risk_analysis(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> str:
+        """Generate risk analysis."""
+        prompt = f"""Analyze the following infrastructure findings and provide a risk assessment:
+
+{self._format_all_findings(findings)}
+
+Provide risk analysis covering:
+1. Immediate risks (require urgent attention)
+2. Medium-term risks (should be addressed in next sprint)
+3. Long-term considerations (technical debt)"""
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+            )
+
+            return response.text
+        except Exception as e:
+            logger.warning("Risk analysis generation failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate prioritized recommendations."""
+        prompt = f"""Based on these findings, provide the top 5 prioritized recommendations:
+
+{self._format_all_findings(findings)}
+
+List recommendations in order of priority (most critical first)."""
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+            )
+
+            content = response.text
+            recommendations = []
+            for line in content.split("\n"):
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith("-")):
+                    recommendations.append(line.lstrip("0123456789.- ").strip())
+
+            return recommendations[:5]
+        except Exception as e:
+            logger.warning("Recommendations generation failed", error=str(e))
+            return self._fallback_recommendations(findings)
+
+    def _format_findings(self, findings: list[dict], severity: str) -> str:
+        """Format findings by severity."""
+        filtered = [f for f in findings if f.get("severity") == severity]
+        if not filtered:
+            return "None"
+
+        return "\n".join([
+            f"- {f.get('rule_name')}: {f.get('description')}"
+            for f in filtered[:10]
+        ])
+
+    def _format_all_findings(self, findings: list[dict]) -> str:
+        """Format all findings."""
+        return "\n".join([
+            f"[{f.get('severity').upper()}] {f.get('rule_name')}: {f.get('description')}"
+            for f in findings[:20]
+        ])
+
+    def _fallback_explanation(self, context: dict) -> AIExplanation:
+        """Fallback explanation when LLM fails."""
+        return AIExplanation(
+            finding_id=context.get("rule_id", ""),
+            explanation=context.get("description", "No detailed explanation available."),
+            impact_analysis="This issue may affect system reliability, security, or cost.",
+            remediation_steps=["Review the recommendation", "Consult documentation", "Test changes in staging"],
+            confidence=0.5,
+        )
+
+    def _fallback_summary(self, scores: dict) -> str:
+        """Fallback summary when LLM fails."""
+        overall = sum(scores.values()) / len(scores) if scores else 0
+        return f"""Production Readiness Assessment
+
+Overall Score: {overall:.1f}/100
+
+Category Scores:
+{chr(10).join(f'- {k}: {v:.1f}' for k, v in scores.items())}
+
+Please review individual findings for specific recommendations."""
+
+    def _fallback_recommendations(self, findings: list[dict]) -> list[str]:
+        """Fallback recommendations when LLM fails."""
+        critical = [f for f in findings if f.get("severity") == "critical"]
+        high = [f for f in findings if f.get("severity") == "high"]
+
+        recommendations = []
+        for f in critical[:3]:
+            recommendations.append(f"CRITICAL: {f.get('recommendation')}")
+        for f in high[:2]:
+            recommendations.append(f"HIGH: {f.get('recommendation')}")
+
+        return recommendations
+
+
+class MistralProvider(BaseLLMProvider):
+    """Mistral AI LLM provider."""
+
+    def __init__(self, api_key: str, model: str = "mistral-large-latest"):
+        self.api_key = api_key
+        self.model = model
+        self._client = None
+
+    @property
+    def client(self):
+        """Lazy load Mistral client."""
+        if self._client is None:
+            try:
+                from mistralai.client import Mistral
+            except ImportError:
+                from mistralai import Mistral
+            self._client = Mistral(api_key=self.api_key)
+        return self._client
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate detailed explanation for a finding."""
+        prompt = f"""You are a DevOps expert analyzing infrastructure issues.
+
+Finding: {finding_description}
+Context: {context}
+
+Provide a detailed explanation including:
+1. What this issue means in practical terms
+2. The potential impact on security, reliability, or cost
+3. Specific steps to remediate this issue
+
+Format your response as JSON with keys: explanation, impact_analysis, remediation_steps"""
+
+        try:
+            response = await self.client.chat.complete_async(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a DevOps infrastructure expert. Provide clear, actionable explanations.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=1000,
+            )
+
+            import json
+            content = response.choices[0].message.content
+            data = json.loads(content)
+
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", ""),
+                impact_analysis=data.get("impact_analysis", ""),
+                remediation_steps=data.get("remediation_steps", []),
+                confidence=0.9,
+            )
+        except Exception as e:
+            logger.warning("Mistral explanation generation failed", error=str(e))
+            return self._fallback_explanation(context)
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate executive summary."""
+        prompt = f"""You are a DevOps consultant providing an executive summary.
+
+Overall Scores:
+{scores}
+
+Critical Findings:
+{self._format_findings(findings, "critical")}
+
+High Severity Findings:
+{self._format_findings(findings, "high")}
+
+Write a concise executive summary (3-4 paragraphs) covering:
+1. Overall production readiness assessment
+2. Key risk areas
+3. Priority recommendations"""
+
+        try:
+            response = await self.client.chat.complete_async(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a DevOps consultant. Write clear executive summaries.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=800,
+            )
+
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning("Executive summary generation failed", error=str(e))
+            return self._fallback_summary(scores)
+
+    async def generate_risk_analysis(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> str:
+        """Generate risk analysis."""
+        prompt = f"""Analyze the following infrastructure findings and provide a risk assessment:
+
+{self._format_all_findings(findings)}
+
+Provide risk analysis covering:
+1. Immediate risks (require urgent attention)
+2. Medium-term risks (should be addressed in next sprint)
+3. Long-term considerations (technical debt)"""
+
+        try:
+            response = await self.client.chat.complete_async(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a risk assessment expert."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=1000,
+            )
+
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning("Risk analysis generation failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate prioritized recommendations."""
+        prompt = f"""Based on these findings, provide the top 5 prioritized recommendations:
+
+{self._format_all_findings(findings)}
+
+List recommendations in order of priority (most critical first)."""
+
+        try:
+            response = await self.client.chat.complete_async(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a DevOps prioritization expert.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=500,
+            )
+
+            content = response.choices[0].message.content
+            recommendations = []
+            for line in content.split("\n"):
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith("-")):
+                    recommendations.append(line.lstrip("0123456789.- ").strip())
+
+            return recommendations[:5]
+        except Exception as e:
+            logger.warning("Recommendations generation failed", error=str(e))
+            return self._fallback_recommendations(findings)
+
+    def _format_findings(self, findings: list[dict], severity: str) -> str:
+        """Format findings by severity."""
+        filtered = [f for f in findings if f.get("severity") == severity]
+        if not filtered:
+            return "None"
+
+        return "\n".join([
+            f"- {f.get('rule_name')}: {f.get('description')}"
+            for f in filtered[:10]
+        ])
+
+    def _format_all_findings(self, findings: list[dict]) -> str:
+        """Format all findings."""
+        return "\n".join([
+            f"[{f.get('severity').upper()}] {f.get('rule_name')}: {f.get('description')}"
+            for f in findings[:20]
+        ])
+
+    def _fallback_explanation(self, context: dict) -> AIExplanation:
+        """Fallback explanation when LLM fails."""
+        return AIExplanation(
+            finding_id=context.get("rule_id", ""),
+            explanation=context.get("description", "No detailed explanation available."),
+            impact_analysis="This issue may affect system reliability, security, or cost.",
+            remediation_steps=["Review the recommendation", "Consult documentation", "Test changes in staging"],
+            confidence=0.5,
+        )
+
+    def _fallback_summary(self, scores: dict) -> str:
+        """Fallback summary when LLM fails."""
+        overall = sum(scores.values()) / len(scores) if scores else 0
+        return f"""Production Readiness Assessment
+
+Overall Score: {overall:.1f}/100
+
+Category Scores:
+{chr(10).join(f'- {k}: {v:.1f}' for k, v in scores.items())}
+
+Please review individual findings for specific recommendations."""
+
+    def _fallback_recommendations(self, findings: list[dict]) -> list[str]:
+        """Fallback recommendations when LLM fails."""
+        critical = [f for f in findings if f.get("severity") == "critical"]
+        high = [f for f in findings if f.get("severity") == "high"]
+
+        recommendations = []
+        for f in critical[:3]:
+            recommendations.append(f"CRITICAL: {f.get('recommendation')}")
+        for f in high[:2]:
+            recommendations.append(f"HIGH: {f.get('recommendation')}")
+
+        return recommendations
+
+
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI LLM provider."""
 
@@ -445,19 +869,56 @@ class MockLLMProvider(BaseLLMProvider):
 
 
 def get_llm_provider() -> BaseLLMProvider:
-    """Factory function to get configured LLM provider."""
+    """Factory function to get configured LLM provider with fallback chain."""
     provider = settings.LLM_PROVIDER.lower()
 
+    # Try configured provider first
     if provider == "openai" and settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider")
         return OpenAIProvider(
             api_key=settings.OPENAI_API_KEY,
             model=settings.LLM_MODEL,
         )
     elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider")
         return AnthropicProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model=settings.LLM_MODEL,
         )
+    elif provider == "gemini" and settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider")
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model=settings.LLM_MODEL if settings.LLM_MODEL != "gpt-4-turbo-preview" else "gemini-pro",
+        )
+    elif provider == "mistral" and settings.MISTRAL_API_KEY:
+        logger.info("Using Mistral LLM provider")
+        # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
+        mistral_model = "mistral-large-latest"
+        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+            mistral_model = settings.LLM_MODEL
+        return MistralProvider(
+            api_key=settings.MISTRAL_API_KEY,
+            model=mistral_model,
+        )
     else:
-        logger.info("Using mock LLM provider")
-        return MockLLMProvider()
+        # Fallback chain: try available providers in order
+        if settings.OPENAI_API_KEY:
+            logger.info("Using OpenAI LLM provider (fallback)")
+            return OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+        elif settings.ANTHROPIC_API_KEY:
+            logger.info("Using Anthropic LLM provider (fallback)")
+            return AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
+        elif settings.GEMINI_API_KEY:
+            logger.info("Using Gemini LLM provider (fallback)")
+            return GeminiProvider(api_key=settings.GEMINI_API_KEY)
+        elif settings.MISTRAL_API_KEY:
+            logger.info("Using Mistral LLM provider (fallback)")
+            # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
+            mistral_model = "mistral-large-latest"
+            if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+                mistral_model = settings.LLM_MODEL
+            return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=mistral_model)
+        else:
+            logger.warning("No LLM API keys configured, using Mock provider")
+            return MockLLMProvider()

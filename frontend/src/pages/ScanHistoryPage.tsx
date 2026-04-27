@@ -55,7 +55,10 @@ export function ScanHistoryPage() {
         return []
       }
     },
-    refetchInterval: 3000, // Poll every 3 seconds for real-time updates (faster)
+    // PHASE 3D: Auto-refresh every 30 seconds (production-ready)
+    refetchInterval: 30000,
+    // PHASE 3D: Refetch on window focus for latest data
+    refetchOnWindowFocus: true,
     retry: 3,
   })
 

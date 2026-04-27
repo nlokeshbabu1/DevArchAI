@@ -39,6 +39,7 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=8, max_length=100)
     full_name: Optional[str] = Field(None, max_length=255)
     organization_name: Optional[str] = Field(None, max_length=255)
+    country: Optional[str] = Field("US", max_length=2)  # ISO 3166-1 alpha-2
 
     class Config:
         json_schema_extra = {
@@ -48,6 +49,7 @@ class UserCreate(BaseModel):
                 "password": "securepassword123",
                 "full_name": "John Doe",
                 "organization_name": "Acme Inc",
+                "country": "US",
             }
         }
 

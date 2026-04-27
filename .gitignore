@@ -121,6 +121,8 @@ yarn-error.log*
 pnpm-debug.log*
 .npm
 .yarn
+!frontend/src/lib/
+!frontend/src/lib/*.ts
 .npmrc
 .yarnrc
 

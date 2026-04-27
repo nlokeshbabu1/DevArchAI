@@ -87,9 +87,9 @@ rules:
     severity: critical
     category: security
     description: Privileged containers have full access to host resources and can escape container isolation
-    remediation: Remove privileged: true and use specific capabilities instead
+    remediation: "Remove privileged: true and use specific capabilities instead"
     check_logic:
-      field: spec.template.spec.containers[].securityContext.privileged
+      field: "spec.template.spec.containers[].securityContext.privileged"
       operator: not_equals
       value: true
     resource_kinds:
@@ -109,9 +109,9 @@ rules:
     severity: high
     category: security
     description: Running containers as root increases security risk and potential for privilege escalation
-    remediation: Set runAsNonRoot: true or specify runAsUser with non-zero UID
+    remediation: "Set runAsNonRoot: true or specify runAsUser with non-zero UID"
     check_logic:
-      field: spec.template.spec.containers[].securityContext.runAsNonRoot
+      field: "spec.template.spec.containers[].securityContext.runAsNonRoot"
       operator: equals
       value: true
     resource_kinds:

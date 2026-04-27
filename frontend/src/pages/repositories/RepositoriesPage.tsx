@@ -11,7 +11,15 @@ import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 
 interface DisplayRepository extends Repository {
-  displayStatus: 'scanned' | 'scanning' | 'pending' | 'error'
+  displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed'
+  source?: 'github' | 'manual'
+}
+
+interface GitHubRepoResponse {
+  github_connected: boolean
+  github_repositories: DisplayRepository[]
+  total?: number
+  message?: string
 }
 
 export function RepositoriesPage() {
@@ -22,7 +30,7 @@ export function RepositoriesPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [scanningRepoIds, setScanningRepoIds] = useState<Set<string>>(new Set())
 
-  // Fetch repositories
+  // Fetch imported repositories (only repos user has explicitly added/imported)
   const { data: repositoriesResponse, isLoading, refetch } = useQuery({
     queryKey: ['repositories'],
     queryFn: async () => {
@@ -33,6 +41,10 @@ export function RepositoriesPage() {
   })
 
   const repositories = repositoriesResponse || []
+  const githubConnected = repositories.some((r: any) => r.source === 'github' || r.url?.includes('github.com'))
+
+  // All repos are just the imported/added ones - no automatic GitHub fetch
+  const allRepos = repositories.map((r: any) => ({ ...r, source: r.source || (r.url?.includes('github.com') ? 'github' : 'manual') }))
 
   // Add repository mutation
   const addRepositoryMutation = useMutation({
@@ -82,6 +94,10 @@ export function RepositoriesPage() {
     await addRepositoryMutation.mutateAsync(url)
   }
 
+  const handleGithubImportSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['repositories'] })
+  }
+
   const handleScan = (repoId: string, repoUrl: string) => {
     triggerScanMutation.mutate({ repoId, repoUrl, branch: 'main' })
   }
@@ -96,14 +112,25 @@ export function RepositoriesPage() {
     }
   }
 
-  // Transform repositories for display
-  const displayRepos: DisplayRepository[] = (repositories || []).map((repo: Repository) => {
-    let displayStatus: 'scanned' | 'scanning' | 'pending' | 'error' = 'pending'
-    
-    if (repo.scan_status === 'completed') displayStatus = 'scanned'
-    else if (repo.scan_status === 'processing' || scanningRepoIds.has(repo.id)) displayStatus = 'scanning'
-    else if (repo.scan_status === 'failed') displayStatus = 'error'
-    else if (repo.scan_count && repo.scan_count > 0) displayStatus = 'scanned'
+  // Transform repositories for display with proper status logic
+  const displayRepos: DisplayRepository[] = (allRepos || []).map((repo) => {
+    let displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed' = 'not_scanned'
+
+    // Determine status from latest scan
+    if (repo.scan_status === 'completed' && repo.overall_score !== null && repo.overall_score !== undefined) {
+      displayStatus = 'completed'
+    } else if (repo.scan_status === 'processing' || scanningRepoIds.has(repo.id)) {
+      displayStatus = 'scanning'
+    } else if (repo.scan_status === 'failed') {
+      displayStatus = 'failed'
+    } else if (repo.scan_count && repo.scan_count > 0 && repo.overall_score !== null) {
+      // Has scans with results
+      displayStatus = 'completed'
+    } else if (repo.scan_count && repo.scan_count > 0) {
+      // Has scans but no results yet
+      displayStatus = 'scanning'
+    }
+    // else: not_scanned (default)
 
     return {
       ...repo,
@@ -120,10 +147,10 @@ export function RepositoriesPage() {
   // Calculate status counts
   const statusCounts = {
     all: displayRepos.length,
-    scanned: displayRepos.filter(r => r.displayStatus === 'scanned').length,
+    completed: displayRepos.filter(r => r.displayStatus === 'completed').length,
     scanning: displayRepos.filter(r => r.displayStatus === 'scanning').length,
-    pending: displayRepos.filter(r => r.displayStatus === 'pending').length,
-    error: displayRepos.filter(r => r.displayStatus === 'error').length,
+    not_scanned: displayRepos.filter(r => r.displayStatus === 'not_scanned').length,
+    failed: displayRepos.filter(r => r.displayStatus === 'failed').length,
   }
 
   const isAdding = addRepositoryMutation.isPending
@@ -160,7 +187,7 @@ export function RepositoriesPage() {
         transition={{ delay: 0.1 }}
       >
         {[
-          { name: 'GitHub', icon: Github, connected: true },
+          { name: 'GitHub', icon: Github, connected: githubConnected },
           { name: 'GitLab', icon: Gitlab, connected: false },
           { name: 'AWS', icon: Cloud, connected: false },
           { name: 'Azure', icon: Server, connected: false },
@@ -196,7 +223,7 @@ export function RepositoriesPage() {
         <Card className="p-4" hover={false}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-foreground mr-2">Status:</span>
-            {(['all', 'scanned', 'scanning', 'pending', 'error'] as const).map((status) => (
+            {(['all', 'completed', 'scanning', 'not_scanned', 'failed'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -207,7 +234,7 @@ export function RepositoriesPage() {
                     : 'bg-white/5 text-muted-foreground hover:bg-white/10'
                 )}
               >
-                {status.charAt(0).toUpperCase() + status.slice(1)} ({statusCounts[status]})
+                {status === 'not_scanned' ? 'Not Scanned' : status.charAt(0).toUpperCase() + status.slice(1)} ({statusCounts[status]})
               </button>
             ))}
           </div>
@@ -230,18 +257,24 @@ export function RepositoriesPage() {
           displayRepos.length === 0 ? (
             /* True empty state - no repositories at all */
             <Card className="p-12 text-center col-span-full" hover={false}>
-              <Cloud className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">No repositories yet</h3>
+              <Github className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                {githubConnected ? 'No repositories found' : 'No repositories yet'}
+              </h3>
               <p className="text-muted-foreground mb-6">
-                Start by adding your first repository to scan
+                {githubConnected
+                  ? 'Your GitHub repositories will appear here. Add one to get started.'
+                  : 'Connect GitHub or add a repository manually to start scanning'}
               </p>
-              <Button 
-                variant="primary" 
-                icon={<Plus className="h-4 w-4" />}
-                onClick={() => setShowAddModal(true)}
-              >
-                Add Repository
-              </Button>
+              <div className="flex gap-3 justify-center">
+                <Button
+                  variant="primary"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => setShowAddModal(true)}
+                >
+                  Add Repository
+                </Button>
+              </div>
             </Card>
           ) : (
             /* Filtered empty state - repositories exist but none match filter */
@@ -275,7 +308,15 @@ export function RepositoriesPage() {
                       <Github className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-foreground truncate">{repo.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-foreground truncate">{repo.name}</h3>
+                        {repo.source === 'github' && (
+                          <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/30">
+                            <Github className="h-3 w-3 mr-1" />
+                            GitHub
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                         {repo.description || repo.url}
                       </p>
@@ -283,18 +324,18 @@ export function RepositoriesPage() {
                   </div>
                   <div className={cn(
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                    repo.displayStatus === 'scanned'
+                    repo.displayStatus === 'completed'
                       ? 'bg-green-500/15 text-green-400 border border-green-500/30'
                       : repo.displayStatus === 'scanning'
                       ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse'
-                      : repo.displayStatus === 'error'
+                      : repo.displayStatus === 'failed'
                       ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                       : 'bg-gray-500/15 text-gray-400 border border-gray-500/30'
                   )}>
                     {repo.displayStatus === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {repo.displayStatus === 'scanned' && <CheckCircle className="h-3 w-3" />}
-                    {repo.displayStatus === 'error' && <AlertCircle className="h-3 w-3" />}
-                    <span className="capitalize">{repo.displayStatus}</span>
+                    {repo.displayStatus === 'completed' && <CheckCircle className="h-3 w-3" />}
+                    {repo.displayStatus === 'failed' && <AlertCircle className="h-3 w-3" />}
+                    <span className="capitalize">{repo.displayStatus === 'not_scanned' ? 'Not Scanned' : repo.displayStatus}</span>
                   </div>
                 </div>
 
@@ -347,40 +388,80 @@ export function RepositoriesPage() {
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {repo.last_scan_at 
-                      ? `Last scan: ${new Date(repo.last_scan_at).toLocaleDateString()}`
-                      : repo.scan_count 
-                      ? `${repo.scan_count} scan${repo.scan_count > 1 ? 's' : ''}`
+                    {repo.last_scan_at
+                      ? `Last scanned: ${new Date(repo.last_scan_at).toLocaleDateString()} at ${new Date(repo.last_scan_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`
+                      : repo.displayStatus === 'scanning'
+                      ? 'Scan in progress...'
                       : 'Never scanned'
                     }
                   </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Action Buttons - Status-based rendering */}
                 <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleViewResults(repo.id)}
-                    icon={<ExternalLink className="h-3.5 w-3.5" />}
-                  >
-                    Results
-                  </Button>
-                  <Button
-                    variant={repo.displayStatus === 'scanning' ? 'secondary' : 'primary'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleScan(repo.id, repo.url)}
-                    disabled={repo.displayStatus === 'scanning' || isScanning}
-                    icon={
-                      repo.displayStatus === 'scanning'
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <Play className="h-3.5 w-3.5" />
-                    }
-                  >
-                    {repo.displayStatus === 'scanning' ? 'Scanning...' : 'Scan'}
-                  </Button>
+                  {/* View Results - only show if completed */}
+                  {repo.displayStatus === 'completed' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleViewResults(repo.id)}
+                      icon={<ExternalLink className="h-3.5 w-3.5" />}
+                    >
+                      View Results
+                    </Button>
+                  )}
+
+                  {/* Scan / Rescan / Retry button */}
+                  {repo.displayStatus === 'not_scanned' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleScan(repo.id, repo.url)}
+                      icon={<Play className="h-3.5 w-3.5" />}
+                    >
+                      Scan
+                    </Button>
+                  )}
+
+                  {repo.displayStatus === 'scanning' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1"
+                      disabled
+                      icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    >
+                      Scanning...
+                    </Button>
+                  )}
+
+                  {repo.displayStatus === 'completed' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleScan(repo.id, repo.url)}
+                      icon={<Play className="h-3.5 w-3.5" />}
+                    >
+                      Rescan
+                    </Button>
+                  )}
+
+                  {repo.displayStatus === 'failed' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleScan(repo.id, repo.url)}
+                      icon={<Play className="h-3.5 w-3.5" />}
+                    >
+                      Retry
+                    </Button>
+                  )}
+
+                  {/* Delete button - disable while scanning */}
                   <Button
                     variant="ghost"
                     size="sm"

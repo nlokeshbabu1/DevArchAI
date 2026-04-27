@@ -176,7 +176,7 @@ class TestEnrichmentIntegration:
         ]
 
         # Deduplicate first
-        deduplicated = deduplicator.deduplicate(findings)
+        deduplicated, stats = deduplicator.deduplicate(findings)
         assert len(deduplicated) == 1
 
         # Then enrich
@@ -215,8 +215,11 @@ class TestEnrichmentIntegration:
         enriched = enricher.enrich_findings(findings)
 
         # Then deduplicate - should preserve enrichment
-        deduplicated = deduplicator.deduplicate(enriched)
+        deduplicated, stats = deduplicator.deduplicate(enriched)
 
         assert len(deduplicated) == 1
+        assert deduplicated[0].risk == "Custom risk"
+        assert deduplicated[0].impact == "Custom impact"
+        assert deduplicated[0].fix_example == "custom_code"
         # The first finding's enrichment should be preserved
         assert deduplicated[0].risk is not None

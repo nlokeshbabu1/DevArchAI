@@ -15,6 +15,9 @@ COPY . .
 # Build application
 RUN npm run build
 
+#########################################
+## production stage   ###################
+########################################
 # Production stage
 FROM nginx:alpine
 
@@ -22,7 +25,8 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+#COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
 

@@ -189,7 +189,7 @@ def detect_technologies_enhanced(files: list[str]) -> TechnologyDetection:
             found_techs['gitlab_ci'].files.append(file_path)
         
         # Jenkins
-        if file_name == "jenkinsfile" or "jenkins" in file_path:
+        if file_name.lower() == "jenkinsfile" or "jenkins" in file_path.lower():
             if 'jenkins' not in found_techs:
                 found_techs['jenkins'] = TechnologyInfo(
                     name="jenkins",

@@ -4,6 +4,7 @@ Application Configuration
 
 import secrets
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -25,21 +26,40 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: list[str] = Field(
-        default=[
-            "http://localhost",
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://127.0.0.1",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:5174",
-        ],
+        default_factory=list,
+        env="CORS_ORIGINS",
+        description="Comma-separated list or JSON array of allowed origins",
     )
     ALLOWED_HOSTS: list[str] = Field(
-        default=["*"],
+        default_factory=lambda: ["*"],
         env="ALLOWED_HOSTS"
     )
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from environment variable (supports comma-separated or JSON array)."""
+        if v is None or v == "":
+            # Default development origins
+            return [
+                "http://localhost",
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "http://127.0.0.1",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:5174",
+            ]
+        if isinstance(v, str):
+            # Try JSON array first
+            import json
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # Fall back to comma-separated
+                return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     # Frontend
     FRONTEND_URL: str = Field(default="http://localhost:5174", env="FRONTEND_URL")
@@ -85,6 +105,13 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_ID: str | None = Field(default=None, env="GITHUB_CLIENT_ID")
     GITHUB_CLIENT_SECRET: str | None = Field(default=None, env="GITHUB_CLIENT_SECRET")
     GITHUB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/github/callback", env="GITHUB_REDIRECT_URI")
+    
+    # GitHub App Configuration (for SaaS platform with repo access)
+    GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")
+    GITHUB_APP_PRIVATE_KEY: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY")
+    GITHUB_APP_PRIVATE_KEY_PATH: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY_PATH")
+    GITHUB_APP_WEBHOOK_SECRET: str | None = Field(default=None, env="GITHUB_APP_WEBHOOK_SECRET")
+    GITHUB_APP_SLUG: str | None = Field(default=None, env="GITHUB_APP_SLUG")
 
     # Analysis Settings
     MAX_REPO_SIZE_MB: int = Field(default=100, env="MAX_REPO_SIZE_MB")
@@ -124,6 +151,20 @@ class Settings(BaseSettings):
     # Anonymous Scans
     ANONYMOUS_SCAN_EXPIRY_HOURS: int = Field(default=24, env="ANONYMOUS_SCAN_EXPIRY_HOURS")
 
+    # ─── Payment Providers ─────────────────────────────────────────────
+    STRIPE_SECRET_KEY: str | None = Field(default=None, env="STRIPE_SECRET_KEY")
+    STRIPE_PUBLISHABLE_KEY: str | None = Field(default=None, env="STRIPE_PUBLISHABLE_KEY")
+    STRIPE_WEBHOOK_SECRET: str | None = Field(default=None, env="STRIPE_WEBHOOK_SECRET")
+    STRIPE_WEBHOOK_SECRET_TEST: str | None = Field(default=None, env="STRIPE_WEBHOOK_SECRET_TEST")
+
+    RAZORPAY_KEY_ID: str | None = Field(default=None, env="RAZORPAY_KEY_ID")
+    RAZORPAY_KEY_SECRET: str | None = Field(default=None, env="RAZORPAY_KEY_SECRET")
+    RAZORPAY_WEBHOOK_SECRET: str | None = Field(default=None, env="RAZORPAY_WEBHOOK_SECRET")
+
+    PAYPAL_CLIENT_ID: str | None = Field(default=None, env="PAYPAL_CLIENT_ID")
+    PAYPAL_CLIENT_SECRET: str | None = Field(default=None, env="PAYPAL_CLIENT_SECRET")
+    PAYPAL_MODE: str = Field(default="sandbox", env="PAYPAL_MODE")  # sandbox | live
+
     @field_validator("SECRET_KEY", mode="after")
     @classmethod
     def validate_secret_key(cls, v: str, info) -> str:
@@ -139,7 +180,8 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        #env_file = ".env"
+        env_file = str(Path(__file__).resolve().parents[1] / ".env")
         env_file_encoding = "utf-8"
         case_sensitive = True
 

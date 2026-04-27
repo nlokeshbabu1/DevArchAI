@@ -168,7 +168,7 @@ class DevOpsDetector:
     # CI/CD patterns
     GITHUB_ACTIONS_DIRS = [".github/workflows/"]
     GITLAB_CI_FILES = [".gitlab-ci.yml", ".gitlab-ci.yaml"]
-    JENKINS_FILES = ["Jenkinsfile", "Jenkinsfile.prod"]
+    JENKINS_FILES = ["Jenkinsfile", "Jenkinsfile.prod", "Jenkinsfile.dev"]
     CIRCLECI_FILES = ["circle.yml", ".circleci/config.yml"]
     TRAVIS_FILES = [".travis.yml"]
     AZURE_DEVOPS_FILES = ["azure-pipelines.yml", "azure-pipelines.yaml"]
@@ -368,7 +368,8 @@ class DevOpsDetector:
             return
 
         # Jenkins
-        if file_path in self.JENKINS_FILES:
+        file_name_lower = file_path.split("/")[-1].lower()
+        if file_name_lower == "jenkinsfile" or file_name_lower.startswith("jenkinsfile-") or file_name_lower.startswith("jenkinsfile."):
             result.cicd_files.append(file_path)
             if result.cicd is None:
                 result.cicd = "jenkins"

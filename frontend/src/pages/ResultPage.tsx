@@ -12,6 +12,7 @@ import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { TechStackDisplay } from '../components/TechStackDisplay'
 import { DiffViewer } from '../components/DiffViewer'
+import { CreatePRButton } from '../components/CreatePRButton'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 
@@ -48,6 +49,7 @@ interface Finding {
 }
 
 interface ScanResult {
+  id?: string  // Backend returns 'id' not 'scan_id'
   scan_id: string
   repository_url: string
   repository_name?: string
@@ -93,6 +95,22 @@ export function ResultPage() {
   const [sortBy, setSortBy] = useState<SortOption>('severity')
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
 
+  // Validate scan ID is a proper UUID (not ":id" literal)
+  const isValidScanId = id && id !== ':id' && id.length > 10
+
+  // Show error for invalid scan ID
+  if (!isValidScanId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold text-foreground">Invalid Scan ID</h1>
+          <p className="text-muted-foreground">The scan ID provided is not valid.</p>
+          <Button onClick={() => navigate('/scans')}>View All Scans</Button>
+        </div>
+      </div>
+    )
+  }
+
   // Fetch scan results
   const { data: result, isLoading, error, refetch } = useQuery({
     queryKey: ['scan-result', id],
@@ -101,7 +119,7 @@ export function ResultPage() {
       const response = await scansApi.getScanResults(id)
       return response as ScanResult
     },
-    enabled: !!id,
+    enabled: isValidScanId,
     retry: 2,
     staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
   })
@@ -234,23 +252,15 @@ export function ResultPage() {
       <div className="container mx-auto px-4 max-w-7xl space-y-6">
         {/* Top Navigation */}
         <Card className="p-4" hover={false}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/scans')}
                 icon={<ArrowLeft className="h-4 w-4" />}
               >
-                Dashboard
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/history')}
-                icon={<FolderGit2 className="h-4 w-4" />}
-              >
-                History
+                Back to Scans
               </Button>
             </div>
             <div className="flex items-center gap-2">
@@ -260,24 +270,15 @@ export function ResultPage() {
                 onClick={handleRescan}
                 icon={<RotateCcw className="h-4 w-4" />}
               >
-                New Scan
+                Rescan
               </Button>
               <Button
-                variant="secondary"
+                variant="primary"
                 size="sm"
                 onClick={handleDownload}
                 icon={<Download className="h-4 w-4" />}
               >
                 Download
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/scan')}
-                icon={<Shield className="h-4 w-4" />}
-                glow
-              >
-                Start New Scan
               </Button>
             </div>
           </div>
@@ -501,6 +502,24 @@ export function ResultPage() {
                 })}
               </div>
             </Card>
+          </motion.div>
+        )}
+
+        {/* Automated PR Creation */}
+        {result && result.findings.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <CreatePRButton
+              scanId={result.id || result.scan_id}
+              findingIds={result.findings
+                .filter(f => f.severity === 'critical' || f.severity === 'high')
+                .map(f => f.id)}
+              scoreBefore={result.security_score || 0}
+              scoreAfter={Math.min(100, (result.security_score || 0) + 15)}
+            />
           </motion.div>
         )}
 

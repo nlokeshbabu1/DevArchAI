@@ -3699,15 +3699,32 @@ class FindingsEnricher:
 
         # Try AI enrichment for ALL severities
         try:
+            # PHASE 2D: RAG - Retrieve documentation before AI generation (NEW - Production Grade)
+            rag_context = ""
+            try:
+                from app.rag import retrieve_docs
+                rag_docs = retrieve_docs(finding.rule_id)
+                if rag_docs and rag_docs.documents:
+                    rag_context = rag_docs.to_context_string(max_docs=3)
+                    logger.info(
+                        "RAG documentation retrieved",
+                        rule_id=finding.rule_id,
+                        docs_count=len(rag_docs.documents),
+                    )
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed: {e}")
+                rag_context = ""
+
             ai_service = self._get_ai_service()
             logger.info(f"AI enrichment attempt: rule={finding.rule_id}, use_mock={ai_service._use_mock}")
-            
+
             ai_fix = await ai_service.generate_fix({
                 "rule_id": finding.rule_id,
                 "rule_name": finding.rule_name,
                 "severity": severity,
                 "file_type": finding.file_path.split('.')[-1] if '.' in finding.file_path else "unknown",
                 "description": finding.description,
+                "rag_context": rag_context,  # Add RAG context to AI prompt
             }, file_content)
 
             # Apply AI enrichment

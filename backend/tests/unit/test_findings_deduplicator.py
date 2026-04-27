@@ -13,8 +13,9 @@ class TestFindingsDeduplicator:
 
     def test_empty_findings_list(self):
         """Test deduplication with empty list."""
-        result = self.deduplicator.deduplicate([])
+        result, stats = self.deduplicator.deduplicate([])
         assert result == []
+        assert stats.original_count == 0
 
     def test_single_finding_no_duplicates(self):
         """Test deduplication with single finding."""
@@ -27,9 +28,10 @@ class TestFindingsDeduplicator:
             recommendation="Use remote backend",
             file_path="infra/main.tf",
         )
-        result = self.deduplicator.deduplicate([finding])
+        result, stats = self.deduplicator.deduplicate([finding])
         assert len(result) == 1
         assert result[0].rule_id == "TF-STATE-001"
+        assert stats.deduplicated_count == 1
 
     def test_duplicate_findings_merged(self):
         """Test that duplicate findings are merged."""
@@ -54,10 +56,11 @@ class TestFindingsDeduplicator:
             resource_name="backend",
         )
 
-        result = self.deduplicator.deduplicate([finding1, finding2])
+        result, stats = self.deduplicator.deduplicate([finding1, finding2])
 
         assert len(result) == 1
         assert result[0].metadata["occurrence_count"] == 2
+        assert stats.duplicates_removed == 1
 
     def test_different_rule_ids_not_merged(self):
         """Test that findings with different rule IDs are not merged."""
@@ -80,11 +83,12 @@ class TestFindingsDeduplicator:
             file_path="infra/main.tf",
         )
 
-        result = self.deduplicator.deduplicate([finding1, finding2])
+        result, stats = self.deduplicator.deduplicate([finding1, finding2])
 
         assert len(result) == 2
         assert result[0].rule_id == "TF-STATE-001"
         assert result[1].rule_id == "TF-STATE-002"
+        assert stats.deduplicated_count == 2
 
     def test_different_files_not_merged(self):
         """Test that findings in different files are not merged."""
@@ -154,10 +158,11 @@ class TestFindingsDeduplicator:
             for _ in range(3)
         ]
 
-        result = self.deduplicator.deduplicate(findings)
+        result, stats = self.deduplicator.deduplicate(findings)
 
         assert len(result) == 1
         assert "3" in result[0].description or "found" in result[0].description.lower()
+        assert stats.duplicates_removed == 2
 
     def test_convenience_function(self):
         """Test the convenience function deduplicate_findings."""
@@ -170,15 +175,15 @@ class TestFindingsDeduplicator:
             recommendation="Use remote backend",
             file_path="infra/main.tf",
         )
-        result = deduplicate_findings([finding])
+        result, stats = deduplicate_findings([finding])
         assert len(result) == 1
 
 
 class TestDeduplicationKey:
     """Test deduplication key generation."""
 
-    def test_key_includes_rule_id_file_resource(self):
-        """Test that dedup key includes rule_id, file_path, and resource_name."""
+    def test_key_includes_rule_id_file_line(self):
+        """Test that dedup key includes rule_id, file_path, and line_number."""
         deduplicator = FindingsDeduplicator()
 
         finding = RuleFinding(
@@ -189,13 +194,13 @@ class TestDeduplicationKey:
             description="Test",
             recommendation="Test",
             file_path="infra/main.tf",
-            resource_name="backend",
+            line_number=42,
         )
 
         key = deduplicator._create_dedup_key(finding)
         assert "TF-STATE-001" in key
         assert "infra/main.tf" in key
-        assert "backend" in key
+        assert "42" in key
 
     def test_key_handles_none_values(self):
         """Test that dedup key handles None values gracefully."""

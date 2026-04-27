@@ -287,7 +287,7 @@ class DevSecOpsScanner:
             "azure-pipelines.yaml",
             ".circleci/config.yml",
             ".travis.yml",
-            "Jenkinsfile",
+            "Jenkinsfile*",
             "bitbucket-pipelines.yml",
         ]
 

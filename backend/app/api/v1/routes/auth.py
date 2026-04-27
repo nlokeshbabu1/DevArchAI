@@ -23,7 +23,6 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.user import User
 from app.schemas.auth import (
     APIKeyResponse,
@@ -34,6 +33,7 @@ from app.schemas.auth import (
     UserUpdate,
 )
 from app.schemas.common import MessageResponse
+from app.services.organization_provisioning import ensure_user_organization_membership
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -86,31 +86,6 @@ async def register(
         )
 
     try:
-        # Create organization first if organization_name provided
-        organization = None
-        if user_data.organization_name and user_data.organization_name.strip():
-            org_name = user_data.organization_name.strip()
-            org_slug = org_name.lower().replace(" ", "-")[:100]
-
-            # Ensure unique slug
-            counter = 1
-            original_slug = org_slug
-            while True:
-                result = await db.execute(select(Organization).where(Organization.slug == org_slug))
-                if not result.scalar_one_or_none():
-                    break
-                org_slug = f"{original_slug}-{counter}"
-                counter += 1
-
-            organization = Organization(
-                name=org_name,
-                slug=org_slug,
-                plan=PlanType.FREE,
-            )
-            db.add(organization)
-            await db.flush()  # Get organization ID
-            logger.info("Organization created", name=org_name, slug=org_slug)
-
         # Encrypt email and create hash
         email_encrypted, email_hash = encrypt_user_email(user_data.email)
 
@@ -121,22 +96,17 @@ async def register(
             username=user_data.username,
             hashed_password=get_password_hash(user_data.password),
             full_name=user_data.full_name,
-            current_org_id=organization.id if organization else None,
+            country=user_data.country or "US",
         )
         db.add(user)
         await db.flush()  # Get user ID
         logger.info("User created", user_id=user.id)
 
-        # Create organization membership if organization exists
-        if organization:
-            membership = OrganizationMember(
-                organization_id=organization.id,
-                user_id=user.id,
-                role=MembershipRole.OWNER,
-                joined_at=datetime.utcnow(),
-            )
-            db.add(membership)
-            logger.info("Organization membership created", user_id=user.id, org_id=organization.id)
+        await ensure_user_organization_membership(
+            db,
+            user,
+            organization_name=user_data.organization_name,
+        )
 
         await db.commit()
         await db.refresh(user)
@@ -181,6 +151,7 @@ async def login(
 
     # Update last login
     user.last_login_at = datetime.utcnow()
+    await ensure_user_organization_membership(db, user)
     await db.commit()
 
     # Decrypt email for token
@@ -220,8 +191,8 @@ async def get_github_oauth_url(redirect_uri: str | None = None):
     oauth_url = (
         f"https://github.com/login/oauth/authorize"
         f"?client_id={settings.GITHUB_CLIENT_ID}"
-        f"&redirect_uri={final_redirect_uri}"
-        f"&scope=user:email%20read:user"
+        f"&redirect_uri={settings.GITHUB_REDIRECT_URI}"
+        f"&scope=user:email%20read:user%20repo"
     )
 
     logger.info("Generated GitHub OAuth URL", redirect_uri=final_redirect_uri)
@@ -351,7 +322,7 @@ async def github_callback(
             if not user:
                 # Encrypt email and create hash
                 email_encrypted, email_hash = encrypt_user_email(email)
-                
+
                 # Create new user
                 user = User(
                     email_encrypted=email_encrypted,
@@ -361,6 +332,8 @@ async def github_callback(
                     full_name=full_name or "",
                     avatar_url=avatar_url or "",
                     github_id=github_id,
+                    github_login=username,  # Store GitHub username for webhook lookups
+                    github_access_token=access_token,  # Store GitHub token for API access
                     is_verified=True,  # GitHub emails are verified
                 )
                 db.add(user)
@@ -369,6 +342,8 @@ async def github_callback(
             else:
                 # Update existing user with GitHub info
                 user.github_id = github_id
+                user.github_login = username  # Store/update GitHub username
+                user.github_access_token = access_token  # Update token
                 if avatar_url:
                     user.avatar_url = avatar_url
                 if full_name and not user.full_name:
@@ -376,6 +351,7 @@ async def github_callback(
 
             # Update last login
             user.last_login_at = datetime.utcnow()
+            await ensure_user_organization_membership(db, user)
             await db.commit()
             await db.refresh(user)
 

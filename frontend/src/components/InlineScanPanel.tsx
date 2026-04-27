@@ -13,6 +13,39 @@ import { ScanProgress } from './ScanProgress'
 import apiClient from '../api/endpoints/client'
 import { useQuery } from '@tanstack/react-query'
 
+interface FileBeingScanned {
+  path: string
+  type: 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
+  status: 'pending' | 'scanning' | 'completed'
+}
+
+// Helper function to determine file type from path
+function getFileTypeFromPath(path: string): FileBeingScanned['type'] {
+  const lowerPath = path.toLowerCase()
+
+  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
+    return 'docker'
+  }
+  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
+    return 'k8s'
+  }
+  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
+    return 'terraform'
+  }
+  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
+    return 'helm'
+  }
+  if (lowerPath.includes('.github') || lowerPath.includes('.gitlab') || lowerPath.includes('jenkins') ||
+      lowerPath.includes('ci/') || lowerPath.includes('pipeline') || lowerPath.includes('azure-pipelines')) {
+    return 'cicd'
+  }
+  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
+    return 'monitoring'
+  }
+
+  return 'cicd' // Default fallback
+}
+
 interface InlineScanPanelProps {
   isOpen: boolean
   onClose: () => void
@@ -27,6 +60,8 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
   const [progress, setProgress] = useState(0)
   const [currentStep, setCurrentStep] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
+  const [filesList, setFilesList] = useState<string[]>([])
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
@@ -65,21 +100,10 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
     setError(null)
     setProgress(0)
     setCurrentStep(0)
+    setDetectedTechnologies([])
+    setFilesList([])
 
     try {
-      const MIN_ANIMATION_DURATION = 15000
-      const startTime = Date.now()
-
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          const increment = Math.random() * 2 + 2
-          const newProgress = Math.min(prev + increment, 90)
-          const step = Math.floor((newProgress / 100) * 6)
-          setCurrentStep(Math.min(step, 5))
-          return newProgress
-        })
-      }, 500)
-
       const response = await apiClient.post('/scan/start', {
         repository_url: repoUrl.trim(),
         branch: selectedBranch || 'main',
@@ -91,39 +115,85 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
         throw new Error('No scan_id returned from server')
       }
 
+      // Poll for real progress updates from API only
       const pollInterval = setInterval(async () => {
         try {
           const statusResponse = await apiClient.get(`/scan/status/${data.scan_id}`)
           const status = statusResponse.data
 
-          const elapsed = Date.now() - startTime
-          const canComplete = status.status === 'completed' || status.progress >= 100
-          const minTimePassed = elapsed >= MIN_ANIMATION_DURATION
+          // Update progress from API (real data only)
+          if (status.progress !== undefined) {
+            setProgress(Math.round(status.progress))
+          }
 
-          if (canComplete && minTimePassed) {
+          // Update current step from API
+          if (status.current_step !== undefined) {
+            // Map step name to number for UI
+            const stepMap: Record<string, number> = {
+              'Connecting to GitHub': 0,
+              'Fetching repository': 1,
+              'Detecting technologies': 2,
+              'Running security rules': 3,
+              'Generating AI suggestions': 4,
+              'Calculating score': 5,
+              'Scan completed': 6,
+              'Saving results': 6
+            }
+            const stepNum = stepMap[status.current_step]
+            if (stepNum !== undefined) {
+              setCurrentStep(stepNum)
+            }
+          }
+
+          // Update detected technologies from API
+          if (status.detected_stack && Array.isArray(status.detected_stack) && status.detected_stack.length > 0) {
+            setDetectedTechnologies(status.detected_stack)
+          }
+
+          // Update files list from API
+          if (status.files_list && Array.isArray(status.files_list) && status.files_list.length > 0) {
+            setFilesList(status.files_list)
+          }
+
+          // Check if scan FAILED
+          if (status.status === 'failed') {
             clearInterval(pollInterval)
-            clearInterval(progressInterval)
+            setLoading(false)
+            setError(`Scan failed: ${status.error_message || 'Unknown error'}`)
+            console.error('❌ Scan failed:', status.error_message)
+            return
+          }
+
+          // Check if scan is REALLY complete (not just progress=100)
+          // Must have: status='completed' AND progress=100 AND have results
+          const isReallyComplete = 
+            status.status === 'completed' && 
+            status.progress >= 100 &&
+            (status.files_list?.length > 0 || status.files_scanned > 0)
+
+          if (isReallyComplete) {
+            clearInterval(pollInterval)
 
             setProgress(100)
             setCurrentStep(6)
             setLoading(false)
 
             if (onScanComplete) {
-              // Navigate to scan results page
-              onScanComplete(data.scan_id)
+              // Give user 2 seconds to see the completion state before navigating
+              setTimeout(() => onScanComplete(data.scan_id), 2000)
             }
           }
         } catch (pollError) {
           console.error('Polling error:', pollError)
         }
-      }, 1000)
+      }, 1000) // Poll every 1 second
 
+      // Timeout after 5 minutes
       setTimeout(() => {
         clearInterval(pollInterval)
-        clearInterval(progressInterval)
         setError('Scan timed out. Please try again.')
         setLoading(false)
-      }, 60000)
+      }, 300000) // 5 minutes
 
     } catch (err: any) {
       console.error('Scan error:', err)
@@ -178,7 +248,12 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
                     progress={progress}
                     currentStep={currentStep}
                     isComplete={progress >= 100}
-                    detectedTechnologies={[]}  // Will be shown in results page
+                    detectedTechnologies={detectedTechnologies}
+                    detectedFiles={filesList.map(path => ({
+                      path,
+                      type: getFileTypeFromPath(path),
+                      status: 'completed'
+                    }))}
                   />
                 </div>
               ) : error ? (

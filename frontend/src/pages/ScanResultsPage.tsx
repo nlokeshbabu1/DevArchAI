@@ -338,15 +338,15 @@ export function ScanResultsPage() {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
                 const isFreeUser = effectivePlan === 'free'
                 const totalFindings = results.findings?.length || 0
-                
+
                 // Count unique rules (after deduplication)
                 const uniqueRules = new Set(results.findings?.map(f => f.rule_id) || [])
                 const uniqueRuleCount = uniqueRules.size
-                
+
                 // Free users see only first 10 findings (before deduplication)
                 const maxVisible = isFreeUser ? 10 : totalFindings
                 const visibleFindings = (results.findings || []).slice(0, maxVisible)
-                
+
                 // Deduplicate visible findings
                 const deduplicatedVisible = visibleFindings.reduce((acc, finding) => {
                   const existing = acc.find(f => f.rule_id === finding.rule_id)
@@ -355,9 +355,9 @@ export function ScanResultsPage() {
                   }
                   return acc
                 }, [] as typeof visibleFindings)
-                
+
                 const displayedCount = deduplicatedVisible.length
-                
+
                 if (isFreeUser && uniqueRuleCount > displayedCount) {
                   return (
                     <div className="text-sm text-muted-foreground">
@@ -373,12 +373,31 @@ export function ScanResultsPage() {
                     </div>
                   )
                 }
-                
+
                 return null
               })()}
             </div>
-            
-            <div className="space-y-4">
+
+            {/* PHASE 3C: Empty State */}
+            {(!results.findings || results.findings.length === 0) ? (
+              <div className="text-center py-12">
+                <CheckCircle className="h-16 w-16 text-green-400 mx-auto mb-4" />
+                <h4 className="text-xl font-semibold text-foreground mb-2">
+                  No Issues Found!
+                </h4>
+                <p className="text-muted-foreground mb-4">
+                  Your repository passed all security checks. Great job!
+                </p>
+                <Button
+                  variant="primary"
+                  onClick={() => navigate('/scan')}
+                  icon={<Shield className="h-4 w-4" />}
+                >
+                  Scan Another Repository
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
               {(() => {
                 const effectivePlan = results.user_plan || user?.plan || 'free'
                 const isFreeUser = effectivePlan === 'free'
@@ -577,7 +596,8 @@ export function ScanResultsPage() {
                 })
               })()}
             </div>
-          </Card>
+          )}
+        </Card>
         </motion.div>
 
         {/* Login/Upgrade CTA */}

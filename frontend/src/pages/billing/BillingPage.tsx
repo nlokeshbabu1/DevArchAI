@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils'
 import axios from 'axios'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
+import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
 
 interface Subscription {
   id: string | null
@@ -154,17 +155,10 @@ export function BillingPage() {
         return
       }
 
-      const headers = { Authorization: `Bearer ${token}` }
-      const response = await axios.post('/api/v1/billing/checkout', {
-        plan: planId,
-      }, { headers })
-
-      if (response.data.checkout_url) {
-        window.location.href = response.data.checkout_url
-      }
+      const data = await createCheckout({ plan: planId }, token)
+      await handleCheckoutResponse(data)
     } catch (error) {
       console.error('Failed to create checkout session:', error)
-      navigate('/login')
     } finally {
       setIsUpgrading(null)
     }

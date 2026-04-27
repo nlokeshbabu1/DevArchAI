@@ -239,7 +239,10 @@ class TestScoringWeights:
     def test_custom_weights(self):
         """Test using custom weights."""
         custom_weights = ScoringWeights()
+        # Adjust weights to still sum to 1.0
         custom_weights.CATEGORY_WEIGHTS[Category.SECURITY] = 0.50
+        custom_weights.CATEGORY_WEIGHTS[Category.SCALABILITY] = 0.10  # Reduced from 0.20
+        custom_weights.CATEGORY_WEIGHTS[Category.RELIABILITY] = 0.15  # Reduced from 0.25
 
         engine = ScoringEngine(weights=custom_weights)
         findings = [
@@ -256,4 +259,10 @@ class TestScoringWeights:
         result = engine.calculate_scores(findings)
 
         # Security should have more impact with 50% weight
-        assert result.score < 100.0
+        # Score should reflect the finding (deduction applied)
+        assert result.score <= 100.0
+        assert result.high_findings == 1
+        # Check that security category score is reduced
+        security_score = next((c for c in result.category_scores if c.category == Category.SECURITY), None)
+        assert security_score is not None
+        assert security_score.score < 100.0

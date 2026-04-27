@@ -5,14 +5,16 @@ Provides real-time progress tracking with step-by-step updates.
 """
 
 import json
+import re
+import threading
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import structlog
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,7 @@ from app.db.session import get_db, get_sync_session_factory
 from app.models.anonymous_scan import AnonymousScan
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
+from app.config import settings
 from app.services.scan_progress_store import get_scan_progress_store
 from app.workers.tasks.scan_repository import SyncScanService
 
@@ -31,14 +34,112 @@ router = APIRouter(prefix="/scan", tags=["Unified Scan"])
 
 class UnifiedScanRequest(BaseModel):
     """Request model for unified scan endpoint."""
-    repository_url: str
-    branch: str = "main"
+    repository_url: str = Field(..., min_length=10, max_length=500)
+    branch: str = Field(default="main", max_length=100)
     include_ai_explanations: bool = True
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url(cls, v: str) -> str:
+        """Validate repository URL format."""
+        v = v.strip()
+        # Must be a valid HTTPS URL
+        if not v.startswith("https://"):
+            raise ValueError("Repository URL must use HTTPS (https://)")
+        # Only allow known git hosting providers
+        allowed_hosts = ["github.com", "gitlab.com", "bitbucket.org"]
+        url_pattern = r"^https://(www\.)?([a-zA-Z0-9.-]+)\.([a-zA-Z]{2,})/.*\.git$"
+        if not re.match(url_pattern, v) and not any(host in v for host in allowed_hosts):
+            raise ValueError("Repository URL must be from a supported provider (GitHub, GitLab, Bitbucket)")
+        return v
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, v: str) -> str:
+        """Validate branch name format."""
+        if not re.match(r'^[a-zA-Z0-9_./-]+$', v):
+            raise ValueError("Branch name contains invalid characters")
+        return v
+
+
+def _run_scan_in_background(
+    scan_id: str,
+    repository_url: str,
+    branch: str,
+    include_ai_explanations: bool,
+    session_token: Optional[str] = None,
+):
+    """Run scan in a background thread with proper progress tracking."""
+    # Import at function level to avoid scoping issues
+    from app.services.scan_progress_store import get_scan_progress_store
+    import asyncio
+    
+    try:
+        logger.info(f"🚀 Starting background scan for {scan_id}")
+
+        # Get sync database session
+        SessionLocal = get_sync_session_factory()
+        sync_db = SessionLocal()
+
+        try:
+            # Get scan record
+            from app.models.scan import Scan as SyncScan
+            sync_scan = sync_db.get(SyncScan, scan_id)
+
+            if not sync_scan:
+                logger.error(f"Scan not found in background task: {scan_id}")
+                return
+
+            # Initialize progress store FIRST before creating service
+            store = get_scan_progress_store()
+
+            # Ensure scan exists in progress store
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(store.create_scan(scan_id))
+                loop.run_until_complete(store.add_log(scan_id, f"Scan started for {repository_url}"))
+                loop.run_until_complete(store.add_log(scan_id, f"Branch: {branch}"))
+                loop.run_until_complete(store.update_status(scan_id, "running", 5, "Initializing scan..."))
+                loop.close()
+            except Exception as e:
+                logger.warning(f"Progress store initialization warning: {e}")
+
+            # Create scan service with progress store
+            scan_service = SyncScanService(
+                db=sync_db,
+                include_ai_explanations=include_ai_explanations,
+                progress_store=store,
+                scan_id=scan_id,
+            )
+
+            # Execute scan (this takes 30-60 seconds)
+            updated_scan = scan_service.execute_scan(sync_scan)
+
+            logger.info(f"✅ Background scan completed: {scan_id}, status={updated_scan.status.value}")
+
+        finally:
+            sync_db.close()
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.exception(f"❌ Background scan failed: {error_msg}")
+
+        # Update progress store with failure
+        store = get_scan_progress_store()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(store.fail_scan(scan_id, error_msg))
+            loop.close()
+        except Exception as update_error:
+            logger.error(f"Failed to update progress store on error: {update_error}")
 
 
 @router.post("/start", response_model=Dict[str, Any])
 async def start_unified_scan(
     request: UnifiedScanRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
@@ -57,7 +158,6 @@ async def start_unified_scan(
         
         # Auto-detect branch from GitHub API if not specified or is 'main'
         branch = request.branch or "main"
-        logger.error(f"DEBUG: Initial branch={branch}, request.branch={request.branch}")  # DEBUG
         if branch == "main":
             try:
                 import httpx
@@ -66,8 +166,7 @@ async def start_unified_scan(
                 if len(url_parts) >= 2:
                     owner = url_parts[-2]
                     repo = url_parts[-1].replace(".git", "")
-                    logger.error(f"DEBUG: Checking GitHub API for {owner}/{repo}")  # DEBUG
-                    
+
                     # Try to get default branch from GitHub API
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         api_url = f"https://api.github.com/repos/{owner}/{repo}"
@@ -75,16 +174,13 @@ async def start_unified_scan(
                         if settings.GITHUB_TOKEN:
                             headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
                         response = await client.get(api_url, headers=headers)
-                        logger.error(f"DEBUG: GitHub API response status={response.status_code}")  # DEBUG
                         if response.status_code == 200:
                             repo_data = response.json()
                             branch = repo_data.get("default_branch", "main")
-                            logger.error(f"DEBUG: Detected branch={branch}")  # DEBUG
                             logger.info(f"✅ Detected default branch: {branch} for {owner}/{repo}")
                         else:
                             logger.warning(f"GitHub API returned {response.status_code}, using default: main")
             except Exception as e:
-                logger.error(f"DEBUG: Exception in branch detection: {e}")  # DEBUG
                 logger.warning(f"❌ Could not detect branch from GitHub API: {e}, using default: main")
 
         # For guest users, create anonymous scan record
@@ -120,88 +216,36 @@ async def start_unified_scan(
         
         # Use the scan's UUID as scan_id for progress tracking
         scan_id = str(scan.id)
-        
+
         db.add(scan)
         await db.commit()
         await db.refresh(scan)
-        
+
         # Initialize progress tracking with the SAME scan_id
         store = get_scan_progress_store()
         await store.create_scan(scan_id)
         await store.add_log(scan_id, f"Scan started for {request.repository_url}")
-        await store.add_log(scan_id, f"Branch: {request.branch}")
-        
-        # Run scan synchronously with progress tracking
-        try:
-            SessionLocal = get_sync_session_factory()
-            sync_db = SessionLocal()
-            try:
-                scan_service = SyncScanService(
-                    db=sync_db,
-                    include_ai_explanations=request.include_ai_explanations,
-                    progress_store=store,
-                    scan_id=scan_id,
-                )
-                
-                # Get fresh scan from sync db using the SAME ID
-                from app.models.scan import Scan as SyncScan
-                sync_scan = sync_db.get(SyncScan, scan.id)
-                
-                if sync_scan:
-                    # Execute scan synchronously with progress tracking
-                    # SyncScanService uses sync db but has async methods - call without await
-                    updated_scan = scan_service.execute_scan(sync_scan)
+        await store.add_log(scan_id, f"Branch: {branch}")
 
-                    # Copy results back to async session
-                    scan.status = updated_scan.status
-                    scan.progress = updated_scan.progress
-                    scan.overall_score = updated_scan.overall_score
-                    scan.security_score = updated_scan.security_score
-                    scan.completed_at = updated_scan.completed_at
-                    await db.commit()
-                    
-                    logger.info(f"Scan completed: {scan.status.value}, score: {scan.overall_score}")
-                else:
-                    logger.error(f"Scan not found in sync DB: {scan.id}")
-                    raise Exception(f"Scan not found: {scan.id}")
-            finally:
-                sync_db.close()
-                
-        except Exception as scan_error:
-            error_msg = str(scan_error)
-            logger.exception(f"Scan failed: {error_msg}")
-            
-            # Update scan status to failed
-            scan.status = ScanStatus.FAILED
-            scan.error_message = error_msg
-            await db.commit()
-            
-            # Update progress store
-            await store.fail_scan(scan_id, error_msg)
-            
-            # For guest users, update anonymous scan status too
-            if not current_user and session_token:
-                result = await db.execute(
-                    select(AnonymousScan).where(AnonymousScan.session_token == session_token)
-                )
-                anon_scan = result.scalar_one_or_none()
-                if anon_scan:
-                    anon_scan.status = "failed"
-                    await db.commit()
-            
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Scan failed: {error_msg}",
-            )
-        
-        # Return response with detected branch
+        # Run scan in BACKGROUND - returns immediately
+        logger.info(f"🚀 Queueing background scan for {scan_id}")
+        background_tasks.add_task(
+            _run_scan_in_background,
+            scan_id=scan_id,
+            repository_url=request.repository_url,
+            branch=branch,
+            include_ai_explanations=request.include_ai_explanations,
+            session_token=session_token,
+        )
+
+        # Return response IMMEDIATELY with "running" status
         return {
             "scan_id": scan_id,
             "session_token": session_token,
             "status": "running",
-            "message": "Scan started successfully",
+            "message": "Scan started successfully - progress will be updated",
             "repository_url": request.repository_url,
-            "branch": branch,  # Use detected branch, not request.branch
+            "branch": branch,
         }
         
     except HTTPException:
@@ -277,6 +321,9 @@ async def get_scan_status(
             "error_message": scan.error_message,
         }
 
+    logger.info(f"📊 Returning scan status: scan_id={progress.scan_id}, status={progress.status}, progress={progress.progress}")
+    logger.info(f"📁 files_list length: {len(progress.files_list) if hasattr(progress, 'files_list') else 0}")
+    
     return {
         "scan_id": progress.scan_id,
         "status": progress.status,
@@ -285,6 +332,9 @@ async def get_scan_status(
         "steps": [step.dict() for step in progress.steps],
         "detected_stack": progress.detected_stack,
         "logs": progress.logs,
+        "files_list": progress.files_list if hasattr(progress, 'files_list') else [],
+        "files_scanned": progress.files_scanned if hasattr(progress, 'files_scanned') else 0,
+        "total_files": progress.total_files if hasattr(progress, 'total_files') else 0,
         "created_at": progress.created_at.isoformat(),
         "completed_at": progress.completed_at.isoformat() if progress.completed_at else None,
         "error_message": progress.error_message,
@@ -350,78 +400,103 @@ async def get_scan_results(
     # (Progress store data expires, so we extract from permanent findings data)
     detected_technologies = []
     tech_files = {}
-    
+
     for f in findings:
         if not f.file_path:
             continue
-            
+
         path_lower = f.file_path.lower()
-        
+
         # Docker
         if 'dockerfile' in path_lower or 'docker' in path_lower:
             if 'docker' not in detected_technologies:
                 detected_technologies.append('docker')
             tech_files['docker'] = tech_files.get('docker', 0) + 1
-        
+
         # Terraform
         if '.tf' in path_lower or 'terraform' in path_lower:
             if 'terraform' not in detected_technologies:
                 detected_technologies.append('terraform')
             tech_files['terraform'] = tech_files.get('terraform', 0) + 1
-        
+
         # Kubernetes
         if 'kubernetes' in path_lower or 'k8s' in path_lower or ('.yaml' in path_lower and 'deployment' in path_lower):
             if 'kubernetes' not in detected_technologies:
                 detected_technologies.append('kubernetes')
             tech_files['kubernetes'] = tech_files.get('kubernetes', 0) + 1
-        
+
         # GitHub Actions
         if '.github/workflows' in path_lower:
             if 'github_actions' not in detected_technologies:
                 detected_technologies.append('github_actions')
             tech_files['github_actions'] = tech_files.get('github_actions', 0) + 1
-        
+
         # AWS
         if 'aws' in path_lower or 'ec2' in path_lower or 's3' in path_lower or 'lambda' in path_lower:
             if 'aws' not in detected_technologies:
                 detected_technologies.append('aws')
             tech_files['aws'] = tech_files.get('aws', 0) + 1
-        
+
         # Azure
         if 'azure' in path_lower or 'aks' in path_lower:
             if 'azure' not in detected_technologies:
                 detected_technologies.append('azure')
             tech_files['azure'] = tech_files.get('azure', 0) + 1
-        
+
         # GCP
         if 'gcp' in path_lower or 'gke' in path_lower or 'google' in path_lower:
             if 'gcp' not in detected_technologies:
                 detected_technologies.append('gcp')
             tech_files['gcp'] = tech_files.get('gcp', 0) + 1
-        
+
         # Helm
         if 'helm' in path_lower or 'chart.yaml' in path_lower:
             if 'helm' not in detected_technologies:
                 detected_technologies.append('helm')
             tech_files['helm'] = tech_files.get('helm', 0) + 1
-        
+
         # Jenkins
         if 'jenkins' in path_lower or 'jenkinsfile' in path_lower:
             if 'jenkins' not in detected_technologies:
                 detected_technologies.append('jenkins')
             tech_files['jenkins'] = tech_files.get('jenkins', 0) + 1
-        
+
         # Prometheus
         if 'prometheus' in path_lower:
             if 'prometheus' not in detected_technologies:
                 detected_technologies.append('prometheus')
             tech_files['prometheus'] = tech_files.get('prometheus', 0) + 1
-        
+
         # Grafana
         if 'grafana' in path_lower:
             if 'grafana' not in detected_technologies:
                 detected_technologies.append('grafana')
             tech_files['grafana'] = tech_files.get('grafana', 0) + 1
+
+    # PHASE 2: Also add technologies from detected_stack (even if no findings for them)
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        if stack.get('has_jenkins') or stack.get('jenkins_files'):
+            if 'jenkins' not in detected_technologies:
+                detected_technologies.append('jenkins')
+        if stack.get('has_gitlab_ci') or stack.get('gitlab_ci_files'):
+            if 'gitlab_ci' not in detected_technologies:
+                detected_technologies.append('gitlab_ci')
+        if stack.get('has_circleci') or stack.get('circleci_files'):
+            if 'circleci' not in detected_technologies:
+                detected_technologies.append('circleci')
+        if stack.get('has_azure_devops') or stack.get('azure_devops_files'):
+            if 'azure_devops' not in detected_technologies:
+                detected_technologies.append('azure_devops')
+        if stack.get('has_ansible') or stack.get('ansible_files'):
+            if 'ansible' not in detected_technologies:
+                detected_technologies.append('ansible')
+        if stack.get('has_prometheus') or stack.get('prometheus_files'):
+            if 'prometheus' not in detected_technologies:
+                detected_technologies.append('prometheus')
+        if stack.get('has_grafana') or stack.get('grafana_files'):
+            if 'grafana' not in detected_technologies:
+                detected_technologies.append('grafana')
 
     # Calculate files analyzed from detected_stack (stored in scan.detected_stack)
     # This ensures we show files analyzed even if no findings were detected

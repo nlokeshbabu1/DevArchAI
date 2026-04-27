@@ -52,7 +52,7 @@ class CICDParser(BaseParser):
             return False
 
         # Jenkinsfile (no extension)
-        if file_path.name == "Jenkinsfile":
+        if file_path.name.lower() == "jenkinsfile" or file_path.name.lower().startswith("jenkinsfile-"):
             return True
 
         # Must be YAML/YML file for other CI/CD types
@@ -82,7 +82,7 @@ class CICDParser(BaseParser):
         }
 
         try:
-            if file_path.name == "Jenkinsfile":
+            if file_path.name.lower() == "jenkinsfile" or file_path.name.lower().startswith("jenkinsfile-"):
                 parsed_data = self._parse_jenkinsfile(content)
             else:
                 # YAML-based CI/CD
@@ -120,7 +120,7 @@ class CICDParser(BaseParser):
             return "travis"
         elif "azure-pipelines" in path_str or file_name == "azure-pipelines.yml":
             return "azure_devops"
-        elif file_path.name == "Jenkinsfile":
+        elif file_name == "jenkinsfile" or file_name.startswith("jenkinsfile-"):
             return "jenkins"
         elif ".drone" in path_str:
             return "drone"
@@ -344,6 +344,25 @@ class CICDParser(BaseParser):
                     key, value = line.split("=", 1)
                     parsed_data["environment"][key.strip()] = value.strip().strip('"\'')
 
+        # Extract tools
+        tools_match = re.search(r'tools\s*\{([^}]+)\}', content)
+        if tools_match:
+            tools_content = tools_match.group(1)
+            for line in tools_content.split("\n"):
+                line = line.strip()
+                if line:
+                    parsed_data["tools"].append(line)
+
+        # Extract triggers
+        triggers_match = re.search(r'triggers\s*\{([^}]+)\}', content)
+        if triggers_match:
+            parsed_data["triggers"].append(triggers_match.group(1))
+
+        # Extract post actions
+        post_match = re.search(r'post\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}', content, re.DOTALL)
+        if post_match:
+            parsed_data["post_actions"].append(post_match.group(1))
+
         return parsed_data
 
     def _parse_generic_cicd(self, doc: dict, parsed_data: dict) -> dict:
@@ -361,26 +380,54 @@ class CICDParser(BaseParser):
     def extract_resources(self, parsed_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract resources for rule evaluation."""
         resources = []
+        ci_type = parsed_data.get("ci_type", "unknown")
 
-        for job in parsed_data.get("jobs", []):
+        if ci_type == "jenkins":
+            # Extract Jenkins-specific resources
+            for stage in parsed_data.get("stages", []):
+                resources.append({
+                    "file_type": "cicd",
+                    "ci_type": "jenkins",
+                    "kind": "stage",
+                    "name": stage.get("name", ""),
+                    "properties": stage,
+                })
+
             resources.append({
                 "file_type": "cicd",
-                "ci_type": parsed_data.get("ci_type"),
-                "kind": "job",
-                "name": job.get("name", ""),
-                "properties": job,
+                "ci_type": "jenkins",
+                "kind": "pipeline",
+                "properties": {
+                    "pipeline_type": parsed_data.get("pipeline_type", "unknown"),
+                    "agents": parsed_data.get("agents", []),
+                    "tools": parsed_data.get("tools", []),
+                    "environment": parsed_data.get("environment", {}),
+                    "triggers": parsed_data.get("triggers", []),
+                    "post_actions": parsed_data.get("post_actions", []),
+                    "stages": parsed_data.get("stages", []),
+                },
             })
+        else:
+            # GitHub Actions, GitLab CI, etc.
+            for job in parsed_data.get("jobs", []):
+                resources.append({
+                    "file_type": "cicd",
+                    "ci_type": ci_type,
+                    "kind": "job",
+                    "name": job.get("name", ""),
+                    "properties": job,
+                })
 
-        resources.append({
-            "file_type": "cicd",
-            "ci_type": parsed_data.get("ci_type"),
-            "kind": "pipeline",
-            "properties": {
-                "triggers": parsed_data.get("triggers", []),
-                "environments": parsed_data.get("environments", []),
-                "security_features": parsed_data.get("security_features", {}),
-                "secrets_usage": parsed_data.get("secrets_usage", []),
-            },
-        })
+            resources.append({
+                "file_type": "cicd",
+                "ci_type": ci_type,
+                "kind": "pipeline",
+                "properties": {
+                    "triggers": parsed_data.get("triggers", []),
+                    "environments": parsed_data.get("environments", []),
+                    "security_features": parsed_data.get("security_features", {}),
+                    "secrets_usage": parsed_data.get("secrets_usage", []),
+                },
+            })
 
         return resources
