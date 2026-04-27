@@ -1,7 +1,3 @@
-/**
- * Authentication store using Zustand
- */
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -15,7 +11,7 @@ interface User {
   is_verified: boolean
   role: string
   current_org_id?: string
-  plan?: string  // Subscription plan: free, plus, pro, enterprise
+  plan?: string
 }
 
 interface AuthState {
@@ -30,6 +26,8 @@ interface AuthState {
   fetchUserInfo: () => Promise<void>
 }
 
+const API_URL = import.meta.env.VITE_API_URL
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -38,87 +36,92 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
 
-      // Check if token exists in localStorage
+      // ✅ FIXED: no direct localStorage access
       checkAuth: () => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-        if (token) {
-          set({ token, isAuthenticated: true })
-          // Fetch user info when token exists
-          get().fetchUserInfo()
-        } else {
-          set({ isLoading: false })
+        const token = get().token
+
+        if (!token) {
+          set({ isAuthenticated: false, isLoading: false })
+          return
         }
+
+        set({ isAuthenticated: true })
+        get().fetchUserInfo()
       },
 
-      // Fetch user info from API
+      // ✅ FIXED: correct API base URL
       fetchUserInfo: async () => {
         const token = get().token
+
         if (!token) {
           set({ isLoading: false })
           return
         }
 
         try {
-          const response = await fetch('/api/v1/auth/me', {
+          const response = await fetch(`${API_URL}/api/v1/auth/me`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
             },
           })
-          
+
           if (response.ok) {
             const userData = await response.json()
-            set({ user: userData, isAuthenticated: true })
+
+            set({
+              user: userData,
+              isAuthenticated: true,
+              isLoading: false,
+            })
           } else {
-            // Token invalid, clear auth
             get().logout()
           }
         } catch (error) {
           console.error('Failed to fetch user info:', error)
-        } finally {
           set({ isLoading: false })
         }
       },
 
+      // ✅ FIXED: no localStorage manual handling
       login: (token: string) => {
-        localStorage.setItem('access_token', token)
-        set({ token, isAuthenticated: true })
-        // Fetch user info after login
-        set({ isLoading: true })
+        set({
+          token,
+          isAuthenticated: true,
+          isLoading: true,
+        })
+
         setTimeout(() => {
-          // Use setTimeout to ensure state is updated
-          useAuthStore.getState().fetchUserInfo()
+          get().fetchUserInfo()
         }, 0)
       },
 
+      // ✅ CLEAN logout
       logout: () => {
-        // Clear all storage first to prevent race conditions
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('auth-storage')
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          localStorage.removeItem('current_org_id')
-          sessionStorage.clear()
-        }
-
-        // Then clear state
         set({
           token: null,
           user: null,
           isAuthenticated: false,
-          isLoading: false
+          isLoading: false,
         })
 
-        // Force hard redirect to landing page
         window.location.replace('/')
       },
 
       setUser: (user: User) => {
-        set({ user, isAuthenticated: true, isLoading: false })
+        set({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+        })
       },
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({ token: state.token, isAuthenticated: state.isAuthenticated, user: state.user }),
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )
