@@ -16,13 +16,13 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'https://devarchai.onrender.com'
+        target: 'https://devarchai.onrender.com',
         changeOrigin: true,
         secure: false,
         ws: true,
       },
       '/ws': {
-        target: 'ws://devarchai.onrender.com
+        target: 'ws://devarchai.onrender.com',
         ws: true,
         changeOrigin: true,
       },
