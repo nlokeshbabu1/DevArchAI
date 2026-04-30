@@ -43,7 +43,7 @@ export const authApi = {
    * Register a new user
    */
   register: async (data: RegisterRequest): Promise<UserResponse> => {
-    const response = await apiClient.post<UserResponse>('/api/v1/auth/register', data)
+    const response = await apiClient.post<UserResponse>('/auth/register', data)
     return response.data
   },
 
@@ -51,7 +51,7 @@ export const authApi = {
    * Login user
    */
   login: async (data: LoginRequest): Promise<TokenResponse> => {
-    const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', data)
+    const response = await apiClient.post<TokenResponse>('/auth/login', data)
     return response.data
   },
 
@@ -59,7 +59,7 @@ export const authApi = {
    * Get current user info
    */
   getCurrentUser: async (): Promise<UserResponse> => {
-    const response = await apiClient.get<UserResponse>('/api/v1/auth/me')
+    const response = await apiClient.get<UserResponse>('/auth/me')
     return response.data
   },
 
@@ -67,7 +67,7 @@ export const authApi = {
    * Update current user profile
    */
   updateProfile: async (data: Partial<UserResponse>): Promise<UserResponse> => {
-    const response = await apiClient.put<UserResponse>('/api/v1/auth/me', data)
+    const response = await apiClient.put<UserResponse>('/auth/me', data)
     return response.data
   },
 
@@ -75,7 +75,7 @@ export const authApi = {
    * Create API key
    */
   createApiKey: async (): Promise<{ api_key: string; api_key_prefix: string; created_at: string }> => {
-    const response = await apiClient.post('/api/v1/auth/api-key')
+    const response = await apiClient.post('/auth/api-key')
     return response.data
   },
 
@@ -83,7 +83,7 @@ export const authApi = {
    * Revoke API key
    */
   revokeApiKey: async (): Promise<{ message: string }> => {
-    const response = await apiClient.delete('/api/v1/auth/api-key')
+    const response = await apiClient.delete('/auth/api-key')
     return response.data
   },
 

@@ -5,6 +5,7 @@ import {
   GitBranch, ChevronDown, Cloud, Code, Zap, Lock, Layers, Server 
 } from 'lucide-react'
 import { Button, Card } from '../ui-animated'
+import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { useNavigate } from 'react-router-dom'
 
@@ -28,32 +29,31 @@ export function HeroScanner({ onScanComplete }: HeroScannerProps) {
   const fetchBranches = async (repoUrl: string) => {
     setIsFetchingBranches(true)
     try {
-      const response = await fetch(`/api/v1/github/branches?repo_url=${encodeURIComponent(repoUrl)}`)
-      
-      if (response.ok) {
-        const data = await response.json()
-        const branchNames = data.branches.map((b: any) => b.name)
-        setAvailableBranches(branchNames)
+      const response = await api.get('/github/branches', {
+        params: { repo_url: repoUrl },
+      })
+      const data = response.data
+      const branchNames = data.branches.map((b: any) => b.name)
+      setAvailableBranches(branchNames)
 
-        // Set default branch - prioritize master if it exists, otherwise main
-        let defaultBranch = data.branches.find((b: any) => b.name === 'master')
-        if (!defaultBranch) {
-          defaultBranch = data.branches.find((b: any) => b.name === 'main')
-        }
-        if (!defaultBranch) {
-          defaultBranch = data.branches.find((b: any) => b.protected)
-        }
-        if (!defaultBranch && branchNames.length > 0) {
-          defaultBranch = data.branches[0]
-        }
+      // Set default branch - prioritize master if it exists, otherwise main
+      let defaultBranch = data.branches.find((b: any) => b.name === 'master')
+      if (!defaultBranch) {
+        defaultBranch = data.branches.find((b: any) => b.name === 'main')
+      }
+      if (!defaultBranch) {
+        defaultBranch = data.branches.find((b: any) => b.protected)
+      }
+      if (!defaultBranch && branchNames.length > 0) {
+        defaultBranch = data.branches[0]
+      }
 
-        if (defaultBranch) {
-          setBranch(defaultBranch.name)
-        }
+      if (defaultBranch) {
+        setBranch(defaultBranch.name)
+      }
 
-        if (branchNames.length > 0) {
-          setShowBranchDropdown(true)
-        }
+      if (branchNames.length > 0) {
+        setShowBranchDropdown(true)
       }
     } catch (error) {
       console.error('Failed to fetch branches:', error)
@@ -116,26 +116,14 @@ export function HeroScanner({ onScanComplete }: HeroScannerProps) {
         })
       }, 200)
 
-      const response = await fetch('/api/v1/public/scan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          repository_url: cleanUrl,
-          branch: branch,
-        }),
+      const response = await api.post('/public/scan', {
+        repository_url: cleanUrl,
+        branch: branch,
       })
 
       clearInterval(progressInterval)
       setScanProgress(100)
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || 'Scan failed')
-      }
-
-      const data = await response.json()
+      const data = response.data
 
       if (data.status === 'failed') {
         throw new Error(data.message || 'Scan processing failed')

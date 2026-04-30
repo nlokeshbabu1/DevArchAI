@@ -4,6 +4,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { api } from '../lib/api'
 
 interface User {
   id: string
@@ -59,21 +60,18 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const response = await fetch('/api/v1/auth/me', {
+          const response = await api.get('/auth/me', {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
             },
           })
-          
-          if (response.ok) {
-            const userData = await response.json()
-            set({ user: userData, isAuthenticated: true })
-          } else {
-            // Token invalid, clear auth
+
+          set({ user: response.data, isAuthenticated: true })
+        } catch (error: any) {
+          console.error('Failed to fetch user info:', error)
+          if (error?.response) {
             get().logout()
           }
-        } catch (error) {
-          console.error('Failed to fetch user info:', error)
         } finally {
           set({ isLoading: false })
         }

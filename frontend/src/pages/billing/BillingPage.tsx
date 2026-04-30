@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Check, Zap, Shield, Brain, Loader2, Star, Building2 } from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
 import { cn } from '../../lib/utils'
-import axios from 'axios'
+import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
@@ -124,7 +124,7 @@ export function BillingPage() {
   const fetchSubscription = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {}
-      const response = await axios.get('/api/v1/billing/subscription', { headers })
+      const response = await api.get('/billing/subscription', { headers })
       setSubscription(response.data)
     } catch (error) {
       console.error('Failed to fetch subscription:', error)

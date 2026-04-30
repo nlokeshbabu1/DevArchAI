@@ -9,6 +9,7 @@ import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
 import { TechStackDisplay } from '../components/TechStackDisplay'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import { Layout } from '../components/layout/DashboardLayout'
@@ -118,16 +119,15 @@ export function ScanResultsPage() {
   const fetchResults = async () => {
     try {
       // Add cache-busting to prevent stale data
-      const response = await fetch(`/api/v1/public/scan/${sessionId}?t=${Date.now()}`, {
-        cache: 'no-store',
+      const response = await api.get(`/public/scan/${sessionId}`, {
+        params: { t: Date.now() },
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
           'Expires': '0',
         }
       })
-      if (!response.ok) throw new Error('Failed to fetch results')
-      const data = await response.json()
+      const data = response.data
       console.log('✅ Scan results fetched:', data)
       setResults(data)
     } catch (error) {
