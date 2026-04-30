@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import axios from 'axios'
+import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { verifyRazorpayPayment } from '../../lib/payment-gateway'
 
@@ -79,7 +79,7 @@ export function BillingSuccess() {
           await new Promise(resolve => setTimeout(resolve, 1500))
 
           if (token && planParam) {
-            await axios.post('/api/v1/billing/subscription', {
+            await api.post('/billing/subscription', {
               plan: planParam,
               billing: 'monthly',
             }, {
@@ -94,7 +94,7 @@ export function BillingSuccess() {
           // Check if subscription was activated by webhook
           if (token) {
             try {
-              const response = await axios.get('/api/v1/billing/subscription', {
+              const response = await api.get('/billing/subscription', {
                 headers: { Authorization: `Bearer ${token}` }
               })
               if (response.data.plan && response.data.plan !== 'free') {

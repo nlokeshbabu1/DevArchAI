@@ -123,7 +123,7 @@ export const scansApi = {
    * Delete scan
    */
   deleteScan: async (scanId: string): Promise<{ message: string }> => {
-    const response = await apiClient.delete(`/api/v1/scans/${scanId}`);
+    const response = await apiClient.delete(`/scans/${scanId}`);
     return response.data;
   },
 
@@ -131,7 +131,7 @@ export const scansApi = {
    * Get scan findings
    */
   getScanFindings: async (scanId: string): Promise<any[]> => {
-    const response = await apiClient.get(`/api/v1/scans/${scanId}/findings`);
+    const response = await apiClient.get(`/scans/${scanId}/findings`);
     return response.data;
   },
 };

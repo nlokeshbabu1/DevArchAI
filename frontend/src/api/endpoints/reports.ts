@@ -34,7 +34,7 @@ export const reportsApi = {
    * List reports for organization
    */
   listReports: async (orgId: string): Promise<Report[]> => {
-    const response = await apiClient.get<Report[]>(`/api/v1/reports?org_id=${orgId}`);
+    const response = await apiClient.get<Report[]>(`/reports?org_id=${orgId}`);
     return response.data;
   },
 
@@ -42,7 +42,7 @@ export const reportsApi = {
    * Get report by ID
    */
   getReport: async (reportId: string): Promise<Report> => {
-    const response = await apiClient.get<Report>(`/api/v1/reports/${reportId}`);
+    const response = await apiClient.get<Report>(`/reports/${reportId}`);
     return response.data;
   },
 
@@ -50,7 +50,7 @@ export const reportsApi = {
    * Download report
    */
   downloadReport: async (reportId: string, format: string = 'json'): Promise<Blob> => {
-    const response = await apiClient.get(`/api/v1/reports/${reportId}/download?format=${format}`, {
+    const response = await apiClient.get(`/reports/${reportId}/download?format=${format}`, {
       responseType: 'blob',
     });
     return response.data;
@@ -60,7 +60,7 @@ export const reportsApi = {
    * Generate shareable link for report
    */
   shareReport: async (reportId: string): Promise<{ message: string; share_url?: string }> => {
-    const response = await apiClient.post(`/api/v1/reports/${reportId}/share`);
+    const response = await apiClient.post(`/reports/${reportId}/share`);
     return response.data;
   },
 };

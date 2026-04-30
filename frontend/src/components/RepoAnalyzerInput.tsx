@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap, BarChart3, Server, Cloud, FolderOpen, Brain, ChevronDown } from 'lucide-react'
-import axios from 'axios'
 import { Button, Card } from '../components/ui'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { ScanProgress } from './ScanProgress'
 
@@ -88,7 +88,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
       if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
         return { branches: [], default_branch: 'main' }
       }
-      const response = await axios.get('/api/v1/github/branches', {
+      const response = await api.get('/github/branches', {
         params: { repo_url: repoUrl }
       })
       return response.data
@@ -109,7 +109,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
   const mutation = useMutation({
     mutationFn: async (url: string) => {
       // Call the unified analysis endpoint and get scan_id
-      const response = await axios.post('/api/v1/analyze/repo', {
+      const response = await api.post('/analyze/repo', {
         repo_url: url,
         branch: selectedBranch || 'main'
       })

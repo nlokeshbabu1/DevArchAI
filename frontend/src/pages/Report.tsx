@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
 import {
   Download,
   AlertCircle,
@@ -26,6 +25,7 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
 interface Finding {
@@ -140,10 +140,10 @@ export function Report() {
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
     queryFn: async () => {
-      const reportResponse = await axios.get(`/api/v1/reports/${id}`)
+      const reportResponse = await api.get(`/reports/${id}`)
       const reportData = reportResponse.data
 
-      const findingsResponse = await axios.get(`/api/v1/scans/${reportData.scan_id}/findings`)
+      const findingsResponse = await api.get(`/scans/${reportData.scan_id}/findings`)
       const findingsData = findingsResponse.data
 
       const categoryIcons: Record<string, any> = {

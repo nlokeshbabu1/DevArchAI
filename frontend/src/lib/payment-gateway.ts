@@ -1,3 +1,5 @@
+import { buildBackendUrl } from './api'
+
 type BillingInterval = 'monthly' | 'yearly'
 
 interface CheckoutPayload {
@@ -72,8 +74,8 @@ declare global {
   }
 }
 
-const CHECKOUT_URL = '/api/payment/checkout'
-const VERIFY_URL = '/api/payment/verify'
+const CHECKOUT_URL = buildBackendUrl('/api/payment/checkout')
+const VERIFY_URL = buildBackendUrl('/api/payment/verify')
 const RAZORPAY_SCRIPT_SRC = 'https://checkout.razorpay.com/v1/checkout.js'
 
 let razorpayScriptPromise: Promise<void> | null = null

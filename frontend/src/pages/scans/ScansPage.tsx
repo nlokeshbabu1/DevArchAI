@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react'
 import { Card, Button, Badge, Progress } from '../../components/ui'
-import axios from 'axios'
+import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
 
@@ -19,19 +19,6 @@ interface Scan {
   analysis_duration_seconds?: number
   error_message?: string
 }
-
-// Configure axios with auth token
-const api = axios.create({
-  baseURL: '/api/v1',
-})
-
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
 
 export function ScansPage() {
   const queryClient = useQueryClient()
