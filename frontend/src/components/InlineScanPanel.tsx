@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import axios from 'axios'
 import { X, GitBranch, Github, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { cn } from '../lib/utils'
@@ -70,7 +69,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
       if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
         return { branches: [], default_branch: 'main' }
       }
-      const response = await axios.get('/api/v1/github/branches', {
+      const response = await apiClient.get('/github/branches', {
         params: { repo_url: repoUrl }
       })
       return response.data

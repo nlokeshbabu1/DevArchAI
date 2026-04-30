@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import axios from 'axios'
 import {
   CheckCircle, AlertTriangle, Info, AlertCircle, Shield, Server, Cloud,
   Zap, GitBranch, BarChart3, Brain, Terminal, Lock, ArrowLeft, RotateCcw,
@@ -8,6 +7,7 @@ import {
   SortAsc, SortDesc, ExternalLink, Sparkles
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
@@ -324,14 +324,14 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
       if (token && (format === 'pdf' || format === 'xlsx')) {
         try {
           // First get or create report
-          const reportResponse = await axios.get(`/api/v1/reports/scan/${result.scan_id}/latest`, {
+          const reportResponse = await api.get(`/reports/scan/${result.scan_id}/latest`, {
             headers: { Authorization: `Bearer ${token}` },
           })
           
           const reportId = reportResponse.data.id
           
           // Download in requested format
-          const downloadResponse = await axios.get(`/api/v1/reports/${reportId}/download?format=${format}`, {
+          const downloadResponse = await api.get(`/reports/${reportId}/download?format=${format}`, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'blob',
           })

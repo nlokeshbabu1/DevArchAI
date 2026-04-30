@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Github, Loader2, Shield, CheckCircle, AlertTriangle, GitBranch, ChevronDown } from 'lucide-react'
 import { Button, Card } from '../ui-animated'
+import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { useNavigate } from 'react-router-dom'
 import { ScanProgress } from '../ScanProgress'
@@ -26,33 +27,32 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
   const fetchBranches = async (repoUrl: string) => {
     setIsFetchingBranches(true)
     try {
-      const response = await fetch(`/api/v1/github/branches?repo_url=${encodeURIComponent(repoUrl)}`)
+      const response = await api.get('/github/branches', {
+        params: { repo_url: repoUrl },
+      })
+      const data = response.data
+      const branchNames = data.branches.map((b: any) => b.name)
+      setAvailableBranches(branchNames)
 
-      if (response.ok) {
-        const data = await response.json()
-        const branchNames = data.branches.map((b: any) => b.name)
-        setAvailableBranches(branchNames)
+      // Set default branch - prioritize master if it exists, otherwise main
+      let defaultBranch = data.branches.find((b: any) => b.name === 'master')
+      if (!defaultBranch) {
+        defaultBranch = data.branches.find((b: any) => b.name === 'main')
+      }
+      if (!defaultBranch) {
+        defaultBranch = data.branches.find((b: any) => b.protected)
+      }
+      if (!defaultBranch && branchNames.length > 0) {
+        defaultBranch = data.branches[0]
+      }
 
-        // Set default branch - prioritize master if it exists, otherwise main
-        let defaultBranch = data.branches.find((b: any) => b.name === 'master')
-        if (!defaultBranch) {
-          defaultBranch = data.branches.find((b: any) => b.name === 'main')
-        }
-        if (!defaultBranch) {
-          defaultBranch = data.branches.find((b: any) => b.protected)
-        }
-        if (!defaultBranch && branchNames.length > 0) {
-          defaultBranch = data.branches[0]
-        }
+      if (defaultBranch) {
+        setBranch(defaultBranch.name)
+      }
 
-        if (defaultBranch) {
-          setBranch(defaultBranch.name)
-        }
-
-        if (branchNames.length > 0) {
-          setShowBranchInput(true)
-          setShowBranchDropdown(true)
-        }
+      if (branchNames.length > 0) {
+        setShowBranchInput(true)
+        setShowBranchDropdown(true)
       }
     } catch (error) {
       console.error('Failed to fetch branches:', error)
@@ -101,24 +101,12 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
 
     try {
       // Start unified scan
-      const response = await fetch('/api/v1/scan/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          repository_url: cleanUrl,
-          branch: branch,
-          include_ai_explanations: true,
-        }),
+      const response = await api.post('/scan/start', {
+        repository_url: cleanUrl,
+        branch: branch,
+        include_ai_explanations: true,
       })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || 'Scan failed')
-      }
-
-      const data = await response.json()
+      const data = response.data
       
       // Store scan ID and session token
       setScanId(data.scan_id)
@@ -133,7 +121,16 @@ export function LandingScanner({ onScanComplete }: LandingScannerProps) {
     } catch (error) {
       console.error('Scan error:', error)
       setScanStatus('error')
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to start scan. Please try again.')
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as any).response?.data?.detail === 'string'
+          ? (error as any).response.data.detail
+          : error instanceof Error
+          ? error.message
+          : 'Failed to start scan. Please try again.'
+      setErrorMessage(message)
     }
   }
 

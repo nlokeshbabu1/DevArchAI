@@ -26,7 +26,7 @@ describe('Auth API', () => {
       })
       
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        '/api/v1/auth/login',
+        '/auth/login',
         {
           email: 'test@example.com',
           password: 'password123',
@@ -60,7 +60,7 @@ describe('Auth API', () => {
       })
       
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        '/api/v1/auth/register',
+        '/auth/register',
         {
           email: 'test@example.com',
           username: 'testuser',
@@ -83,7 +83,7 @@ describe('Auth API', () => {
       
       const result = await authApi.getCurrentUser()
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/v1/auth/me')
+      expect(mockedAxios.get).toHaveBeenCalledWith('/auth/me')
       expect(result).toEqual(mockUser)
     })
 

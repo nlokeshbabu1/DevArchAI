@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Lock, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, Button, Badge } from '../../components/ui'
 import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
-import axios from 'axios'
+import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -33,19 +33,6 @@ interface Finding {
   confidence_score?: number
   created_at: string
 }
-
-// Configure axios with auth token
-const api = axios.create({
-  baseURL: '/api/v1',
-})
-
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
 
 export function Findings() {
   const navigate = useNavigate()
@@ -97,7 +84,7 @@ export function Findings() {
         return
       }
       try {
-        const response = await axios.get('/api/v1/billing/subscription', {
+        const response = await api.get('/billing/subscription', {
           headers: { Authorization: `Bearer ${token}` }
         })
         setUserPlan(response.data.plan || 'free')
@@ -113,7 +100,9 @@ export function Findings() {
     queryKey: ['findings'],
     queryFn: async () => {
       if (!isAuthenticated) return { findings: [], total: 0 }
-      const response = await api.get('/findings?page_size=100')
+      const response = await api.get('/findings', {
+        params: { page_size: 100 },
+      })
       return response.data
     },
     enabled: isAuthenticated,

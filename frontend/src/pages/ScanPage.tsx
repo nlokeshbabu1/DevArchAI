@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
-import axios from 'axios'
 import { Button, Card } from '../components/ui-animated'
+import { api, buildWebSocketUrl } from '../lib/api'
 import { cn } from '../lib/utils'
 import { ScanProgress } from '../components/ScanProgress'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
-import { scansApi } from '../api/endpoints/scans'
 
 interface Finding {
   rule_id: string
@@ -136,7 +135,7 @@ export function ScanPage() {
         return { branches: [], default_branch: 'main' }
       }
       try {
-        const response = await axios.get('/api/v1/github/branches', {
+        const response = await api.get('/github/branches', {
           params: { repo_url: trimmedUrl }
         })
         console.log('✅ Branches fetched:', response.data)
@@ -209,8 +208,7 @@ export function ScanPage() {
   useEffect(() => {
     if (!loading || !scanId) return
 
-    // Use relative path - Vite will proxy to backend
-    const wsUrl = `/ws/scan/${scanId}`
+    const wsUrl = buildWebSocketUrl(`/ws/scan/${scanId}`)
 
     console.log('🔌 Connecting to WebSocket:', wsUrl)
     const ws = new WebSocket(wsUrl)
@@ -352,7 +350,7 @@ export function ScanPage() {
       // Progress is now updated ONLY from backend polling (no fake animation)
 
       // Use same endpoint for both authenticated and anonymous users
-      const response = await axios.post('/api/v1/scan/start', {
+      const response = await api.post('/scan/start', {
         repository_url: trimmedUrl,
         branch: selectedBranch || 'main',
       })
@@ -396,7 +394,7 @@ export function ScanPage() {
 
           while (attempts < maxAttempts && !fetchSuccess) {
             try {
-              const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+              const resultsResponse = await api.get(`/scan/results/${data.scan_id}`)
               const results = resultsResponse.data
 
               console.log('✅ Complete results:', results)
@@ -453,7 +451,7 @@ export function ScanPage() {
         
         // Fallback: try to fetch results anyway
         try {
-          const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+          const resultsResponse = await api.get(`/scan/results/${data.scan_id}`)
           const results = resultsResponse.data
 
           setProgress(100)
