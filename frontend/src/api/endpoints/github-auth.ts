@@ -42,9 +42,10 @@ export const githubAuthApi = {
       // Fallback: try to build URL from env (for development)
       const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
       if (clientId) {
-        const redirectUri = encodeURIComponent(`${window.location.origin}/auth/github/callback`)
+        const redirectUri = import.meta.env.VITE_GITHUB_REDIRECT_URI || `${window.location.origin}/auth/github/callback`
+        const encodedRedirectUri = encodeURIComponent(redirectUri)
         const scope = encodeURIComponent(import.meta.env.VITE_GITHUB_OAUTH_SCOPE || 'user:email read:user')
-        return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`
+        return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&scope=${scope}`
       }
       throw error
     }

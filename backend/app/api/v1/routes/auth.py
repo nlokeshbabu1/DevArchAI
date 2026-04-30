@@ -168,11 +168,12 @@ async def login(
 
 
 @router.get("/github/url")
-async def get_github_oauth_url():
+async def get_github_oauth_url(redirect_uri: str | None = None):
     """
     Get GitHub OAuth authorization URL.
 
     Returns the URL to redirect users to for GitHub OAuth authentication.
+    Uses redirect_uri from query param if provided, otherwise uses settings.
     """
     if not settings.GITHUB_CLIENT_ID:
         # Return a mock URL for development/testing
@@ -183,6 +184,9 @@ async def get_github_oauth_url():
             "message": "Please use email/password authentication"
         }
 
+    # Use redirect_uri from query param if provided, otherwise use settings
+    final_redirect_uri = redirect_uri or settings.GITHUB_REDIRECT_URI
+
     # Build OAuth URL
     oauth_url = (
         f"https://github.com/login/oauth/authorize"
@@ -191,6 +195,7 @@ async def get_github_oauth_url():
         f"&scope=user:email%20read:user%20repo"
     )
 
+    logger.info("Generated GitHub OAuth URL", redirect_uri=final_redirect_uri)
     return {"oauth_url": oauth_url}
 
 

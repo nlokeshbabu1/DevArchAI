@@ -1,8 +1,60 @@
-# Python
+# ===========================================
+# DevArchAI - Production .gitignore
+# ===========================================
+# Comprehensive ignore rules for Python + React + Terraform + Kubernetes
+# Optimized for DevArchAI stack
+# Last Updated: 2026-03-24
+
+# ===========================================
+# 🔐 CRITICAL: SECRETS & ENVIRONMENT
+# ===========================================
+# Never commit environment files with secrets
+.env
+.env.*
+!.env.example
+!.env.template
+.env.local
+.env.*.local
+.env.development
+.env.staging
+.env.production
+.env.test
+.env*.backup
+.env*.bak
+
+# API Keys & Credentials
+*_key.txt
+*_secret.txt
+*_token.txt
+*_password.txt
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+credentials.yaml
+*.credentials
+
+# AWS
+.aws/credentials
+.aws/config
+aws-credentials.txt
+*.aws
+.aws-sam/
+
+# ===========================================
+# 🐍 PYTHON (Backend)
+# ===========================================
+# Byte-compiled / optimized files
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -20,32 +72,48 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Virtual environments
 venv/
 ENV/
 env/
 .venv/
+.conda/
+.pyenv/
 
-# FastAPI / Uvicorn
+# IDE - Python
+*.pyc
+*.pylintrc
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
+coverage/
+coverage.xml
+.tox/
+.nox/
+pytest.xml
+test-results/
+*.coverage
+.coverage.*
+
+# Ruff
+.ruff_cache/
+
+# Database files (SQLite)
 *.db
 *.sqlite
+*.sqlite3
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Node / Frontend
+# ===========================================
+# ⚛️ NODE.JS (Frontend)
+# ===========================================
+# Dependencies
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -55,57 +123,339 @@ pnpm-debug.log*
 .yarn
 !frontend/src/lib/
 !frontend/src/lib/*.ts
+.npmrc
+.yarnrc
 
 # Build outputs
 frontend/dist/
 frontend/build/
+frontend/.next/
+frontend/out/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
 
-# Docker
+# Cache
+frontend/.cache/
+frontend/.eslintcache
+
+# Testing
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+
+# ===========================================
+# 🐳 DOCKER
+# ===========================================
+# Docker volumes
 .docker/
+docker-compose.override.yml
+docker-compose.local.yml
+docker-compose.dev.yml
 
-# Terraform
+# Container registries
+.dockerignore
+
+# Docker build cache
+.docker/buildkit/
+
+# ===========================================
+# 🏗️ INFRASTRUCTURE (Terraform & K8s)
+# ===========================================
+# Terraform state (CRITICAL - contains secrets)
 *.tfstate
 *.tfstate.*
+*.tfstate.lock
 *.tfplan
+*.tfplan.json
+*.tfvars
+!*.tfvars.example
 .terraform/
 .terraform.lock.hcl
+.terraform.d/
+*.terraform
 
-# Kubernetes
+# Kubernetes secrets
 *.kubeconfig
+kubeconfig
+.secrets/
+kubernetes/secrets/
+kubernetes/*secret*.yaml
+kubernetes/*secret*.yml
 
-# Logs
+# Helm
+*.tgz
+.helm/
+Chart.lock
+
+# ===========================================
+# 📝 LOGS & TEMPORARY FILES
+# ===========================================
+# Application logs
 logs/
 *.log
+log/
+*.log.*
+*.log-*
 
-# Temporary files
+# System temp
 tmp/
 temp/
 /tmp/
 *.tmp
+*.temp
 
-# Reports (generated)
+# Application temp
+backend/tmp/
+backend/temp/
+frontend/tmp/
+frontend/temp/
+*.swp
+*.swo
+*~
+
+# ===========================================
+# 🔒 CERTIFICATES & KEYS
+# ===========================================
+# SSL/TLS certificates (private keys)
+*.pem
+*.key
+*.crt
+*.cer
+*.pfx
+*.p12
+private/
+certificates/*.key
+certificates/*.pem
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+*.ssh
+
+# GPG
+*.gpg
+*.pgp
+
+# ===========================================
+# 📦 BUILD ARTIFACTS
+# ===========================================
+# Backend build
+backend/build/
+backend/dist/
+backend/*.egg-info/
+
+# Binary executables
+*.exe
+*.dll
+*.bin
+*.out
+
+# Compiled assets
+*.min.js
+*.min.css
+
+# ===========================================
+# 💾 CACHE FILES
+# ===========================================
+# Package manager cache
+.npm/
+.yarn/
+.pnpm/
+
+# Application cache
+.cache/
+*.cache
+cache/
+.parquet_cache/
+
+# ===========================================
+# 🧪 TESTING & QA
+# ===========================================
+# Test coverage
+.nyc_output/
+jest-results/
+
+# SonarQube
+.sonar/
+.sonarqube/
+
+# Security scans
+snyk.json
+trivy-results.json
+security-scan-results/
+
+# ===========================================
+# 📊 GENERATED REPORTS & DATA
+# ===========================================
+# Scan reports (may contain sensitive data)
 reports/
 *.report.json
+*.report.pdf
+*.report.xlsx
+scan-results/
+analysis-results/
 
-# Coverage
-coverage/
-coverage.xml
-.coverage
+# Database dumps
+*.sql
+*.dump
+*.bak
+backups/
+*.backup
+*.bak
 
-# Testing
-.tox/
-.nox/
+# ===========================================
+# 🗂️ IDE & EDITORS
+# ===========================================
+# JetBrains (PyCharm, WebStorm, IntelliJ)
+.idea/
+*.iml
+*.ipr
+*.iws
+*.ws
 
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# VS Code
+.vscode/
+*.code-workspace
+*.code-profile
+.settings/
 
-# Ruff
-.ruff_cache/
+# Vim / Emacs / Nano
+*.swp
+*.swo
+*~
+*.swo
+.*.swp
+*.elc
+auto-save-list.json
+*.un~
 
-# AWS
-.aws-sam/
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
 
-# Local development
-docker-compose.override.yml
+# ===========================================
+# 📈 MONITORING & METRICS
+# ===========================================
+# Prometheus
+prometheus/data/
+
+# Grafana
+grafana-data/
+
+# ===========================================
+# 🔄 MESSAGE QUEUES
+# ===========================================
+# Redis dump
+dump.rdb
+appendonly.aof
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+*.pid
+
+# ===========================================
+# 📚 DOCUMENTATION (Generated)
+# ===========================================
+# Generated docs
+docs/_build/
+docs/build/
+*.pdf
+*.epub
+*.mobi
+
+# ===========================================
+# 🚀 CI/CD (Local Overrides)
+# ===========================================
+# GitHub Actions (local testing)
+.github/workflows/*.local.yml
+.github/workflows/*.override.yml
+
+# ===========================================
+# 📁 UPLOADS & USER DATA
+# ===========================================
+# User uploads (if applicable)
+uploads/
+media/
+user-data/
+scans/
+*.upload
+*.uploaded
+
+# ===========================================
+# 📊 PERFORMANCE PROFILES
+# ===========================================
+# Profiling data
+*.prof
+*.pyprof
+profiling/
+*.cprofile
+
+# ===========================================
+# 🔐 ENCRYPTION & SECURITY
+# ===========================================
+# Encrypted files
+*.enc
+*.encrypted
+*.gpg
+
+# Vault
+.vault/
+vault-token
+
+# ===========================================
+# 📦 DEPENDENCY LOCKS (Optional)
+# ===========================================
+# Uncomment if you want to ignore lock files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+# Pipfile.lock
+# poetry.lock
+
+# ===========================================
+# ✅ WHAT TO COMMIT (Exceptions)
+# ===========================================
+# DO commit:
+# - .env.example (template with placeholder values)
+# - requirements.txt (dependencies)
+# - package.json, package-lock.json (frontend dependencies)
+# - Dockerfile (container definitions)
+# - docker-compose.yml (orchestration)
+# - *.tf (Terraform configurations, NOT state)
+# - *.yaml, *.yml (Kubernetes manifests, NOT secrets)
+# - README.md, docs/ (documentation)
+# - tests/ (test code)
+# - src/, app/ (source code)
+# - infrastructure/ (IaC configs, NOT state)
+
+# ===========================================
+# 🔒 SECURITY NOTES
+# ===========================================
+# 1. NEVER commit .env files with real credentials
+# 2. Rotate any secrets accidentally committed
+# 3. Use secret management tools (AWS Secrets Manager, HashiCorp Vault)
+# 4. Enable secret scanning in GitHub/GitLab
+# 5. Use pre-commit hooks to prevent secret commits (see .pre-commit-config.yaml)
+
+# ===========================================
+# 🎯 PRE-COMMIT HOOKS
+# ===========================================
+# Install pre-commit to prevent accidental commits:
+# pip install pre-commit
+# pre-commit install
+#
+# See .pre-commit-config.yaml for configuration
+
+# ===========================================
+# END OF .gitignore
+# ===========================================
