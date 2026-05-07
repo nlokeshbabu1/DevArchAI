@@ -13,6 +13,7 @@ import { Badge } from '../components/ui'
 import { TechStackDisplay } from '../components/TechStackDisplay'
 import { DiffViewer } from '../components/DiffViewer'
 import { CreatePRButton } from '../components/CreatePRButton'
+import { reportsApi } from '../api/endpoints/reports'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 
@@ -51,6 +52,8 @@ interface Finding {
 interface ScanResult {
   id?: string  // Backend returns 'id' not 'scan_id'
   scan_id: string
+  scan_status?: string
+  ai_status?: 'pending' | 'processing' | 'completed' | 'failed'
   repository_url: string
   repository_name?: string
   security_score: number
@@ -94,6 +97,7 @@ export function ResultPage() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('severity')
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // Validate scan ID is a proper UUID (not ":id" literal)
   const isValidScanId = id && id !== ':id' && id.length > 10
@@ -122,6 +126,10 @@ export function ResultPage() {
     enabled: isValidScanId,
     retry: 2,
     staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
+    refetchInterval: (query) => {
+      const data = query.state.data as ScanResult | undefined
+      return data?.ai_status === 'pending' || data?.ai_status === 'processing' ? 4000 : false
+    },
   })
 
   // Filter and sort findings
@@ -173,6 +181,7 @@ export function ResultPage() {
 
   // Type-safe result access
   const scanResult = result as ScanResult | undefined
+  const isAiPending = scanResult?.ai_status === 'pending' || scanResult?.ai_status === 'processing'
 
   const getSeverityColor = (severity: string) => {
     const colors: Record<string, string> = {
@@ -203,9 +212,65 @@ export function ResultPage() {
     return 'text-red-400'
   }
 
-  const handleDownload = () => {
-    // TODO: Implement report download
-    alert('Download feature coming soon!')
+  const downloadJsonFallback = () => {
+    if (!scanResult) return
+
+    const effectiveScanId = scanResult.scan_id || scanResult.id || id
+    const reportData = {
+      scan_id: effectiveScanId,
+      repository_name: scanResult.repository_name || repoName,
+      repository_url: scanResult.repository_url,
+      branch: scanResult.branch || 'main',
+      overall_score: scanResult.overall_score,
+      security_score: scanResult.security_score,
+      scalability_score: scanResult.scalability_score,
+      reliability_score: scanResult.reliability_score,
+      cost_score: scanResult.cost_score,
+      observability_score: scanResult.observability_score,
+      severity_counts,
+      findings_count: scanResult.total_findings || scanResult.findings_count || scanResult.findings?.length || 0,
+      files_analyzed: scanResult.files_analyzed,
+      findings: scanResult.findings || [],
+      generated_at: new Date().toISOString(),
+    }
+
+    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `scan-report-${String(effectiveScanId).slice(0, 8)}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDownload = async () => {
+    if (!scanResult || isDownloading) return
+
+    const effectiveScanId = scanResult.scan_id || scanResult.id || id
+    if (!effectiveScanId) {
+      alert('Scan ID is missing. Please refresh and try again.')
+      return
+    }
+
+    setIsDownloading(true)
+
+    try {
+      const downloadResponse = await reportsApi.downloadReport(effectiveScanId, 'pdf')
+      const link = document.createElement('a')
+      link.href = downloadResponse.url
+      link.download = downloadResponse.filename || `report-${String(effectiveScanId).slice(0, 8)}.pdf`
+      link.rel = 'noopener noreferrer'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.warn('PDF download failed, falling back to JSON export:', error)
+      downloadJsonFallback()
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const handleRescan = () => {
@@ -276,9 +341,10 @@ export function ResultPage() {
                 variant="primary"
                 size="sm"
                 onClick={handleDownload}
+                disabled={isDownloading}
                 icon={<Download className="h-4 w-4" />}
               >
-                Download
+                {isDownloading ? 'Downloading...' : 'Download'}
               </Button>
             </div>
           </div>
@@ -295,6 +361,20 @@ export function ResultPage() {
             Branch: {(result as ScanResult).branch || 'main'} • Scanned: {new Date((result as ScanResult).completed_at).toLocaleString()}
           </p>
         </motion.div>
+
+        {isAiPending && (
+          <Card className="p-4 border border-primary/30 bg-primary/5" hover={false}>
+            <div className="flex items-center gap-3">
+              <Brain className="h-5 w-5 text-primary" />
+              <div>
+                <div className="text-sm font-semibold text-foreground">Static scan is complete</div>
+                <div className="text-sm text-muted-foreground">
+                  AI suggestions are still generating in the background. This page refreshes automatically.
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Score and Stats */}
         <div className="grid gap-6 lg:grid-cols-3">

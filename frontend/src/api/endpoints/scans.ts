@@ -7,6 +7,8 @@ import apiClient from './client';
 export interface Scan {
   id: string;
   status: string;
+  scan_status?: string;
+  ai_status?: 'pending' | 'processing' | 'completed' | 'failed';
   progress: number;
   status_message?: string;
   error_message?: string;

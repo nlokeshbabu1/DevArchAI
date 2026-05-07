@@ -32,11 +32,44 @@ function convertToRelativePath(filePath: string): string {
   }
 
   const lastPart = parts[parts.length - 1]
+  const commonFileNames = new Set([
+    'Chart.yaml',
+    'values.yaml',
+    'main.tf',
+    'variables.tf',
+    'variable.tf',
+    'outputs.tf',
+    'output.tf',
+    'deployment.yaml',
+    'service.yaml',
+    'ingress.yaml',
+    'Dockerfile',
+    'docker-compose.yml',
+    'Jenkinsfile',
+    'prometheus.yml',
+  ])
+
+  if (commonFileNames.has(lastPart) && parts.length > 1) {
+    return parts.slice(-Math.min(3, parts.length)).join('/')
+  }
+
   if (lastPart.includes('.') && !lastPart.startsWith('.')) {
     return lastPart
   }
 
   return parts.slice(-Math.min(3, parts.length)).join('/')
+}
+
+function dedupeFiles(files: FileBeingScanned[]): FileBeingScanned[] {
+  const seen = new Set<string>()
+  return files.filter((file) => {
+    const key = `${file.type}:${file.path}:${file.status}`
+    if (seen.has(key)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
 }
 
 interface ScanLog {
@@ -66,7 +99,7 @@ const DEFAULT_STEPS = [
   'Fetching repository',
   'Detecting technologies',
   'Running security rules',
-  'Generating AI suggestions',
+  'Preparing report',
   'Calculating score',
 ]
 
@@ -91,10 +124,12 @@ export function ScanProgress({
   // Update files when detectedFiles prop changes
   useEffect(() => {
     if (detectedFiles && detectedFiles.length > 0) {
-      const processedFiles = detectedFiles.map(file => ({
-        ...file,
-        path: convertToRelativePath(file.path)
-      })).sort((a, b) => a.path.localeCompare(b.path))
+      const processedFiles = dedupeFiles(
+        detectedFiles.map(file => ({
+          ...file,
+          path: convertToRelativePath(file.path)
+        }))
+      ).sort((a, b) => a.path.localeCompare(b.path))
       setFiles(processedFiles)
     }
   }, [detectedFiles])
@@ -221,7 +256,7 @@ export function ScanProgress({
       addLog('Running security rules...', 'info')
     } else if (progress < 90) {
       addLog('Analyzing findings...', 'info')
-      addLog('Generating AI suggestions...', 'info')
+      addLog('Preparing report artifacts...', 'info')
     } else if (progress < 95) {
       addLog('Calculating security score...', 'info')
     } else if (progress < 100) {
@@ -383,7 +418,7 @@ export function ScanProgress({
             {files.length > 0 ? (
               files.map((file, index) => (
                 <motion.div
-                  key={file.path}
+                  key={`${file.type}-${file.path}-${index}`}
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.02 }}
@@ -419,7 +454,7 @@ export function ScanProgress({
             <div className="flex flex-wrap gap-2">
               {detectedTechnologies.map((tech, index) => (
                 <motion.div
-                  key={tech}
+                  key={`${tech}-${index}`}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: index * 0.03 }}

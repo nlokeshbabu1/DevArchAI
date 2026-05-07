@@ -69,32 +69,20 @@ export function ScansPage() {
 
   const handleExport = async (scanId: string, format: 'json' | 'xlsx' | 'pdf') => {
     try {
-      // First get the report for this scan
-      const reportsResponse = await api.get(`/reports/scan/${scanId}/latest`)
-      const report = reportsResponse.data
-      
-      // Then download in the requested format
-      const response = await api.get(`/reports/${report.id}/download?format=${format}`, {
-        responseType: 'blob',
+      const normalizedFormat = format === 'xlsx' ? 'excel' : format
+      const response = await api.get(`/reports/${scanId}/download?format=${normalizedFormat}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
-      
-      // Create download link
-      const blob = new Blob([response.data], {
-        type: format === 'pdf' ? 'application/pdf' : 
-              format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 
-              'application/json',
-      })
-      const url = window.URL.createObjectURL(blob)
+
       const link = document.createElement('a')
-      link.href = url
+      link.href = response.data.url
       link.download = `report_${scanId}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
+      link.rel = 'noopener noreferrer'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Export failed:', error)
       alert('Failed to export report. Please try again.')

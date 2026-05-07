@@ -133,7 +133,11 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
               'Fetching repository': 1,
               'Detecting technologies': 2,
               'Running security rules': 3,
+              'Preparing findings': 4,
+              'Quality check': 4,
               'Generating AI suggestions': 4,
+              'Building reports': 5,
+              'Building downloadable reports': 5,
               'Calculating score': 5,
               'Scan completed': 6,
               'Saving results': 6

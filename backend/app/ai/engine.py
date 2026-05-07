@@ -226,6 +226,19 @@ List recommendations in order of priority (most critical first)."""
             logger.warning("Recommendations generation failed", error=str(e))
             return self._fallback_recommendations(findings)
 
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response for batched remediation prompts."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a DevOps remediation assistant. Return only the requested content."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content or ""
+
     def _format_findings(self, findings: list[dict], severity: str) -> str:
         """Format findings by severity."""
         filtered = [f for f in findings if f.get("severity") == severity]
@@ -394,6 +407,15 @@ Write a 3-paragraph executive summary."""
         except Exception as e:
             logger.warning("Recommendations failed", error=str(e))
             return [f.get("recommendation") for f in findings[:5]]
+
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response for batched remediation prompts."""
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
 
 
 class MistralProvider(BaseLLMProvider):

@@ -21,7 +21,7 @@ from app.models.pull_request import PRStatus, PullRequest
 from app.models.repo_analysis import RepoAnalysis
 from app.models.report import Report
 from app.models.repository import Repository
-from app.models.scan import Scan, ScanStatus
+from app.models.scan import AIScanStatus, Scan, ScanStatus
 from app.models.subscription import Currency, PlanTier, Subscription
 from app.models.user import User, UserRole
 
@@ -34,6 +34,7 @@ __all__ = [
     "PlanType",
     "Repository",
     "Scan",
+    "AIScanStatus",
     "ScanStatus",
     "Finding",
     "Severity",

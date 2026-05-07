@@ -18,8 +18,8 @@ export const analysisApi = {
   getReport: (reportId: string) =>
     api.get(`/reports/${reportId}`),
 
-  downloadReport: (reportId: string) =>
-    api.get(`/reports/${reportId}/download`, { responseType: 'blob' }),
+  downloadReport: (scanId: string, format: 'pdf' | 'excel' = 'pdf') =>
+    api.get(`/reports/${scanId}/download?format=${format}`),
 
   // Scans API
   listScans: () =>

@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     AWS_REGION: str = Field(default="us-east-1", env="AWS_REGION")
     AWS_ACCESS_KEY_ID: str | None = Field(default=None, env="AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY: str | None = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
+    AWS_SESSION_TOKEN: str | None = Field(default=None, env="AWS_SESSION_TOKEN")
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
 
     # LLM Configuration

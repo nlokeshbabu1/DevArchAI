@@ -19,6 +19,15 @@ class ScanStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class AIScanStatus(str, Enum):
+    """AI suggestion generation status."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ScanCreate(BaseModel):
     """Scan creation request."""
 
@@ -47,6 +56,8 @@ class ScanResponse(BaseModel):
     branch: str
     commit_hash: Optional[str]
     status: ScanStatus
+    scan_status: ScanStatus
+    ai_status: AIScanStatus = AIScanStatus.PENDING
     progress: int
     error_message: Optional[str]
     overall_score: Optional[float]

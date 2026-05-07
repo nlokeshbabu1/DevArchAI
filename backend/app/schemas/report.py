@@ -1,9 +1,10 @@
 """Report schemas."""
 
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CategoryScore(BaseModel):
@@ -18,23 +19,32 @@ class CategoryScore(BaseModel):
     low_count: int = 0
 
 
+class ReportFormat(str, Enum):
+    """Supported downloadable report formats."""
+
+    PDF = "pdf"
+    EXCEL = "excel"
+
+
 class ReportResponse(BaseModel):
     """Complete analysis report response."""
 
-    id: int
-    scan_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    scan_id: str
     repository_name: str
     repository_url: str
-    commit_hash: Optional[str]
+    commit_hash: str | None
 
     # Scores
     overall_score: float = Field(ge=0, le=100)
-    category_scores: Optional[dict[str, float]]
+    category_scores: dict[str, float] | None
 
     # AI-generated content
-    executive_summary: Optional[str]
-    risk_analysis: Optional[str]
-    prioritized_recommendations: Optional[list[str]]
+    executive_summary: str | None
+    risk_analysis: str | None
+    prioritized_recommendations: list[str] | None
 
     # Summary statistics
     total_findings: int
@@ -45,13 +55,20 @@ class ReportResponse(BaseModel):
     info_count: int
 
     # Files analyzed
-    files_analyzed: Optional[list[str]]
+    files_analyzed: list[str] | None
+    pdf_s3_key: str | None = None
+    excel_s3_key: str | None = None
 
     # Timestamps
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    @field_validator("id", "scan_id", mode="before")
+    @classmethod
+    def convert_uuid_to_str(cls, value):
+        """Convert UUID objects to strings."""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class ReportListResponse(BaseModel):
@@ -66,20 +83,39 @@ class ReportListResponse(BaseModel):
 class ReportDownloadResponse(BaseModel):
     """Report download response."""
 
-    report_id: int
+    report_id: str
+    scan_id: str
+    format: ReportFormat
+    url: str
     filename: str
-    content_type: str
-    size_bytes: int
+    expires_at: datetime
+    expires_in_seconds: int = 300
+
+    @field_validator("report_id", "scan_id", mode="before")
+    @classmethod
+    def convert_download_uuids_to_str(cls, value):
+        """Convert UUID objects to strings."""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
 
 
 class ReportSummary(BaseModel):
     """Report summary for dashboard."""
 
-    id: int
-    scan_id: int
+    id: str
+    scan_id: str
     repository_name: str
     overall_score: float
     total_findings: int
     critical_count: int
     high_count: int
     created_at: datetime
+
+    @field_validator("id", "scan_id", mode="before")
+    @classmethod
+    def convert_summary_uuids_to_str(cls, value):
+        """Convert UUID objects to strings."""
+        if isinstance(value, UUID):
+            return str(value)
+        return value

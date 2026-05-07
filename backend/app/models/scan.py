@@ -22,6 +22,15 @@ class ScanStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class AIScanStatus(str, enum.Enum):
+    """AI suggestion generation status."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class Scan(Base):
     """Scan model for tracking repository analysis jobs."""
 
@@ -41,6 +50,9 @@ class Scan(Base):
     progress = Column(Integer, default=0, nullable=False)  # 0-100
     error_message = Column(Text, nullable=True)
     celery_task_id = Column(String(255), nullable=True)  # Celery task ID for tracking
+    ai_status = Column(String(32), default=AIScanStatus.PENDING.value, server_default=AIScanStatus.PENDING.value, nullable=False)
+    ai_error_message = Column(Text, nullable=True)
+    ai_completed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Results
     overall_score = Column(Float, nullable=True)
