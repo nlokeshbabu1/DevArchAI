@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ExternalLink,
   FileText,
+  FileSpreadsheet,
   Clock,
   Shield,
   TrendingUp,
@@ -132,6 +133,21 @@ export function Report() {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleDownloadExcel = async () => {
+    const scanId = report?.scan_id
+    if (!scanId) return
+    setIsDownloading(true)
+    try {
+      const response = await api.get(`/reports/${scanId}/download?format=excel`)
+      const { url: downloadUrl } = response.data
+      window.open(downloadUrl, '_blank')
+    } catch (error) {
+      console.error('Excel download failed:', error)
     } finally {
       setIsDownloading(false)
     }
@@ -312,10 +328,18 @@ export function Report() {
             }
           </p>
         </div>
-        <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
-          <Download className="h-4 w-4" />
-          {isDownloading ? 'Downloading...' : 'Download Report'}
-        </Button>
+        <div className="flex gap-2">
+          {report?.scan_id && (
+            <Button variant="secondary" onClick={handleDownloadExcel} disabled={isDownloading}>
+              <FileSpreadsheet className="h-4 w-4" />
+              {isDownloading ? 'Downloading...' : 'Excel Report'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
+            <Download className="h-4 w-4" />
+            {isDownloading ? 'Downloading...' : 'Download Report'}
+          </Button>
+        </div>
       </div>
 
       {/* Score Overview */}

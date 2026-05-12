@@ -94,22 +94,13 @@ interface ScanProgressProps {
   backendLogs?: string[]
 }
 
-const DEFAULT_STEPS = [
-  'Connecting to GitHub',
-  'Fetching repository',
-  'Detecting technologies',
-  'Running security rules',
-  'Preparing report',
-  'Calculating score',
-]
-
 export function ScanProgress({
   progress,
   currentStep,
   isComplete,
   detectedFiles = [],
   detectedTechnologies = [],
-  steps = DEFAULT_STEPS,
+  steps = [],
   backendLogs = []
 }: ScanProgressProps) {
   const [logs, setLogs] = useState<ScanLog[]>([])
@@ -182,91 +173,37 @@ export function ScanProgress({
     }
   }, [detectedTechnologies, detectedFiles])
 
-  // Use REAL backend logs when available, fallback to generated logs
+  // Parse backend logs only - no fake log generation
   useEffect(() => {
-    if (isComplete) return
+    if (!backendLogs || backendLogs.length === 0) return
 
-    if (backendLogs && backendLogs.length > 0) {
-      const parsedLogs = backendLogs.map(log => {
-        const match = log.match(/^\[([^\]]+)\]\s+(.+)$/)
-        if (match) {
-          return {
-            timestamp: match[1],
-            message: match[2],
-            type: match[2].includes('✓') || match[2].includes('success') || match[2].includes('completed') ? 'success' as const :
-                  match[2].includes('warning') || match[2].includes('Warning') ? 'warning' as const :
-                  'info' as const
-          }
-        }
+    const parsedLogs = backendLogs.map(log => {
+      const match = log.match(/^\[([^\]]+)\]\s+(.+)$/)
+      if (match) {
         return {
-          timestamp: new Date().toLocaleTimeString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-          }),
-          message: log,
-          type: 'info' as const
+          timestamp: match[1],
+          message: match[2],
+          type: match[2].includes('✓') || match[2].includes('success') || match[2].includes('completed') ? 'success' as const :
+                match[2].includes('warning') || match[2].includes('Warning') ? 'warning' as const :
+                'info' as const
         }
-      })
-
-      setLogs(parsedLogs)
-      return
-    }
-
-    const addLog = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
-      const timestamp = new Date().toLocaleTimeString('en-US', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-
-      setLogs(prev => {
-        const isDuplicate = prev.some(log => log.message === message)
-        if (isDuplicate) return prev
-        return [...prev, { message, timestamp, type }]
-      })
-    }
-
-    if (progress < 10) {
-      addLog('Initializing scan...', 'info')
-    } else if (progress < 20) {
-      addLog('Connecting to GitHub...', 'info')
-    } else if (progress < 30) {
-      addLog('Repository found', 'success')
-    } else if (progress < 40) {
-      addLog('Cloning repository...', 'info')
-    } else if (progress < 50) {
-      addLog('✓ Repository cloned successfully', 'success')
-    } else if (progress < 60) {
-      addLog('Detecting technologies...', 'info')
-      if (detectedTechnologies.length > 0) {
-        addLog(`Found ${detectedTechnologies.length} technologies: ${detectedTechnologies.join(', ')}`, 'success')
       }
-    } else if (progress < 70) {
-      if (files.length > 0) {
-        files.forEach(file => {
-          if (file.status === 'completed') {
-            addLog(`✓ ${file.path} analyzed`, 'success')
-          }
-        })
+      return {
+        timestamp: new Date().toLocaleTimeString('en-US', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }),
+        message: log,
+        type: 'info' as const
       }
-    } else if (progress < 80) {
-      addLog('Running security rules...', 'info')
-    } else if (progress < 90) {
-      addLog('Analyzing findings...', 'info')
-      addLog('Preparing report artifacts...', 'info')
-    } else if (progress < 95) {
-      addLog('Calculating security score...', 'info')
-    } else if (progress < 100) {
-      addLog('Finalizing results...', 'info')
-    }
+    })
 
-  }, [progress, isComplete, files, detectedTechnologies, backendLogs])
+    setLogs(parsedLogs)
+  }, [backendLogs])
 
-  // Current step display name
-  const currentStepName = steps[currentStep - 1] || steps[0]
+  const currentStepName = steps[currentStep - 1] || ''
 
   return (
     <div className="w-full max-w-3xl mx-auto px-4">
@@ -310,7 +247,7 @@ export function ScanProgress({
         </motion.h3>
 
         <p className="text-muted-foreground text-sm">
-          {isComplete ? 'Your security report is ready' : currentStepName}
+          {isComplete ? 'Your security report is ready' : (currentStepName || 'Analyzing repository...')}
         </p>
       </motion.div>
 
@@ -330,8 +267,8 @@ export function ScanProgress({
         </div>
       </div>
 
-      {/* Minimal Step Tracker */}
-      {!isComplete && (
+      {/* Step Tracker - driven by backend steps */}
+      {!isComplete && steps.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

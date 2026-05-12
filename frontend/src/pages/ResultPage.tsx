@@ -6,7 +6,8 @@ import {
   ArrowLeft, RotateCcw, Download, BookOpen, Shield, AlertTriangle,
   AlertCircle, Info, CheckCircle, FileCode, Terminal, ChevronDown,
   ChevronUp, Filter, SortAsc, Home, FolderGit2, Brain, Code, Sparkles,
-  FileText
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react'
 import { Button, Card, ScoreCircle } from '../components/ui-animated'
 import { Badge } from '../components/ui'
@@ -98,6 +99,7 @@ export function ResultPage() {
   const [sortBy, setSortBy] = useState<SortOption>('severity')
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isRescanning, setIsRescanning] = useState(false)
 
   // Validate scan ID is a proper UUID (not ":id" literal)
   const isValidScanId = id && id !== ':id' && id.length > 10
@@ -245,7 +247,7 @@ export function ResultPage() {
     URL.revokeObjectURL(url)
   }
 
-  const handleDownload = async () => {
+  const handleDownload = async (format: 'pdf' | 'excel' = 'pdf') => {
     if (!scanResult || isDownloading) return
 
     const effectiveScanId = scanResult.scan_id || scanResult.id || id
@@ -257,24 +259,42 @@ export function ResultPage() {
     setIsDownloading(true)
 
     try {
-      const downloadResponse = await reportsApi.downloadReport(effectiveScanId, 'pdf')
+      const downloadResponse = await reportsApi.downloadReport(effectiveScanId, format)
+      const ext = format === 'pdf' ? 'pdf' : 'xlsx'
       const link = document.createElement('a')
       link.href = downloadResponse.url
-      link.download = downloadResponse.filename || `report-${String(effectiveScanId).slice(0, 8)}.pdf`
+      link.download = downloadResponse.filename || `report-${String(effectiveScanId).slice(0, 8)}.${ext}`
       link.rel = 'noopener noreferrer'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
     } catch (error) {
-      console.warn('PDF download failed, falling back to JSON export:', error)
-      downloadJsonFallback()
+      console.warn(`${format} download failed, falling back to JSON export:`, error)
+      if (format === 'pdf') {
+        downloadJsonFallback()
+      }
     } finally {
       setIsDownloading(false)
     }
   }
 
-  const handleRescan = () => {
-    navigate('/scan')
+  const handleRescan = async () => {
+    if (!scanResult?.repository_url || isRescanning) return
+    setIsRescanning(true)
+    try {
+      const response = await scansApi.startUnifiedScan({
+        repository_url: scanResult.repository_url,
+        branch: scanResult.branch || 'main',
+      })
+      if (response.scan_id) {
+        navigate(`/scan`, { state: { scanId: response.scan_id } })
+      }
+    } catch (err: any) {
+      console.error('Rescan failed:', err)
+      alert(err.response?.data?.detail || 'Failed to start re-scan')
+    } finally {
+      setIsRescanning(false)
+    }
   }
 
   if (isLoading) {
@@ -333,19 +353,39 @@ export function ResultPage() {
                 variant="secondary"
                 size="sm"
                 onClick={handleRescan}
-                icon={<RotateCcw className="h-4 w-4" />}
+                disabled={isRescanning || isLoading}
+                icon={<RotateCcw className={`h-4 w-4 ${isRescanning ? 'animate-spin' : ''}`} />}
               >
-                Rescan
+                {isRescanning ? 'Scanning...' : 'Rescan'}
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleDownload}
-                disabled={isDownloading}
-                icon={<Download className="h-4 w-4" />}
-              >
-                {isDownloading ? 'Downloading...' : 'Download'}
-              </Button>
+              <div className="relative group">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={isDownloading}
+                  icon={<Download className="h-4 w-4" />}
+                >
+                  {isDownloading ? 'Downloading...' : 'Download'}
+                </Button>
+                {!isDownloading && (
+                  <div className="absolute right-0 mt-1 w-44 py-1 bg-card border border-white/10 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <button
+                      className="w-full px-4 py-2 text-sm text-left text-foreground hover:bg-white/5 flex items-center gap-2"
+                      onClick={() => handleDownload('pdf')}
+                    >
+                      <FileText className="h-4 w-4" />
+                      Download PDF
+                    </button>
+                    <button
+                      className="w-full px-4 py-2 text-sm text-left text-foreground hover:bg-white/5 flex items-center gap-2"
+                      onClick={() => handleDownload('excel')}
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Download Excel
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </Card>
@@ -979,10 +1019,11 @@ export function ResultPage() {
                 variant="primary"
                 size="lg"
                 onClick={handleRescan}
-                icon={<RotateCcw className="h-5 w-5" />}
+                disabled={isRescanning || isLoading}
+                icon={<RotateCcw className={`h-5 w-5 ${isRescanning ? 'animate-spin' : ''}`} />}
                 glow
               >
-                Re-scan Repository
+                {isRescanning ? 'Scanning...' : 'Re-scan Repository'}
               </Button>
               <Button
                 variant="secondary"

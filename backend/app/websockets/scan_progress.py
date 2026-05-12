@@ -255,7 +255,7 @@ class ScanProgressWebSocketManager:
         """
         ws_message = _make_message(
             WSMessageType.LOG_MESSAGE,
-            {"scan_id": scan_id, "log": message},
+            {"scan_id": scan_id, "message": message},
         )
         return await self._broadcast(scan_id, ws_message)
 

@@ -125,26 +125,11 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
             setProgress(Math.round(status.progress))
           }
 
-          // Update current step from API
-          if (status.current_step !== undefined) {
-            // Map step name to number for UI
-            const stepMap: Record<string, number> = {
-              'Connecting to GitHub': 0,
-              'Fetching repository': 1,
-              'Detecting technologies': 2,
-              'Running security rules': 3,
-              'Preparing findings': 4,
-              'Quality check': 4,
-              'Generating AI suggestions': 4,
-              'Building reports': 5,
-              'Building downloadable reports': 5,
-              'Calculating score': 5,
-              'Scan completed': 6,
-              'Saving results': 6
-            }
-            const stepNum = stepMap[status.current_step]
-            if (stepNum !== undefined) {
-              setCurrentStep(stepNum)
+          // Update current step from backend - use steps array to derive index
+          if (status.current_step && status.steps && status.steps.length > 0) {
+            const stepIdx = status.steps.findIndex((s: {name: string}) => s.name === status.current_step)
+            if (stepIdx >= 0) {
+              setCurrentStep(stepIdx + 1)
             }
           }
 
@@ -167,18 +152,11 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
             return
           }
 
-          // Check if scan is REALLY complete (not just progress=100)
-          // Must have: status='completed' AND progress=100 AND have results
-          const isReallyComplete = 
-            status.status === 'completed' && 
-            status.progress >= 100 &&
-            (status.files_list?.length > 0 || status.files_scanned > 0)
-
-          if (isReallyComplete) {
+          // Check if scan is complete using backend status
+          if (status.status === 'completed') {
             clearInterval(pollInterval)
 
             setProgress(100)
-            setCurrentStep(6)
             setLoading(false)
 
             if (onScanComplete) {

@@ -306,9 +306,14 @@ class SyncScanService:
     async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None, stage: Optional[str] = None, files_scanned: int = 0, total_files: int = 0):
         """Update progress in the store (async)."""
         if self.progress_store and self.scan_id:
-            await self.progress_store.update_status(self.scan_id, "running", progress, message)
+            await self.progress_store.update_status(self.scan_id, "running", progress, step_name or message)
             if message:
                 await self.progress_store.add_log(self.scan_id, message)
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    await scan_progress_manager.broadcast_log(self.scan_id, message)
+                except Exception:
+                    pass
             if stage:
                 await self.progress_store.update_stage(self.scan_id, stage, files_scanned, total_files)
             if step_name:
