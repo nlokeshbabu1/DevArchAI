@@ -1,16 +1,16 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Shield, FolderGit2, AlertTriangle, TrendingUp, Activity, Zap,
-  Brain, ArrowRight, Play, CheckCircle, Clock, Plus
+  FolderGit2, AlertTriangle, TrendingUp, Activity,
+  Brain, ArrowRight, Play, CheckCircle, Clock, Search
 } from 'lucide-react'
-import { ScoreCircle, StatCard, Button, Card, RepositoryCard, SkeletonStatCard, SkeletonChart } from '../components/ui-animated'
+import { ScoreCircle, StatCard, Button, Card, SkeletonStatCard, SkeletonChart } from '../components/ui-animated'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { useState, useEffect } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import { useQuery } from '@tanstack/react-query'
-import { dashboardApi } from '../api/endpoints/dashboard'
+import { dashboardApi, type RecentScan } from '../api/endpoints/dashboard'
 import { EmptyState } from '../components/ui/EmptyState'
 import { InlineScanPanel } from '../components/InlineScanPanel'
 
@@ -24,40 +24,20 @@ const findingsData = [
   { name: 'Sun', critical: 1, high: 3, medium: 7, low: 11 },
 ]
 
-const categoryData = [
-  { name: 'Security', value: 45, color: '#ef4444' },
-  { name: 'Reliability', value: 30, color: '#3b82f6' },
-  { name: 'Scalability', value: 15, color: '#22c55e' },
-  { name: 'Cost', value: 10, color: '#a855f7' },
-]
+const getValidScore = (score: number | null | undefined) => {
+  if (typeof score !== 'number' || Number.isNaN(score)) {
+    return null
+  }
 
-const repositories = [
-  {
-    name: 'aws-infrastructure',
-    description: 'Main AWS infrastructure Terraform code',
-    lastScan: '2 hours ago',
-    score: 87.5,
-    status: 'scanned' as const,
-    issues: { critical: 2, high: 5, medium: 12, low: 8 },
-  },
-  {
-    name: 'kubernetes-manifests',
-    description: 'K8s deployment configurations',
-    lastScan: '1 day ago',
-    score: 72.3,
-    status: 'scanned' as const,
-    issues: { critical: 1, high: 8, medium: 15, low: 10 },
-  },
-  {
-    name: 'ci-cd-pipelines',
-    description: 'GitHub Actions workflows',
-    status: 'pending' as const,
-  },
-]
+  return Math.min(100, Math.max(0, score))
+}
+
+const formatScore = (score: number) => Number(score.toFixed(1))
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { token, isAuthenticated } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { isAuthenticated } = useAuthStore()
   const [stats, setStats] = useState({
     totalRepositories: 0,
     totalScans: 0,
@@ -84,8 +64,12 @@ export function Dashboard() {
     retry: 2,
   })
 
+  const recentScans = Array.isArray(recentScansData) ? recentScansData : []
+  const dashboardSearch = searchParams.get('search')?.trim() ?? ''
+  const deferredDashboardSearch = useDeferredValue(dashboardSearch.toLowerCase())
   const isLoading = summaryLoading || scansLoading
   const hasError = summaryError || scansError
+  const errorMessage = hasError instanceof Error ? hasError.message : 'Failed to load dashboard data'
 
   // Update stats when summary data arrives
   useEffect(() => {
@@ -98,6 +82,46 @@ export function Dashboard() {
       })
     }
   }, [summary])
+
+  const summaryScore = getValidScore(summary?.average_score)
+  const recentScoreValues = recentScans.reduce<number[]>((scores, scan) => {
+    const scanScore = getValidScore(scan.overall_score ?? scan.security_score)
+    if (scanScore !== null) {
+      scores.push(scanScore)
+    }
+    return scores
+  }, [])
+
+  const fallbackSecurityScore = recentScoreValues.length > 0
+    ? formatScore(recentScoreValues.reduce((total, score) => total + score, 0) / recentScoreValues.length)
+    : null
+  const securityScore = summaryScore ?? fallbackSecurityScore ?? 0
+  const hasSecurityScore = summaryScore !== null || fallbackSecurityScore !== null
+  const isUsingFallbackScore = summaryScore === null && fallbackSecurityScore !== null
+  const totalRepositories = summary?.total_repositories ?? stats.totalRepositories
+  const totalScans = summary?.total_scans ?? stats.totalScans
+  const criticalIssues = summary?.critical_findings ?? stats.criticalIssues
+  const aiSuggestions = summary?.ai_suggestions ?? stats.aiSuggestions
+
+  const filteredRecentScans = recentScans.filter((scan) => {
+    if (!deferredDashboardSearch) {
+      return true
+    }
+
+    const repositoryName = (scan.repository_name || scan.repository_url || '').toLowerCase()
+    const repositoryUrl = (scan.repository_url || '').toLowerCase()
+    const status = (scan.status || '').toLowerCase()
+
+    return repositoryName.includes(deferredDashboardSearch)
+      || repositoryUrl.includes(deferredDashboardSearch)
+      || status.includes(deferredDashboardSearch)
+  })
+
+  const clearDashboardSearch = () => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('search')
+    setSearchParams(nextParams, { replace: true })
+  }
 
   if (isLoading) {
     return (
@@ -124,7 +148,6 @@ export function Dashboard() {
 
   // Show error state
   if (hasError) {
-    console.error('Dashboard error:', hasError)
     return (
       <div className="space-y-8">
         <Card className="p-8 text-center" hover={false}>
@@ -133,7 +156,7 @@ export function Dashboard() {
             Unable to Load Dashboard
           </h2>
           <p className="text-muted-foreground mb-4">
-            {hasError.message || 'Failed to load dashboard data'}
+            {errorMessage}
           </p>
           <div className="flex gap-3 justify-center">
             <Button
@@ -155,7 +178,7 @@ export function Dashboard() {
   }
 
   // Show empty state when no scans exist
-  const hasNoData = stats.totalScans === 0 && stats.totalRepositories === 0
+  const hasNoData = totalScans === 0 && totalRepositories === 0 && recentScans.length === 0
   if (hasNoData && !isLoading) {
     return (
       <>
@@ -192,7 +215,6 @@ export function Dashboard() {
           isOpen={showScanPanel}
           onClose={() => setShowScanPanel(false)}
           onScanComplete={(scanId) => {
-            console.log('✅ Scan complete! Navigating to results:', scanId)
             setShowScanPanel(false)
             navigate(`/scans/${scanId}`)
           }}
@@ -206,7 +228,7 @@ export function Dashboard() {
     <div className="space-y-8">
       {/* Header */}
       <motion.div
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -236,7 +258,7 @@ export function Dashboard() {
       >
         <StatCard
           title="Total Repositories"
-          value={stats.totalRepositories.toString()}
+          value={totalRepositories.toString()}
           icon={FolderGit2}
           trend="up"
           trendValue={20}
@@ -244,7 +266,7 @@ export function Dashboard() {
         />
         <StatCard
           title="Total Scans"
-          value={stats.totalScans.toString()}
+          value={totalScans.toString()}
           icon={Activity}
           trend="up"
           trendValue={15}
@@ -252,7 +274,7 @@ export function Dashboard() {
         />
         <StatCard
           title="Critical Issues"
-          value={stats.criticalIssues.toString()}
+          value={criticalIssues.toString()}
           icon={AlertTriangle}
           trend="down"
           trendValue={12}
@@ -260,7 +282,7 @@ export function Dashboard() {
         />
         <StatCard
           title="AI Suggestions"
-          value={stats.aiSuggestions.toString()}
+          value={aiSuggestions.toString()}
           icon={Brain}
           trend="up"
           trendValue={30}
@@ -269,46 +291,61 @@ export function Dashboard() {
       </motion.div>
 
       {/* Main content grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid items-stretch gap-6 lg:grid-cols-3">
         {/* Security Score - Using real API data */}
         <motion.div
+          className="min-w-0 h-full"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
         >
-          <Card className="p-6 h-full" hover={false}>
+          <Card className="flex h-full min-h-[420px] flex-col justify-center overflow-hidden" hover={false}>
             <div className="text-center">
               <h3 className="text-lg font-semibold text-foreground mb-6">
                 Overall Security Score
               </h3>
-              <ScoreCircle 
-                score={summary?.average_score || stats.totalScans > 0 ? 75 : 0} 
-                size="xl" 
-                animated 
-                delay={500} 
+              <ScoreCircle
+                score={securityScore}
+                size="xl"
+                animated
+                delay={0}
               />
-              <motion.div
-                className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.2 }}
-              >
-                <TrendingUp className="h-4 w-4 text-green-400" />
-                <span className="text-green-400">+{(summary?.average_score || 0) > 70 ? '5.2' : '0.0'}%</span>
-                <span>from last week</span>
-              </motion.div>
+              <div className="mt-6 space-y-3">
+                <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-medium text-foreground">
+                  {hasSecurityScore ? `${securityScore.toFixed(1)}/100` : 'Awaiting score data'}
+                </div>
+                <motion.div
+                  className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.9 }}
+                >
+                  <TrendingUp className={cn('h-4 w-4', hasSecurityScore ? 'text-green-400' : 'text-muted-foreground')} />
+                  <span className={hasSecurityScore ? 'text-green-400' : 'text-muted-foreground'}>
+                    {hasSecurityScore ? `+${securityScore >= 70 ? '5.2' : '0.0'}%` : 'No score change'}
+                  </span>
+                  <span>{hasSecurityScore ? 'from last week' : 'yet'}</span>
+                </motion.div>
+                <p className="mx-auto max-w-xs text-sm leading-6 text-muted-foreground">
+                  {!hasSecurityScore
+                    ? 'No scored scans yet. Run a repository scan to populate your security posture.'
+                    : isUsingFallbackScore
+                    ? 'Showing an average from recent scans while summary data refreshes.'
+                    : 'Average score across your recent completed security scans.'}
+                </p>
+              </div>
             </div>
           </Card>
         </motion.div>
 
         {/* Findings Trend Chart */}
         <motion.div
-          className="lg:col-span-2"
+          className="min-w-0 h-full lg:col-span-2"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.5 }}
         >
-          <Card className="p-6 h-full" hover={false}>
+          <Card className="h-full overflow-hidden" hover={false}>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-lg font-semibold text-foreground">
@@ -398,27 +435,41 @@ export function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.7 }}
       >
-        <Card className="p-6" hover={false}>
-          <div className="flex items-center justify-between mb-6">
+        <Card className="overflow-hidden" hover={false}>
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-foreground">
                 Recent Scans
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Latest security scan results
+                {dashboardSearch
+                  ? `Showing ${filteredRecentScans.length} of ${recentScans.length} scans for "${dashboardSearch}"`
+                  : 'Latest security scan results'}
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/scans')}
-              icon={<ArrowRight className="h-4 w-4" />}
-            >
-              View All
-            </Button>
+            <div className="flex items-center gap-2 self-start">
+              {dashboardSearch && (
+                <button
+                  type="button"
+                  onClick={clearDashboardSearch}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:border-white/20 hover:text-foreground"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  Clear Search
+                </button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/scans')}
+                icon={<ArrowRight className="h-4 w-4" />}
+              >
+                View All
+              </Button>
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="min-w-[720px] w-full">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Repository</th>
@@ -429,56 +480,97 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(recentScansData || []).map((scan: any, index) => (
-                  <motion.tr
-                    key={scan.id}
-                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.8 + index * 0.1 }}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <FolderGit2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">{scan.repository_name}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={cn(
-                        'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
-                        scan.status === 'completed'
-                          ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                          : 'bg-red-500/10 text-red-400 border border-red-500/30'
-                      )}>
-                        {scan.status === 'completed' && <CheckCircle className="h-3 w-3" />}
-                        {scan.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {scan.overall_score ? (
-                        <div className="flex items-center gap-2">
-                          <div className={cn(
-                            'w-2 h-2 rounded-full',
-                            scan.overall_score >= 80 ? 'bg-green-400' :
-                            scan.overall_score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
-                          )} />
-                          <span className="font-medium text-foreground">{scan.overall_score}</span>
+                {filteredRecentScans.length > 0 ? (
+                  filteredRecentScans.map((scan: RecentScan, index) => {
+                    const scanScore = getValidScore(scan.overall_score ?? scan.security_score)
+
+                    return (
+                      <motion.tr
+                        key={scan.id}
+                        className="border-b border-white/5 transition-colors duration-200 hover:bg-white/[0.06]"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.8 + index * 0.08 }}
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <FolderGit2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                            <span className="max-w-[260px] truncate font-medium text-foreground">
+                              {scan.repository_name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium capitalize',
+                            scan.status === 'completed'
+                              ? 'border-green-500/30 bg-green-500/10 text-green-400'
+                              : scan.status === 'processing' || scan.status === 'pending'
+                              ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                              : 'border-red-500/30 bg-red-500/10 text-red-400'
+                          )}>
+                            {scan.status === 'completed' && <CheckCircle className="h-3 w-3" />}
+                            {scan.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {scanScore !== null ? (
+                            <div className="flex items-center gap-2">
+                              <div className={cn(
+                                'h-2 w-2 rounded-full',
+                                scanScore >= 80 ? 'bg-green-400' :
+                                scanScore >= 60 ? 'bg-yellow-400' : 'bg-red-400'
+                              )} />
+                              <span className="font-medium text-foreground">{scanScore.toFixed(1)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Pending</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap py-3 px-4 text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 flex-shrink-0" />
+                            {new Date(scan.created_at).toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap py-3 px-4 text-muted-foreground">
+                          {typeof scan.analysis_duration_seconds === 'number'
+                            ? `${scan.analysis_duration_seconds.toFixed(0)}s`
+                            : '-'}
+                        </td>
+                      </motion.tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                        <div className="rounded-full border border-white/10 bg-white/5 p-3">
+                          <Search className="h-5 w-5 text-muted-foreground" />
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(scan.created_at).toLocaleString()}
+                        <div className="space-y-1">
+                          <p className="font-medium text-foreground">
+                            {dashboardSearch ? 'No recent scans match this search' : 'No recent scans yet'}
+                          </p>
+                          <p className="text-sm leading-6 text-muted-foreground">
+                            {dashboardSearch
+                              ? 'Try a different repository or status keyword, or clear the dashboard search.'
+                              : 'Recent scans will appear here as new analyses start and complete.'}
+                          </p>
+                        </div>
+                        {dashboardSearch && (
+                          <button
+                            type="button"
+                            onClick={clearDashboardSearch}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-foreground transition-colors duration-200 hover:border-white/20 hover:bg-white/10"
+                          >
+                            Clear Search
+                          </button>
+                        )}
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-muted-foreground">
-                      {scan.analysis_duration_seconds ? `${scan.analysis_duration_seconds.toFixed(0)}s` : '-'}
-                    </td>
-                  </motion.tr>
-                ))}
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -489,7 +581,6 @@ export function Dashboard() {
       isOpen={showScanPanel}
       onClose={() => setShowScanPanel(false)}
       onScanComplete={(scanId) => {
-        console.log('✅ Scan complete! Navigating to results:', scanId)
         setShowScanPanel(false)
         navigate(`/scans/${scanId}`)
       }}

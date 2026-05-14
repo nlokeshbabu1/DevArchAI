@@ -4,13 +4,12 @@
  * Shown after GitHub login to let users select which repos to import.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Github, Check, Loader2, Search } from 'lucide-react'
-import { Button, Card } from '../components/ui-animated'
+import { Button } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { cn } from '../lib/utils'
-import apiClient from '../api/endpoints/client'
 
 interface GitHubRepo {
   id: number
@@ -28,21 +27,38 @@ interface GitHubRepo {
 interface GitHubRepoSelectionModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
+  onImport: (repoIds: number[]) => Promise<void>
   repos: GitHubRepo[]
   isLoading: boolean
+  githubConnected?: boolean
+  statusMessage?: string
+  hasError?: boolean
 }
 
 export function GitHubRepoSelectionModal({
   isOpen,
   onClose,
-  onSuccess,
+  onImport,
   repos,
   isLoading,
+  githubConnected = true,
+  statusMessage,
+  hasError = false,
 }: GitHubRepoSelectionModalProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [searchTerm, setSearchTerm] = useState('')
   const [isImporting, setIsImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    setSelectedIds(new Set())
+    setSearchTerm('')
+    setImportError(null)
+  }, [isOpen])
 
   // Filter repos by search term
   const filteredRepos = repos.filter(repo => {
@@ -81,13 +97,13 @@ export function GitHubRepoSelectionModal({
     if (selectedIds.size === 0) return
 
     setIsImporting(true)
+    setImportError(null)
     try {
-      await apiClient.post('/github/import-repos', Array.from(selectedIds))
-      onSuccess()
+      await onImport(Array.from(selectedIds))
       onClose()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to import repos:', error)
-      alert('Failed to import repositories. Please try again.')
+      setImportError(error.response?.data?.detail || 'Failed to import repositories. Please try again.')
     } finally {
       setIsImporting(false)
     }
@@ -102,14 +118,18 @@ export function GitHubRepoSelectionModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        onClick={onClose}
+        onClick={() => {
+          if (!isImporting) {
+            onClose()
+          }
+        }}
       >
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
           onClick={e => e.stopPropagation()}
-          className="w-full max-w-3xl max-h-[80vh] flex flex-col bg-card border border-white/10 rounded-2xl shadow-2xl"
+          className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-card shadow-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-white/10">
@@ -126,25 +146,26 @@ export function GitHubRepoSelectionModal({
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              disabled={isImporting}
+              className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <X className="h-5 w-5 text-muted-foreground" />
             </button>
           </div>
 
           {/* Search & Actions */}
-          <div className="p-4 border-b border-white/10 space-y-3">
+          <div className="space-y-3 border-b border-white/10 p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search repositories..."
+                placeholder="Search GitHub repositories..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="text-muted-foreground">
                 {selectedIds.size} of {filteredRepos.length} selected
               </span>
@@ -167,16 +188,33 @@ export function GitHubRepoSelectionModal({
           </div>
 
           {/* Repo List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {isLoading ? (
               <div className="text-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
                 <p className="text-muted-foreground">Loading repositories...</p>
               </div>
             ) : filteredRepos.length === 0 ? (
-              <div className="text-center py-12">
-                <Github className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No repositories found</p>
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-12 text-center">
+                <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <h3 className="text-lg font-semibold text-foreground">
+                  {hasError
+                    ? 'Unable to load repositories'
+                    : !githubConnected
+                    ? 'GitHub not connected'
+                    : searchTerm
+                    ? 'No repositories match your search'
+                    : 'No repositories available to import'}
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  {statusMessage || (hasError
+                    ? 'A temporary error prevented repository loading. Please try again.'
+                    : !githubConnected
+                    ? 'Connect GitHub with OAuth to import repositories here.'
+                    : searchTerm
+                    ? 'Try a different name or clear the current search.'
+                    : 'All available GitHub repositories are already imported or none are available.')}
+                </p>
               </div>
             ) : (
               filteredRepos.map(repo => {
@@ -220,7 +258,7 @@ export function GitHubRepoSelectionModal({
                           {repo.description}
                         </p>
                       )}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         {repo.language && <span>{repo.language}</span>}
                         <span>⭐ {repo.stargazers_count}</span>
                         <span>🍴 {repo.forks_count}</span>
@@ -233,13 +271,19 @@ export function GitHubRepoSelectionModal({
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-white/10 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              {selectedIds.size === 0
-                ? 'Select at least one repository'
-                : `${selectedIds.size} repos selected`}
-            </span>
-            <div className="flex gap-3">
+          <div className="border-t border-white/10 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <span className="text-sm text-muted-foreground">
+                  {selectedIds.size === 0
+                    ? 'Select at least one repository'
+                    : `${selectedIds.size} repos selected`}
+                </span>
+                {importError && (
+                  <p className="text-sm text-red-400">{importError}</p>
+                )}
+              </div>
+              <div className="flex gap-3">
               <Button
                 variant="ghost"
                 onClick={onClose}
@@ -255,6 +299,7 @@ export function GitHubRepoSelectionModal({
               >
                 {isImporting ? 'Importing...' : `Import ${selectedIds.size > 0 ? `(${selectedIds.size})` : ''}`}
               </Button>
+              </div>
             </div>
           </div>
         </motion.div>

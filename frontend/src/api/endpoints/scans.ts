@@ -36,6 +36,16 @@ export interface ScanCreate {
   commit_hash?: string;
 }
 
+export interface UnifiedScanStartResponse {
+  scan_id: string;
+  session_token?: string;
+  status: string;
+  message?: string;
+  repository_id?: string;
+  repository_url?: string;
+  branch?: string;
+}
+
 export const scansApi = {
   /**
    * List scans for current user
@@ -62,8 +72,8 @@ export const scansApi = {
   /**
    * Start unified scan (guest or authenticated)
    */
-  startUnifiedScan: async (data: ScanCreate): Promise<{ scan_id: string; session_token?: string; status: string }> => {
-    const response = await apiClient.post('/scan/start', data);
+  startUnifiedScan: async (data: ScanCreate): Promise<UnifiedScanStartResponse> => {
+    const response = await apiClient.post<UnifiedScanStartResponse>('/scan/start', data);
     return response.data;
   },
 

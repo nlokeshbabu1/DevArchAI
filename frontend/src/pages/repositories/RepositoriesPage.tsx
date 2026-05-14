@@ -1,86 +1,284 @@
-import { motion } from 'framer-motion'
-import { Plus, Github, Gitlab, Cloud, Server, Loader2, CheckCircle, AlertCircle, Trash2, ExternalLink, Play } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Plus,
+  Github,
+  Gitlab,
+  Cloud,
+  Server,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Trash2,
+  ExternalLink,
+  Play,
+  Clock,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
 import { Badge } from '../../components/ui'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../stores/auth-store'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '../../lib/utils'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
+import { scansApi } from '../../api/endpoints/scans'
+import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
+import { GitHubRepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
+import { ScanProgress } from '../../components/ScanProgress'
+
+type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
+type ScanFileType = 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
 
 interface DisplayRepository extends Repository {
-  displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed'
+  displayStatus: DisplayStatus
   source?: 'github' | 'manual'
 }
 
-interface GitHubRepoResponse {
-  github_connected: boolean
-  github_repositories: DisplayRepository[]
-  total?: number
-  message?: string
+interface TriggerScanVariables {
+  repoId: string
+  repoName: string
+  repoUrl: string
+  branch: string
+}
+
+interface ActiveRepositoryScan {
+  scanId: string
+  repoId: string
+  repoName: string
+  repoUrl: string
+  branch: string
+}
+
+interface UnifiedScanStep {
+  name: string
+  status: string
+}
+
+interface UnifiedScanStatus {
+  scan_id: string
+  status: string
+  progress: number
+  current_step: string
+  steps?: UnifiedScanStep[]
+  detected_stack?: string[]
+  logs?: string[]
+  files_list?: string[]
+  error_message?: string | null
+}
+
+interface ImportableGitHubRepository {
+  id: number
+  full_name: string
+  html_url: string
+  description: string | null
+  private: boolean
+  default_branch: string
+  language: string | null
+  stargazers_count: number
+  forks_count: number
+  updated_at: string
+}
+
+function getFileTypeFromPath(path: string): ScanFileType {
+  const lowerPath = path.toLowerCase()
+
+  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
+    return 'docker'
+  }
+  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
+    return 'k8s'
+  }
+  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
+    return 'terraform'
+  }
+  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
+    return 'helm'
+  }
+  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
+    return 'monitoring'
+  }
+
+  return 'cicd'
+}
+
+function getStatusLabel(status: DisplayStatus | 'all') {
+  if (status === 'all') {
+    return 'All'
+  }
+
+  if (status === 'not_scanned') {
+    return 'Not Scanned'
+  }
+
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function getRepositoryActivityLabel(repo: DisplayRepository) {
+  if (repo.last_scan_at) {
+    const lastScan = new Date(repo.last_scan_at)
+    return `${lastScan.toLocaleDateString()} • ${lastScan.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  }
+
+  if (repo.displayStatus === 'scanning') {
+    return 'Scan in progress'
+  }
+
+  return 'Never scanned'
+}
+
+function isRunningStatus(status?: string | null) {
+  return status === 'processing' || status === 'pending' || status === 'queued' || status === 'running'
+}
+
+function parseGitHubRepositoryId(id: string) {
+  const normalizedId = id.startsWith('github_') ? id.slice('github_'.length) : id
+  const parsedId = Number(normalizedId)
+
+  return Number.isFinite(parsedId) ? parsedId : null
 }
 
 export function RepositoriesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { token } = useAuthStore()
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [scanningRepoIds, setScanningRepoIds] = useState<Set<string>>(new Set())
+  const [scanStartPendingIds, setScanStartPendingIds] = useState<Set<string>>(new Set())
+  const [activeScan, setActiveScan] = useState<ActiveRepositoryScan | null>(null)
+  const [activeScanStatus, setActiveScanStatus] = useState<UnifiedScanStatus | null>(null)
+  const [activeScanError, setActiveScanError] = useState<string | null>(null)
 
-  // Fetch imported repositories (only repos user has explicitly added/imported)
-  const { data: repositoriesResponse, isLoading, refetch } = useQuery({
+  const { data: repositoriesResponse, isLoading } = useQuery({
     queryKey: ['repositories'],
     queryFn: async () => {
       const response = await repositoriesApi.listRepositories(1, 50)
       return response.repositories || []
     },
-    refetchInterval: 5000, // Poll every 5 seconds for status updates
+    refetchInterval: 5000,
   })
 
   const repositories = repositoriesResponse || []
-  const githubConnected = repositories.some((r: any) => r.source === 'github' || r.url?.includes('github.com'))
+  const allRepos: DisplayRepository[] = repositories.map((repo) => ({
+    ...repo,
+    displayStatus: 'not_scanned',
+    source: repo.url?.includes('github.com') ? 'github' : 'manual',
+  }))
 
-  // All repos are just the imported/added ones - no automatic GitHub fetch
-  const allRepos = repositories.map((r: any) => ({ ...r, source: r.source || (r.url?.includes('github.com') ? 'github' : 'manual') }))
+  const {
+    data: githubRepositoriesResponse,
+    isLoading: isGitHubRepositoriesLoading,
+    error: githubRepositoriesError,
+  } = useQuery({
+    queryKey: ['github-repositories'],
+    queryFn: () => repositoriesApi.listGitHubRepositories(),
+    enabled: showImportModal,
+    staleTime: 60_000,
+    retry: false,
+  })
 
-  // Add repository mutation
+  const githubConnected =
+    githubRepositoriesResponse?.github_connected ??
+    repositories.some((repo) => repo.url?.includes('github.com'))
+  const importedRepositoryUrls = new Set(repositories.map((repo) => repo.url))
+  const rawGitHubRepositories = githubRepositoriesResponse?.github_repositories || []
+  const importableGitHubRepositories = rawGitHubRepositories.reduce<ImportableGitHubRepository[]>((repoList, repo) => {
+    const parsedId = parseGitHubRepositoryId(repo.id)
+
+    if (parsedId === null || importedRepositoryUrls.has(repo.url)) {
+      return repoList
+    }
+
+    repoList.push({
+      id: parsedId,
+      full_name: repo.name,
+      html_url: repo.url,
+      description: repo.description || null,
+      private: repo.is_private,
+      default_branch: repo.default_branch || 'main',
+      language: repo.language || null,
+      stargazers_count: repo.stargazers_count || 0,
+      forks_count: repo.forks_count || 0,
+      updated_at: repo.updated_at,
+    })
+
+    return repoList
+  }, [])
+
+  const githubImportMessage = githubRepositoriesError
+    ? 'Failed to load GitHub repositories. Please try again.'
+    : !githubConnected
+    ? (githubRepositoriesResponse?.message || 'Connect GitHub with OAuth to import repositories.')
+    : rawGitHubRepositories.length > 0 && importableGitHubRepositories.length === 0
+    ? 'All available GitHub repositories are already imported.'
+    : githubRepositoriesResponse?.message
+
   const addRepositoryMutation = useMutation({
-    mutationFn: async (url: string) => {
-      const response = await repositoriesApi.createRepository({ url })
-      return response
-    },
+    mutationFn: async (url: string) => repositoriesApi.createRepository({ url }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repositories'] })
       setShowAddModal(false)
     },
   })
 
-  // Trigger scan mutation (using scans API like dashboard)
+  const importRepositoriesMutation = useMutation({
+    mutationFn: async (repoIds: number[]) => repositoriesApi.importGitHubRepositories(repoIds),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['repositories'] }),
+        queryClient.invalidateQueries({ queryKey: ['github-repositories'] }),
+      ])
+    },
+  })
+
   const triggerScanMutation = useMutation({
-    mutationFn: async ({ repoId, repoUrl, branch }: { repoId: string; repoUrl: string; branch?: string }) => {
-      const response = await repositoriesApi.triggerScan(repoId, repoUrl, branch || 'main')
-      return response
-    },
+    mutationFn: async ({ repoId, repoUrl, branch }: TriggerScanVariables) => (
+      scansApi.startUnifiedScan({
+        repository_id: repoId,
+        repository_url: repoUrl,
+        branch: branch || 'main',
+      })
+    ),
     onMutate: ({ repoId }) => {
-      setScanningRepoIds(prev => new Set(prev).add(repoId))
+      setActiveScanError(null)
+      setScanStartPendingIds((prev) => new Set(prev).add(repoId))
     },
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
+      setScanningRepoIds((prev) => new Set(prev).add(variables.repoId))
+      setActiveScan({
+        scanId: response.scan_id,
+        repoId: variables.repoId,
+        repoName: variables.repoName,
+        repoUrl: variables.repoUrl,
+        branch: response.branch || variables.branch,
+      })
+      setActiveScanStatus({
+        scan_id: response.scan_id,
+        status: response.status || 'running',
+        progress: 5,
+        current_step: 'Initializing scan...',
+        steps: [],
+        detected_stack: [],
+        logs: [response.message || `Preparing scan for ${variables.repoName}`],
+        files_list: [],
+      })
       queryClient.invalidateQueries({ queryKey: ['repositories'] })
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
-    onSettled: (_, __, { repoId }) => {
-      setScanningRepoIds(prev => {
+    onError: (error: any) => {
+      window.alert(error.response?.data?.detail || 'Failed to start scan')
+    },
+    onSettled: (_, __, variables) => {
+      setScanStartPendingIds((prev) => {
         const next = new Set(prev)
-        next.delete(repoId)
+        next.delete(variables.repoId)
         return next
       })
     },
   })
 
-  // Delete repository mutation
   const deleteRepositoryMutation = useMutation({
     mutationFn: async (repoId: string) => {
       await repositoriesApi.deleteRepository(repoId)
@@ -90,16 +288,116 @@ export function RepositoriesPage() {
     },
   })
 
+  useEffect(() => {
+    if (!activeScan?.scanId) {
+      return
+    }
+
+    let isCancelled = false
+    let intervalId: number | undefined
+    let redirectTimer: number | undefined
+
+    const stopPolling = () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const clearLocalScanningState = () => {
+      setScanningRepoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(activeScan.repoId)
+        return next
+      })
+    }
+
+    const pollScanStatus = async () => {
+      try {
+        const response = await apiClient.get<UnifiedScanStatus>(`/scan/status/${activeScan.scanId}`)
+
+        if (isCancelled) {
+          return
+        }
+
+        const statusData = response.data
+        setActiveScanStatus(statusData)
+        setActiveScanError(null)
+
+        if (statusData.status === 'completed') {
+          stopPolling()
+          clearLocalScanningState()
+          queryClient.invalidateQueries({ queryKey: ['repositories'] })
+          queryClient.invalidateQueries({ queryKey: ['scans'] })
+
+          redirectTimer = window.setTimeout(() => {
+            if (isCancelled) {
+              return
+            }
+
+            setActiveScan(null)
+            setActiveScanStatus(null)
+            navigate(`/scans/${activeScan.scanId}`)
+          }, 900)
+
+          return
+        }
+
+        if (statusData.status === 'failed') {
+          stopPolling()
+          clearLocalScanningState()
+          queryClient.invalidateQueries({ queryKey: ['repositories'] })
+          queryClient.invalidateQueries({ queryKey: ['scans'] })
+          setActiveScanError(statusData.error_message || 'Scan failed')
+        }
+      } catch (error: any) {
+        if (isCancelled) {
+          return
+        }
+
+        stopPolling()
+        clearLocalScanningState()
+        setActiveScanError(error.response?.data?.detail || 'Failed to load scan progress')
+      }
+    }
+
+    pollScanStatus()
+    intervalId = window.setInterval(pollScanStatus, 1000)
+
+    return () => {
+      isCancelled = true
+      stopPolling()
+      if (redirectTimer !== undefined) {
+        window.clearTimeout(redirectTimer)
+      }
+    }
+  }, [activeScan?.repoId, activeScan?.scanId, navigate, queryClient])
+
   const handleAddRepository = async (url: string) => {
     await addRepositoryMutation.mutateAsync(url)
   }
 
-  const handleGithubImportSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['repositories'] })
+  const handleImportRepositories = async (repoIds: number[]) => {
+    await importRepositoriesMutation.mutateAsync(repoIds)
   }
 
-  const handleScan = (repoId: string, repoUrl: string) => {
-    triggerScanMutation.mutate({ repoId, repoUrl, branch: 'main' })
+  const handleScan = (repo: DisplayRepository) => {
+    const isAlreadyBusy =
+      scanStartPendingIds.has(repo.id) ||
+      scanningRepoIds.has(repo.id) ||
+      activeScan?.repoId === repo.id ||
+      repo.displayStatus === 'scanning'
+
+    if (isAlreadyBusy) {
+      return
+    }
+
+    triggerScanMutation.mutate({
+      repoId: repo.id,
+      repoName: repo.name,
+      repoUrl: repo.url,
+      branch: repo.default_branch || 'main',
+    })
   }
 
   const handleViewResults = (repoId: string) => {
@@ -112,25 +410,38 @@ export function RepositoriesPage() {
     }
   }
 
-  // Transform repositories for display with proper status logic
-  const displayRepos: DisplayRepository[] = (allRepos || []).map((repo) => {
-    let displayStatus: 'not_scanned' | 'scanning' | 'completed' | 'failed' = 'not_scanned'
+  const closeProgressModal = () => {
+    if (activeScanStatus && !['completed', 'failed'].includes(activeScanStatus.status)) {
+      return
+    }
 
-    // Determine status from latest scan
+    if (activeScan) {
+      setScanningRepoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(activeScan.repoId)
+        return next
+      })
+    }
+
+    setActiveScan(null)
+    setActiveScanStatus(null)
+    setActiveScanError(null)
+  }
+
+  const displayRepos: DisplayRepository[] = allRepos.map((repo) => {
+    let displayStatus: DisplayStatus = 'not_scanned'
+
     if (repo.scan_status === 'completed' && repo.overall_score !== null && repo.overall_score !== undefined) {
       displayStatus = 'completed'
-    } else if (repo.scan_status === 'processing' || scanningRepoIds.has(repo.id)) {
+    } else if (isRunningStatus(repo.scan_status) || scanningRepoIds.has(repo.id)) {
       displayStatus = 'scanning'
     } else if (repo.scan_status === 'failed') {
       displayStatus = 'failed'
-    } else if (repo.scan_count && repo.scan_count > 0 && repo.overall_score !== null) {
-      // Has scans with results
+    } else if (repo.scan_count && repo.scan_count > 0 && repo.overall_score !== null && repo.overall_score !== undefined) {
       displayStatus = 'completed'
     } else if (repo.scan_count && repo.scan_count > 0) {
-      // Has scans but no results yet
       displayStatus = 'scanning'
     }
-    // else: not_scanned (default)
 
     return {
       ...repo,
@@ -138,352 +449,484 @@ export function RepositoriesPage() {
     }
   })
 
-  // Filter repositories
   const filteredRepos = displayRepos.filter((repo) => {
-    if (statusFilter !== 'all' && repo.displayStatus !== statusFilter) return false
+    if (statusFilter !== 'all' && repo.displayStatus !== statusFilter) {
+      return false
+    }
+
     return true
   })
 
-  // Calculate status counts
   const statusCounts = {
     all: displayRepos.length,
-    completed: displayRepos.filter(r => r.displayStatus === 'completed').length,
-    scanning: displayRepos.filter(r => r.displayStatus === 'scanning').length,
-    not_scanned: displayRepos.filter(r => r.displayStatus === 'not_scanned').length,
-    failed: displayRepos.filter(r => r.displayStatus === 'failed').length,
+    completed: displayRepos.filter((repo) => repo.displayStatus === 'completed').length,
+    scanning: displayRepos.filter((repo) => repo.displayStatus === 'scanning').length,
+    not_scanned: displayRepos.filter((repo) => repo.displayStatus === 'not_scanned').length,
+    failed: displayRepos.filter((repo) => repo.displayStatus === 'failed').length,
   }
 
   const isAdding = addRepositoryMutation.isPending
-  const isScanning = triggerScanMutation.isPending
+  const activeScanStepIndex = activeScanStatus?.steps?.findIndex((step) => step.name === activeScanStatus.current_step) ?? -1
+  const activeScanCurrentStep = activeScanStepIndex >= 0 ? activeScanStepIndex + 1 : (activeScanStatus?.status === 'completed' ? (activeScanStatus?.steps?.length || 1) : 1)
+  const activeScanDetectedFiles = (activeScanStatus?.files_list || []).map((path) => ({
+    path,
+    type: getFileTypeFromPath(path),
+    status: activeScanStatus?.status === 'completed' ? 'completed' as const : 'scanning' as const,
+  }))
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <motion.div
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Repositories</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and scan your connected repositories
-          </p>
-        </div>
-        <Button
-          variant="primary"
-          icon={<Plus className="h-4 w-4" />}
-          onClick={() => setShowAddModal(true)}
+    <>
+      <div className="space-y-8">
+        <motion.div
+          className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
         >
-          Add Repository
-        </Button>
-      </motion.div>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Repositories</h1>
+            <p className="mt-1 text-muted-foreground">
+              Manage and scan your connected repositories
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button
+              variant="secondary"
+              icon={<Github className="h-4 w-4" />}
+              onClick={() => setShowImportModal(true)}
+            >
+              Import Repository
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowAddModal(true)}
+            >
+              Add Repository
+            </Button>
+          </div>
+        </motion.div>
 
-      {/* Integration Cards */}
-      <motion.div
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        {[
-          { name: 'GitHub', icon: Github, connected: githubConnected },
-          { name: 'GitLab', icon: Gitlab, connected: false },
-          { name: 'AWS', icon: Cloud, connected: false },
-          { name: 'Azure', icon: Server, connected: false },
-        ].map((integration) => (
-          <Card key={integration.name} className="p-4" hover>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <integration.icon className="h-6 w-6 text-muted-foreground" />
-                <span className="font-medium">{integration.name}</span>
+        <motion.div
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          {[
+            { name: 'GitHub', icon: Github, connected: githubConnected },
+            { name: 'GitLab', icon: Gitlab, connected: false },
+            { name: 'AWS', icon: Cloud, connected: false },
+            { name: 'Azure', icon: Server, connected: false },
+          ].map((integration) => (
+            <Card key={integration.name} className="p-4" hover>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <integration.icon className="h-6 w-6 text-muted-foreground" />
+                  <span className="font-medium">{integration.name}</span>
+                </div>
+                <div
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium',
+                    integration.connected
+                      ? 'border-green-500/30 bg-green-500/15 text-green-400'
+                      : 'border-white/10 bg-white/5 text-muted-foreground',
+                  )}
+                >
+                  {integration.connected ? (
+                    <>
+                      <CheckCircle className="h-3 w-3" />
+                      Connected
+                    </>
+                  ) : (
+                    'Connect'
+                  )}
+                </div>
               </div>
-              <div className={cn(
-                'px-2 py-1 rounded-full text-xs font-medium',
-                integration.connected
-                  ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                  : 'bg-white/5 text-muted-foreground border border-white/10'
-              )}>
-                {integration.connected ? (
-                  <>
-                    <CheckCircle className="h-3 w-3 inline mr-1" />
-                    Connected
-                  </>
-                ) : (
-                  'Connect'
-                )}
-              </div>
+            </Card>
+          ))}
+        </motion.div>
+
+        {displayRepos.length > 0 && (
+          <Card className="p-4" hover={false}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-2 text-sm font-medium text-foreground">Status:</span>
+              {(['all', 'completed', 'scanning', 'not_scanned', 'failed'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
+                    statusFilter === status
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-white/5 text-muted-foreground hover:bg-white/10',
+                  )}
+                >
+                  {getStatusLabel(status)} ({statusCounts[status]})
+                </button>
+              ))}
             </div>
           </Card>
-        ))}
-      </motion.div>
+        )}
 
-      {/* Filters */}
-      {displayRepos.length > 0 && (
-        <Card className="p-4" hover={false}>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-foreground mr-2">Status:</span>
-            {(['all', 'completed', 'scanning', 'not_scanned', 'failed'] as const).map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  statusFilter === status
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-white/5 text-muted-foreground hover:bg-white/10'
-                )}
-              >
-                {status === 'not_scanned' ? 'Not Scanned' : status.charAt(0).toUpperCase() + status.slice(1)} ({statusCounts[status]})
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Repositories Grid */}
-      <motion.div
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        {isLoading ? (
-          <div className="col-span-full text-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading repositories...</p>
-          </div>
-        ) : filteredRepos.length === 0 ? (
-          displayRepos.length === 0 ? (
-            /* True empty state - no repositories at all */
-            <Card className="p-12 text-center col-span-full" hover={false}>
-              <Github className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {githubConnected ? 'No repositories found' : 'No repositories yet'}
-              </h3>
-              <p className="text-muted-foreground mb-6">
-                {githubConnected
-                  ? 'Your GitHub repositories will appear here. Add one to get started.'
-                  : 'Connect GitHub or add a repository manually to start scanning'}
-              </p>
-              <div className="flex gap-3 justify-center">
-                <Button
-                  variant="primary"
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={() => setShowAddModal(true)}
-                >
-                  Add Repository
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            /* Filtered empty state - repositories exist but none match filter */
-            <Card className="p-12 text-center col-span-full" hover={false}>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                No repositories match this filter
-              </h3>
-              <p className="text-muted-foreground mb-4">
-                Try selecting a different status filter
-              </p>
-              <Button
-                variant="secondary"
-                onClick={() => setStatusFilter('all')}
-              >
-                Show All
-              </Button>
-            </Card>
-          )
-        ) : (
-          filteredRepos.map((repo, index) => (
-            <motion.div
-              key={repo.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + index * 0.1 }}
-            >
-              <Card className="p-6" hover>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="p-2.5 bg-white/5 rounded-xl border border-white/10">
-                      <Github className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold text-foreground truncate">{repo.name}</h3>
-                        {repo.source === 'github' && (
-                          <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/30">
-                            <Github className="h-3 w-3 mr-1" />
-                            GitHub
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {repo.description || repo.url}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                    repo.displayStatus === 'completed'
-                      ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                      : repo.displayStatus === 'scanning'
-                      ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse'
-                      : repo.displayStatus === 'failed'
-                      ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                      : 'bg-gray-500/15 text-gray-400 border border-gray-500/30'
-                  )}>
-                    {repo.displayStatus === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {repo.displayStatus === 'completed' && <CheckCircle className="h-3 w-3" />}
-                    {repo.displayStatus === 'failed' && <AlertCircle className="h-3 w-3" />}
-                    <span className="capitalize">{repo.displayStatus === 'not_scanned' ? 'Not Scanned' : repo.displayStatus}</span>
-                  </div>
-                </div>
-
-                {/* Tech Stack Badges */}
-                {repo.tech_stack && repo.tech_stack.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {repo.tech_stack.slice(0, 4).map((tech) => (
-                      <Badge key={tech} variant="secondary" className="text-xs">
-                        {tech}
-                      </Badge>
-                    ))}
-                    {repo.tech_stack.length > 4 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{repo.tech_stack.length - 4}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* Issue Counts */}
-                {repo.issues && Object.values(repo.issues).some(v => v > 0) && (
-                  <div className="flex flex-wrap gap-3 mb-4 text-xs">
-                    {repo.issues.critical > 0 && (
-                      <span className="text-red-400">Critical: {repo.issues.critical}</span>
-                    )}
-                    {repo.issues.high > 0 && (
-                      <span className="text-orange-400">High: {repo.issues.high}</span>
-                    )}
-                    {repo.issues.medium > 0 && (
-                      <span className="text-yellow-400">Medium: {repo.issues.medium}</span>
-                    )}
-                    {repo.issues.low > 0 && (
-                      <span className="text-blue-400">Low: {repo.issues.low}</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Score and Last Scan */}
-                <div className="flex items-center justify-between pt-4 border-t border-white/10 mb-4">
-                  <div className="flex items-center gap-2">
-                    {repo.overall_score !== undefined && repo.overall_score !== null && (
-                      <div className="flex items-center gap-2">
-                        <div className={cn(
-                          'w-2 h-2 rounded-full',
-                          repo.overall_score >= 80 ? 'bg-green-400' :
-                          repo.overall_score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
-                        )} />
-                        <span className="text-sm font-medium">{repo.overall_score.toFixed(1)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {repo.last_scan_at
-                      ? `Last scanned: ${new Date(repo.last_scan_at).toLocaleDateString()} at ${new Date(repo.last_scan_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`
-                      : repo.displayStatus === 'scanning'
-                      ? 'Scan in progress...'
-                      : 'Never scanned'
-                    }
-                  </div>
-                </div>
-
-                {/* Action Buttons - Status-based rendering */}
-                <div className="flex gap-2">
-                  {/* View Results - only show if completed */}
-                  {repo.displayStatus === 'completed' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleViewResults(repo.id)}
-                      icon={<ExternalLink className="h-3.5 w-3.5" />}
-                    >
-                      View Results
-                    </Button>
-                  )}
-
-                  {/* Scan / Rescan / Retry button */}
-                  {repo.displayStatus === 'not_scanned' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleScan(repo.id, repo.url)}
-                      icon={<Play className="h-3.5 w-3.5" />}
-                    >
-                      Scan
-                    </Button>
-                  )}
-
-                  {repo.displayStatus === 'scanning' && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                      disabled
-                      icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    >
-                      Scanning...
-                    </Button>
-                  )}
-
-                  {repo.displayStatus === 'completed' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleScan(repo.id, repo.url)}
-                      icon={<Play className="h-3.5 w-3.5" />}
-                    >
-                      Rescan
-                    </Button>
-                  )}
-
-                  {repo.displayStatus === 'failed' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleScan(repo.id, repo.url)}
-                      icon={<Play className="h-3.5 w-3.5" />}
-                    >
-                      Retry
-                    </Button>
-                  )}
-
-                  {/* Delete button - disable while scanning */}
+        <motion.div
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          {isLoading ? (
+            <div className="col-span-full py-12 text-center">
+              <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading repositories...</p>
+            </div>
+          ) : filteredRepos.length === 0 ? (
+            displayRepos.length === 0 ? (
+              <Card className="col-span-full p-12 text-center" hover={false}>
+                <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <h3 className="mb-2 text-lg font-semibold text-foreground">
+                  {githubConnected ? 'No repositories found' : 'No repositories yet'}
+                </h3>
+                <p className="mb-6 text-muted-foreground">
+                  {githubConnected
+                    ? 'Your GitHub repositories will appear here. Add one to get started.'
+                    : 'Connect GitHub or add a repository manually to start scanning'}
+                </p>
+                <div className="flex flex-col justify-center gap-3 sm:flex-row">
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(repo.id)}
-                    disabled={repo.displayStatus === 'scanning'}
+                    variant="secondary"
+                    icon={<Github className="h-4 w-4" />}
+                    onClick={() => setShowImportModal(true)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    Import Repository
+                  </Button>
+                  <Button
+                    variant="primary"
+                    icon={<Plus className="h-4 w-4" />}
+                    onClick={() => setShowAddModal(true)}
+                  >
+                    Add Repository
                   </Button>
                 </div>
               </Card>
-            </motion.div>
-          ))
-        )}
-      </motion.div>
+            ) : (
+              <Card className="col-span-full p-12 text-center" hover={false}>
+                <h3 className="mb-2 text-lg font-semibold text-foreground">
+                  No repositories match this filter
+                </h3>
+                <p className="mb-4 text-muted-foreground">
+                  Try selecting a different status filter
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={() => setStatusFilter('all')}
+                >
+                  Show All
+                </Button>
+              </Card>
+            )
+          ) : (
+            filteredRepos.map((repo, index) => {
+              const isStartPending = scanStartPendingIds.has(repo.id)
+              const isRepoScanning = repo.displayStatus === 'scanning' || scanningRepoIds.has(repo.id) || activeScan?.repoId === repo.id
+              const hasScore = repo.overall_score !== undefined && repo.overall_score !== null
+              const scanButtonLabel = repo.displayStatus === 'completed'
+                ? 'Rescan'
+                : repo.displayStatus === 'failed'
+                ? 'Retry Scan'
+                : 'Scan'
 
-      {/* Add Repository Modal */}
-      <AddRepositoryModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onAdd={handleAddRepository}
-        isLoading={isAdding}
-      />
-    </div>
+              return (
+                <motion.div
+                  key={repo.id}
+                  className="h-full"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 + index * 0.08 }}
+                >
+                  <Card className="flex h-full flex-col overflow-hidden" hover>
+                    <div className="flex flex-1 flex-col gap-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
+                          <div className="rounded-xl border border-white/10 bg-white/5 p-2.5">
+                            <Github className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="truncate text-lg font-semibold text-foreground">
+                                {repo.name}
+                              </h3>
+                              {repo.source === 'github' && (
+                                <Badge variant="secondary" className="border-blue-500/30 bg-blue-500/10 text-xs text-blue-400">
+                                  <Github className="mr-1 h-3 w-3" />
+                                  GitHub
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+                              {repo.description || repo.url}
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            'inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+                            repo.displayStatus === 'completed'
+                              ? 'border-green-500/30 bg-green-500/15 text-green-400'
+                              : repo.displayStatus === 'scanning'
+                              ? 'border-blue-500/30 bg-blue-500/15 text-blue-400'
+                              : repo.displayStatus === 'failed'
+                              ? 'border-red-500/30 bg-red-500/15 text-red-400'
+                              : 'border-gray-500/30 bg-gray-500/15 text-gray-400',
+                          )}
+                        >
+                          {repo.displayStatus === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
+                          {repo.displayStatus === 'completed' && <CheckCircle className="h-3 w-3" />}
+                          {repo.displayStatus === 'failed' && <AlertCircle className="h-3 w-3" />}
+                          <span>{getStatusLabel(repo.displayStatus)}</span>
+                        </div>
+                      </div>
+
+                      {repo.tech_stack && repo.tech_stack.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {repo.tech_stack.slice(0, 4).map((tech) => (
+                            <Badge key={tech} variant="secondary" className="text-xs">
+                              {tech}
+                            </Badge>
+                          ))}
+                          {repo.tech_stack.length > 4 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{repo.tech_stack.length - 4}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                            Security Score
+                          </div>
+                          {hasScore ? (
+                            <div className="mt-3 flex items-end gap-2">
+                              <span
+                                className={cn(
+                                  'text-3xl font-semibold',
+                                  (repo.overall_score || 0) >= 80
+                                    ? 'text-green-400'
+                                    : (repo.overall_score || 0) >= 60
+                                    ? 'text-yellow-400'
+                                    : 'text-red-400',
+                                )}
+                              >
+                                {repo.overall_score?.toFixed(1)}
+                              </span>
+                              <span className="pb-1 text-xs text-muted-foreground">/100</span>
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-sm text-muted-foreground">
+                              {repo.displayStatus === 'scanning' ? 'Refreshing after scan...' : 'No score available yet'}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                            Latest Activity
+                          </div>
+                          <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
+                            <Clock className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                            <span className="leading-6">{getRepositoryActivityLabel(repo)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {repo.issues && Object.values(repo.issues).some((value) => value > 0) && (
+                        <div className="flex flex-wrap gap-2">
+                          {repo.issues.critical > 0 && (
+                            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400">
+                              Critical {repo.issues.critical}
+                            </span>
+                          )}
+                          {repo.issues.high > 0 && (
+                            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-400">
+                              High {repo.issues.high}
+                            </span>
+                          )}
+                          {repo.issues.medium > 0 && (
+                            <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-400">
+                              Medium {repo.issues.medium}
+                            </span>
+                          )}
+                          {repo.issues.low > 0 && (
+                            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
+                              Low {repo.issues.low}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-auto border-t border-white/10 pt-5">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          {repo.displayStatus === 'completed' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="sm:flex-1"
+                              onClick={() => handleViewResults(repo.id)}
+                              icon={<ExternalLink className="h-3.5 w-3.5" />}
+                            >
+                              View Results
+                            </Button>
+                          )}
+
+                          {isRepoScanning ? (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="sm:flex-1"
+                              disabled
+                              icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            >
+                              {isStartPending ? 'Starting Scan...' : 'Scanning...'}
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="sm:flex-1"
+                              onClick={() => handleScan(repo)}
+                              disabled={isStartPending}
+                              icon={isStartPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                            >
+                              {isStartPending ? 'Starting Scan...' : scanButtonLabel}
+                            </Button>
+                          )}
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="sm:w-11"
+                            onClick={() => handleDelete(repo.id)}
+                            disabled={isRepoScanning || isStartPending}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              )
+            })
+          )}
+        </motion.div>
+
+        <AddRepositoryModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onAdd={handleAddRepository}
+          isLoading={isAdding}
+        />
+
+        <GitHubRepoSelectionModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImport={handleImportRepositories}
+          repos={importableGitHubRepositories}
+          isLoading={isGitHubRepositoriesLoading}
+          githubConnected={githubConnected}
+          statusMessage={githubImportMessage}
+          hasError={Boolean(githubRepositoriesError)}
+        />
+      </div>
+
+      <AnimatePresence>
+        {activeScan && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-4xl"
+              initial={{ opacity: 0, scale: 0.98, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 20 }}
+            >
+              <Card className="overflow-hidden p-0" hover={false}>
+                <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-2xl font-bold text-foreground">Repository Scan Progress</h2>
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium',
+                          activeScanStatus?.status === 'completed'
+                            ? 'border-green-500/30 bg-green-500/10 text-green-400'
+                            : activeScanStatus?.status === 'failed'
+                            ? 'border-red-500/30 bg-red-500/10 text-red-400'
+                            : 'border-blue-500/30 bg-blue-500/10 text-blue-400',
+                        )}
+                      >
+                        {activeScanStatus?.status === 'completed' ? <CheckCircle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                        {activeScanStatus?.status === 'completed'
+                          ? 'Ready'
+                          : activeScanStatus?.status === 'failed'
+                          ? 'Failed'
+                          : 'Live Scan'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {activeScan.repoName} • Branch: {activeScan.branch}
+                    </p>
+                  </div>
+
+                  {activeScanStatus && ['completed', 'failed'].includes(activeScanStatus.status) && (
+                    <button
+                      type="button"
+                      onClick={closeProgressModal}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-6">
+                  {activeScanError ? (
+                    <div className="space-y-4 text-center">
+                      <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-foreground">Scan Failed</h3>
+                        <p className="text-sm text-muted-foreground">{activeScanError}</p>
+                      </div>
+                      <div className="flex justify-center gap-3">
+                        <Button variant="secondary" onClick={closeProgressModal}>
+                          Close
+                        </Button>
+                        <Button variant="ghost" onClick={() => navigate('/scans')}>
+                          View Scans
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <ScanProgress
+                      progress={activeScanStatus?.progress || 0}
+                      currentStep={activeScanCurrentStep}
+                      isComplete={activeScanStatus?.status === 'completed'}
+                      detectedFiles={activeScanDetectedFiles}
+                      detectedTechnologies={activeScanStatus?.detected_stack || []}
+                      steps={(activeScanStatus?.steps || []).map((step) => step.name)}
+                      backendLogs={activeScanStatus?.logs || []}
+                    />
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

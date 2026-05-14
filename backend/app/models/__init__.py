@@ -22,6 +22,7 @@ from app.models.repo_analysis import RepoAnalysis
 from app.models.report import Report
 from app.models.repository import Repository
 from app.models.scan import AIScanStatus, Scan, ScanStatus
+from app.models.settings import ApiKey, UserPreference, UserSession
 from app.models.subscription import Currency, PlanTier, Subscription
 from app.models.user import User, UserRole
 
@@ -61,4 +62,7 @@ __all__ = [
     "Coupon",
     "CouponType",
     "WebhookEvent",
+    "UserPreference",
+    "UserSession",
+    "ApiKey",
 ]

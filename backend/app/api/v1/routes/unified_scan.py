@@ -9,7 +9,7 @@ import re
 import threading
 from datetime import datetime
 from typing import Any, Dict, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db, get_sync_session_factory
 from app.models.anonymous_scan import AnonymousScan
+from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
 from app.config import settings
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/scan", tags=["Unified Scan"])
 
 class UnifiedScanRequest(BaseModel):
     """Request model for unified scan endpoint."""
+    repository_id: Optional[str] = Field(default=None, max_length=64)
     repository_url: str = Field(..., min_length=10, max_length=500)
     branch: str = Field(default="main", max_length=100)
     include_ai_explanations: bool = True
@@ -155,14 +157,71 @@ async def start_unified_scan(
         # Generate identifiers
         scan_id = str(uuid4())
         session_token = None
-        
+        repository = None
+        repository_url = request.repository_url.strip()
+
+        if request.repository_id:
+            if not current_user:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Authentication required for repository-linked scans",
+                )
+
+            try:
+                repository_uuid = UUID(request.repository_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid repository_id: {request.repository_id}",
+                ) from exc
+
+            repository_result = await db.execute(
+                select(Repository).where(
+                    Repository.id == repository_uuid,
+                    Repository.user_id == current_user.id,
+                    Repository.is_active.is_(True),
+                )
+            )
+            repository = repository_result.scalar_one_or_none()
+
+            if not repository:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Repository not found",
+                )
+
+            repository_url = repository.url
+
+            existing_scan_result = await db.execute(
+                select(Scan)
+                .where(
+                    Scan.user_id == current_user.id,
+                    Scan.repository_id == repository.id,
+                    Scan.status.in_([ScanStatus.PENDING, ScanStatus.PROCESSING, ScanStatus.QUEUED]),
+                )
+                .order_by(Scan.created_at.desc())
+                .limit(1)
+            )
+            existing_scan = existing_scan_result.scalar_one_or_none()
+
+            if existing_scan:
+                return {
+                    "scan_id": str(existing_scan.id),
+                    "session_token": None,
+                    "status": existing_scan.status.value,
+                    "message": "A scan is already in progress for this repository",
+                    "repository_id": str(repository.id),
+                    "repository_url": repository.url,
+                    "branch": existing_scan.branch,
+                }
+
         # Auto-detect branch from GitHub API if not specified or is 'main'
         branch = request.branch or "main"
         if branch == "main":
             try:
                 import httpx
                 # Extract owner and repo from URL
-                url_parts = request.repository_url.rstrip("/").split("/")
+                url_parts = repository_url.rstrip("/").split("/")
                 if len(url_parts) >= 2:
                     owner = url_parts[-2]
                     repo = url_parts[-1].replace(".git", "")
@@ -194,7 +253,7 @@ async def start_unified_scan(
             # Create anonymous scan session
             anon_scan = AnonymousScan(
                 session_token=session_token,
-                repository_url=request.repository_url,
+                repository_url=repository_url,
                 repository_name=repo_name,
                 branch=branch,
                 expires_at=expires_at,
@@ -208,7 +267,8 @@ async def start_unified_scan(
         scan = Scan(
             id=uuid4(),  # This will be converted to string for scan_id
             user_id=current_user.id if current_user else None,
-            repository_url=request.repository_url,
+            repository_id=repository.id if repository else None,
+            repository_url=repository_url,
             branch=branch,
             status=ScanStatus.PENDING,
             progress=0,
@@ -224,7 +284,7 @@ async def start_unified_scan(
         # Initialize progress tracking with the SAME scan_id
         store = get_scan_progress_store()
         await store.create_scan(scan_id)
-        await store.add_log(scan_id, f"Scan started for {request.repository_url}")
+        await store.add_log(scan_id, f"Scan started for {repository_url}")
         await store.add_log(scan_id, f"Branch: {branch}")
 
         # Run scan in BACKGROUND - returns immediately
@@ -232,7 +292,7 @@ async def start_unified_scan(
         background_tasks.add_task(
             _run_scan_in_background,
             scan_id=scan_id,
-            repository_url=request.repository_url,
+            repository_url=repository_url,
             branch=branch,
             include_ai_explanations=request.include_ai_explanations,
             session_token=session_token,
@@ -244,7 +304,8 @@ async def start_unified_scan(
             "session_token": session_token,
             "status": "running",
             "message": "Scan started successfully - progress will be updated",
-            "repository_url": request.repository_url,
+            "repository_id": str(repository.id) if repository else None,
+            "repository_url": repository_url,
             "branch": branch,
         }
         
