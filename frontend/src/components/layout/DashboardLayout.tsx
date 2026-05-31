@@ -20,6 +20,7 @@ const navigation = [
   { name: 'Scan Results', href: '/scans', icon: FileSearch },
   { name: 'Security Issues', href: '/findings', icon: AlertTriangle },
   { name: 'AI Suggestions', href: '/ai-suggestions', icon: Brain },
+  { name: 'AWS Cloud', href: '/aws', icon: Cloud },
   { name: 'Integrations', href: '/integrations', icon: Cloud },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },

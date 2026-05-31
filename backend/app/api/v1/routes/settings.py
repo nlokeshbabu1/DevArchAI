@@ -38,17 +38,20 @@ def _get_email(user: User) -> str:
     if not user.email_encrypted:
         return "Email unavailable"
 
+    # If the raw stored value already looks like an email, use it directly
+    # (handles legacy plaintext storage without risking encrypted blob exposure)
+    if "@" in user.email_encrypted:
+        return user.email_encrypted
+
     try:
         decrypted_email = decrypt_user_email(user.email_encrypted)
-
-        if "@" not in decrypted_email:
-            return "Email unavailable"
-
-        return decrypted_email
-
+        if "@" in decrypted_email:
+            return decrypted_email
     except Exception as e:
-        logger.error(f"Email decrypt failed for user_id={user.id}: {e}")
-        return "Email unavailable"
+        logger.warning("Email decrypt failed for user_id=%s: %s", user.id, e)
+
+    # Cannot decrypt – show user-based placeholder instead of "Email unavailable"
+    return f"{user.username}@email.local"
 
 
 def _profile_dict(user: User, org_name: str | None = None) -> dict:
@@ -65,6 +68,8 @@ def _profile_dict(user: User, org_name: str | None = None) -> dict:
         "plan": user.subscription_plan if hasattr(user, "subscription_plan") else "free",
         "created_at": (user.created_at.isoformat() if user.created_at else None),
         "last_login_at": (user.last_login_at.isoformat() if user.last_login_at else None),
+        "provider": "email+github" if (user.github_id and user.hashed_password) else ("github" if user.github_id else "email"),
+        "has_password": bool(user.hashed_password),
     }
 
 
@@ -170,9 +175,34 @@ async def update_preferences(
 
 
 @router.get("/sessions")
-async def get_sessions(current_user: User = Depends(get_current_user)):
+async def get_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get active sessions for the current user (from DB)."""
+    from app.models.settings import UserSession
+    try:
+        result = await db.execute(
+            select(UserSession).where(
+                UserSession.user_id == current_user.id,
+                UserSession.revoked.is_(False),
+            ).order_by(UserSession.last_active_at.desc())
+        )
+        db_sessions = result.scalars().all()
+        return [
+            {
+                "id": str(s.id),
+                "device": s.device_name or s.browser or "Unknown",
+                "ip_address": s.ip_address,
+                "last_active": s.last_active_at.isoformat() if s.last_active_at else None,
+                "current": s.is_current,
+            }
+            for s in db_sessions
+        ]
+    except Exception:
+        pass
+    # Fallback to in-memory store
     uid = str(current_user.id)
-    logger.info("Fetching active sessions", user_id=uid)
     existing = _sessions_store.get(uid, [])
     now = datetime.now(timezone.utc).isoformat()
     current_session = {
@@ -196,7 +226,27 @@ async def get_sessions(current_user: User = Depends(get_current_user)):
 async def revoke_session(
     session_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    """Revoke a session by ID."""
+    from app.models.settings import UserSession
+    from uuid import UUID as UUIDType
+    try:
+        session_uuid = UUIDType(session_id)
+        result = await db.execute(
+            select(UserSession).where(
+                UserSession.id == session_uuid,
+                UserSession.user_id == current_user.id,
+            )
+        )
+        session = result.scalar_one_or_none()
+        if session:
+            session.revoked = True
+            session.is_current = False
+            await db.commit()
+            return {"message": "Session revoked successfully", "success": True}
+    except Exception:
+        pass
     if session_id.startswith("sess_"):
         for uid, sessions in _sessions_store.items():
             _sessions_store[uid] = [s for s in sessions if s["id"] != session_id]

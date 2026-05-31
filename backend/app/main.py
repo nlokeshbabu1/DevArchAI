@@ -110,6 +110,16 @@ def create_app() -> FastAPI:
     except Exception as e:
         logger.warning(f"Error tracking middleware registration failed: {e}")
 
+    # Enterprise Security Middleware
+    try:
+        from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, SessionValidationMiddleware
+        app.add_middleware(SecurityHeadersMiddleware)
+        app.add_middleware(RateLimitMiddleware)
+        app.add_middleware(SessionValidationMiddleware)
+        logger.info("Security headers, rate limiting, and session validation middleware enabled")
+    except Exception as e:
+        logger.warning(f"Security middleware registration failed: {e}")
+
     # Setup exception handlers
     setup_exception_handlers(app)
 

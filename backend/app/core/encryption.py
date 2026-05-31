@@ -1,12 +1,15 @@
 """Encryption utilities for sensitive data."""
 
 import base64
+import logging
 import os
 from functools import lru_cache
 
 from cryptography.fernet import Fernet
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class EncryptionService:
@@ -39,8 +42,9 @@ class EncryptionService:
         try:
             decrypted = self.fernet.decrypt(base64.urlsafe_b64decode(ciphertext.encode()))
             return decrypted.decode()
-        except Exception:
-            # Return as-is if decryption fails (for backward compatibility)
+        except Exception as exc:
+            if "@" not in ciphertext:
+                logger.warning("Email decryption failed: %s", exc)
             return ciphertext
 
 

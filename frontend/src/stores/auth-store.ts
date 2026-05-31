@@ -29,6 +29,7 @@ interface AuthState {
   setUser: (user: User) => void
   checkAuth: () => void
   fetchUserInfo: () => Promise<void>
+  serverLogout: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -86,6 +87,15 @@ export const useAuthStore = create<AuthState>()(
           // Use setTimeout to ensure state is updated
           useAuthStore.getState().fetchUserInfo()
         }, 0)
+      },
+
+      serverLogout: async () => {
+        try {
+          await api.post('/auth/logout')
+        } catch (error) {
+          console.warn('Server logout failed, clearing local state:', error)
+        }
+        get().logout()
       },
 
       logout: () => {

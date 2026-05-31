@@ -19,6 +19,7 @@ import { ScanHistoryPage } from './pages/ScanHistoryPage'
 import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
 import { IntegrationsPage } from './pages/dashboard/Integrations'
 import { SettingsPage } from './pages/settings/SettingsPage'
+import { AwsPage } from './pages/aws/AwsPage'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
 
@@ -166,6 +167,14 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <IntegrationsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/aws" element={
+        <ProtectedRoute>
+          <Layout>
+            <AwsPage />
           </Layout>
         </ProtectedRoute>
       } />

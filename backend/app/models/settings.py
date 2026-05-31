@@ -55,10 +55,15 @@ class UserSession(Base):
         index=True,
     )
 
-    token_prefix = Column(String(20), nullable=True)
-    device_info = Column(String(500), nullable=True)
+    refresh_token_hash = Column(String(255), nullable=True)
+    device_name = Column(String(255), nullable=True)
+    browser = Column(String(100), nullable=True)
+    os = Column(String(100), nullable=True)
     ip_address = Column(String(50), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    location = Column(String(255), nullable=True)
     is_current = Column(Boolean, default=False, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
 
     last_active_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -66,6 +71,7 @@ class UserSession(Base):
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", backref="sessions")
 

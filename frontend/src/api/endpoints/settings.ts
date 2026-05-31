@@ -16,6 +16,8 @@ export interface ProfileData {
   plan: string
   created_at?: string
   last_login_at?: string
+  provider?: 'email' | 'github' | 'email+github'
+  has_password?: boolean
 }
 
 export interface NotificationPrefs {

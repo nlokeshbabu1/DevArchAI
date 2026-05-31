@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -63,15 +63,31 @@ def generate_api_key() -> tuple[str, str]:
     return full_key, prefix
 
 
-def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
-    """Create a JWT access token."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(UTC) + expires_delta
-    else:
-        expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+def _generate_jti() -> str:
+    """Generate a unique JWT ID for token tracking."""
+    return str(uuid4())
 
-    to_encode.update({"exp": expire, "type": "access"})
+
+def hash_token(token: str) -> str:
+    """Create a SHA-256 hash of a token for secure storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
+    """Create a JWT access token with jti and iat."""
+    to_encode = data.copy()
+    now = datetime.now(UTC)
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "type": "access",
+        "jti": _generate_jti(),
+    })
 
     encoded_jwt = jwt.encode(
         to_encode,
@@ -82,10 +98,16 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
 
 
 def create_refresh_token(data: dict[str, Any]) -> str:
-    """Create a JWT refresh token."""
+    """Create a JWT refresh token with jti and iat."""
     to_encode = data.copy()
-    expire = datetime.now(UTC) + timedelta(days=7)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    now = datetime.now(UTC)
+    expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "type": "refresh",
+        "jti": _generate_jti(),
+    })
 
     encoded_jwt = jwt.encode(
         to_encode,
@@ -103,6 +125,8 @@ def decode_token(token: str) -> dict[str, Any] | None:
             settings.SECRET_KEY,
             algorithms=["HS256"],
         )
+        if payload.get("jti") is None:
+            logger.warning("Missing JWT JTI", payload_keys=list(payload.keys()))
         return payload
     except JWTError:
         return None
@@ -111,8 +135,9 @@ def decode_token(token: str) -> dict[str, Any] | None:
 async def get_current_user_from_token(
     token: str,
     db: AsyncSession,
+    request: Request | None = None,
 ) -> User | None:
-    """Get current user from JWT token."""
+    """Get current user from JWT token with blacklist check."""
     payload = decode_token(token)
     if payload is None:
         return None
@@ -120,6 +145,17 @@ async def get_current_user_from_token(
     user_id = payload.get("sub")
     if user_id is None:
         return None
+
+    # Check blacklist
+    jti = payload.get("jti")
+    if jti:
+        try:
+            from app.services.token_blacklist import is_blacklisted
+            if await is_blacklisted(jti):
+                logger.warning("Token is blacklisted", jti=jti[:8])
+                return None
+        except Exception:
+            pass
 
     # User.id is a UUID, not an integer
     try:

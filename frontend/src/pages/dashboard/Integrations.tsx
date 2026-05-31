@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '../../lib/utils'
 import { Github, Gitlab, Cloud, Server, Check, Loader2, Link as LinkIcon } from 'lucide-react'
 import { Button } from '../../components/ui'
@@ -59,8 +60,13 @@ const integrations: Integration[] = [
 
 export function IntegrationsPage() {
   const [integrationState, setIntegrationState] = useState<Integration[]>(integrations)
+  const navigate = useNavigate()
 
   const handleConnect = (id: string) => {
+    if (id === 'aws') {
+      navigate('/aws')
+      return
+    }
     setIntegrationState(prev =>
       prev.map(integration =>
         integration.id === id
