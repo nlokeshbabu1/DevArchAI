@@ -46,7 +46,7 @@ export const organizationsApi = {
    * Get current user's organization
    */
   getCurrentOrganization: async (): Promise<Organization> => {
-    const response = await apiClient.get<Organization>('/api/v1/organizations/me');
+    const response = await apiClient.get<Organization>('/organizations/me');
     return response.data;
   },
 
@@ -54,7 +54,7 @@ export const organizationsApi = {
    * List all organizations user is member of
    */
   listOrganizations: async (): Promise<Organization[]> => {
-    const response = await apiClient.get<Organization[]>('/api/v1/organizations');
+    const response = await apiClient.get<Organization[]>('/organizations');
     return response.data;
   },
 
@@ -62,7 +62,7 @@ export const organizationsApi = {
    * Create new organization
    */
   createOrganization: async (data: OrganizationCreate): Promise<Organization> => {
-    const response = await apiClient.post<Organization>('/api/v1/organizations', data);
+    const response = await apiClient.post<Organization>('/organizations', data);
     return response.data;
   },
 
@@ -70,7 +70,7 @@ export const organizationsApi = {
    * Get organization by ID
    */
   getOrganization: async (orgId: string): Promise<Organization> => {
-    const response = await apiClient.get<Organization>(`/api/v1/organizations/${orgId}`);
+    const response = await apiClient.get<Organization>(`/organizations/${orgId}`);
     return response.data;
   },
 
@@ -78,7 +78,7 @@ export const organizationsApi = {
    * Update organization
    */
   updateOrganization: async (orgId: string, data: OrganizationUpdate): Promise<Organization> => {
-    const response = await apiClient.put<Organization>(`/api/v1/organizations/${orgId}`, data);
+    const response = await apiClient.put<Organization>(`/organizations/${orgId}`, data);
     return response.data;
   },
 
@@ -86,7 +86,7 @@ export const organizationsApi = {
    * List organization members
    */
   listMembers: async (orgId: string): Promise<Member[]> => {
-    const response = await apiClient.get<Member[]>(`/api/v1/organizations/${orgId}/members`);
+    const response = await apiClient.get<Member[]>(`/organizations/${orgId}/members`);
     return response.data;
   },
 
@@ -94,7 +94,7 @@ export const organizationsApi = {
    * Invite member to organization
    */
   inviteMember: async (orgId: string, data: MemberInvite): Promise<{ message: string }> => {
-    const response = await apiClient.post(`/api/v1/organizations/${orgId}/members/invite`, data);
+    const response = await apiClient.post(`/organizations/${orgId}/members/invite`, data);
     return response.data;
   },
 
@@ -102,7 +102,7 @@ export const organizationsApi = {
    * Remove member from organization
    */
   removeMember: async (orgId: string, memberId: string): Promise<{ message: string }> => {
-    const response = await apiClient.delete(`/api/v1/organizations/${orgId}/members/${memberId}`);
+    const response = await apiClient.delete(`/organizations/${orgId}/members/${memberId}`);
     return response.data;
   },
 };

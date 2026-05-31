@@ -92,7 +92,7 @@ async def init_db() -> None:
     try:
         async with engine.begin() as conn:
             # Import all models to ensure they're registered
-            from app.models import Finding, GitHubInstallation, Report, Repository, Scan, User  # noqa: F401
+            from app.models import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory, Finding, GitHubInstallation, Report, Repository, Scan, User  # noqa: F401
 
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created successfully")

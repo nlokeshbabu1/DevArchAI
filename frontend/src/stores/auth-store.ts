@@ -4,6 +4,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { api } from '../lib/api'
 
 interface User {
   id: string
@@ -28,6 +29,7 @@ interface AuthState {
   setUser: (user: User) => void
   checkAuth: () => void
   fetchUserInfo: () => Promise<void>
+  serverLogout: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -59,21 +61,18 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const response = await fetch('/api/v1/auth/me', {
+          const response = await api.get('/auth/me', {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
             },
           })
-          
-          if (response.ok) {
-            const userData = await response.json()
-            set({ user: userData, isAuthenticated: true })
-          } else {
-            // Token invalid, clear auth
+
+          set({ user: response.data, isAuthenticated: true })
+        } catch (error: any) {
+          console.error('Failed to fetch user info:', error)
+          if (error?.response) {
             get().logout()
           }
-        } catch (error) {
-          console.error('Failed to fetch user info:', error)
         } finally {
           set({ isLoading: false })
         }
@@ -88,6 +87,15 @@ export const useAuthStore = create<AuthState>()(
           // Use setTimeout to ensure state is updated
           useAuthStore.getState().fetchUserInfo()
         }, 0)
+      },
+
+      serverLogout: async () => {
+        try {
+          await api.post('/auth/logout')
+        } catch (error) {
+          console.warn('Server logout failed, clearing local state:', error)
+        }
+        get().logout()
       },
 
       logout: () => {

@@ -22,8 +22,10 @@ from app.parsers.kubernetes import KubernetesParser
 from app.parsers.terraform import TerraformParser
 from app.rule_engine.base import RuleFinding, RuleRegistry
 from app.scoring.engine import ScoringEngine
+from app.services.ai_suggestion_service import schedule_ai_suggestions_generation
 from app.services.findings_deduplicator import FindingsDeduplicator
 from app.services.findings_enricher import FindingsEnricher
+from app.services.report_service import ReportService
 from app.services.technology_detector import TechnologyStack, detect_technology_stack
 from app.utils.repository_scanner import RepositoryScanner
 
@@ -48,6 +50,7 @@ class ScanService:
         self.detected_stack: Optional[TechnologyStack] = None
         self.deduplicator = FindingsDeduplicator()
         self.enricher = FindingsEnricher()
+        self.report_service = ReportService()
         logger.info("ScanService initialized", ai_explanations=include_ai_explanations)
 
     def _setup_parsers(self) -> ParserRegistry:
@@ -236,22 +239,12 @@ class ScanService:
                 findings_count=len(rule_findings),
             )
 
-            self._update_progress(progress_callback, 65, "Generating AI explanations...")
+            self._update_progress(progress_callback, 65, "Preparing remediation guidance...")
 
-            # Add AI explanations
-            if self.include_ai_explanations and self.explanation_engine:
-                rule_findings = await self.explanation_engine.explain_findings_batch(
-                    rule_findings,
-                    max_findings=20,
-                )
-
-            # Enrich findings with AI-powered or static enrichment
-            self._update_progress(progress_callback, 70, "Generating AI fixes...")
-            # Use static enrichment (AI enrichment requires async which doesn't work with sync session)
+            # Keep the main scan path static and deterministic; AI suggestions are generated later.
+            self._update_progress(progress_callback, 70, "Building static recommendations...")
             from app.services.findings_enricher import enrich_findings
-            logger.error(f"DEBUG: About to enrich {len(rule_findings)} findings")
             rule_findings = enrich_findings(rule_findings)
-            logger.error(f"DEBUG: Enriched {len(rule_findings)} findings, with_fix_examples={sum(1 for f in rule_findings if f.fix_example)}")
             logger.info(
                 "Findings enriched",
                 findings_count=len(rule_findings),
@@ -269,7 +262,7 @@ class ScanService:
             await self._save_findings(scan.id, rule_findings)
 
             # Create report
-            report = await self._create_report(
+            await self._create_report(
                 scan=scan,
                 rule_findings=rule_findings,
                 scores=scores,
@@ -288,10 +281,17 @@ class ScanService:
             scan.reliability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.RELIABILITY), None)
             scan.cost_score = next((cs.score for cs in scores.category_scores if cs.category == Category.COST), None)
             scan.observability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.OBSERVABILITY), None)
+            scan.ai_status = "pending" if self.include_ai_explanations and rule_findings else "completed"
+            scan.ai_error_message = None
+            if scan.ai_status == "completed":
+                scan.ai_completed_at = datetime.utcnow()
 
             await self.db.commit()
 
             self._update_progress(progress_callback, 100, "Scan complete")
+
+            if scan.ai_status == "pending":
+                schedule_ai_suggestions_generation(scan.id)
 
             logger.info(
                 "Scan completed successfully",
@@ -304,6 +304,7 @@ class ScanService:
         except Exception as e:
             logger.exception("Scan failed", scan_id=scan.id, error=str(e))
             scan.status = ScanStatus.FAILED
+            scan.ai_status = "failed"
             scan.error_message = str(e)
             await self.db.commit()
 
@@ -632,17 +633,8 @@ class ScanService:
         rule_findings: list[RuleFinding],
         scores: Any,
         files_analyzed: list[str],
-    ) -> Report:
+    ) -> Report | None:
         """Create analysis report."""
-        # Count findings by severity
-        severity_counts = {
-            "critical": sum(1 for f in rule_findings if f.severity == Severity.CRITICAL or (hasattr(f.severity, 'value') and f.severity.value == "critical")),
-            "high": sum(1 for f in rule_findings if f.severity == Severity.HIGH or (hasattr(f.severity, 'value') and f.severity.value == "high")),
-            "medium": sum(1 for f in rule_findings if f.severity == Severity.MEDIUM or (hasattr(f.severity, 'value') and f.severity.value == "medium")),
-            "low": sum(1 for f in rule_findings if f.severity == Severity.LOW or (hasattr(f.severity, 'value') and f.severity.value == "low")),
-            "info": sum(1 for f in rule_findings if f.severity == Severity.INFO or (hasattr(f.severity, 'value') and f.severity.value == "info")),
-        }
-
         # Generate AI summary if enabled
         executive_summary = None
         risk_analysis = None
@@ -660,34 +652,31 @@ class ScanService:
             risk_analysis = summary_data.get("risk_analysis")
             prioritized_recommendations = summary_data.get("prioritized_recommendations")
 
-        # Create report
-        report = Report(
-            scan_id=scan.id,
-            repository_name=scan.repository_url.split("/")[-1],
-            repository_url=scan.repository_url,
-            commit_hash=scan.commit_hash,
-            overall_score=scores.score,
-            category_scores={
-                "security": next((cs.score for cs in scores.category_scores if cs.category == Category.SECURITY), 0),
-                "scalability": next((cs.score for cs in scores.category_scores if cs.category == Category.SCALABILITY), 0),
-                "reliability": next((cs.score for cs in scores.category_scores if cs.category == Category.RELIABILITY), 0),
-                "cost": next((cs.score for cs in scores.category_scores if cs.category == Category.COST), 0),
-                "observability": next((cs.score for cs in scores.category_scores if cs.category == Category.OBSERVABILITY), 0),
-            },
-            executive_summary=executive_summary,
-            risk_analysis=risk_analysis,
-            prioritized_recommendations=prioritized_recommendations,
-            total_findings=len(rule_findings),
-            critical_count=severity_counts["critical"],
-            high_count=severity_counts["high"],
-            medium_count=severity_counts["medium"],
-            low_count=severity_counts["low"],
-            info_count=severity_counts["info"],
-            files_analyzed=files_analyzed,
-        )
-
-        self.db.add(report)
-        await self.db.flush()
+        try:
+            async with self.db.begin_nested():
+                report = await self.report_service.upsert_report_record_async(
+                    db=self.db,
+                    scan=scan,
+                    findings=rule_findings,
+                    scores=scores,
+                    files_analyzed=files_analyzed,
+                    executive_summary=executive_summary,
+                    risk_analysis=risk_analysis,
+                    prioritized_recommendations=prioritized_recommendations,
+                )
+                self.report_service.generate_and_store_artifacts(
+                    scan=scan,
+                    report=report,
+                    findings=rule_findings,
+                )
+                await self.db.flush()
+        except Exception as exc:
+            logger.exception(
+                "Report artifact generation failed",
+                scan_id=scan.id,
+                error=str(exc),
+            )
+            return None
 
         return report
 

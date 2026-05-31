@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
 import {
   Download,
   AlertCircle,
   ExternalLink,
   FileText,
+  FileSpreadsheet,
   Clock,
   Shield,
   TrendingUp,
@@ -26,6 +26,7 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
 interface Finding {
@@ -137,13 +138,28 @@ export function Report() {
     }
   }
 
+  const handleDownloadExcel = async () => {
+    const scanId = report?.scan_id
+    if (!scanId) return
+    setIsDownloading(true)
+    try {
+      const response = await api.get(`/reports/${scanId}/download?format=excel`)
+      const { url: downloadUrl } = response.data
+      window.open(downloadUrl, '_blank')
+    } catch (error) {
+      console.error('Excel download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
     queryFn: async () => {
-      const reportResponse = await axios.get(`/api/v1/reports/${id}`)
+      const reportResponse = await api.get(`/reports/${id}`)
       const reportData = reportResponse.data
 
-      const findingsResponse = await axios.get(`/api/v1/scans/${reportData.scan_id}/findings`)
+      const findingsResponse = await api.get(`/scans/${reportData.scan_id}/findings`)
       const findingsData = findingsResponse.data
 
       const categoryIcons: Record<string, any> = {
@@ -312,10 +328,18 @@ export function Report() {
             }
           </p>
         </div>
-        <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
-          <Download className="h-4 w-4" />
-          {isDownloading ? 'Downloading...' : 'Download Report'}
-        </Button>
+        <div className="flex gap-2">
+          {report?.scan_id && (
+            <Button variant="secondary" onClick={handleDownloadExcel} disabled={isDownloading}>
+              <FileSpreadsheet className="h-4 w-4" />
+              {isDownloading ? 'Downloading...' : 'Excel Report'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
+            <Download className="h-4 w-4" />
+            {isDownloading ? 'Downloading...' : 'Download Report'}
+          </Button>
+        </div>
       </div>
 
       {/* Score Overview */}

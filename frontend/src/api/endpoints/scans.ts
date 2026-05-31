@@ -7,6 +7,8 @@ import apiClient from './client';
 export interface Scan {
   id: string;
   status: string;
+  scan_status?: string;
+  ai_status?: 'pending' | 'processing' | 'completed' | 'failed';
   progress: number;
   status_message?: string;
   error_message?: string;
@@ -32,6 +34,16 @@ export interface ScanCreate {
   repository_url: string;
   branch?: string;
   commit_hash?: string;
+}
+
+export interface UnifiedScanStartResponse {
+  scan_id: string;
+  session_token?: string;
+  status: string;
+  message?: string;
+  repository_id?: string;
+  repository_url?: string;
+  branch?: string;
 }
 
 export const scansApi = {
@@ -60,8 +72,8 @@ export const scansApi = {
   /**
    * Start unified scan (guest or authenticated)
    */
-  startUnifiedScan: async (data: ScanCreate): Promise<{ scan_id: string; session_token?: string; status: string }> => {
-    const response = await apiClient.post('/scan/start', data);
+  startUnifiedScan: async (data: ScanCreate): Promise<UnifiedScanStartResponse> => {
+    const response = await apiClient.post<UnifiedScanStartResponse>('/scan/start', data);
     return response.data;
   },
 
@@ -123,7 +135,7 @@ export const scansApi = {
    * Delete scan
    */
   deleteScan: async (scanId: string): Promise<{ message: string }> => {
-    const response = await apiClient.delete(`/api/v1/scans/${scanId}`);
+    const response = await apiClient.delete(`/scans/${scanId}`);
     return response.data;
   },
 
@@ -131,7 +143,7 @@ export const scansApi = {
    * Get scan findings
    */
   getScanFindings: async (scanId: string): Promise<any[]> => {
-    const response = await apiClient.get(`/api/v1/scans/${scanId}/findings`);
+    const response = await apiClient.get(`/scans/${scanId}/findings`);
     return response.data;
   },
 };

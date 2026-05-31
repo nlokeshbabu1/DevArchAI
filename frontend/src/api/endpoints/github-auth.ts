@@ -73,23 +73,8 @@ export const githubAuthApi = {
    */
   exchangeCodeForToken: async (code: string): Promise<GithubTokenResponse> => {
     try {
-      // Use environment variable for API URL with fallback for development
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/api/v1/auth/github/callback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data
+      const response = await apiClient.post<GithubTokenResponse>('/auth/github/callback', { code })
+      return response.data
     } catch (error: any) {
       throw error
     }

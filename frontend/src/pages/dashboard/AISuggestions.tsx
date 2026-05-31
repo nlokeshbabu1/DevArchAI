@@ -111,7 +111,7 @@ function AISuggestionModal({ suggestion, onClose, onStatusChange, userPlan }: AI
     
     setApplying(true)
     try {
-      const response = await apiClient.post(`/api/v1/suggestions/${suggestion.id}/apply`, {
+      const response = await apiClient.post(`/suggestions/${suggestion.id}/apply`, {
         dry_run: false,
       })
       
@@ -131,7 +131,7 @@ function AISuggestionModal({ suggestion, onClose, onStatusChange, userPlan }: AI
     
     setCreatingPR(true)
     try {
-      const response = await apiClient.post(`/api/v1/suggestions/${suggestion.id}/create-pr`, {
+      const response = await apiClient.post(`/suggestions/${suggestion.id}/create-pr`, {
         branch_name: undefined,
         pr_title: suggestion.title,
         pr_description: `Automated fix for ${suggestion.title}`,
@@ -152,7 +152,7 @@ function AISuggestionModal({ suggestion, onClose, onStatusChange, userPlan }: AI
   const handleIgnore = async () => {
     setIgnoring(true)
     try {
-      await apiClient.post(`/api/v1/suggestions/${suggestion.id}/ignore`)
+      await apiClient.post(`/suggestions/${suggestion.id}/ignore`)
       toast.success('Suggestion ignored')
       onStatusChange(suggestion.id, 'ignored')
       onClose()
@@ -166,7 +166,7 @@ function AISuggestionModal({ suggestion, onClose, onStatusChange, userPlan }: AI
   const handleMarkFixed = async () => {
     setMarkingFixed(true)
     try {
-      await apiClient.post(`/api/v1/suggestions/${suggestion.id}/mark-fixed`)
+      await apiClient.post(`/suggestions/${suggestion.id}/mark-fixed`)
       toast.success('Suggestion marked as fixed')
       onStatusChange(suggestion.id, 'fixed')
       onClose()
@@ -182,7 +182,7 @@ function AISuggestionModal({ suggestion, onClose, onStatusChange, userPlan }: AI
     
     setRescanning(true)
     try {
-      const response = await apiClient.post(`/api/v1/suggestions/${suggestion.id}/rescan`)
+      const response = await apiClient.post(`/suggestions/${suggestion.id}/rescan`)
       if (response.data.success) {
         toast.success('Re-scan initiated! Check back in a few minutes.')
       }
@@ -472,7 +472,7 @@ export function AISuggestionsPage() {
   const fetchAllSuggestions = async () => {
     setLoading(true)
     try {
-      const response = await apiClient.get('/api/v1/suggestions')
+      const response = await apiClient.get('/suggestions')
       setSuggestions(response.data.suggestions || [])
     } catch (error) {
       console.error('Failed to fetch suggestions:', error)

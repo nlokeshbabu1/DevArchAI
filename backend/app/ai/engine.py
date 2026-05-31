@@ -226,6 +226,19 @@ List recommendations in order of priority (most critical first)."""
             logger.warning("Recommendations generation failed", error=str(e))
             return self._fallback_recommendations(findings)
 
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response for batched remediation prompts."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a DevOps remediation assistant. Return only the requested content."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content or ""
+
     def _format_findings(self, findings: list[dict], severity: str) -> str:
         """Format findings by severity."""
         filtered = [f for f in findings if f.get("severity") == severity]
@@ -394,6 +407,15 @@ Write a 3-paragraph executive summary."""
         except Exception as e:
             logger.warning("Recommendations failed", error=str(e))
             return [f.get("recommendation") for f in findings[:5]]
+
+    async def generate(self, prompt: str) -> str:
+        """Generate raw text response for batched remediation prompts."""
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
 
 
 class MistralProvider(BaseLLMProvider):
@@ -691,42 +713,62 @@ def get_llm_provider() -> BaseLLMProvider:
     """Factory function to get configured LLM provider with automatic fallback.
 
     Priority order:
-    1. If GEMINI_API_KEY is set -> Use Gemini
-    2. If OPENAI_API_KEY is set -> Use OpenAI
-    3. If ANTHROPIC_API_KEY is set -> Use Anthropic
-    4. If MISTRAL_API_KEY is set -> Use Mistral
-    5. Otherwise -> Use Mock (static fallback)
-
-    If enrichment fails at any point, fallback to next provider in chain.
+    1. Read LLM_PROVIDER from settings (e.g., "mistral", "openai", "gemini", "anthropic", "mock")
+    2. If the configured provider's API key exists -> use it
+    3. If not -> fallback chain: OpenAI -> Anthropic -> Gemini -> Mistral -> Mock
     """
-    # Try Gemini first if API key is available
-    if settings.GEMINI_API_KEY:
-        logger.info("Using Gemini LLM provider")
+    provider = settings.LLM_PROVIDER.lower()
+
+    # Try configured provider first
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider (configured)")
         return GeminiProvider(
             api_key=settings.GEMINI_API_KEY,
             model=settings.LLM_MODEL or "gemini-1.5-flash",
         )
-
-    # Try OpenAI if API key is available
-    if settings.OPENAI_API_KEY:
-        logger.info("Using OpenAI LLM provider")
+    if provider == "openai" and settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider (configured)")
         return OpenAIProvider(
             api_key=settings.OPENAI_API_KEY,
             model=settings.LLM_MODEL or "gpt-4-turbo-preview",
         )
-
-    # Try Anthropic if API key is available
-    if settings.ANTHROPIC_API_KEY:
-        logger.info("Using Anthropic LLM provider")
+    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider (configured)")
         return AnthropicProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
         )
+    if provider == "mistral" and settings.MISTRAL_API_KEY:
+        logger.info("Using Mistral LLM provider (configured)")
+        mistral_model = "mistral-large-latest"
+        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
+            mistral_model = settings.LLM_MODEL
+        return MistralProvider(
+            api_key=settings.MISTRAL_API_KEY,
+            model=mistral_model,
+        )
 
-    # Try Mistral if API key is available
+    # Fallback chain: try available providers in order
+    if settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider (fallback)")
+        return OpenAIProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.LLM_MODEL or "gpt-4-turbo-preview",
+        )
+    if settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider (fallback)")
+        return AnthropicProvider(
+            api_key=settings.ANTHROPIC_API_KEY,
+            model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
+        )
+    if settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider (fallback)")
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model=settings.LLM_MODEL or "gemini-1.5-flash",
+        )
     if settings.MISTRAL_API_KEY:
-        logger.info("Using Mistral LLM provider")
-        # Use correct Mistral model, not gemini-pro or other provider defaults
+        logger.info("Using Mistral LLM provider (fallback)")
         mistral_model = "mistral-large-latest"
         if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
             mistral_model = settings.LLM_MODEL

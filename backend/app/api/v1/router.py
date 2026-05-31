@@ -18,8 +18,11 @@ from app.api.v1.routes import (
     reports,
     repositories,
     scans,
+    settings,
     unified_scan,
 )
+from app.api.v1.aws.routes import router as aws_router
+from app.api.aws_findings import router as aws_findings_router
 
 api_router = APIRouter()
 
@@ -38,6 +41,9 @@ api_router.include_router(repositories.router)
 api_router.include_router(reports.router)
 api_router.include_router(repo_analysis.router)
 api_router.include_router(public_scans.router)
+api_router.include_router(settings.router)
 api_router.include_router(unified_scan.router)
+api_router.include_router(aws_router)
+api_router.include_router(aws_findings_router)
 
 __all__ = ["api_router"]

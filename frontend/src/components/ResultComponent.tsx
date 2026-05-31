@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import axios from 'axios'
 import {
   CheckCircle, AlertTriangle, Info, AlertCircle, Shield, Server, Cloud,
   Zap, GitBranch, BarChart3, Brain, Terminal, Lock, ArrowLeft, RotateCcw,
@@ -8,6 +7,7 @@ import {
   SortAsc, SortDesc, ExternalLink, Sparkles
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
+import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
@@ -323,32 +323,17 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
       // For authenticated users with PDF/Excel, try backend endpoint
       if (token && (format === 'pdf' || format === 'xlsx')) {
         try {
-          // First get or create report
-          const reportResponse = await axios.get(`/api/v1/reports/scan/${result.scan_id}/latest`, {
+          const normalizedFormat = format === 'xlsx' ? 'excel' : format
+          const downloadResponse = await api.get(`/reports/${result.scan_id}/download?format=${normalizedFormat}`, {
             headers: { Authorization: `Bearer ${token}` },
           })
-          
-          const reportId = reportResponse.data.id
-          
-          // Download in requested format
-          const downloadResponse = await axios.get(`/api/v1/reports/${reportId}/download?format=${format}`, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'blob',
-          })
-
-          const blob = new Blob([downloadResponse.data], {
-            type: format === 'pdf' ? 'application/pdf' :
-                  format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
-                  'application/json',
-          })
-          const url = URL.createObjectURL(blob)
           const link = document.createElement('a')
-          link.href = url
+          link.href = downloadResponse.data.url
           link.download = `report-${result.scan_id.slice(0, 8)}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
+          link.rel = 'noopener noreferrer'
           document.body.appendChild(link)
           link.click()
           document.body.removeChild(link)
-          URL.revokeObjectURL(url)
           return
         } catch (backendError) {
           console.warn('Backend download failed, falling back to JSON:', backendError)

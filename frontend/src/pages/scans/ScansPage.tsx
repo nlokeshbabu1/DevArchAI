@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react'
 import { Card, Button, Badge, Progress } from '../../components/ui'
-import axios from 'axios'
+import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
 
@@ -19,19 +19,6 @@ interface Scan {
   analysis_duration_seconds?: number
   error_message?: string
 }
-
-// Configure axios with auth token
-const api = axios.create({
-  baseURL: '/api/v1',
-})
-
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
 
 export function ScansPage() {
   const queryClient = useQueryClient()
@@ -82,32 +69,20 @@ export function ScansPage() {
 
   const handleExport = async (scanId: string, format: 'json' | 'xlsx' | 'pdf') => {
     try {
-      // First get the report for this scan
-      const reportsResponse = await api.get(`/reports/scan/${scanId}/latest`)
-      const report = reportsResponse.data
-      
-      // Then download in the requested format
-      const response = await api.get(`/reports/${report.id}/download?format=${format}`, {
-        responseType: 'blob',
+      const normalizedFormat = format === 'xlsx' ? 'excel' : format
+      const response = await api.get(`/reports/${scanId}/download?format=${normalizedFormat}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
-      
-      // Create download link
-      const blob = new Blob([response.data], {
-        type: format === 'pdf' ? 'application/pdf' : 
-              format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 
-              'application/json',
-      })
-      const url = window.URL.createObjectURL(blob)
+
       const link = document.createElement('a')
-      link.href = url
+      link.href = response.data.url
       link.download = `report_${scanId}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
+      link.rel = 'noopener noreferrer'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Export failed:', error)
       alert('Failed to export report. Please try again.')

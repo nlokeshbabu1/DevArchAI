@@ -38,12 +38,24 @@ export interface UserResponse {
   last_login_at?: string
 }
 
+export interface SessionInfo {
+  id: string
+  device_name?: string
+  browser?: string
+  ip_address?: string
+  location?: string
+  created_at: string
+  last_active_at: string
+  expires_at?: string
+  is_current: boolean
+}
+
 export const authApi = {
   /**
    * Register a new user
    */
   register: async (data: RegisterRequest): Promise<UserResponse> => {
-    const response = await apiClient.post<UserResponse>('/api/v1/auth/register', data)
+    const response = await apiClient.post<UserResponse>('/auth/register', data)
     return response.data
   },
 
@@ -51,7 +63,7 @@ export const authApi = {
    * Login user
    */
   login: async (data: LoginRequest): Promise<TokenResponse> => {
-    const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', data)
+    const response = await apiClient.post<TokenResponse>('/auth/login', data)
     return response.data
   },
 
@@ -59,7 +71,7 @@ export const authApi = {
    * Get current user info
    */
   getCurrentUser: async (): Promise<UserResponse> => {
-    const response = await apiClient.get<UserResponse>('/api/v1/auth/me')
+    const response = await apiClient.get<UserResponse>('/auth/me')
     return response.data
   },
 
@@ -67,7 +79,7 @@ export const authApi = {
    * Update current user profile
    */
   updateProfile: async (data: Partial<UserResponse>): Promise<UserResponse> => {
-    const response = await apiClient.put<UserResponse>('/api/v1/auth/me', data)
+    const response = await apiClient.put<UserResponse>('/auth/me', data)
     return response.data
   },
 
@@ -75,7 +87,7 @@ export const authApi = {
    * Create API key
    */
   createApiKey: async (): Promise<{ api_key: string; api_key_prefix: string; created_at: string }> => {
-    const response = await apiClient.post('/api/v1/auth/api-key')
+    const response = await apiClient.post('/auth/api-key')
     return response.data
   },
 
@@ -83,16 +95,39 @@ export const authApi = {
    * Revoke API key
    */
   revokeApiKey: async (): Promise<{ message: string }> => {
-    const response = await apiClient.delete('/api/v1/auth/api-key')
+    const response = await apiClient.delete('/auth/api-key')
     return response.data
   },
 
   /**
-   * Logout (client-side only - just clear tokens)
+   * Server-side logout (blacklists tokens, revokes session)
    */
-  logout: (): void => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('current_org_id')
+  logout: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post('/auth/logout')
+    return response.data
+  },
+
+  /**
+   * List all active sessions
+   */
+  getSessions: async (): Promise<SessionInfo[]> => {
+    const response = await apiClient.get<SessionInfo[]>('/auth/sessions')
+    return response.data
+  },
+
+  /**
+   * Revoke a specific session
+   */
+  revokeSession: async (sessionId: string): Promise<{ message: string }> => {
+    const response = await apiClient.delete(`/auth/sessions/${sessionId}`)
+    return response.data
+  },
+
+  /**
+   * Revoke all other sessions
+   */
+  revokeAllSessions: async (): Promise<{ message: string; revoked_count: number }> => {
+    const response = await apiClient.post('/auth/revoke-all')
+    return response.data
   },
 }

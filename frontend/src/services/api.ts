@@ -1,42 +1,33 @@
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-
-export const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
+import { api } from '../lib/api'
 
 export const analysisApi = {
   // Deep analysis with rule engine and AI explanations (with branch support)
   startDeepAnalysis: (repoUrl: string, branch?: string) =>
-    api.post('/api/v1/analyze/repo/deep', {
+    api.post('/analyze/repo/deep', {
       repo_url: repoUrl,
       branch: branch || 'main'
     }),
 
   // Legacy analysis (file detection only)
   startAnalysis: (data: { repository_url: string; include_ai_explanations: boolean; branch?: string }) =>
-    api.post('/api/v1/analyze', data),
+    api.post('/analyze', data),
 
   getAnalysisStatus: (jobId: string) =>
-    api.get(`/api/v1/analysis/${jobId}`),
+    api.get(`/analysis/${jobId}`),
 
   getReport: (reportId: string) =>
-    api.get(`/api/v1/reports/${reportId}`),
+    api.get(`/reports/${reportId}`),
 
-  downloadReport: (reportId: string) =>
-    api.get(`/api/v1/reports/${reportId}/download`, { responseType: 'blob' }),
+  downloadReport: (scanId: string, format: 'pdf' | 'excel' = 'pdf') =>
+    api.get(`/reports/${scanId}/download?format=${format}`),
 
   // Scans API
   listScans: () =>
-    api.get('/api/v1/scans'),
+    api.get('/scans'),
 
   getScan: (scanId: string) =>
-    api.get(`/api/v1/scans/${scanId}`),
+    api.get(`/scans/${scanId}`),
 
   getScanFindings: (scanId: string) =>
-    api.get(`/api/v1/scans/${scanId}/findings`),
+    api.get(`/scans/${scanId}/findings`),
 }

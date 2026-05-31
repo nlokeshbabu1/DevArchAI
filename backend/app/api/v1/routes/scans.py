@@ -39,6 +39,46 @@ def _parse_scan_id(scan_id: str) -> UUID:
         )
 
 
+def _serialize_scan(
+    scan: Scan,
+    *,
+    findings_count: int | None = None,
+    files_analyzed: int | None = None,
+    detected_technologies: list[str] | None = None,
+) -> dict:
+    """Serialize scan model for API responses."""
+    scan_status = scan.status.value if hasattr(scan.status, "value") else str(scan.status)
+
+    return {
+        "id": str(scan.id),
+        "user_id": str(scan.user_id) if scan.user_id else None,
+        "repository_id": str(scan.repository_id) if scan.repository_id else None,
+        "repository_url": scan.repository_url,
+        "branch": scan.branch,
+        "commit_hash": scan.commit_hash,
+        "status": scan_status,
+        "scan_status": scan_status,
+        "ai_status": scan.ai_status or "pending",
+        "progress": scan.progress,
+        "error_message": scan.error_message,
+        "overall_score": scan.overall_score,
+        "security_score": scan.security_score,
+        "scalability_score": scan.scalability_score,
+        "reliability_score": scan.reliability_score,
+        "cost_score": scan.cost_score,
+        "observability_score": scan.observability_score,
+        "detected_stack": scan.detected_stack,
+        "detected_technologies": detected_technologies,
+        "files_analyzed": files_analyzed,
+        "findings_count": findings_count,
+        "started_at": scan.started_at.isoformat() if scan.started_at else None,
+        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+        "analysis_duration_seconds": scan.analysis_duration_seconds,
+        "created_at": scan.created_at.isoformat(),
+        "updated_at": scan.updated_at.isoformat(),
+    }
+
+
 @router.get("", response_model=list)
 async def list_scans(
     page: int = Query(default=1, ge=1),
@@ -82,31 +122,7 @@ async def list_scans(
     logger.info(f"Returning {len(scans)} scans")
 
     # Convert to list of dicts for JSON serialization
-    return [
-        {
-            "id": str(scan.id),
-            "user_id": str(scan.user_id) if scan.user_id else None,
-            "repository_id": str(scan.repository_id) if scan.repository_id else None,
-            "repository_url": scan.repository_url,
-            "branch": scan.branch,
-            "commit_hash": scan.commit_hash,
-            "status": scan.status.value,
-            "progress": scan.progress,
-            "error_message": scan.error_message,
-            "overall_score": scan.overall_score,
-            "security_score": scan.security_score,
-            "scalability_score": scan.scalability_score,
-            "reliability_score": scan.reliability_score,
-            "cost_score": scan.cost_score,
-            "observability_score": scan.observability_score,
-            "started_at": scan.started_at.isoformat() if scan.started_at else None,
-            "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-            "analysis_duration_seconds": scan.analysis_duration_seconds,
-            "created_at": scan.created_at.isoformat(),
-            "updated_at": scan.updated_at.isoformat(),
-        }
-        for scan in scans
-    ]
+    return [_serialize_scan(scan) for scan in scans]
 
 
 @router.get("/{scan_id}", response_model=ScanResponse)
@@ -133,13 +149,10 @@ async def get_scan(
         raise ScanNotFoundException(scan_id)
 
     # Get findings count
-    from app.models.finding import Finding
-    logger.error(f"DEBUG: Getting scan {scan_id}")  # DEBUG LINE
     findings_count = await db.execute(
-        select(func.count()).select_from(Finding).where(Finding.scan_id == scan_id)
+        select(func.count()).select_from(Finding).where(Finding.scan_id == scan_uuid)
     )
     findings_count = findings_count.scalar() or 0
-    logger.error(f"DEBUG: findings_count={findings_count}")  # DEBUG LINE
     
     # Calculate files analyzed from detected_stack
     files_analyzed = 0
@@ -188,32 +201,12 @@ async def get_scan(
         if stack.get('has_drone') or stack.get('drone_files'):
             detected_tech_names.append('Drone CI')
     
-    return {
-        "id": str(scan.id),
-        "user_id": str(scan.user_id) if scan.user_id else None,
-        "repository_id": str(scan.repository_id) if scan.repository_id else None,
-        "repository_url": scan.repository_url,
-        "branch": scan.branch,
-        "commit_hash": scan.commit_hash,
-        "status": scan.status.value,
-        "progress": scan.progress,
-        "error_message": scan.error_message,
-        "overall_score": scan.overall_score,
-        "security_score": scan.security_score,
-        "scalability_score": scan.scalability_score,
-        "reliability_score": scan.reliability_score,
-        "cost_score": scan.cost_score,
-        "observability_score": scan.observability_score,
-        "detected_stack": scan.detected_stack,
-        "detected_technologies": detected_tech_names,
-        "files_analyzed": files_analyzed,
-        "findings_count": findings_count,
-        "started_at": scan.started_at.isoformat() if scan.started_at else None,
-        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-        "analysis_duration_seconds": scan.analysis_duration_seconds,
-        "created_at": scan.created_at.isoformat(),
-        "updated_at": scan.updated_at.isoformat(),
-    }
+    return _serialize_scan(
+        scan,
+        findings_count=findings_count,
+        files_analyzed=files_analyzed,
+        detected_technologies=detected_tech_names,
+    )
 
 
 @router.get("/{scan_id}/progress", response_model=ScanProgressResponse)
@@ -492,19 +485,16 @@ async def create_scan(
                 try:
                     updated_scan = scan_service.execute_scan(sync_scan)
                     signal.alarm(0)  # Cancel alarm
-                    
-                    # Copy results back to async session
+
                     scan.status = updated_scan.status
-                    scan.progress = updated_scan.progress
-                    scan.overall_score = updated_scan.overall_score
-                    scan.security_score = updated_scan.security_score
-                    scan.completed_at = updated_scan.completed_at
                     await db.commit()
+                    await db.refresh(scan)
 
                     logger.info(f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}")
                 except ScanTimeoutError as e:
                     logger.error(f"Scan timed out: {scan.id}")
                     scan.status = ScanStatus.FAILED
+                    scan.ai_status = "failed"
                     scan.error_message = str(e)
                     await db.commit()
                     raise
@@ -515,33 +505,13 @@ async def create_scan(
     except Exception as scan_error:
         logger.exception(f"Sync scan failed: {scan_error}")
         scan.status = ScanStatus.FAILED
+        scan.ai_status = "failed"
         scan.error_message = str(scan_error)
         await db.commit()
         # Don't re-raise - return failed scan so frontend can show error
 
-    # Convert to dict to avoid SQLAlchemy serialization and UUID issues
-    return {
-        "id": str(scan.id),
-        "user_id": str(scan.user_id) if scan.user_id else None,
-        "repository_id": str(scan.repository_id) if scan.repository_id else None,
-        "repository_url": scan.repository_url,
-        "branch": scan.branch,
-        "commit_hash": scan.commit_hash,
-        "status": scan.status.value,
-        "progress": scan.progress,
-        "error_message": scan.error_message,
-        "overall_score": scan.overall_score,
-        "security_score": scan.security_score,
-        "scalability_score": scan.scalability_score,
-        "reliability_score": scan.reliability_score,
-        "cost_score": scan.cost_score,
-        "observability_score": scan.observability_score,
-        "started_at": scan.started_at.isoformat() if scan.started_at else None,
-        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-        "analysis_duration_seconds": scan.analysis_duration_seconds,
-        "created_at": scan.created_at.isoformat(),
-        "updated_at": scan.updated_at.isoformat(),
-    }
+    await db.refresh(scan)
+    return _serialize_scan(scan)
 
 
 @router.post("/analyze", response_model=ScanResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -598,27 +568,5 @@ async def analyze_repository(
     await db.commit()
     await db.refresh(scan)
 
-    # Convert to dict to avoid SQLAlchemy serialization issues
-    return {
-        "id": str(scan.id),
-        "user_id": str(scan.user_id) if scan.user_id else None,
-        "repository_id": str(scan.repository_id) if scan.repository_id else None,
-        "repository_url": scan.repository_url,
-        "branch": scan.branch,
-        "commit_hash": scan.commit_hash,
-        "status": scan.status.value,
-        "progress": scan.progress,
-        "error_message": scan.error_message,
-        "overall_score": scan.overall_score,
-        "security_score": scan.security_score,
-        "scalability_score": scan.scalability_score,
-        "reliability_score": scan.reliability_score,
-        "cost_score": scan.cost_score,
-        "observability_score": scan.observability_score,
-        "started_at": scan.started_at.isoformat() if scan.started_at else None,
-        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-        "analysis_duration_seconds": scan.analysis_duration_seconds,
-        "created_at": scan.created_at.isoformat(),
-        "updated_at": scan.updated_at.isoformat(),
-    }
+    return _serialize_scan(scan)
 # reload trigger

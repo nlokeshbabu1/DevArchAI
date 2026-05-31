@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
-import axios from 'axios'
 import { Button, Card } from '../components/ui-animated'
+import { api, buildWebSocketUrl } from '../lib/api'
 import { cn } from '../lib/utils'
 import { ScanProgress } from '../components/ScanProgress'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
-import { scansApi } from '../api/endpoints/scans'
 
 interface Finding {
   rule_id: string
@@ -123,7 +122,8 @@ export function ScanPage() {
   const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
   const [filesScanned, setFilesScanned] = useState(0)
   const [filesList, setFilesList] = useState<string[]>([])
-  const [scanLogs, setScanLogs] = useState<string[]>([])  // Real logs from backend
+  const [scanLogs, setScanLogs] = useState<string[]>([])
+  const [stepsFromBackend, setStepsFromBackend] = useState<Array<{name: string; status: string}>>([])
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches, error: branchesError, refetch, isFetching } = useQuery({
@@ -136,7 +136,7 @@ export function ScanPage() {
         return { branches: [], default_branch: 'main' }
       }
       try {
-        const response = await axios.get('/api/v1/github/branches', {
+        const response = await api.get('/github/branches', {
           params: { repo_url: trimmedUrl }
         })
         console.log('✅ Branches fetched:', response.data)
@@ -181,36 +181,18 @@ export function ScanPage() {
   // WebSocket connection for real-time scan progress
   const wsRef = useRef<WebSocket | null>(null)
 
-  // Helper to map step string to number
-  const mapStepToNumber = useCallback((step: string | number): number => {
-    if (typeof step === 'number') return step
-    const stepMap: Record<string, number> = {
-      'Connecting to GitHub': 1,
-      'Fetching repository': 2,
-      'Detecting technologies': 3,
-      'Running security rules': 4,
-      'Generating AI suggestions': 5,
-      'Generating AI fixes': 5,
-      'AI enrichment': 5,
-      'Calculating score': 6,
-      'Calculating scores': 6,
-      'Saving results': 7,
-      'Scan completed': 7,
-      'completed': 7,
-    }
-    const stepStr = step.toLowerCase()
-    for (const [key, value] of Object.entries(stepMap)) {
-      if (stepStr.includes(key.toLowerCase())) return value
-    }
-    return 1
+  // Derive step index from steps array for UI
+  const getStepIndex = useCallback((stepName: string | undefined | null, steps: Array<{name: string}> | undefined): number => {
+    if (!stepName || !steps || steps.length === 0) return 1
+    const idx = steps.findIndex(s => s.name === stepName)
+    return idx >= 0 ? idx + 1 : 1
   }, [])
 
   // Connect to WebSocket for real-time updates
   useEffect(() => {
     if (!loading || !scanId) return
 
-    // Use relative path - Vite will proxy to backend
-    const wsUrl = `/ws/scan/${scanId}`
+    const wsUrl = buildWebSocketUrl(`/ws/scan/${scanId}`)
 
     console.log('🔌 Connecting to WebSocket:', wsUrl)
     const ws = new WebSocket(wsUrl)
@@ -231,7 +213,10 @@ export function ScanPage() {
               setProgress(Math.round(data.progress))
             }
             if (data.current_step) {
-              setCurrentStep(mapStepToNumber(data.current_step))
+              setCurrentStep(getStepIndex(data.current_step, data.steps))
+            }
+            if (data.steps && data.steps.length > 0) {
+              setStepsFromBackend(data.steps)
             }
             if (data.detected_stack && Array.isArray(data.detected_stack) && data.detected_stack.length > 0) {
               setDetectedTechnologies(data.detected_stack)
@@ -257,6 +242,7 @@ export function ScanPage() {
             break
 
           case 'log_message':
+            console.log("WS log received:", message)
             if (data.message) {
               const logEntry = data.timestamp ? `[${data.timestamp}] ${data.message}` : data.message
               setScanLogs(prev => {
@@ -269,7 +255,7 @@ export function ScanPage() {
 
           case 'step_update':
             if (data.step_name) {
-              setCurrentStep(mapStepToNumber(data.step_name))
+              setCurrentStep(getStepIndex(data.step_name, undefined))
             }
             break
 
@@ -284,7 +270,7 @@ export function ScanPage() {
 
           case 'scan_complete':
             setProgress(100)
-            setCurrentStep(7)
+            setCurrentStep(stepsFromBackend.length || 7)
             break
 
           case 'scan_failed':
@@ -313,7 +299,7 @@ export function ScanPage() {
         wsRef.current = null
       }
     }
-  }, [loading, scanId, mapStepToNumber])
+  }, [loading, scanId, getStepIndex, stepsFromBackend.length])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -352,7 +338,7 @@ export function ScanPage() {
       // Progress is now updated ONLY from backend polling (no fake animation)
 
       // Use same endpoint for both authenticated and anonymous users
-      const response = await axios.post('/api/v1/scan/start', {
+      const response = await api.post('/scan/start', {
         repository_url: trimmedUrl,
         branch: selectedBranch || 'main',
       })
@@ -374,10 +360,10 @@ export function ScanPage() {
       // - Technology detection
       // - Completion detection
 
-      // Monitor WebSocket completion and fetch results
+      // Monitor completion via WebSocket and fetch results
       const completionCheck = setInterval(async () => {
-        // Check if WebSocket has marked scan as complete
-        if (progress >= 100 || currentStep >= 7) {
+        // Use backend status to detect completion
+        if (progress >= 100) {
           clearInterval(completionCheck)
           
           // Minimum display time
@@ -396,13 +382,13 @@ export function ScanPage() {
 
           while (attempts < maxAttempts && !fetchSuccess) {
             try {
-              const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+              const resultsResponse = await api.get(`/scan/results/${data.scan_id}`)
               const results = resultsResponse.data
 
               console.log('✅ Complete results:', results)
 
               setProgress(100)
-              setCurrentStep(7)
+              setCurrentStep(stepsFromBackend.length || 7)
               setLoading(false)
 
               const scanResult: ScanResult = {
@@ -453,11 +439,11 @@ export function ScanPage() {
         
         // Fallback: try to fetch results anyway
         try {
-          const resultsResponse = await axios.get(`/api/v1/scan/results/${data.scan_id}`)
+          const resultsResponse = await api.get(`/scan/results/${data.scan_id}`)
           const results = resultsResponse.data
 
           setProgress(100)
-          setCurrentStep(7)
+          setCurrentStep(stepsFromBackend.length || 7)
           setLoading(false)
           setResult({
             success: true,
@@ -621,7 +607,8 @@ export function ScanPage() {
               type: getFileTypeFromPath(path),
               status: 'completed'
             }))}
-            backendLogs={scanLogs}  // ✅ Pass real logs from backend
+            backendLogs={scanLogs}
+            steps={stepsFromBackend.map(s => s.name)}
           />
         </div>
       </div>

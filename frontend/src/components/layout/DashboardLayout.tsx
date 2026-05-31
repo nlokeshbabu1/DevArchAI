@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { startTransition, useEffect, useState } from 'react'
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '../../lib/utils'
 import {
@@ -20,6 +20,7 @@ const navigation = [
   { name: 'Scan Results', href: '/scans', icon: FileSearch },
   { name: 'Security Issues', href: '/findings', icon: AlertTriangle },
   { name: 'AI Suggestions', href: '/ai-suggestions', icon: Brain },
+  { name: 'AWS Cloud', href: '/aws', icon: Cloud },
   { name: 'Integrations', href: '/integrations', icon: Cloud },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -28,9 +29,42 @@ const navigation = [
 export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const [, setSearchParams] = useSearchParams()
   const { user, logout } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [dashboardSearch, setDashboardSearch] = useState('')
+  const isDashboardRoute = location.pathname === '/dashboard'
+
+  useEffect(() => {
+    const nextSearchValue = isDashboardRoute
+      ? new URLSearchParams(location.search).get('search') ?? ''
+      : ''
+    setDashboardSearch((currentValue) => (
+      currentValue === nextSearchValue ? currentValue : nextSearchValue
+    ))
+  }, [isDashboardRoute, location.search])
+
+  const updateDashboardSearch = (value: string) => {
+    setDashboardSearch(value)
+
+    if (!isDashboardRoute) {
+      return
+    }
+
+    const nextParams = new URLSearchParams(location.search)
+    const normalizedValue = value.trim()
+
+    if (normalizedValue) {
+      nextParams.set('search', normalizedValue)
+    } else {
+      nextParams.delete('search')
+    }
+
+    startTransition(() => {
+      setSearchParams(nextParams, { replace: true })
+    })
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -170,9 +204,22 @@ export function Layout({ children }: LayoutProps) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="search"
-                placeholder="Search..."
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                value={dashboardSearch}
+                onChange={(event) => updateDashboardSearch(event.target.value)}
+                placeholder={isDashboardRoute ? 'Search recent scans...' : 'Search...'}
+                aria-label="Search dashboard"
+                className="w-full pl-10 pr-10 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
               />
+              {dashboardSearch && (
+                <button
+                  type="button"
+                  onClick={() => updateDashboardSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors duration-200 hover:bg-white/5 hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
