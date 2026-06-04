@@ -42,6 +42,7 @@ export interface SessionInfo {
   id: string
   device_name?: string
   browser?: string
+  os?: string
   ip_address?: string
   location?: string
   created_at: string

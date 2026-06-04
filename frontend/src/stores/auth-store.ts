@@ -110,6 +110,15 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
         })
       },
+
+      serverLogout: async () => {
+        try {
+          await api.post('/auth/logout')
+        } catch (error) {
+          console.error('Server logout failed:', error)
+        }
+        get().logout()
+      },
     }),
     {
       name: 'auth-storage',

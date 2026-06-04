@@ -59,10 +59,8 @@ export const reportsApi = {
   /**
    * Download report
    */
-  downloadReport: async (reportId: string, format: string = 'json'): Promise<Blob> => {
-    const response = await apiClient.get(`/reports/${reportId}/download?format=${format}`, {
-      responseType: 'blob',
-    });
+  downloadReport: async (reportId: string, format: string = 'json'): Promise<ReportDownloadLink> => {
+    const response = await apiClient.get<ReportDownloadLink>(`/reports/${reportId}/download?format=${format}`);
     return response.data;
   },
 
