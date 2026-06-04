@@ -22,7 +22,7 @@ export default defineConfig({
         ws: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://devarchai.onrender.com',
         ws: true,
         changeOrigin: true,
       },

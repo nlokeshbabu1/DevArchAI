@@ -36,25 +36,8 @@ export const githubAuthApi = {
    */
   getAuthorizationUrl: async (): Promise<string | null> => {
     try {
-      // Use environment variable for API URL with fallback for development
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-      
-      // Use redirect URI from env if available, otherwise build from origin
-      const redirectUri = import.meta.env.VITE_GITHUB_REDIRECT_URI || `${window.location.origin}/auth/github/callback`
-      
-      const response = await fetch(`${apiUrl}/api/v1/auth/github/url?redirect_uri=${encodeURIComponent(redirectUri)}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data.oauth_url || null
+      const response = await apiClient.get<GithubOAuthUrlResponse>('/auth/github/url')
+      return response.data.oauth_url || null
     } catch (error: any) {
       // Fallback: try to build URL from env (for development)
       const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID

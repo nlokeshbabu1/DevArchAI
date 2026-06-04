@@ -323,10 +323,25 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
       // For authenticated users with PDF/Excel, try backend endpoint
       if (token && (format === 'pdf' || format === 'xlsx')) {
         try {
-          const normalizedFormat = format === 'xlsx' ? 'excel' : format
-          const downloadResponse = await api.get(`/reports/${result.scan_id}/download?format=${normalizedFormat}`, {
+          // First get or create report
+          const reportResponse = await api.get(`/reports/scan/${result.scan_id}/latest`, {
             headers: { Authorization: `Bearer ${token}` },
           })
+          
+          const reportId = reportResponse.data.id
+          
+          // Download in requested format
+          const downloadResponse = await api.get(`/reports/${reportId}/download?format=${format}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'blob',
+          })
+
+          const blob = new Blob([downloadResponse.data], {
+            type: format === 'pdf' ? 'application/pdf' :
+                  format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
+                  'application/json',
+          })
+          const url = URL.createObjectURL(blob)
           const link = document.createElement('a')
           link.href = downloadResponse.data.url
           link.download = `report-${result.scan_id.slice(0, 8)}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
