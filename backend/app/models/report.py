@@ -44,7 +44,9 @@ class Report(Base):
     files_analyzed = Column(JSON, nullable=True)  # List of file paths
 
     # Storage
-    s3_key = Column(String(500), nullable=True)
+    s3_key = Column(String(500), nullable=True)  # Legacy PDF alias
+    pdf_s3_key = Column(String(500), nullable=True)
+    excel_s3_key = Column(String(500), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

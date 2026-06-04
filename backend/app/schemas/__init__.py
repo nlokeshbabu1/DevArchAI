@@ -29,6 +29,7 @@ from app.schemas.finding import (
 from app.schemas.report import (
     CategoryScore,
     ReportDownloadResponse,
+    ReportFormat,
     ReportListResponse,
     ReportResponse,
     ReportSummary,
@@ -80,6 +81,7 @@ __all__ = [
     "ReportResponse",
     "ReportListResponse",
     "ReportDownloadResponse",
+    "ReportFormat",
     "ReportSummary",
     "CategoryScore",
     # Common

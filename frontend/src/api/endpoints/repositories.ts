@@ -26,6 +26,20 @@ export interface Repository {
   };
 }
 
+export interface GitHubRepository {
+  id: string;
+  name: string;
+  url: string;
+  description?: string;
+  default_branch: string;
+  is_private: boolean;
+  language?: string;
+  stargazers_count: number;
+  forks_count: number;
+  updated_at: string;
+  source?: 'github';
+}
+
 export interface RepositoryListResponse {
   repositories: Repository[];
   total: number;
@@ -37,6 +51,23 @@ export interface RepositoryCreate {
   url: string;
   name?: string;
   description?: string;
+}
+
+export interface GitHubRepositoryListResponse {
+  github_connected: boolean;
+  github_repositories: GitHubRepository[];
+  total?: number;
+  message?: string;
+}
+
+export interface ImportGitHubRepositoriesResponse {
+  imported: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
+  total: number;
+  message: string;
 }
 
 export const repositoriesApi = {
@@ -90,6 +121,22 @@ export const repositoriesApi = {
       repository_url: repoUrl,
       branch: branch,
     });
+    return response.data;
+  },
+
+  /**
+   * List importable GitHub repositories for the current OAuth user
+   */
+  listGitHubRepositories: async (): Promise<GitHubRepositoryListResponse> => {
+    const response = await apiClient.get<GitHubRepositoryListResponse>('/github/repos');
+    return response.data;
+  },
+
+  /**
+   * Import selected GitHub repositories into the repository list
+   */
+  importGitHubRepositories: async (repoIds: number[]): Promise<ImportGitHubRepositoriesResponse> => {
+    const response = await apiClient.post<ImportGitHubRepositoriesResponse>('/github/import-repos', repoIds);
     return response.data;
   },
 };

@@ -343,12 +343,12 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
           })
           const url = URL.createObjectURL(blob)
           const link = document.createElement('a')
-          link.href = url
+          link.href = downloadResponse.data.url
           link.download = `report-${result.scan_id.slice(0, 8)}.${format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'json'}`
+          link.rel = 'noopener noreferrer'
           document.body.appendChild(link)
           link.click()
           document.body.removeChild(link)
-          URL.revokeObjectURL(url)
           return
         } catch (backendError) {
           console.warn('Backend download failed, falling back to JSON:', backendError)

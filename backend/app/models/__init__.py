@@ -21,9 +21,12 @@ from app.models.pull_request import PRStatus, PullRequest
 from app.models.repo_analysis import RepoAnalysis
 from app.models.report import Report
 from app.models.repository import Repository
-from app.models.scan import Scan, ScanStatus
+from app.models.scan import AIScanStatus, Scan, ScanStatus
+from app.models.settings import ApiKey, UserPreference, UserSession
 from app.models.subscription import Currency, PlanTier, Subscription
 from app.models.user import User, UserRole
+from app.models.audit_log import AuditLog
+from app.models.aws import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory
 
 __all__ = [
     "User",
@@ -34,6 +37,7 @@ __all__ = [
     "PlanType",
     "Repository",
     "Scan",
+    "AIScanStatus",
     "ScanStatus",
     "Finding",
     "Severity",
@@ -60,4 +64,11 @@ __all__ = [
     "Coupon",
     "CouponType",
     "WebhookEvent",
+    "UserPreference",
+    "UserSession",
+    "ApiKey",
+    "AWSAccount",
+    "AWSInventory",
+    "AWSFinding",
+    "AWSCostRecommendation",
 ]

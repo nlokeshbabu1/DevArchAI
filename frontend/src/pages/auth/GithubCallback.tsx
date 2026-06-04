@@ -43,7 +43,9 @@ export function GithubCallback() {
 
         // Store tokens
         localStorage.setItem('access_token', tokenResponse.access_token)
-        localStorage.setItem('refresh_token', tokenResponse.refresh_token)
+        if (tokenResponse.refresh_token) {
+          localStorage.setItem('refresh_token', tokenResponse.refresh_token)
+        }
 
         // Update auth store
         login(tokenResponse.access_token)

@@ -81,7 +81,9 @@ export function Register() {
 
       // Store tokens
       localStorage.setItem('access_token', loginResponse.access_token)
-      localStorage.setItem('refresh_token', loginResponse.refresh_token)
+      if (loginResponse.refresh_token) {
+        localStorage.setItem('refresh_token', loginResponse.refresh_token)
+      }
 
       // Update auth store
       login(loginResponse.access_token)

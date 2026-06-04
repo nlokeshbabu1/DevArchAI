@@ -38,6 +38,18 @@ export interface UserResponse {
   last_login_at?: string
 }
 
+export interface SessionInfo {
+  id: string
+  device_name?: string
+  browser?: string
+  ip_address?: string
+  location?: string
+  created_at: string
+  last_active_at: string
+  expires_at?: string
+  is_current: boolean
+}
+
 export const authApi = {
   /**
    * Register a new user
@@ -88,11 +100,34 @@ export const authApi = {
   },
 
   /**
-   * Logout (client-side only - just clear tokens)
+   * Server-side logout (blacklists tokens, revokes session)
    */
-  logout: (): void => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('current_org_id')
+  logout: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post('/auth/logout')
+    return response.data
+  },
+
+  /**
+   * List all active sessions
+   */
+  getSessions: async (): Promise<SessionInfo[]> => {
+    const response = await apiClient.get<SessionInfo[]>('/auth/sessions')
+    return response.data
+  },
+
+  /**
+   * Revoke a specific session
+   */
+  revokeSession: async (sessionId: string): Promise<{ message: string }> => {
+    const response = await apiClient.delete(`/auth/sessions/${sessionId}`)
+    return response.data
+  },
+
+  /**
+   * Revoke all other sessions
+   */
+  revokeAllSessions: async (): Promise<{ message: string; revoked_count: number }> => {
+    const response = await apiClient.post('/auth/revoke-all')
+    return response.data
   },
 }

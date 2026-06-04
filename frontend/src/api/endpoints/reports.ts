@@ -29,6 +29,16 @@ export interface Report {
   updated_at?: string;
 }
 
+export interface ReportDownloadLink {
+  report_id: string;
+  scan_id: string;
+  format: 'pdf' | 'excel';
+  url: string;
+  filename: string;
+  expires_at: string;
+  expires_in_seconds: number;
+}
+
 export const reportsApi = {
   /**
    * List reports for organization

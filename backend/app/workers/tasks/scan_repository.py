@@ -24,6 +24,8 @@ from app.rule_engine.base import RuleFinding, RuleRegistry
 from app.scanners.azure_scanner import AzureScanner
 from app.scanners.helm_scanner import HelmScanner
 from app.scoring.engine import ScoringEngine
+from app.services.ai_suggestion_service import schedule_ai_suggestions_generation
+from app.services.report_service import ReportService
 from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
 
@@ -299,13 +301,19 @@ class SyncScanService:
         self.repo_scanner = RepositoryScanner()
         self.parser_registry = self._setup_parsers()
         self.detected_stack = DetectedTechnologyStack()
+        self.report_service = ReportService()
 
     async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None, stage: Optional[str] = None, files_scanned: int = 0, total_files: int = 0):
         """Update progress in the store (async)."""
         if self.progress_store and self.scan_id:
-            await self.progress_store.update_status(self.scan_id, "running", progress, message)
+            await self.progress_store.update_status(self.scan_id, "running", progress, step_name or message)
             if message:
                 await self.progress_store.add_log(self.scan_id, message)
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    await scan_progress_manager.broadcast_log(self.scan_id, message)
+                except Exception:
+                    pass
             if stage:
                 await self.progress_store.update_stage(self.scan_id, stage, files_scanned, total_files)
             if step_name:
@@ -465,156 +473,21 @@ class SyncScanService:
             logger.info(f"Rule engine completed with {len(rule_findings)} findings")
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(70, "Enriching findings with AI...", "Generating AI suggestions", stage="ai"))
-            self._update_progress(progress_callback, 70, "Preparing AI enrichment...")
+                _safe_await(self._update_progress_async(70, "Building recommendations...", "Preparing findings", stage="scanning"))
+            self._update_progress(progress_callback, 70, "Building recommendations...")
 
-            # Enrich findings with AI fix data
-            logger.info("Enriching findings with AI data...", findings_count=len(rule_findings))
+            logger.info("Applying static enrichment before background AI generation", findings_count=len(rule_findings))
+            from app.services.findings_enricher import enrich_findings
 
-            # Use AI-powered enrichment (with static fallback)
-            from app.services.findings_enricher import enrich_findings_with_ai
+            rule_findings = enrich_findings(rule_findings)
 
-            # Get file contents for AI context
-            file_contents = {}
-            for finding in rule_findings:
-                if finding.file_path and not file_contents.get(finding.file_path):
-                    try:
-                        file_path = Path(finding.file_path)
-                        if file_path.exists():
-                            file_contents[str(file_path)] = file_path.read_text(encoding="utf-8")
-                            logger.debug(f"✅ Read file content for {finding.file_path} ({len(file_contents[str(file_path)])} chars)")
-                        else:
-                            logger.warning(f"❌ File not found: {finding.file_path}")
-                    except Exception as e:
-                        logger.error(f"❌ Could not read file {finding.file_path}: {e}")
-
-            logger.info(f"File contents loaded: {len(file_contents)} files")
-            logger.info(f"Mistral API key configured: {bool(settings.MISTRAL_API_KEY)}")
-
-            # Update progress before starting AI enrichment
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(72, "Loading AI models...", "Initializing AI enrichment", stage="ai"))
-                _safe_await(self.progress_store.add_log(self.scan_id, "🤖 Starting AI-powered fix generation..."))
-
-            # Run AI enrichment in a SEPARATE PROCESS to avoid uvloop conflicts
-            try:
-                logger.info("🚀 Starting AI enrichment in separate process...")
-                
-                if self.progress_store and self.scan_id:
-                    _safe_await(self._update_progress_async(75, "Generating AI fixes...", "Processing rules", stage="ai"))
-                    _safe_await(self.progress_store.add_log(self.scan_id, f"📝 Analyzing {len(rule_findings)} security rules..."))
-
-                import multiprocessing
-                import signal
-
-                # Serialize findings for multiprocessing
-                findings_data = []
-                for f in rule_findings:
-                    findings_data.append({
-                        'rule_id': f.rule_id,
-                        'rule_name': f.rule_name,
-                        'severity': f.severity.value if hasattr(f.severity, 'value') else str(f.severity),
-                        'category': f.category.value if hasattr(f.category, 'value') else str(f.category),
-                        'description': f.description,
-                        'recommendation': f.recommendation,
-                        'file_path': f.file_path,
-                        'line_number': f.line_number,
-                        'resource_name': f.resource_name,
-                    })
-
-                # Run AI enrichment in separate process with TIMEOUT
-                enriched_findings = None
-                with multiprocessing.Pool(processes=1) as pool:
-                    try:
-                        # Use async result with timeout (5 minutes)
-                        async_result = pool.apply_async(_run_ai_enrichment_in_process, (findings_data, file_contents))
-                        
-                        # Poll for completion with progress updates
-                        if self.progress_store and self.scan_id:
-                            start_time = time.time()
-                            ai_progress = 75
-                            while not async_result.ready():
-                                elapsed = time.time() - start_time
-                                # Update progress every 5 seconds (75% → 85%)
-                                if int(elapsed) % 5 == 0 and ai_progress < 85:
-                                    ai_progress = min(85, 75 + (elapsed / 60) * 10)  # Gradual increase
-                                    _safe_await(self._update_progress_async(
-                                        int(ai_progress), 
-                                        f"Generating AI fixes... ({int(elapsed)}s)", 
-                                        f"Processing {len(rule_findings)} rules", 
-                                        stage="ai"
-                                    ))
-                                time.sleep(0.5)  # Check every 500ms
-                        
-                        enriched_findings = async_result.get(timeout=300)  # 5 minute timeout
-                        logger.info("✅ AI enrichment completed successfully")
-                    except multiprocessing.TimeoutError:
-                        logger.error("❌ AI enrichment timed out after 300 seconds")
-                        pool.terminate()
-                        pool.join()
-                        raise TimeoutError("AI enrichment took too long, using static fallback")
-                
-                # Merge enriched data back into original findings
-                # PRIORITY: AI-generated content should override static content
-                enriched_map = {f.rule_id: f for f in enriched_findings}
-                for finding in rule_findings:
-                    if finding.rule_id in enriched_map:
-                        enriched = enriched_map[finding.rule_id]
-                        # Always prefer AI-generated content over static
-                        if enriched.summary:
-                            finding.summary = enriched.summary
-                        if enriched.risk:
-                            finding.risk = enriched.risk
-                        if enriched.impact:
-                            finding.impact = enriched.impact
-                        if enriched.fix_code:
-                            finding.fix_code = enriched.fix_code
-                        if enriched.fix_example:
-                            finding.fix_example = enriched.fix_example
-                        if enriched.full_example:
-                            finding.full_example = enriched.full_example
-                        if enriched.best_practices:
-                            finding.best_practices = enriched.best_practices
-                        if enriched.ai_generated:
-                            finding.ai_generated = True
-                        if enriched.confidence:
-                            finding.confidence = enriched.confidence
-                        # Always copy ai_explanation if AI generated it
-                        if enriched.ai_explanation:
-                            finding.ai_explanation = enriched.ai_explanation
-                        # Copy diff fields from metadata
-                        if enriched.metadata.get('before_code'):
-                            finding.metadata['before_code'] = enriched.metadata['before_code']
-                        if enriched.metadata.get('after_code'):
-                            finding.metadata['after_code'] = enriched.metadata['after_code']
-                        if enriched.metadata.get('unified_diff'):
-                            finding.metadata['unified_diff'] = enriched.metadata['unified_diff']
-
-                ai_count = sum(1 for f in rule_findings if getattr(f, 'ai_generated', False))
-                logger.info(f"✅ AI enrichment completed successfully! Generated {ai_count}/{len(rule_findings)} AI findings")
-                
-                # Update progress after successful AI enrichment
-                if self.progress_store and self.scan_id:
-                    _safe_await(self._update_progress_async(85, f"AI fixes generated: {ai_count}/{len(rule_findings)}", "AI enrichment complete", stage="ai"))
-                    _safe_await(self.progress_store.add_log(self.scan_id, f"✅ AI analysis complete: {ai_count} fixes generated"))
-
-            except TimeoutError as e:
-                logger.error(f"❌ AI enrichment timed out: {e}")
-                logger.warning("Using static enrichment as fallback due to timeout")
-                from app.services.findings_enricher import enrich_findings
-                rule_findings = enrich_findings(rule_findings)
-                
-                if self.progress_store and self.scan_id:
-                    _safe_await(self.progress_store.add_log(self.scan_id, "⚠️ AI timeout - using static analysis"))
-
-            except Exception as e:
-                logger.error(f"❌ AI enrichment failed: {e}")
-                logger.warning("Using static enrichment as fallback")
-                from app.services.findings_enricher import enrich_findings
-                rule_findings = enrich_findings(rule_findings)
-                
-                if self.progress_store and self.scan_id:
-                    _safe_await(self.progress_store.add_log(self.scan_id, f"⚠️ AI failed: {str(e)[:50]} - using static analysis"))
+                _safe_await(
+                    self.progress_store.add_log(
+                        self.scan_id,
+                        "Background AI suggestions queued after static scan results are saved",
+                    )
+                )
 
             # PHASE 1C: Deduplicate findings (NEW - Production Grade)
             try:
@@ -649,7 +522,7 @@ class SyncScanService:
                 )
                 
                 if self.progress_store and self.scan_id:
-                    _safe_await(self._update_progress_async(88, "Validating findings...", "Quality check", stage="ai"))
+                    _safe_await(self._update_progress_async(88, "Validating findings...", "Quality check", stage="completed"))
                     _safe_await(self.progress_store.add_log(self.scan_id, f"✅ Validated {validation_stats.total_findings} findings"))
             except Exception as e:
                 logger.error(f"❌ Validation failed: {e}")
@@ -698,11 +571,18 @@ class SyncScanService:
             
             self._save_findings(scan.id, rule_findings)
 
-            # Create AI suggestions from findings
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(96, "Creating AI suggestions...", "Generating recommendations", stage="ai"))
+                _safe_await(self._update_progress_async(96, "Generating downloadable reports...", "Building reports", stage="completed"))
 
-            self._create_ai_suggestions(scan.id, rule_findings)
+            if self.progress_store and self.scan_id:
+                _safe_await(self.progress_store.add_log(self.scan_id, "📄 Building downloadable reports..."))
+
+            self._create_report(
+                scan=scan,
+                rule_findings=rule_findings,
+                scores=scores,
+                files_analyzed=cleaned_file_paths,
+            )
             
             if self.progress_store and self.scan_id:
                 _safe_await(self._update_progress_async(98, "Finalizing scan...", "Almost done", stage="completed"))
@@ -721,6 +601,10 @@ class SyncScanService:
             scan.cost_score = next((cs.score for cs in scores.category_scores if cs.category == Category.COST), None)
             scan.observability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.OBSERVABILITY), None)
             scan.detected_stack = self.detected_stack.to_dict() if self.detected_stack else None  # Save detected technologies
+            scan.ai_status = "pending" if self.include_ai_explanations and rule_findings else "completed"
+            scan.ai_error_message = None
+            if scan.ai_status == "completed":
+                scan.ai_completed_at = datetime.utcnow()
 
             self.db.commit()
 
@@ -731,17 +615,27 @@ class SyncScanService:
             if self.progress_store and self.scan_id:
                 _safe_await(self.progress_store.complete_scan(self.scan_id))
                 _safe_await(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
+                if scan.ai_status == "pending":
+                    _safe_await(
+                        self.progress_store.add_log(
+                            self.scan_id,
+                            "AI suggestions are being generated in the background",
+                        )
+                    )
 
             self._update_progress(progress_callback, 100, "Scan complete")
 
+            if scan.ai_status == "pending":
+                schedule_ai_suggestions_generation(scan.id)
+
             # PHASE 6: Record scan metrics (NEW - Observability)
+            detected = self.detected_stack.get_detected_technologies() if self.detected_stack else []
             try:
                 from app.services.metrics import record_scan, record_scan_end
                 duration = time.time() - start_time
                 record_scan_end()
                 
                 # Record for each detected technology
-                detected = self.detected_stack.get_detected_technologies() if self.detected_stack else []
                 if detected:
                     for tech in detected:
                         record_scan(status="completed", technology=tech, duration=duration)
@@ -768,6 +662,7 @@ class SyncScanService:
         except Exception as e:
             logger.exception("Scan failed", scan_id=scan.id, error=str(e))
             scan.status = ScanStatus.FAILED
+            scan.ai_status = "failed"
             scan.error_message = str(e)
             scan.completed_at = datetime.utcnow()
             self.db.commit()
@@ -1037,73 +932,74 @@ class SyncScanService:
         """Create AI suggestions from findings and store in PostgreSQL."""
         try:
             from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
-            
-            # Get all findings from database for this scan
-            from sqlalchemy import select
-            from app.models.finding import Finding as FindingModel
-            
-            result = self.db.execute(
-                select(FindingModel).where(FindingModel.scan_id == scan_id)
-            )
-            db_findings = result.scalars().all()
-            
-            suggestions_created = 0
-            
-            for db_finding in db_findings:
-                try:
-                    # Skip if suggestion already exists
-                    existing = self.db.execute(
-                        select(AISuggestion).where(AISuggestion.finding_id == db_finding.id)
-                    )
-                    if existing.scalars().first():
+
+            with self.db.begin_nested():
+                # Get all findings from database for this scan
+                from sqlalchemy import select
+                from app.models.finding import Finding as FindingModel
+
+                result = self.db.execute(
+                    select(FindingModel).where(FindingModel.scan_id == scan_id)
+                )
+                db_findings = result.scalars().all()
+
+                suggestions_created = 0
+
+                for db_finding in db_findings:
+                    try:
+                        # Skip if suggestion already exists
+                        existing = self.db.execute(
+                            select(AISuggestion).where(AISuggestion.finding_id == db_finding.id)
+                        )
+                        if existing.scalars().first():
+                            continue
+
+                        # Determine fix type based on file path or category
+                        fix_type = FixType.GENERAL
+                        if db_finding.file_path:
+                            path_lower = db_finding.file_path.lower()
+                            if '.tf' in path_lower or 'terraform' in path_lower:
+                                fix_type = FixType.TERRAFORM
+                            elif 'dockerfile' in path_lower or 'docker' in path_lower:
+                                fix_type = FixType.DOCKERFILE
+                            elif 'kubernetes' in path_lower or 'k8s' in path_lower or '.yaml' in path_lower:
+                                fix_type = FixType.KUBERNETES
+                            elif '.github' in path_lower or 'jenkins' in path_lower or 'ci' in path_lower:
+                                fix_type = FixType.CI_CD
+
+                        # Create AI suggestion
+                        ai_suggestion = AISuggestion(
+                            finding_id=db_finding.id,
+                            scan_id=scan_id,
+                            title=db_finding.summary or db_finding.rule_name or f"Fix {db_finding.rule_id}",
+                            description=db_finding.ai_explanation or db_finding.description or "",
+                            severity=db_finding.severity,
+                            confidence=db_finding.confidence_score or db_finding.confidence or 0.8,
+                            category=db_finding.category,
+                            fix_type=fix_type,
+                            file_path=db_finding.file_path or "",
+                            line_number=db_finding.line_number,
+                            fix_code=db_finding.fix_code,
+                            auto_fix_available=bool(db_finding.fix_code or db_finding.fix_example),
+                            status=SuggestionStatus.OPEN,
+                            # ✅ CRITICAL FIX: Ensure additional_data is always a JSON string
+                            additional_data=json.dumps({
+                                "rule_id": db_finding.rule_id,
+                                "recommendation": db_finding.recommendation,
+                                "best_practices": db_finding.best_practices,
+                                "ai_generated": db_finding.ai_generated,
+                            }) if db_finding.best_practices or db_finding.recommendation else None,
+                        )
+
+                        self.db.add(ai_suggestion)
+                        suggestions_created += 1
+                    except Exception as suggestion_error:
+                        logger.warning(
+                            f"Failed to create AI suggestion for finding {db_finding.id}: {suggestion_error}"
+                        )
                         continue
-                    
-                    # Determine fix type based on file path or category
-                    fix_type = FixType.GENERAL
-                    if db_finding.file_path:
-                        path_lower = db_finding.file_path.lower()
-                        if '.tf' in path_lower or 'terraform' in path_lower:
-                            fix_type = FixType.TERRAFORM
-                        elif 'dockerfile' in path_lower or 'docker' in path_lower:
-                            fix_type = FixType.DOCKERFILE
-                        elif 'kubernetes' in path_lower or 'k8s' in path_lower or '.yaml' in path_lower:
-                            fix_type = FixType.KUBERNETES
-                        elif '.github' in path_lower or 'jenkins' in path_lower or 'ci' in path_lower:
-                            fix_type = FixType.CI_CD
-                    
-                    # Create AI suggestion
-                    ai_suggestion = AISuggestion(
-                        finding_id=db_finding.id,
-                        scan_id=scan_id,
-                        title=db_finding.summary or db_finding.rule_name or f"Fix {db_finding.rule_id}",
-                        description=db_finding.ai_explanation or db_finding.description or "",
-                        severity=db_finding.severity,
-                        confidence=db_finding.confidence_score or db_finding.confidence or 0.8,
-                        category=db_finding.category,
-                        fix_type=fix_type,
-                        file_path=db_finding.file_path or "",
-                        line_number=db_finding.line_number,
-                        fix_code=db_finding.fix_code,
-                        auto_fix_available=bool(db_finding.fix_code or db_finding.fix_example),
-                        status=SuggestionStatus.OPEN,
-                        # ✅ CRITICAL FIX: Ensure additional_data is always a JSON string
-                        additional_data=json.dumps({
-                            "rule_id": db_finding.rule_id,
-                            "recommendation": db_finding.recommendation,
-                            "best_practices": db_finding.best_practices,
-                            "ai_generated": db_finding.ai_generated,
-                        }) if db_finding.best_practices or db_finding.recommendation else None,
-                    )
-                    
-                    self.db.add(ai_suggestion)
-                    suggestions_created += 1
-                except Exception as suggestion_error:
-                    logger.warning(
-                        f"Failed to create AI suggestion for finding {db_finding.id}: {suggestion_error}"
-                    )
-                    continue
-            
-            self.db.flush()
+
+                self.db.flush()
             logger.info(
                 "AI suggestions created",
                 scan_id=scan_id,
@@ -1112,6 +1008,43 @@ class SyncScanService:
         except Exception as e:
             logger.error(f"Failed to create AI suggestions: {e}")
             # Don't break the pipeline if AI suggestion creation fails
+
+    def _create_report(
+        self,
+        scan: Scan,
+        rule_findings: list[RuleFinding],
+        scores: Any,
+        files_analyzed: list[str],
+    ) -> None:
+        """Create the report record and upload PDF/XLSX artifacts to S3."""
+        try:
+            with self.db.begin_nested():
+                report = self.report_service.upsert_report_record_sync(
+                    db=self.db,
+                    scan=scan,
+                    findings=rule_findings,
+                    scores=scores,
+                    files_analyzed=files_analyzed,
+                )
+                self.report_service.generate_and_store_artifacts(
+                    scan=scan,
+                    report=report,
+                    findings=rule_findings,
+                )
+                self.db.flush()
+        except Exception as exc:
+            logger.exception(
+                "Report generation failed",
+                scan_id=scan.id,
+                error=str(exc),
+            )
+            if self.progress_store and self.scan_id:
+                _safe_await(
+                    self.progress_store.add_log(
+                        self.scan_id,
+                        "⚠️ Report generation failed; scan results were saved without downloadable artifacts",
+                    )
+                )
 
     def _update_progress(self, callback, progress: int, message: str):
         """Update progress if callback provided."""

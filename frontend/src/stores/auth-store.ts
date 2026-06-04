@@ -25,6 +25,7 @@ interface AuthState {
   setUser: (user: User) => void
   checkAuth: () => void
   fetchUserInfo: () => Promise<void>
+  serverLogout: () => Promise<void>
 }
 
 const API_URL = import.meta.env.VITE_API_URL
