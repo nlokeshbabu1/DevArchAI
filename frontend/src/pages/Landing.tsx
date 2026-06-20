@@ -1,14 +1,21 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Shield, Zap, GitBranch, BarChart3, Check, ArrowRight, AlertTriangle,
-  Github, Star, Terminal, Layers, Cloud, Box, Sparkles
+  Shield, Zap, Check, ArrowRight, AlertTriangle,
+  Star, Terminal, Sparkles
 } from 'lucide-react'
 import { Button } from '../components/ui-animated'
-import { cn } from '../lib/utils'
 import { DetectedTechStack } from '../components/landing/DetectedTechStack'
 import { TrustSection } from '../components/landing/TrustSection'
 import { PricingSection } from '../components/landing/PricingSection'
+import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
+import { ProblemSection } from '../components/landing/ProblemSection'
+import { PlatformCapabilities } from '../components/landing/PlatformCapabilities'
+import { AIAssistantSection } from '../components/landing/AIAssistantSection'
+import { ScanWorkflow } from '../components/landing/ScanWorkflow'
+import { ReportingSection } from '../components/landing/ReportingSection'
+import { DashboardPreview } from '../components/landing/DashboardPreview'
+import { RoadmapSection } from '../components/landing/RoadmapSection'
 
 const testimonials = [
   {
@@ -38,7 +45,6 @@ export function Landing() {
   const navigate = useNavigate()
 
   const handleStartScan = () => {
-    // Users must login first to scan
     navigate('/login')
   }
 
@@ -84,36 +90,32 @@ export function Landing() {
         </div>
       </header>
 
-      {/* Hero Section - TOP */}
+      {/* ===== SECTION 1 - HERO ===== */}
       <section className="relative py-20 lg:py-32 overflow-hidden">
-        {/* Background gradient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
             className="absolute -top-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl"
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
-            }}
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 5, repeat: Infinity }}
           />
           <motion.div
             className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"
-            animate={{
-              scale: [1.2, 1, 1.2],
-              opacity: [0.5, 0.3, 0.5],
-            }}
+            animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
             transition={{ duration: 5, repeat: Infinity }}
           />
         </div>
 
         <div className="container mx-auto px-4 relative">
           <div className="max-w-5xl mx-auto text-center space-y-8">
-            {/* Main Headline */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 mb-6">
+                <Shield className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-primary">DevOps Security Scanner</span>
+              </div>
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight">
                 <span className="gradient-text">Detect DevOps Security Risks</span>
                 <br />
@@ -121,17 +123,17 @@ export function Landing() {
               </h1>
             </motion.div>
 
-            {/* Subheading */}
             <motion.p
-              className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto"
+              className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              Scan Terraform, Kubernetes, Docker, and CI/CD pipelines in seconds
+              Scan repositories, Docker, Kubernetes, Terraform, GitHub Actions, Jenkins, GitLab CI, and cloud infrastructure in minutes.
+              <br />
+              <span className="text-foreground/80">Find vulnerabilities, secrets, misconfigurations, compliance issues, and deployment risks before they reach production.</span>
             </motion.p>
 
-            {/* CTA Buttons */}
             <motion.div
               className="flex flex-col sm:flex-row gap-4 justify-center"
               initial={{ opacity: 0, y: 20 }}
@@ -160,12 +162,33 @@ export function Landing() {
               </Button>
             </motion.div>
 
-            {/* Trust Indicators */}
+            <motion.div
+              className="flex flex-wrap justify-center gap-6 text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+            >
+              {[
+                { icon: Shield, text: 'No Agent Required' },
+                { icon: Zap, text: 'Scan in Minutes' },
+                { icon: Sparkles, text: 'AI-Powered Fixes' },
+                { icon: Check, text: 'Production Ready' },
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <div key={item.text} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+                    <Icon className="h-4 w-4 text-primary" />
+                    <span className="text-muted-foreground">{item.text}</span>
+                  </div>
+                )
+              })}
+            </motion.div>
+
             <motion.div
               className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
+              transition={{ duration: 0.6, delay: 0.7 }}
             >
               <div className="flex items-center gap-2">
                 <Check className="h-4 w-4 text-green-400" />
@@ -184,7 +207,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Stats Section - Subtle, below hero */}
+      {/* Stats Section */}
       <section className="py-8 border-y border-white/5 bg-white/[0.02]">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
@@ -210,6 +233,18 @@ export function Landing() {
         </div>
       </section>
 
+      {/* ===== SECTION 2 - TECHNOLOGY MARQUEE ===== */}
+      <TechnologyMarquee />
+
+      {/* ===== SECTION 3 - PROBLEM WE SOLVE ===== */}
+      <ProblemSection />
+
+      {/* ===== SECTION 4 - PLATFORM CAPABILITIES ===== */}
+      <PlatformCapabilities />
+
+      {/* ===== SECTION 5 - AI SECURITY ASSISTANT ===== */}
+      <AIAssistantSection />
+
       {/* Demo Preview Card */}
       <section id="demo-preview" className="py-20 lg:py-32">
         <div className="container mx-auto px-4">
@@ -233,7 +268,6 @@ export function Landing() {
             </motion.p>
           </div>
 
-          {/* Mock Scan Result Card */}
           <motion.div
             className="max-w-4xl mx-auto"
             initial={{ opacity: 0, y: 40 }}
@@ -242,7 +276,6 @@ export function Landing() {
             transition={{ delay: 0.3 }}
           >
             <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-sm overflow-hidden">
-              {/* Card Header */}
               <div className="p-6 border-b border-white/10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -261,7 +294,6 @@ export function Landing() {
                 </div>
               </div>
 
-              {/* Severity Stats */}
               <div className="p-6 border-b border-white/10">
                 <div className="grid grid-cols-4 gap-4">
                   <div className="text-center">
@@ -283,14 +315,12 @@ export function Landing() {
                 </div>
               </div>
 
-              {/* Sample Findings */}
               <div className="p-6 space-y-4">
                 <div className="flex items-center gap-2 mb-4">
                   <AlertTriangle className="h-5 w-5 text-orange-400" />
                   <h4 className="font-semibold text-foreground">Sample Findings</h4>
                 </div>
 
-                {/* Finding 1 */}
                 <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
                   <div className="flex items-start gap-3">
                     <div className="p-1.5 rounded bg-red-500/20">
@@ -298,9 +328,7 @@ export function Landing() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
-                          CRITICAL
-                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">CRITICAL</span>
                         <span className="text-xs font-mono text-muted-foreground">TF-STATE-004</span>
                       </div>
                       <h5 className="font-medium text-foreground mb-1">Backend State Encryption Required</h5>
@@ -309,7 +337,6 @@ export function Landing() {
                   </div>
                 </div>
 
-                {/* Finding 2 */}
                 <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
                   <div className="flex items-start gap-3">
                     <div className="p-1.5 rounded bg-orange-500/20">
@@ -317,9 +344,7 @@ export function Landing() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                          HIGH
-                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">HIGH</span>
                         <span className="text-xs font-mono text-muted-foreground">DKR-SEC-001</span>
                       </div>
                       <h5 className="font-medium text-foreground mb-1">Run Docker Container as Non-Root User</h5>
@@ -328,7 +353,6 @@ export function Landing() {
                   </div>
                 </div>
 
-                {/* Finding 3 */}
                 <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
                   <div className="flex items-start gap-3">
                     <div className="p-1.5 rounded bg-yellow-500/20">
@@ -336,9 +360,7 @@ export function Landing() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                          MEDIUM
-                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">MEDIUM</span>
                         <span className="text-xs font-mono text-muted-foreground">K8S-SEC-001</span>
                       </div>
                       <h5 className="font-medium text-foreground mb-1">Kubernetes Pod Security Context Missing</h5>
@@ -348,18 +370,12 @@ export function Landing() {
                 </div>
               </div>
 
-              {/* CTA Footer */}
               <div className="p-6 bg-gradient-to-r from-primary/10 to-indigo-600/10 border-t border-white/10">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <p className="text-sm text-muted-foreground">
                     See all 38 findings with AI-powered fix recommendations
                   </p>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={handleStartScan}
-                    glow
-                  >
+                  <Button variant="primary" size="md" onClick={handleStartScan} glow>
                     Start Your Free Scan
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -370,92 +386,14 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Detected Technologies Section */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <DetectedTechStack />
-        </div>
-      </section>
+      {/* ===== SECTION 6 - SCAN WORKFLOW ===== */}
+      <ScanWorkflow />
 
-      {/* Trust Section */}
-      <section className="py-20 lg:py-32 bg-white/5">
-        <div className="container mx-auto px-4">
-          <TrustSection />
-        </div>
-      </section>
+      {/* ===== SECTION 7 - REPORTING ===== */}
+      <ReportingSection />
 
-      {/* How It Works */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16 space-y-4">
-            <h2 className="text-4xl font-bold gradient-text">
-              How DevArchAI Works
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get comprehensive security analysis in 5 simple steps
-            </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto space-y-6">
-            {[
-              {
-                step: '01',
-                icon: Github,
-                title: 'Connect Repository',
-                description: 'Provide your GitHub repository URL or upload infrastructure files directly.',
-              },
-              {
-                step: '02',
-                icon: GitBranch,
-                title: 'Automatic Detection',
-                description: 'We automatically detect your DevOps stack - Docker, K8s, Terraform, CI/CD.',
-              },
-              {
-                step: '03',
-                icon: Shield,
-                title: 'Run Security Rules',
-                description: '500+ security rules check for misconfigurations, vulnerabilities, and best practices.',
-              },
-              {
-                step: '04',
-                icon: Sparkles,
-                title: 'AI Analysis',
-                description: 'AI analyzes findings and provides context-aware fix recommendations.',
-              },
-              {
-                step: '05',
-                icon: BarChart3,
-                title: 'Get Actionable Report',
-                description: 'Receive a comprehensive report with prioritized issues and fix suggestions.',
-              },
-            ].map((item, index) => (
-              <motion.div
-                key={item.step}
-                className="flex items-start gap-6 p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10"
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="flex-shrink-0">
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center shadow-lg shadow-primary/30">
-                      <item.icon className="h-8 w-8 text-white" />
-                    </div>
-                    <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-background border-2 border-primary flex items-center justify-center">
-                      <span className="text-xs font-bold text-primary">{item.step}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1 pt-2">
-                  <h3 className="text-xl font-semibold text-foreground mb-2">{item.title}</h3>
-                  <p className="text-muted-foreground">{item.description}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ===== SECTION 8 - DASHBOARD PREVIEW ===== */}
+      <DashboardPreview />
 
       {/* Testimonials */}
       <section className="py-20 lg:py-32 bg-white/5">
@@ -502,6 +440,23 @@ export function Landing() {
         </div>
       </section>
 
+      {/* ===== SECTION 9 - FUTURE ROADMAP ===== */}
+      <RoadmapSection />
+
+      {/* Detected Technologies Section */}
+      <section className="py-20 lg:py-32">
+        <div className="container mx-auto px-4">
+          <DetectedTechStack />
+        </div>
+      </section>
+
+      {/* Trust Section */}
+      <section className="py-20 lg:py-32 bg-white/5">
+        <div className="container mx-auto px-4">
+          <TrustSection />
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section className="py-20 lg:py-32">
         <div className="container mx-auto px-4">
@@ -509,7 +464,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* ===== SECTION 10 - FINAL CTA ===== */}
       <section className="py-20 lg:py-32 bg-white/5">
         <div className="container mx-auto px-4">
           <motion.div
@@ -519,17 +474,29 @@ export function Landing() {
             viewport={{ once: true }}
           >
             <div className="space-y-6">
+              <motion.div
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30"
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+              >
+                <Shield className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-primary">Start Securing Your Pipeline</span>
+              </motion.div>
+
               <h2 className="text-4xl md:text-5xl font-bold gradient-text">
-                Ready to Secure Your DevOps?
+                Secure Your DevOps Pipeline Before Production
               </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Start scanning your repositories today and get AI-powered remediation suggestions in seconds.
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                Detect vulnerabilities, secrets, infrastructure risks, and CI/CD issues before deployment.
+                Start scanning in under 30 seconds.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={() => navigate('/login')}
+                  className="px-8 py-6 text-lg"
                   glow
                 >
                   Start Free Scan
@@ -538,15 +505,28 @@ export function Landing() {
                 <Button
                   variant="secondary"
                   size="lg"
-                  onClick={() => navigate('/pricing')}
+                  onClick={() => {
+                    document.getElementById('demo-preview')?.scrollIntoView({ behavior: 'smooth' })
+                  }}
+                  className="px-8 py-6 text-lg"
                 >
-                  View Pricing
+                  View Demo
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">
-                <Check className="h-4 w-4 inline mr-1 text-green-400" />
-                No credit card required • Free tier available
-              </p>
+              <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-400" />
+                  No credit card required
+                </span>
+                <span className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-400" />
+                  Free tier available
+                </span>
+                <span className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-400" />
+                  Instant results
+                </span>
+              </div>
             </div>
           </motion.div>
         </div>
