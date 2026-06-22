@@ -5,7 +5,7 @@ import {
   Save, Loader2, CheckCircle, AlertCircle, X, Eye, EyeOff,
   Copy, Check, Plus, LogOut, Monitor, Globe, Clock, Zap,
   AlertTriangle, RefreshCw, ChevronRight, Camera, Smartphone,
-  Github, Lock,
+  Github, Gitlab, Lock,
 } from 'lucide-react'
 import { Button, Card, Input } from '../../components/ui'
 import { Skeleton } from '../../components/ui/Skeleton'
@@ -157,9 +157,19 @@ function ConfirmModal({ open, onClose, onConfirm, title, description, confirmLab
 function ProfileTab({ profile, fullName, username, setFullName, setUsername, saving, handleSaveProfile }:
   { profile: ProfileData | null; fullName: string; username: string; setFullName: (v: string) => void; setUsername: (v: string) => void; saving: string | null; handleSaveProfile: () => Promise<void> }) {
 
-  const providerLabel = profile?.provider === 'github' ? 'GitHub Account' : profile?.provider === 'email+github' ? 'Email + GitHub' : 'Email Account'
-  const providerIcon = profile?.provider === 'github' || profile?.provider === 'email+github' ? Github : Mail
-  const providerColor = profile?.provider === 'github' ? 'bg-gray-600/15 text-gray-300 border-gray-500/30' : profile?.provider === 'email+github' ? 'bg-indigo-600/15 text-indigo-300 border-indigo-500/30' : 'bg-primary/15 text-primary border-primary/30'
+  const providerLabel = profile?.provider === 'github' ? 'GitHub Account'
+    : profile?.provider === 'gitlab' ? 'GitLab Account'
+    : profile?.provider === 'email+github' ? 'Email + GitHub'
+    : profile?.provider === 'email+gitlab' ? 'Email + GitLab'
+    : 'Email Account'
+  const providerIcon = profile?.provider === 'github' || profile?.provider === 'email+github' ? Github
+    : profile?.provider === 'gitlab' || profile?.provider === 'email+gitlab' ? Gitlab
+    : Mail
+  const providerColor = profile?.provider === 'github' ? 'bg-gray-600/15 text-gray-300 border-gray-500/30'
+    : profile?.provider === 'gitlab' ? 'bg-orange-600/15 text-orange-300 border-orange-500/30'
+    : profile?.provider === 'email+github' ? 'bg-indigo-600/15 text-indigo-300 border-indigo-500/30'
+    : profile?.provider === 'email+gitlab' ? 'bg-orange-600/15 text-orange-300 border-orange-500/30'
+    : 'bg-primary/15 text-primary border-primary/30'
 
   return (
     <Card className="p-6" hover={false}>
@@ -226,12 +236,16 @@ function ProfileTab({ profile, fullName, username, setFullName, setUsername, sav
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {profile?.provider === 'github' ? (
             <><Github className="h-4 w-4 text-gray-400" /> GitHub OAuth</>
+          ) : profile?.provider === 'gitlab' ? (
+            <><Gitlab className="h-4 w-4 text-gray-400" /> GitLab OAuth</>
           ) : profile?.provider === 'email+github' ? (
             <><><Mail className="h-4 w-4 text-primary" /> Email</> <span className="text-muted-foreground/40">+</span> <Github className="h-4 w-4 text-gray-400" /> GitHub</>
+          ) : profile?.provider === 'email+gitlab' ? (
+            <><><Mail className="h-4 w-4 text-primary" /> Email</> <span className="text-muted-foreground/40">+</span> <Gitlab className="h-4 w-4 text-gray-400" /> GitLab</>
           ) : (
             <><Mail className="h-4 w-4 text-primary" /> Email Login</>
           )}
-          {!profile?.has_password && profile?.provider !== 'github' && profile?.provider !== 'email+github' && (
+          {!profile?.has_password && profile?.provider !== 'github' && profile?.provider !== 'gitlab' && profile?.provider !== 'email+github' && profile?.provider !== 'email+gitlab' && (
             <span className="text-xs text-yellow-400 ml-2">(No password set)</span>
           )}
         </div>

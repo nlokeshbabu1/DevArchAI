@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { Card, Button } from '../../components/ui'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
@@ -8,6 +9,7 @@ import { useAuthStore } from '../../stores/auth-store'
 export function GithubCallback() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const queryClient = useQueryClient()
   const { login, setUser } = useAuthStore()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
@@ -41,14 +43,11 @@ export function GithubCallback() {
         // Exchange code for token
         const tokenResponse = await githubAuthApi.exchangeCodeForToken(code)
 
-        // Store tokens
-        localStorage.setItem('access_token', tokenResponse.access_token)
+        // Update auth store (login() syncs token to localStorage)
+        login(tokenResponse.access_token)
         if (tokenResponse.refresh_token) {
           localStorage.setItem('refresh_token', tokenResponse.refresh_token)
         }
-
-        // Update auth store
-        login(tokenResponse.access_token)
         setUser({
           ...tokenResponse.user,
           is_active: tokenResponse.user.is_active ?? true,
@@ -58,6 +57,9 @@ export function GithubCallback() {
 
         // Success!
         setStatus('success')
+
+        // Clear stale query cache from any previous session
+        queryClient.clear()
 
         // Redirect to dashboard after short delay
         setTimeout(() => {

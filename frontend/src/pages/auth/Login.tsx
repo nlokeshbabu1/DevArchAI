@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Shield, Mail, Lock, Eye, EyeOff, Github, Loader2, 
@@ -10,6 +11,7 @@ import { Button, Input, Card } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
+import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
 
 // Trust signals data
@@ -28,6 +30,7 @@ const benefits = [
 
 export function Login() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { login, setUser } = useAuthStore()
   
   const [showPassword, setShowPassword] = useState(false)
@@ -82,13 +85,12 @@ export function Login() {
       // Login and get tokens
       const tokenResponse = await authApi.login(formData)
 
-      // Store tokens
-      localStorage.setItem('access_token', tokenResponse.access_token)
-      if (formData.rememberMe) {
+      // Store refresh token if requested
+      if (formData.rememberMe && tokenResponse.refresh_token) {
         localStorage.setItem('refresh_token', tokenResponse.refresh_token)
       }
 
-      // Update auth store with token
+      // Update auth store with token (login() syncs access_token to localStorage)
       login(tokenResponse.access_token)
 
       // Show success message
@@ -98,6 +100,9 @@ export function Login() {
       try {
         const userResponse = await authApi.getCurrentUser()
         setUser(userResponse)
+
+        // Clear stale React Query cache
+        queryClient.clear()
 
         // Navigate to dashboard or intended destination AFTER user is set
         const redirectPath = sessionStorage.getItem('postLoginRedirect')
@@ -140,6 +145,7 @@ export function Login() {
         console.warn('Failed to fetch user info', err)
 
         // Default to dashboard on error
+        queryClient.clear()
         navigate('/dashboard')
       }
     } catch (err: any) {
@@ -175,6 +181,25 @@ export function Login() {
     } catch (error) {
       setError('GitHub OAuth is not configured. Please use email/password to login.')
       console.error('GitHub OAuth error:', error)
+      setIsLoading(false)
+    }
+  }
+
+  const handleGitlabLogin = async () => {
+    setError('')
+    setIsLoading(true)
+
+    try {
+      const authUrl = await gitlabAuthApi.getAuthorizationUrl()
+      if (!authUrl) {
+        setError('GitLab OAuth is not configured. Please use email/password to login.')
+        setIsLoading(false)
+        return
+      }
+      window.location.href = authUrl
+    } catch (error) {
+      setError('GitLab OAuth is not configured. Please use email/password to login.')
+      console.error('GitLab OAuth error:', error)
       setIsLoading(false)
     }
   }
@@ -474,6 +499,20 @@ export function Login() {
                   Recommended
                 </div>
               </div>
+
+              {/* GitLab */}
+              <Button
+                variant="secondary"
+                onClick={handleGitlabLogin}
+                className="w-full h-12"
+                disabled={isLoading}
+                aria-label="Login with GitLab"
+              >
+                <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+                </svg>
+                <span>Continue with GitLab</span>
+              </Button>
 
               {/* Google */}
               <Button

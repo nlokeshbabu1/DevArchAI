@@ -13,6 +13,9 @@ interface User {
   role: string
   current_org_id?: string
   plan?: string
+  has_github?: boolean
+  has_gitlab?: boolean
+  provider?: string
 }
 
 interface AuthState {
@@ -47,7 +50,7 @@ export const useAuthStore = create<AuthState>()(
           return
         }
 
-        set({ isAuthenticated: true })
+        set({ isAuthenticated: true, isLoading: true })
         get().fetchUserInfo()
       },
 
@@ -80,6 +83,8 @@ export const useAuthStore = create<AuthState>()(
 
       // ✅ FIXED: no localStorage manual handling
       login: (token: string) => {
+        localStorage.setItem('access_token', token)
+
         set({
           token,
           isAuthenticated: true,
@@ -93,6 +98,9 @@ export const useAuthStore = create<AuthState>()(
 
       // ✅ CLEAN logout
       logout: () => {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+
         set({
           token: null,
           user: null,

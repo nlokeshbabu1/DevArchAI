@@ -1,0 +1,284 @@
+# ===========================================
+# DevArchAI - Pre-Commit Hooks Configuration
+# ===========================================
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# ===========================================
+
+repos:
+  # ===========================================
+  # 1. GENERAL HOOKS
+  # ===========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Security: Detect secrets
+      - id: detect-private-key
+        name: Detect Private Keys
+        description: Detects presence of private keys
+      - id: detect-aws-credentials
+        name: Detect AWS Credentials
+        description: Detects AWS credentials
+        args: [--credentials-file, ~/.aws/credentials]
+      - id: no-commit-to-branch
+        name: Prevent commits to main
+        args: [--branch, main]
+      
+      # Code Quality
+      - id: trailing-whitespace
+        name: Remove Trailing Whitespace
+        description: Trims trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix End of Files
+        description: Ensures files end with a newline
+      - id: check-yaml
+        name: Check YAML
+        description: Validates YAML syntax
+        args: [--unsafe]
+      - id: check-json
+        name: Check JSON
+        description: Validates JSON syntax
+      - id: check-toml
+        name: Check TOML
+        description: Validates TOML syntax
+      - id: check-merge-conflict
+        name: Check Merge Conflicts
+        description: Checks for merge conflict markers
+      - id: check-added-large-files
+        name: Check Large Files
+        description: Prevents adding large files
+        args: [--maxkb=1024]
+      - id: check-case-conflict
+        name: Check Case Conflicts
+        description: Checks for case conflicts on case-insensitive filesystems
+      - id: check-symlinks
+        name: Check Symlinks
+        description: Checks for broken symlinks
+      - id: destroyed-symlinks
+        name: Destroyed Symlinks
+        description: Detects symlinks that would be broken
+      
+      # Documentation
+      - id: check-docstring-first
+        name: Check Docstring First
+        description: Checks for docstring as first statement
+      - id: name-tests-test
+        name: Name Tests Properly
+        description: Ensures test files are named correctly
+        args: [--pytest-test-first]
+
+  # ===========================================
+  # 2. PYTHON HOOKS
+  # ===========================================
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        name: Black Formatter
+        description: Formats Python code
+        language_version: python3.12
+        args: [--line-length=100]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: Isort Import Sorter
+        description: Sorts Python imports
+        args: [--profile=black, --line-length=100]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        name: Flake8 Linter
+        description: Lints Python code
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+        additional_dependencies:
+          - flake8-bugbear
+          - flake8-comprehensions
+          - flake8-docstrings
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        name: MyPy Type Checker
+        description: Type checks Python code
+        args: [--ignore-missing-imports, --disallow-untyped-defs]
+        additional_dependencies:
+          - types-requests
+          - types-PyYAML
+          - types-python-jose
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.5
+    hooks:
+      - id: ruff
+        name: Ruff Linter
+        description: Fast Python linter
+        args: [--fix, --exit-non-zero-on-fix]
+
+  # ===========================================
+  # 3. SECURITY HOOKS
+  # ===========================================
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect Secrets
+        description: Detects high entropy strings (potential secrets)
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+        name: Gitleaks Secret Scanner
+        description: Scans for secrets in git history
+
+  # ===========================================
+  # 4. JAVASCRIPT/TYPESCRIPT HOOKS
+  # ===========================================
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: Prettier Formatter
+        description: Formats JavaScript/TypeScript/CSS
+        types_or: [javascript, ts, tsx, css, json, markdown]
+        args: [--write]
+        additional_dependencies:
+          - prettier@3.2.5
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint Linter
+        description: Lints JavaScript/TypeScript code
+        entry: npm run lint
+        language: system
+        types_or: [javascript, ts, tsx]
+        pass_filenames: false
+        always_run: true
+        files: ^frontend/
+
+  # ===========================================
+  # 5. TERRAFORM HOOKS
+  # ===========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-merge-conflict
+        name: Check Terraform Merge Conflicts
+        files: \.tf$
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.88.2
+    hooks:
+      - id: terraform_fmt
+        name: Terraform Format
+        description: Formats Terraform files
+      - id: terraform_validate
+        name: Terraform Validate
+        description: Validates Terraform configurations
+      - id: terraform_docs
+        name: Terraform Docs
+        description: Generates Terraform documentation
+      - id: terraform_tflint
+        name: Terraform Lint
+        description: Lints Terraform files
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+  # ===========================================
+  # 6. KUBERNETES HOOKS
+  # ===========================================
+  - repo: https://github.com/gruntwork-io/pre-commit
+    rev: v0.1.23
+    hooks:
+      - id: helmlint
+        name: Helm Lint
+        description: Lints Helm charts
+      - id: shellcheck
+        name: ShellCheck
+        description: Lints shell scripts
+
+  - repo: https://github.com/yannh/kubeconform
+    rev: v0.6.4
+    hooks:
+      - id: kubeconform
+        name: Kubernetes Validate
+        description: Validates Kubernetes manifests
+        args: [-strict, -summary]
+
+  # ===========================================
+  # 7. DOCKER HOOKS
+  # ===========================================
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.1-beta
+    hooks:
+      - id: hadolint-docker
+        name: Dockerfile Lint
+        description: Lints Dockerfiles
+        args: [--ignore=DL3008, --ignore=DL3013]
+
+  # ===========================================
+  # 8. GIT HOOKS
+  # ===========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        name: Check Git Large Files
+        description: Prevents committing large files to git
+        args: [--maxkb=5120]  # 5MB limit
+      - id: forbid-new-submodules
+        name: Forbid Git Submodules
+        description: Prevents adding new git submodules
+
+# ===========================================
+# SKIP HOOKS (for specific files)
+# ===========================================
+# To skip a hook for a specific file, add to file header:
+# # skip-check-hooks: true
+#
+# To skip all hooks for a commit:
+# git commit -m "message" --no-verify
+
+# ===========================================
+# INSTALLATION
+# ===========================================
+# 1. Install pre-commit:
+#    pip install pre-commit
+#
+# 2. Install hooks:
+#    pre-commit install
+#
+# 3. Run on all files:
+#    pre-commit run --all-files
+#
+# 4. Update hooks:
+#    pre-commit autoupdate
+#
+# 5. Uninstall:
+#    pre-commit uninstall
+
+# ===========================================
+# TROUBLESHOOTING
+# ===========================================
+# If a hook fails:
+# 1. Fix the issue reported
+# 2. git add <file>
+# 3. git commit (will run hooks again)
+#
+# To bypass hooks (NOT RECOMMENDED):
+# git commit --no-verify -m "message"
+#
+# To see what hooks will run:
+# pre-commit run --all-files --verbose
+
+# ===========================================
+# END OF CONFIGURATION
+# ===========================================

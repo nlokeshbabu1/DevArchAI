@@ -243,6 +243,8 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
                       status: 'completed'
                     }))}
                     backendLogs={logs}
+                    filesScanned={filesList.length}
+                    findingsDetected={0}
                   />
                 </div>
               ) : error ? (

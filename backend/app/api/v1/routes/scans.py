@@ -134,19 +134,24 @@ async def get_scan(
     """Get a specific scan with findings."""
     scan_uuid = _parse_scan_id(scan_id)
 
-    query = select(Scan).where(Scan.id == scan_uuid)
-
-    # If authenticated, filter by user - but also allow scans without user_id (guest scans)
-    if current_user:
-        query = query.where(
-            (Scan.user_id == current_user.id) | (Scan.user_id == None)
-        )
-
-    result = await db.execute(query)
+    result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
     scan = result.scalar_one_or_none()
 
     if not scan:
         raise ScanNotFoundException(scan_id)
+
+    # Verify ownership: authenticated users can access their own or anonymous scans
+    if current_user:
+        if scan.user_id is not None and scan.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You don't have permission to view this scan"
+            )
+    elif scan.user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authentication required to view this scan"
+        )
 
     # Get findings count
     findings_count = await db.execute(
@@ -218,16 +223,24 @@ async def get_scan_progress(
     """Get scan progress."""
     scan_uuid = _parse_scan_id(scan_id)
     
-    query = select(Scan).where(Scan.id == scan_uuid)
-
-    if current_user:
-        query = query.where(Scan.user_id == current_user.id)
-
-    result = await db.execute(query)
+    result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
     scan = result.scalar_one_or_none()
 
     if not scan:
         raise ScanNotFoundException(scan_id)
+
+    # Verify ownership
+    if current_user:
+        if scan.user_id is not None and scan.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You don't have permission to view this scan"
+            )
+    elif scan.user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authentication required to view this scan"
+        )
 
     # Get Celery task status if available
     progress = scan.progress

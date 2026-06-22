@@ -68,7 +68,13 @@ def _profile_dict(user: User, org_name: str | None = None) -> dict:
         "plan": user.subscription_plan if hasattr(user, "subscription_plan") else "free",
         "created_at": (user.created_at.isoformat() if user.created_at else None),
         "last_login_at": (user.last_login_at.isoformat() if user.last_login_at else None),
-        "provider": "email+github" if (user.github_id and user.hashed_password) else ("github" if user.github_id else "email"),
+        "provider": (
+            "email+github" if (user.github_id and user.hashed_password)
+            else "email+gitlab" if (user.gitlab_id and user.hashed_password)
+            else "github" if user.github_id
+            else "gitlab" if user.gitlab_id
+            else "email"
+        ),
         "has_password": bool(user.hashed_password),
     }
 

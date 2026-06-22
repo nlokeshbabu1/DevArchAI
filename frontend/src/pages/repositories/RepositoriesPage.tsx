@@ -3,6 +3,7 @@ import {
   Plus,
   Github,
   Gitlab,
+  GitBranch,
   Cloud,
   Server,
   Loader2,
@@ -21,11 +22,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
 import { scansApi } from '../../api/endpoints/scans'
 import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
-import { GitHubRepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
+import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
 import { ScanProgress } from '../../components/ScanProgress'
 
 type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
@@ -33,7 +35,7 @@ type ScanFileType = 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitori
 
 interface DisplayRepository extends Repository {
   displayStatus: DisplayStatus
-  source?: 'github' | 'manual'
+  source?: 'github' | 'gitlab' | 'manual'
 }
 
 interface TriggerScanVariables {
@@ -68,7 +70,7 @@ interface UnifiedScanStatus {
   error_message?: string | null
 }
 
-interface ImportableGitHubRepository {
+interface ImportableRepoItem {
   id: number
   full_name: string
   html_url: string
@@ -132,16 +134,16 @@ function isRunningStatus(status?: string | null) {
   return status === 'processing' || status === 'pending' || status === 'queued' || status === 'running'
 }
 
-function parseGitHubRepositoryId(id: string) {
-  const normalizedId = id.startsWith('github_') ? id.slice('github_'.length) : id
-  const parsedId = Number(normalizedId)
-
+function parseRepositoryId(id: string) {
+  const parts = id.split('_')
+  const parsedId = Number(parts[parts.length - 1])
   return Number.isFinite(parsedId) ? parsedId : null
 }
 
 export function RepositoriesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -164,8 +166,14 @@ export function RepositoriesPage() {
   const allRepos: DisplayRepository[] = repositories.map((repo) => ({
     ...repo,
     displayStatus: 'not_scanned',
-    source: repo.url?.includes('github.com') ? 'github' : 'manual',
+    source: repo.url?.includes('github.com') ? 'github' : repo.url?.includes('gitlab.com') ? 'gitlab' : 'manual',
   }))
+
+  const activeProvider: 'github' | 'gitlab' = 
+    user?.provider === 'gitlab' ? 'gitlab' 
+    : user?.provider === 'github' ? 'github'
+    : user?.has_gitlab && !user?.has_github ? 'gitlab' 
+    : 'github'
 
   const {
     data: githubRepositoriesResponse,
@@ -174,46 +182,91 @@ export function RepositoriesPage() {
   } = useQuery({
     queryKey: ['github-repositories'],
     queryFn: () => repositoriesApi.listGitHubRepositories(),
-    enabled: showImportModal,
+    enabled: showImportModal && activeProvider === 'github',
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  const {
+    data: gitlabProjectsResponse,
+    isLoading: isGitLabProjectsLoading,
+    error: gitlabProjectsError,
+  } = useQuery({
+    queryKey: ['gitlab-projects'],
+    queryFn: () => repositoriesApi.listGitLabProjects(),
+    enabled: showImportModal && activeProvider === 'gitlab',
     staleTime: 60_000,
     retry: false,
   })
 
   const githubConnected =
-    githubRepositoriesResponse?.github_connected ??
-    repositories.some((repo) => repo.url?.includes('github.com'))
+    activeProvider === 'github'
+      ? (githubRepositoriesResponse?.github_connected ??
+        repositories.some((repo) => repo.url?.includes('github.com')))
+      : false
+  const gitlabConnected = user?.has_gitlab ?? false
   const importedRepositoryUrls = new Set(repositories.map((repo) => repo.url))
-  const rawGitHubRepositories = githubRepositoriesResponse?.github_repositories || []
-  const importableGitHubRepositories = rawGitHubRepositories.reduce<ImportableGitHubRepository[]>((repoList, repo) => {
-    const parsedId = parseGitHubRepositoryId(repo.id)
 
-    if (parsedId === null || importedRepositoryUrls.has(repo.url)) {
-      return repoList
+  const isImportLoading = activeProvider === 'github' ? isGitHubRepositoriesLoading : isGitLabProjectsLoading
+  const importError = activeProvider === 'github' ? githubRepositoriesError : gitlabProjectsError
+
+  console.debug('[Import] Provider detection:', {
+    activeProvider,
+    userProvider: user?.provider,
+    hasGithub: user?.has_github,
+    hasGitlab: user?.has_gitlab,
+  })
+  console.debug('[Import] GitLab projects response:', {
+    exists: !!gitlabProjectsResponse,
+    count: gitlabProjectsResponse?.gitlab_projects?.length,
+    connected: gitlabProjectsResponse?.gitlab_connected,
+    message: gitlabProjectsResponse?.message,
+  })
+
+  const rawItems = activeProvider === 'github'
+    ? (githubRepositoriesResponse?.github_repositories || [])
+    : (gitlabProjectsResponse?.gitlab_projects || [])
+
+  const importableItems = rawItems.reduce<ImportableRepoItem[]>((list, item: any) => {
+    const parsedId = parseRepositoryId(item.id)
+    if (parsedId === null) {
+      console.debug('[Import] Skipped item - parseRepositoryId returned null:', item.id, item.name)
+      return list
     }
-
-    repoList.push({
+    if (importedRepositoryUrls.has(item.url)) {
+      console.debug('[Import] Skipped item - already imported:', item.name, item.url)
+      return list
+    }
+    list.push({
       id: parsedId,
-      full_name: repo.name,
-      html_url: repo.url,
-      description: repo.description || null,
-      private: repo.is_private,
-      default_branch: repo.default_branch || 'main',
-      language: repo.language || null,
-      stargazers_count: repo.stargazers_count || 0,
-      forks_count: repo.forks_count || 0,
-      updated_at: repo.updated_at,
+      full_name: item.name,
+      html_url: item.url,
+      description: item.description || null,
+      private: item.is_private,
+      default_branch: item.default_branch || 'main',
+      language: item.language || null,
+      stargazers_count: item.stargazers_count || 0,
+      forks_count: item.forks_count || 0,
+      updated_at: item.updated_at,
     })
-
-    return repoList
+    return list
   }, [])
 
-  const githubImportMessage = githubRepositoriesError
-    ? 'Failed to load GitHub repositories. Please try again.'
-    : !githubConnected
+  const importStatusMessage = importError
+    ? activeProvider === 'github'
+      ? 'Failed to load GitHub repositories. Please try again.'
+      : 'Failed to load GitLab projects. Please try again.'
+    : activeProvider === 'github' && !githubConnected
     ? (githubRepositoriesResponse?.message || 'Connect GitHub with OAuth to import repositories.')
-    : rawGitHubRepositories.length > 0 && importableGitHubRepositories.length === 0
-    ? 'All available GitHub repositories are already imported.'
-    : githubRepositoriesResponse?.message
+    : activeProvider === 'gitlab' && !gitlabConnected
+    ? (gitlabProjectsResponse?.message || 'Connect GitLab with OAuth to import projects.')
+    : rawItems.length > 0 && importableItems.length === 0
+    ? activeProvider === 'github'
+      ? 'All available GitHub repositories are already imported.'
+      : 'All available GitLab projects are already imported.'
+    : activeProvider === 'github'
+    ? githubRepositoriesResponse?.message
+    : gitlabProjectsResponse?.message
 
   const addRepositoryMutation = useMutation({
     mutationFn: async (url: string) => repositoriesApi.createRepository({ url }),
@@ -224,11 +277,16 @@ export function RepositoriesPage() {
   })
 
   const importRepositoriesMutation = useMutation({
-    mutationFn: async (repoIds: number[]) => repositoriesApi.importGitHubRepositories(repoIds),
+    mutationFn: async (repoIds: number[]) => {
+      if (activeProvider === 'github') {
+        return repositoriesApi.importGitHubRepositories(repoIds)
+      }
+      return repositoriesApi.importGitLabProjects(repoIds)
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['repositories'] }),
-        queryClient.invalidateQueries({ queryKey: ['github-repositories'] }),
+        queryClient.invalidateQueries({ queryKey: [activeProvider === 'github' ? 'github-repositories' : 'gitlab-projects'] }),
       ])
     },
   })
@@ -489,13 +547,15 @@ export function RepositoriesPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              variant="secondary"
-              icon={<Github className="h-4 w-4" />}
-              onClick={() => setShowImportModal(true)}
-            >
-              Import Repository
-            </Button>
+            {user?.provider !== 'password' && (
+              <Button
+                variant="secondary"
+                icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
+                onClick={() => setShowImportModal(true)}
+              >
+                Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+              </Button>
+            )}
             <Button
               variant="primary"
               icon={<Plus className="h-4 w-4" />}
@@ -514,7 +574,7 @@ export function RepositoriesPage() {
         >
           {[
             { name: 'GitHub', icon: Github, connected: githubConnected },
-            { name: 'GitLab', icon: Gitlab, connected: false },
+            { name: 'GitLab', icon: Gitlab, connected: gitlabConnected },
             { name: 'AWS', icon: Cloud, connected: false },
             { name: 'Azure', icon: Server, connected: false },
           ].map((integration) => (
@@ -580,25 +640,40 @@ export function RepositoriesPage() {
               <p className="text-muted-foreground">Loading repositories...</p>
             </div>
           ) : filteredRepos.length === 0 ? (
-            displayRepos.length === 0 ? (
+              displayRepos.length === 0 ? (
               <Card className="col-span-full p-12 text-center" hover={false}>
-                <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                {user?.provider === 'password'
+                  ? <GitBranch className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                  : activeProvider === 'github'
+                  ? <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                  : <Gitlab className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                }
                 <h3 className="mb-2 text-lg font-semibold text-foreground">
-                  {githubConnected ? 'No repositories found' : 'No repositories yet'}
+                  {user?.provider === 'password'
+                    ? 'No repositories yet'
+                    : activeProvider === 'github' && githubConnected
+                    ? 'No repositories found'
+                    : 'No repositories yet'}
                 </h3>
                 <p className="mb-6 text-muted-foreground">
-                  {githubConnected
+                  {user?.provider === 'password'
+                    ? 'Add a repository manually to start scanning.'
+                    : activeProvider === 'github' && githubConnected
                     ? 'Your GitHub repositories will appear here. Add one to get started.'
-                    : 'Connect GitHub or add a repository manually to start scanning'}
+                    : activeProvider === 'gitlab' && gitlabConnected
+                    ? 'Your GitLab projects will appear here. Add one to get started.'
+                    : 'Connect a provider or add a repository manually to start scanning'}
                 </p>
                 <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                  <Button
-                    variant="secondary"
-                    icon={<Github className="h-4 w-4" />}
-                    onClick={() => setShowImportModal(true)}
-                  >
-                    Import Repository
-                  </Button>
+                  {user?.provider !== 'password' && (
+                    <Button
+                      variant="secondary"
+                      icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
+                      onClick={() => setShowImportModal(true)}
+                    >
+                      Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                    </Button>
+                  )}
                   <Button
                     variant="primary"
                     icon={<Plus className="h-4 w-4" />}
@@ -648,7 +723,10 @@ export function RepositoriesPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 items-start gap-3">
                           <div className="rounded-xl border border-white/10 bg-white/5 p-2.5">
-                            <Github className="h-5 w-5 text-muted-foreground" />
+                            {repo.source === 'gitlab'
+                              ? <Gitlab className="h-5 w-5 text-muted-foreground" />
+                              : <Github className="h-5 w-5 text-muted-foreground" />
+                            }
                           </div>
                           <div className="min-w-0 flex-1 space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
@@ -659,6 +737,12 @@ export function RepositoriesPage() {
                                 <Badge variant="secondary" className="border-blue-500/30 bg-blue-500/10 text-xs text-blue-400">
                                   <Github className="mr-1 h-3 w-3" />
                                   GitHub
+                                </Badge>
+                              )}
+                              {repo.source === 'gitlab' && (
+                                <Badge variant="secondary" className="border-orange-500/30 bg-orange-500/10 text-xs text-orange-400">
+                                  <Gitlab className="mr-1 h-3 w-3" />
+                                  GitLab
                                 </Badge>
                               )}
                             </div>
@@ -828,15 +912,16 @@ export function RepositoriesPage() {
           isLoading={isAdding}
         />
 
-        <GitHubRepoSelectionModal
+        <RepoSelectionModal
           isOpen={showImportModal}
           onClose={() => setShowImportModal(false)}
           onImport={handleImportRepositories}
-          repos={importableGitHubRepositories}
-          isLoading={isGitHubRepositoriesLoading}
-          githubConnected={githubConnected}
-          statusMessage={githubImportMessage}
-          hasError={Boolean(githubRepositoriesError)}
+          repos={importableItems}
+          isLoading={isImportLoading}
+          provider={activeProvider}
+          connected={activeProvider === 'github' ? githubConnected : gitlabConnected}
+          statusMessage={importStatusMessage}
+          hasError={Boolean(importError)}
         />
       </div>
 
@@ -919,6 +1004,8 @@ export function RepositoriesPage() {
                       detectedTechnologies={activeScanStatus?.detected_stack || []}
                       steps={(activeScanStatus?.steps || []).map((step) => step.name)}
                       backendLogs={activeScanStatus?.logs || []}
+                      filesScanned={activeScanDetectedFiles?.length || 0}
+                      findingsDetected={0}
                     />
                   )}
                 </div>

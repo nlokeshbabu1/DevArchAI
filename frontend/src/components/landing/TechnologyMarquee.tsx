@@ -1,5 +1,4 @@
-import { Box, ContainerIcon, GitBranch, Github, Layers, Cloud, Server, Shield, Hexagon, Settings } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import { Box, GitBranch, Github, Layers, Cloud, Server, Shield, Hexagon } from 'lucide-react'
 
 interface TechItem {
   name: string
@@ -9,23 +8,17 @@ interface TechItem {
 
 const technologies: TechItem[] = [
   { name: 'Docker', icon: Box, category: 'Containers' },
-  { name: 'Docker Compose', icon: Box, category: 'Containers' },
-  { name: 'Podman', icon: ContainerIcon, category: 'Containers' },
-  { name: 'Kubernetes', icon: Hexagon, category: 'Kubernetes' },
-  { name: 'Helm', icon: Shield, category: 'Kubernetes' },
-  { name: 'ArgoCD', icon: GitBranch, category: 'Kubernetes' },
-  { name: 'OpenShift', icon: Cloud, category: 'Kubernetes' },
-  { name: 'EKS', icon: Server, category: 'Kubernetes' },
-  { name: 'AKS', icon: Server, category: 'Kubernetes' },
-  { name: 'GKE', icon: Server, category: 'Kubernetes' },
+  { name: 'Docker Compose', icon: Layers, category: 'Containers' },
+  { name: 'Kubernetes', icon: Hexagon, category: 'Orchestration' },
+  { name: 'Helm', icon: Shield, category: 'Orchestration' },
+  { name: 'Terraform', icon: Layers, category: 'Infrastructure' },
   { name: 'GitHub Actions', icon: Github, category: 'CI/CD' },
   { name: 'Jenkins', icon: GitBranch, category: 'CI/CD' },
   { name: 'GitLab CI', icon: GitBranch, category: 'CI/CD' },
-  { name: 'Azure DevOps', icon: GitBranch, category: 'CI/CD' },
-  { name: 'Terraform', icon: Layers, category: 'Infrastructure' },
-  { name: 'CloudFormation', icon: Layers, category: 'Infrastructure' },
-  { name: 'Ansible', icon: Settings, category: 'Infrastructure' },
   { name: 'AWS', icon: Cloud, category: 'Cloud' },
+  { name: 'EKS', icon: Server, category: 'Cloud' },
+  { name: 'AKS', icon: Server, category: 'Cloud' },
+  { name: 'GKE', icon: Server, category: 'Cloud' },
 ]
 
 function TechTile({ tech }: { tech: TechItem }) {
@@ -48,10 +41,10 @@ export function TechnologyMarquee() {
       <div className="container mx-auto px-4 mb-12">
         <div className="text-center space-y-4">
           <h2 className="text-4xl font-bold gradient-text">
-            Scan Everything in Your DevOps Stack
+            Scan Across Your Entire Stack
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Comprehensive security scanning for containers, orchestrators, CI/CD pipelines, and cloud infrastructure
+            Comprehensive security scanning for containers, orchestrators, CI/CD pipelines, and cloud platforms
           </p>
         </div>
       </div>

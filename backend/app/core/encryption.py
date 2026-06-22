@@ -51,6 +51,12 @@ class EncryptionService:
 @lru_cache
 def get_encryption_service() -> EncryptionService:
     """Get cached encryption service instance."""
+    if not settings.ENCRYPTION_KEY:
+        logger.warning(
+            "ENCRYPTION_KEY is not set. Encryption key derived from SECRET_KEY. "
+            "If SECRET_KEY changes, encrypted data (e.g. user emails) will be unrecoverable. "
+            "Set ENCRYPTION_KEY in .env to a stable Fernet-compatible key."
+        )
     return EncryptionService()
 
 

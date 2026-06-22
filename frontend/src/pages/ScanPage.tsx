@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
@@ -105,12 +105,17 @@ interface GitHubBranch {
 
 export function ScanPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { isAuthenticated } = useAuthStore()
   
   // State management
-  const [repoUrl, setRepoUrl] = useState('')
-  const [selectedBranch, setSelectedBranch] = useState<string>('main')
+  const initialUrl = searchParams.get('url') || ''
+  const initialBranch = searchParams.get('branch') || 'main'
+  const autoStart = searchParams.get('auto') === 'true'
+  const [repoUrl, setRepoUrl] = useState(initialUrl)
+  const [selectedBranch, setSelectedBranch] = useState<string>(initialBranch)
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
+  const autoSubmittedRef = useRef(false)
   
   // Scan state
   const [loading, setLoading] = useState(false)
@@ -154,13 +159,11 @@ export function ScanPage() {
     retry: false, // Don't retry on failure
   })
 
-  // Update selected branch when branches are loaded
+  // Update selected branch when branches are loaded (preserve rescan branch)
   useEffect(() => {
-    console.log('📊 Branch data changed:', branchesData)
-    if (branchesData?.default_branch) {
-      setSelectedBranch(branchesData.default_branch)
-      console.log('✅ Default branch set:', branchesData.default_branch)
-    }
+    if (!branchesData?.default_branch) return
+    if (initialUrl) return // preserve branch from rescan params
+    setSelectedBranch(branchesData.default_branch)
   }, [branchesData])
 
   const branches: GitHubBranch[] = branchesData?.branches || []
@@ -177,6 +180,33 @@ export function ScanPage() {
       branchesData 
     })
   }, [branches, isFetchingBranches, hasBranchesError, branchesData])
+
+  // Refs to avoid stale closures in intervals/timeouts
+  const progressRef = useRef(0)
+  const detectedTechRef = useRef<string[]>([])
+  const stepsRef = useRef<Array<{name: string; status: string}>>([])
+  useEffect(() => { progressRef.current = progress }, [progress])
+  useEffect(() => { detectedTechRef.current = detectedTechnologies }, [detectedTechnologies])
+  useEffect(() => { stepsRef.current = stepsFromBackend }, [stepsFromBackend])
+
+  // Auto-submit when navigated from rescan
+  useEffect(() => {
+    if (autoStart && repoUrl && !autoSubmittedRef.current && !loading && !result) {
+      autoSubmittedRef.current = true
+      const timer = setTimeout(() => {
+        const form = document.querySelector('form')
+        if (form) form.requestSubmit()
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [autoStart, repoUrl, loading, result])
+
+  // Navigate to results page when rescan completes
+  useEffect(() => {
+    if (result && autoStart && result.scan_id) {
+      navigate(`/scans/${result.scan_id}`, { replace: true })
+    }
+  }, [result, autoStart, navigate])
 
   // WebSocket connection for real-time scan progress
   const wsRef = useRef<WebSocket | null>(null)
@@ -362,8 +392,8 @@ export function ScanPage() {
 
       // Monitor completion via WebSocket and fetch results
       const completionCheck = setInterval(async () => {
-        // Use backend status to detect completion
-        if (progress >= 100) {
+        // Use ref to avoid stale closure on progress state
+        if (progressRef.current >= 100) {
           clearInterval(completionCheck)
           
           // Minimum display time
@@ -388,9 +418,10 @@ export function ScanPage() {
               console.log('✅ Complete results:', results)
 
               setProgress(100)
-              setCurrentStep(stepsFromBackend.length || 7)
+              setCurrentStep(stepsRef.current.length || 7)
               setLoading(false)
 
+              const currentTechs = detectedTechRef.current
               const scanResult: ScanResult = {
                 success: true,
                 scan_id: results.scan_id || data.scan_id,
@@ -406,7 +437,7 @@ export function ScanPage() {
                 total_findings: results.findings_count || results.findings?.length || 0,
                 files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
                 devops_stack: results.devops_stack,
-                detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),
+                detected_technologies: currentTechs.length > 0 ? currentTechs : (results.detected_technologies || []),
                 repository_url: results.repository_url || repoUrl,
                 repository_name: results.repository_name || repoUrl.split('/').slice(-2).join('/'),
                 branch: results.branch || selectedBranch,
@@ -443,8 +474,9 @@ export function ScanPage() {
           const results = resultsResponse.data
 
           setProgress(100)
-          setCurrentStep(stepsFromBackend.length || 7)
+          setCurrentStep(stepsRef.current.length || 7)
           setLoading(false)
+          const timeoutTechs = detectedTechRef.current
           setResult({
             success: true,
             scan_id: results.scan_id,
@@ -454,7 +486,7 @@ export function ScanPage() {
             total_findings: results.findings_count || 0,
             files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
             devops_stack: results.devops_stack,
-            detected_technologies: detectedTechnologies.length > 0 ? detectedTechnologies : (results.detected_technologies || []),
+            detected_technologies: timeoutTechs.length > 0 ? timeoutTechs : (results.detected_technologies || []),
             repository_url: repoUrl,
             repository_name: repoUrl.split('/').slice(-2).join('/'),
             branch: selectedBranch,
@@ -484,6 +516,22 @@ export function ScanPage() {
     setProgress(0)
     setCurrentStep(0)
     setRepoUrl('')
+  }
+
+  // During rescan flow, show loading spinner while navigating to results page
+  if (result && autoStart) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+            className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-400 rounded-full mx-auto"
+          />
+          <p className="text-muted-foreground">Opening results page...</p>
+        </div>
+      </div>
+    )
   }
 
   // Render result if available - SHOW ON SAME PAGE (no redirect)
@@ -609,6 +657,8 @@ export function ScanPage() {
             }))}
             backendLogs={scanLogs}
             steps={stepsFromBackend.map(s => s.name)}
+            filesScanned={filesList.length}
+            findingsDetected={0}
           />
         </div>
       </div>

@@ -16,7 +16,7 @@ export interface ProfileData {
   plan: string
   created_at?: string
   last_login_at?: string
-  provider?: 'email' | 'github' | 'email+github'
+  provider?: 'email' | 'github' | 'gitlab' | 'email+github' | 'email+gitlab'
   has_password?: boolean
 }
 

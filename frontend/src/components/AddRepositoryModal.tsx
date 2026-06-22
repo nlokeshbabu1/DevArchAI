@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Github, Loader2, Link as LinkIcon, AlertCircle } from 'lucide-react'
+import { X, GitBranch, Loader2, Link as LinkIcon, AlertCircle } from 'lucide-react'
 import { Button, Card } from './ui-animated'
 import { Input } from './ui'
 import { cn } from '../lib/utils'
@@ -29,10 +29,10 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
       return
     }
 
-    // Validate GitHub URL format
-    const githubRegex = /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+(\/)?$/
-    if (!githubRegex.test(repoUrl.trim())) {
-      setError('Please enter a valid GitHub repository URL (e.g., https://github.com/user/repo)')
+    // Validate URL format
+    const gitUrlRegex = /^https:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+(\/)?(\.git)?$/
+    if (!gitUrlRegex.test(repoUrl.trim())) {
+      setError('Please enter a valid repository URL (e.g., https://github.com/user/repo or https://gitlab.com/user/project)')
       return
     }
 
@@ -76,7 +76,7 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                 <div>
                   <h2 className="text-xl font-bold text-foreground">Add Repository</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Add a GitHub repository to track and scan
+                    Add a repository to track and scan
                   </p>
                 </div>
                 <button
@@ -97,9 +97,9 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                   </label>
                   <div className="relative">
                     <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input
-                      type="url"
-                      placeholder="https://github.com/username/repository"
+                      <Input
+                        type="url"
+                        placeholder="https://github.com/user/repo or https://gitlab.com/user/project"
                       value={repoUrl}
                       onChange={(e) => {
                         setRepoUrl(e.target.value)
@@ -127,7 +127,7 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                       onClick={() => handleQuickAdd('https://github.com/facebook/react')}
                       className="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
                     >
-                      <Github className="h-3 w-3 inline mr-1" />
+                      <GitBranch className="h-3 w-3 inline mr-1" />
                       React
                     </button>
                     <button
@@ -135,16 +135,16 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                       onClick={() => handleQuickAdd('https://github.com/microsoft/vscode')}
                       className="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
                     >
-                      <Github className="h-3 w-3 inline mr-1" />
+                      <GitBranch className="h-3 w-3 inline mr-1" />
                       VS Code
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleQuickAdd('https://github.com/tensorflow/tensorflow')}
+                      onClick={() => handleQuickAdd('https://gitlab.com/gitlab-org/gitlab')}
                       className="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
                     >
-                      <Github className="h-3 w-3 inline mr-1" />
-                      TensorFlow
+                      <GitBranch className="h-3 w-3 inline mr-1" />
+                      GitLab
                     </button>
                   </div>
                 </div>
@@ -152,7 +152,7 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                 {/* Info Box */}
                 <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                   <p className="text-xs text-blue-400">
-                    <strong>Note:</strong> The repository will be analyzed for security, reliability, 
+                    <strong>Note:</strong> The repository will be analyzed for security, reliability,
                     scalability, and cost optimization issues.
                   </p>
                 </div>
@@ -173,7 +173,7 @@ export function AddRepositoryModal({ isOpen, onClose, onAdd, isLoading }: AddRep
                     variant="primary"
                     className="flex-1"
                     disabled={isLoading || !repoUrl.trim()}
-                    icon={isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
+                    icon={isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitBranch className="h-4 w-4" />}
                   >
                     {isLoading ? 'Adding...' : 'Add Repository'}
                   </Button>
