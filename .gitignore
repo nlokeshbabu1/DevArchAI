@@ -295,7 +295,7 @@ reports/
 *.report.json
 *.report.pdf
 *.report.xlsx
-scan-results/
+/scan-results/
 analysis-results/
 
 # Database dumps
@@ -387,7 +387,7 @@ docs/build/
 uploads/
 media/
 user-data/
-scans/
+/scans/
 *.upload
 *.uploaded
 
