@@ -301,6 +301,13 @@ async def get_scan_status(
                 detail="Scan not found",
             )
         
+        # Only expose anonymous scan status via public endpoint
+        if scan.user_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied",
+            )
+        
         # Return completed scan data
         detected_techs = []
         if scan.detected_stack:

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -23,10 +23,16 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
-  Lightbulb
+  Lightbulb,
+  FileDown,
+  History,
+  Fingerprint,
+  Calendar,
+  Target,
 } from 'lucide-react'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
 import { api } from '../lib/api'
+import { reportsApi } from '../api/endpoints/reports'
 import { cn } from '../lib/utils'
 
 interface Finding {
@@ -104,54 +110,19 @@ export function Report() {
   })
   const scannedBranch = state?.branch || sessionStorage.getItem('scannedBranch') || 'main'
   const [isDownloading, setIsDownloading] = useState(false)
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false)
+  const [relatedReports, setRelatedReports] = useState<any[]>([])
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  const handleDownloadReport = async () => {
-    setIsDownloading(true)
-    try {
-      // Create report data
-      const reportData = {
-        repository: repoInfo.name,
-        url: repoInfo.url,
-        branch: scannedBranch,
-        analyzedAt: new Date().toISOString(),
-        scores: finalScores,
-        findings: filteredFindings,
-        summary: severitySummary,
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowDownloadMenu(false)
       }
-
-      // Convert to blob
-      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
-      const url = window.URL.createObjectURL(blob)
-
-      // Create download link
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `devarchai-report-${repoInfo.name.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Download failed:', error)
-    } finally {
-      setIsDownloading(false)
     }
-  }
-
-  const handleDownloadExcel = async () => {
-    const scanId = report?.scan_id
-    if (!scanId) return
-    setIsDownloading(true)
-    try {
-      const response = await api.get(`/reports/${scanId}/download?format=excel`)
-      const { url: downloadUrl } = response.data
-      window.open(downloadUrl, '_blank')
-    } catch (error) {
-      console.error('Excel download failed:', error)
-    } finally {
-      setIsDownloading(false)
-    }
-  }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
@@ -205,12 +176,96 @@ export function Report() {
           ai_explanation: f.ai_explanation,
           impact_analysis: f.impact_analysis,
         })),
+        organization_id: reportData.organization_id,
+        total_findings: reportData.total_findings || 0,
         executive_summary: reportData.executive_summary,
         prioritized_recommendations: reportData.prioritized_recommendations || [],
       }
     },
     enabled: !!id && !state?.findings,
   })
+
+  useEffect(() => {
+    if (report?.organization_id && report?.repository_url) {
+      reportsApi.listReports(report.organization_id).then((allReports) => {
+        const related = allReports
+          .filter((r) => r.repository_url === report.repository_url && r.id !== report.id)
+          .slice(0, 5)
+        setRelatedReports(related)
+      }).catch(() => {})
+    }
+  }, [report?.id])
+
+  const handleDownloadJson = async () => {
+    setIsDownloading(true)
+    setShowDownloadMenu(false)
+    try {
+      const reportData = {
+        repository: repoInfo.name,
+        url: repoInfo.url,
+        branch: scannedBranch,
+        analyzedAt: new Date().toISOString(),
+        scores: finalScores,
+        findings: filteredFindings,
+        summary: severitySummary,
+      }
+
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `devarchai-report-${repoInfo.name.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleDownloadPdf = async () => {
+    const scanId = report?.scan_id
+    if (!scanId) return
+    setIsDownloading(true)
+    setShowDownloadMenu(false)
+    try {
+      const downloadResponse = await reportsApi.downloadReport(scanId, 'pdf')
+      const a = document.createElement('a')
+      a.href = downloadResponse.url
+      a.download = downloadResponse.filename || `report-${scanId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('PDF download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleDownloadExcel = async () => {
+    const scanId = report?.scan_id
+    if (!scanId) return
+    setIsDownloading(true)
+    setShowDownloadMenu(false)
+    try {
+      const downloadResponse = await reportsApi.downloadReport(scanId, 'excel')
+      const a = document.createElement('a')
+      a.href = downloadResponse.url
+      a.download = downloadResponse.filename || `report-${scanId}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Excel download failed:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   const finalFindings = state?.findings || report?.findings || []
   const finalScores = state?.scores || {
@@ -300,23 +355,93 @@ export function Report() {
         </Button>
       </div>
 
+      {/* Scan Passport */}
+      <Card className="overflow-hidden" hover={false}>
+        <div className="flex items-center gap-2 px-6 pt-4 pb-2 border-b border-white/5">
+          <Fingerprint className="h-4 w-4 text-primary" />
+          <span className="text-xs font-semibold text-primary uppercase tracking-wider">Scan Passport</span>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Fingerprint className="h-3 w-3" />
+                Scan ID
+              </span>
+              <span className="block font-mono text-sm text-foreground truncate">
+                {report?.scan_id || state?.findings ? (report?.scan_id || 'N/A').substring(0, 12) + '...' : 'N/A'}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <GitBranch className="h-3 w-3" />
+                Repository
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="block text-sm text-foreground truncate font-medium">{finalRepoInfo.name}</span>
+                {finalRepoInfo.url && (
+                  <a href={finalRepoInfo.url} target="_blank" rel="noopener noreferrer" className="shrink-0 hover:text-primary transition-colors">
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                  </a>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="h-3 w-3" />
+                Generated
+              </span>
+              <span className="block text-sm text-foreground">
+                {report?.created_at
+                  ? new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  : state?.findings
+                    ? 'Just now'
+                    : 'N/A'
+                }
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Target className="h-3 w-3" />
+                Score
+              </span>
+              <span className="block text-sm font-bold text-foreground">
+                {finalScores.overall.toFixed(0)}
+                <span className="text-muted-foreground font-normal text-xs ml-1">
+                  {finalScores.grade}
+                </span>
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3" />
+                Findings
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="block text-sm font-bold text-foreground">{totalFindings}</span>
+                <div className="flex gap-1">
+                  {severitySummary.critical > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-mono font-bold">
+                      {severitySummary.critical}C
+                    </span>
+                  )}
+                  {severitySummary.high > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold">
+                      {severitySummary.high}H
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-foreground">{finalRepoInfo.name}</h1>
-            {finalRepoInfo.url && (
-              <a
-                href={finalRepoInfo.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-              >
-                <ExternalLink className="h-5 w-5 text-muted-foreground" />
-              </a>
-            )}
-          </div>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold text-foreground">{finalRepoInfo.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {state?.findings
               ? 'Deep analysis with AI-powered findings'
               : `Analyzed on ${report?.created_at ? new Date(report.created_at).toLocaleDateString('en-US', {
@@ -328,17 +453,37 @@ export function Report() {
             }
           </p>
         </div>
-        <div className="flex gap-2">
-          {report?.scan_id && (
-            <Button variant="secondary" onClick={handleDownloadExcel} disabled={isDownloading}>
-              <FileSpreadsheet className="h-4 w-4" />
-              {isDownloading ? 'Downloading...' : 'Excel Report'}
-            </Button>
-          )}
-          <Button variant="secondary" onClick={handleDownloadReport} disabled={isDownloading}>
-            <Download className="h-4 w-4" />
-            {isDownloading ? 'Downloading...' : 'Download Report'}
+        <div className="relative" ref={menuRef}>
+          <Button variant="secondary" onClick={() => setShowDownloadMenu(!showDownloadMenu)} disabled={isDownloading}>
+            <FileDown className="h-4 w-4" />
+            {isDownloading ? 'Downloading...' : 'Export'}
+            <ChevronDown className={cn('h-4 w-4 ml-1 transition-transform', showDownloadMenu && 'rotate-180')} />
           </Button>
+          {showDownloadMenu && (
+            <div className="absolute right-0 top-full mt-1 min-w-[180px] bg-gray-900 border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden z-50">
+              <button
+                onClick={handleDownloadPdf}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-white/5 transition-colors"
+              >
+                <FileText className="h-4 w-4 text-primary" />
+                <span>PDF Report</span>
+              </button>
+              <button
+                onClick={handleDownloadExcel}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-white/5 transition-colors border-t border-white/5"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-green-400" />
+                <span>Excel Report</span>
+              </button>
+              <button
+                onClick={handleDownloadJson}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-white/5 transition-colors border-t border-white/5"
+              >
+                <Download className="h-4 w-4 text-yellow-400" />
+                <span>JSON Report</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -529,6 +674,59 @@ export function Report() {
           </div>
         </Card>
       </div>
+
+      {/* Report History */}
+      {(relatedReports.length > 0 || report?.id) && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
+            <History className="h-5 w-5 text-primary" />
+            Report History
+          </h2>
+          <div className="space-y-2">
+            {/* Current report */}
+            {report?.id && report?.created_at && (
+              <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                    <FileText className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">Current Report</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-mono font-bold">LATEST</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Score {report.overall_score.toFixed(0)} · {report.total_findings} findings · {new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono text-muted-foreground hidden sm:block">{report.id.substring(0, 8)}</span>
+              </div>
+            )}
+            {/* Related reports */}
+            {relatedReports.map((related) => (
+              <div
+                key={related.id}
+                className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-primary/30 transition-colors cursor-pointer"
+                onClick={() => navigate(`/reports/${related.id}`)}
+              >
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="p-2 rounded-lg bg-white/5 shrink-0">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm text-foreground truncate">{related.repository_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Score {related.overall_score.toFixed(0)} · {related.total_findings} findings · {related.created_at ? new Date(related.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono text-muted-foreground hidden sm:block">{related.id.substring(0, 8)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-white/10">

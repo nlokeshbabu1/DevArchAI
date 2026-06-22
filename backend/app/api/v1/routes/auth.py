@@ -87,6 +87,9 @@ def user_to_response(user: User) -> dict:
         "last_login_at": user.last_login_at,
         "has_api_key": bool(user.api_key),
         "plan": user.subscription_plan if hasattr(user, 'subscription_plan') else "free",
+        "has_github": bool(user.github_id or user.github_access_token),
+        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token),
+        "provider": "github" if user.github_id or user.github_access_token else "gitlab" if user.gitlab_id or user.gitlab_access_token else "password",
     }
 
 

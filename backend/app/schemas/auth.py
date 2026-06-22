@@ -86,6 +86,9 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     has_api_key: bool = False
     plan: str = "free"  # Subscription plan: free, plus, pro, enterprise
+    has_github: bool = False
+    has_gitlab: bool = False
+    provider: str = "password"
 
 
 class UserUpdate(BaseModel):

@@ -7,6 +7,7 @@ import { Report } from './pages/Report'
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
+import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { ScansPage } from './pages/scans/ScansPage'
 import { Findings } from './pages/findings/FindingsPage'
 import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
@@ -76,6 +77,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
+      <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
 
       {/* Redirect old routes */}
@@ -175,6 +177,14 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <AwsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/reports/:id" element={
+        <ProtectedRoute>
+          <Layout>
+            <Report />
           </Layout>
         </ProtectedRoute>
       } />

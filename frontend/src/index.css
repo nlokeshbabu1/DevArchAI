@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
   :root {
     /* Professional color palette */
     --background: 222 47% 11%;      /* #0f172a */
@@ -37,6 +46,22 @@
     --high: 25 95% 53%;             /* #f97316 */
     --medium: 48 96% 53%;           /* #eab308 */
     --low: 142 76% 36%;             /* #22c55e */
+    
+    /* Score ranges */
+    --score-excellent: 142 76% 36%;
+    --score-good: 48 96% 53%;
+    --score-fair: 25 95% 53%;
+    --score-poor: 0 84% 60%;
+    
+    /* Surface hierarchy */
+    --surface-raised: 217 33% 20%;
+    --surface-overlay: 217 33% 22%;
+    --border-subtle: 217 33% 22%;
+    --border-strong: 217 33% 30%;
+
+    /* Enterprise spacing */
+    --section-gap: 2rem;
+    --card-stack-gap: 1rem;
   }
 }
 
@@ -409,6 +434,33 @@
     border: 1px solid transparent;
   }
   
+  /* Marquee Animation */
+  @keyframes marquee {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .animate-marquee {
+    animation: marquee 40s linear infinite;
+  }
+
+  .animate-marquee:hover {
+    animation-play-state: paused;
+  }
+
+  @keyframes marquee-reverse {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(0%); }
+  }
+
+  .animate-marquee-reverse {
+    animation: marquee-reverse 40s linear infinite;
+  }
+
+  .animate-marquee-reverse:hover {
+    animation-play-state: paused;
+  }
+
   /* Animated Background Gradient */
   .animated-gradient {
     background: linear-gradient(
@@ -427,6 +479,77 @@
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
   }
+
+  /* Enterprise Dashboard Animations */
+  @keyframes severity-stack-fill {
+    from { width: 0%; }
+    to { width: var(--severity-width); }
+  }
+
+  .animate-severity-stack {
+    animation: severity-stack-fill 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes counter-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-counter-rise {
+    animation: counter-rise 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    opacity: 0;
+  }
+
+  @keyframes slide-up-fade {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-slide-up {
+    animation: slide-up-fade 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    50% { transform: scale(1.05); opacity: 0.3; }
+    100% { transform: scale(0.95); opacity: 0.7; }
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 2s ease-in-out infinite;
+  }
+
+  /* Timeline connector animation */
+  @keyframes timeline-dot-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }
+    50% { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.1); }
+  }
+
+  .animate-timeline-dot {
+    animation: timeline-dot-pulse 2s ease-in-out infinite;
+  }
+
+  /* Score change indicator */
+  @keyframes score-flash {
+    0% { background-color: hsl(var(--success) / 0.3); }
+    100% { background-color: transparent; }
+  }
+
+  .animate-score-flash {
+    animation: score-flash 1s ease-out forwards;
+  }
+
+  /* Severity heat bar glow */
+  .severity-bar-critical { background: hsl(var(--critical)); }
+  .severity-bar-high { background: hsl(var(--high)); }
+  .severity-bar-medium { background: hsl(var(--medium)); }
+  .severity-bar-low { background: hsl(var(--low)); }
+
+  /* Severity badge glow effects */
+  .severity-glow-critical { box-shadow: 0 0 12px hsl(var(--critical) / 0.3), 0 0 24px hsl(var(--critical) / 0.1); }
+  .severity-glow-high { box-shadow: 0 0 12px hsl(var(--high) / 0.3), 0 0 24px hsl(var(--high) / 0.1); }
+  .severity-glow-medium { box-shadow: 0 0 12px hsl(var(--medium) / 0.3), 0 0 24px hsl(var(--medium) / 0.1); }
+  .severity-glow-low { box-shadow: 0 0 12px hsl(var(--low) / 0.3), 0 0 24px hsl(var(--low) / 0.1); }
 }
 
 @layer utilities {

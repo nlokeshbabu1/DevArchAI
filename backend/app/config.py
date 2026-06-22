@@ -106,6 +106,13 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_ID: str | None = Field(default=None, env="GITHUB_CLIENT_ID")
     GITHUB_CLIENT_SECRET: str | None = Field(default=None, env="GITHUB_CLIENT_SECRET")
     GITHUB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/github/callback", env="GITHUB_REDIRECT_URI")
+
+    # GitLab
+    GITLAB_URL: str = Field(default="https://gitlab.com", env="GITLAB_URL")
+    GITLAB_CLIENT_ID: str | None = Field(default=None, env="GITLAB_CLIENT_ID")
+    GITLAB_CLIENT_SECRET: str | None = Field(default=None, env="GITLAB_CLIENT_SECRET")
+    GITLAB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/gitlab/callback", env="GITLAB_REDIRECT_URI")
+    GITLAB_SCOPE: str = Field(default="read_user api", env="GITLAB_SCOPE")
     
     # GitHub App Configuration (for SaaS platform with repo access)
     GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")
@@ -124,6 +131,11 @@ class Settings(BaseSettings):
         default="",
         env="SECRET_KEY",
         description="CRITICAL: Must be set to a long random string in production (min 32 characters)"
+    )
+    ENCRYPTION_KEY: str | None = Field(
+        default=None,
+        env="ENCRYPTION_KEY",
+        description="Optional Fernet-compatible key for encryption. If not set, derived from SECRET_KEY (less stable)."
     )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, env="REFRESH_TOKEN_EXPIRE_DAYS")

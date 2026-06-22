@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom'
 
+// Mock scrollIntoView for jsdom
+Element.prototype.scrollIntoView = vi.fn()
+
 // Mock IntersectionObserver for framer-motion
 class MockIntersectionObserver {
   observe = vi.fn()

@@ -1,122 +1,123 @@
 import { motion } from 'framer-motion'
-import { Shield, Award, FileCheck, Lock, CheckCircle, Globe, Zap } from 'lucide-react'
+import { Terminal, Cloud, Server, Shield, Lock, Users } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-interface TrustBadge {
-  name: string
+interface UserGroup {
+  role: string
   icon: React.ElementType
   description: string
   color: string
+  tags: string[]
 }
 
-const trustBadges: TrustBadge[] = [
+const userGroups: UserGroup[] = [
   {
-    name: 'Terraform Security',
-    icon: Shield,
-    description: '15+ Terraform security rules',
-    color: 'from-purple-500/20 to-indigo-500/20 border-purple-500/30',
+    role: 'DevOps',
+    icon: Terminal,
+    description: 'Automate security across your entire CI/CD pipeline without slowing down deployments.',
+    color: 'from-cyan-500/20 to-blue-500/20 border-cyan-500/30',
+    tags: ['CI/CD pipeline security', 'Infrastructure as Code', 'Deployment automation'],
   },
   {
-    name: 'Docker Security',
-    icon: Lock,
-    description: '8+ Docker security checks',
-    color: 'from-blue-500/20 to-cyan-500/20 border-blue-500/30',
+    role: 'Platform',
+    icon: Cloud,
+    description: 'Build and maintain secure internal platforms with guardrails that developers actually follow.',
+    color: 'from-indigo-500/20 to-purple-500/20 border-indigo-500/30',
+    tags: ['Platform engineering', 'Internal developer platforms', 'Security guardrails'],
   },
   {
-    name: 'Kubernetes Best Practices',
-    icon: Award,
-    description: '12+ K8s reliability rules',
+    role: 'SRE',
+    icon: Server,
+    description: 'Ensure reliability and security converge with pre-deployment validation and observability.',
     color: 'from-green-500/20 to-emerald-500/20 border-green-500/30',
+    tags: ['Reliability engineering', 'Incident prevention', 'Deployment validation'],
   },
   {
-    name: 'CI/CD Security',
-    icon: FileCheck,
-    description: '9+ CI/CD pipeline checks',
-    color: 'from-orange-500/20 to-amber-500/20 border-orange-500/30',
+    role: 'Security',
+    icon: Shield,
+    description: 'Shift left with comprehensive scanning that catches vulnerabilities before they reach production.',
+    color: 'from-red-500/20 to-orange-500/20 border-red-500/30',
+    tags: ['Vulnerability management', 'Compliance automation', 'Secret detection'],
+  },
+  {
+    role: 'AppSec',
+    icon: Lock,
+    description: 'Embed application security into DevOps workflows with actionable AI-powered remediation.',
+    color: 'from-yellow-500/20 to-amber-500/20 border-yellow-500/30',
+    tags: ['Application security', 'Developer handoff', 'Fix automation'],
   },
 ]
 
 export function TrustSection() {
   return (
-    <div className="w-full max-w-6xl mx-auto">
-      <div className="text-center mb-12 space-y-4">
-        <h2 className="text-4xl font-bold gradient-text">
-          Trusted Security Frameworks
-        </h2>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Industry-standard security rules and compliance checks
-        </p>
+    <section className="py-20 lg:py-32">
+      <div className="container mx-auto px-4">
+        <div className="text-center mb-16 space-y-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30">
+            <Users className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-primary">Built for Engineering Teams</span>
+          </div>
+          <h2 className="text-4xl font-bold gradient-text">
+            Purpose-Built for Your Role
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Security scanning that adapts to how your team works
+          </p>
+        </div>
+
+        <div className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto">
+          {userGroups.map((group, index) => {
+            const Icon = group.icon
+
+            return (
+              <motion.div
+                key={group.role}
+                className={cn(
+                  'relative flex-1 basis-[180px] min-w-[180px] p-5 rounded-2xl bg-gradient-to-br border backdrop-blur-sm overflow-hidden',
+                  'hover:shadow-xl transition-all duration-300 group',
+                  group.color
+                )}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-white/5 to-transparent rounded-bl-full" />
+
+                <div className="space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <div className={cn(
+                      'p-2.5 rounded-xl bg-gradient-to-br border border-white/10',
+                      group.color
+                    )}>
+                      <Icon className="h-5 w-5 text-foreground" />
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-foreground/40 px-2 py-0.5 rounded border border-white/5">
+                      ROLE-{String(index + 1).padStart(2, '0')}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground mb-1.5">{group.role}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{group.description}</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {group.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-muted-foreground border border-white/10"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )
+          })}
+        </div>
       </div>
-
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-        {trustBadges.map((badge, index) => {
-          const Icon = badge.icon
-          
-          return (
-            <motion.div
-              key={badge.name}
-              className={cn(
-                'relative p-6 rounded-2xl bg-gradient-to-br border backdrop-blur-sm',
-                'hover:shadow-xl transition-all duration-300',
-                badge.color
-              )}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: index * 0.1 }}
-              whileHover={{ scale: 1.05, y: -5 }}
-            >
-              <div className="space-y-4">
-                <div className={cn(
-                  'p-3 rounded-xl w-fit bg-gradient-to-br border border-white/10',
-                  badge.color
-                )}>
-                  <Icon className="h-8 w-8 text-foreground" />
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">
-                    {badge.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {badge.description}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-green-400">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Active</span>
-                </div>
-              </div>
-            </motion.div>
-          )
-        })}
-      </div>
-
-      {/* Stats */}
-      <motion.div
-        className="grid grid-cols-2 md:grid-cols-4 gap-6 p-8 rounded-2xl bg-white/5 border border-white/10"
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-      >
-        {[
-          { label: 'Security Rules', value: '39', icon: Shield },
-          { label: 'Categories', value: '4', icon: FileCheck },
-          { label: 'Avg. Analysis Time', value: '< 30s', icon: Zap },
-          { label: 'File Types', value: '5', icon: Award },
-        ].map((stat, index) => {
-          const Icon = stat.icon
-
-          return (
-            <div key={stat.label} className="text-center space-y-2">
-              <Icon className="h-8 w-8 text-primary mx-auto" />
-              <p className="text-3xl font-bold gradient-text">{stat.value}</p>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-            </div>
-          )
-        })}
-      </motion.div>
-    </div>
+    </section>
   )
 }

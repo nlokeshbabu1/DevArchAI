@@ -42,6 +42,11 @@ class User(Base):
     github_login = Column(String(100), index=True, nullable=True)  # GitHub username for webhook lookups
     github_access_token = Column(String(500), nullable=True)  # Store OAuth token for API access
 
+    # GitLab OAuth
+    gitlab_id = Column(String(100), unique=True, index=True, nullable=True)
+    gitlab_username = Column(String(100), nullable=True)
+    gitlab_access_token = Column(String(500), nullable=True)
+
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)

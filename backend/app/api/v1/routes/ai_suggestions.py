@@ -33,6 +33,27 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/suggestions", tags=["AI Suggestions"])
 
 
+async def _verify_suggestion_ownership(
+    suggestion_id: str,
+    current_user: User,
+    db: AsyncSession,
+) -> AISuggestion:
+    """Verify the current user owns the scan associated with this suggestion."""
+    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
+    suggestion = result.scalar_one_or_none()
+
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    scan_result = await db.execute(select(Scan).where(Scan.id == suggestion.scan_id))
+    scan = scan_result.scalar_one_or_none()
+
+    if not scan or scan.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return suggestion
+
+
 @router.get("", response_model=AISuggestionListResponse)
 async def list_all_suggestions(
     status_filter: Optional[str] = Query(None, description="Filter by status"),
@@ -178,12 +199,10 @@ async def get_suggestion(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Get a specific AI suggestion."""
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     return AISuggestionResponse.model_validate(suggestion)
 
 
@@ -210,12 +229,8 @@ async def apply_fix(
             detail=f"Apply fix requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
     
-    # Get suggestion
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    # Get suggestion with ownership verification
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
@@ -266,12 +281,8 @@ async def create_pr(
             detail=f"Create PR requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
     
-    # Get suggestion
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    # Get suggestion with ownership verification
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
@@ -319,12 +330,10 @@ async def ignore_suggestion(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Mark suggestion as ignored."""
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     suggestion.status = SuggestionStatus.IGNORED
     await db.commit()
     
@@ -338,12 +347,10 @@ async def mark_fixed(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Mark suggestion as fixed."""
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     suggestion.status = SuggestionStatus.FIXED
     await db.commit()
     
@@ -357,12 +364,23 @@ async def generate_suggestion(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Generate AI suggestion for a finding."""
-    # Get finding
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Get finding with ownership verification
     result = await db.execute(select(Finding).where(Finding.id == finding_id))
     finding = result.scalar_one_or_none()
     
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    
+    # Verify finding belongs to user's scan
+    scan_result = await db.execute(
+        select(Scan).where(Scan.id == finding.scan_id, Scan.user_id == current_user.id)
+    )
+    scan = scan_result.scalar_one_or_none()
+    if not scan:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     # Check if suggestion already exists
     existing = await db.execute(select(AISuggestion).where(AISuggestion.finding_id == finding_id))
@@ -450,12 +468,8 @@ async def copy_fix(
             detail=f"Copy fix requires Plus, Pro, or Enterprise plan. Current plan: {user_plan}",
         )
     
-    # Get suggestion
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    # Get suggestion with ownership verification
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
@@ -490,12 +504,8 @@ async def rescan_after_fix(
             detail=f"Re-scan requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
     
-    # Get suggestion
-    result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
-    suggestion = result.scalar_one_or_none()
-    
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    # Get suggestion with ownership verification
+    suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     
     # Get scan
     scan_result = await db.execute(select(Scan).where(Scan.id == suggestion.scan_id))

@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.repo_analysis import RepoAnalysis
 from app.models.scan import Scan, ScanStatus
+from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.repo_analysis import (
     BestPracticesResponse,
@@ -259,6 +260,7 @@ async def analyze_repository(
 async def list_analyses(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List recent repository analyses."""
@@ -308,6 +310,7 @@ async def list_analyses(
 )
 async def get_analysis(
     analysis_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get analysis result by ID."""
@@ -379,6 +382,7 @@ async def get_analysis(
 )
 async def get_missing_best_practices(
     analysis_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get missing best practices based on analysis."""
@@ -462,6 +466,7 @@ async def get_missing_best_practices(
 )
 async def delete_analysis(
     analysis_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete analysis result."""

@@ -170,7 +170,7 @@ async def get_finding(
             Scan.user_id == current_user.id
         )
     )
-    scan = result.scalar_one_or_none()
+    scan = scan_result.scalar_one_or_none()
     
     if not scan:
         raise HTTPException(

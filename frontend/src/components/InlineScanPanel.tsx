@@ -61,6 +61,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
   const [error, setError] = useState<string | null>(null)
   const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
   const [filesList, setFilesList] = useState<string[]>([])
+  const [logs, setLogs] = useState<string[]>([])
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
@@ -101,6 +102,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
     setCurrentStep(0)
     setDetectedTechnologies([])
     setFilesList([])
+    setLogs([])
 
     try {
       const response = await apiClient.post('/scan/start', {
@@ -141,6 +143,11 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
           // Update files list from API
           if (status.files_list && Array.isArray(status.files_list) && status.files_list.length > 0) {
             setFilesList(status.files_list)
+          }
+
+          // Update logs from API
+          if (status.logs && Array.isArray(status.logs) && status.logs.length > 0) {
+            setLogs(status.logs)
           }
 
           // Check if scan FAILED
@@ -235,6 +242,9 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
                       type: getFileTypeFromPath(path),
                       status: 'completed'
                     }))}
+                    backendLogs={logs}
+                    filesScanned={filesList.length}
+                    findingsDetected={0}
                   />
                 </div>
               ) : error ? (

@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Shield, Mail, Lock, User, Eye, EyeOff, Check, Github, Loader2, Globe } from 'lucide-react'
 import { Button, Input, Card } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
+import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
 
 export function Register() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { login, setUser } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -79,13 +82,12 @@ export function Register() {
         password: formData.password,
       })
 
-      // Store tokens
-      localStorage.setItem('access_token', loginResponse.access_token)
+      // Store refresh token if present
       if (loginResponse.refresh_token) {
         localStorage.setItem('refresh_token', loginResponse.refresh_token)
       }
 
-      // Update auth store
+      // Update auth store (login() syncs access_token to localStorage)
       login(loginResponse.access_token)
 
       // Fetch user info
@@ -96,6 +98,7 @@ export function Register() {
         console.warn('Failed to fetch user info', err)
       }
 
+      queryClient.clear()
       navigate('/dashboard')
     } catch (err: any) {
       const detail = err.response?.data?.detail
@@ -122,6 +125,20 @@ export function Register() {
     } catch (error) {
       setError('GitHub OAuth is not configured. Please use email/password to register.')
       console.error('GitHub OAuth error:', error)
+    }
+  }
+
+  const handleGitlabLogin = async () => {
+    try {
+      const authUrl = await gitlabAuthApi.getAuthorizationUrl()
+      if (!authUrl) {
+        setError('GitLab OAuth is not configured. Please use email/password to register.')
+        return
+      }
+      window.location.href = authUrl
+    } catch (error) {
+      setError('GitLab OAuth is not configured. Please use email/password to register.')
+      console.error('GitLab OAuth error:', error)
     }
   }
 
@@ -362,14 +379,27 @@ export function Register() {
             </div>
           </div>
 
-          <Button
-            variant="secondary"
-            onClick={handleGithubLogin}
-            className="w-full"
-          >
-            <Github className="h-4 w-4 mr-2" />
-            Sign up with GitHub
-          </Button>
+          <div className="space-y-3">
+            <Button
+              variant="secondary"
+              onClick={handleGithubLogin}
+              className="w-full"
+            >
+              <Github className="h-4 w-4 mr-2" />
+              Sign up with GitHub
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={handleGitlabLogin}
+              className="w-full"
+            >
+              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+              </svg>
+              Sign up with GitLab
+            </Button>
+          </div>
 
           <div className="mt-8 text-center text-sm text-muted-foreground">
             Already have an account?{' '}

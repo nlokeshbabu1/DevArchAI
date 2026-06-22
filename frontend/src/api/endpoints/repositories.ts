@@ -60,7 +60,38 @@ export interface GitHubRepositoryListResponse {
   message?: string;
 }
 
+export interface GitLabProject {
+  id: string;
+  name: string;
+  url: string;
+  description?: string;
+  default_branch: string;
+  is_private: boolean;
+  language?: string;
+  stargazers_count: number;
+  forks_count: number;
+  updated_at: string;
+  source?: 'gitlab';
+}
+
+export interface GitLabProjectListResponse {
+  gitlab_connected: boolean;
+  gitlab_projects: GitLabProject[];
+  total?: number;
+  message?: string;
+}
+
 export interface ImportGitHubRepositoriesResponse {
+  imported: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
+  total: number;
+  message: string;
+}
+
+export interface ImportGitLabProjectsResponse {
   imported: Array<{
     id: string;
     name: string;
@@ -137,6 +168,22 @@ export const repositoriesApi = {
    */
   importGitHubRepositories: async (repoIds: number[]): Promise<ImportGitHubRepositoriesResponse> => {
     const response = await apiClient.post<ImportGitHubRepositoriesResponse>('/github/import-repos', repoIds);
+    return response.data;
+  },
+
+  /**
+   * List importable GitLab projects for the current OAuth user
+   */
+  listGitLabProjects: async (): Promise<GitLabProjectListResponse> => {
+    const response = await apiClient.get<GitLabProjectListResponse>('/gitlab/projects');
+    return response.data;
+  },
+
+  /**
+   * Import selected GitLab projects into the repository list
+   */
+  importGitLabProjects: async (projectIds: number[]): Promise<ImportGitLabProjectsResponse> => {
+    const response = await apiClient.post<ImportGitLabProjectsResponse>('/gitlab/import-projects', projectIds);
     return response.data;
   },
 };

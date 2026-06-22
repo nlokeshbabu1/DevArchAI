@@ -17,14 +17,16 @@ export interface AnalysisReport {
 export interface CategoryScore {
   category: string
   score: number
-  findings_count: number
-  critical_count: number
-  high_count: number
-  medium_count: number
-  low_count: number
+  findings_count?: number
+  critical_count?: number
+  high_count?: number
+  medium_count?: number
+  low_count?: number
 }
 
 export interface Finding {
+  id?: string
+  message?: string
   rule_id: string
   rule_name: string
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
@@ -43,6 +45,11 @@ export interface Finding {
   confidence?: number  // Backend returns this
   confidence_score?: number  // Also accept for backwards compatibility
   documentation_url?: string
+  // Code Diff fields
+  before_code?: string
+  after_code?: string
+  unified_diff?: string
+  original_code?: string
   // Legacy fields (fallback only)
   fix_example?: string
   ai_explanation?: string
