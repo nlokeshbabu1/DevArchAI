@@ -16,6 +16,7 @@ import { ScanWorkflow } from '../components/landing/ScanWorkflow'
 import { ReportingSection } from '../components/landing/ReportingSection'
 import { DashboardPreview } from '../components/landing/DashboardPreview'
 import { RoadmapSection } from '../components/landing/RoadmapSection'
+import demoData from '../../public/data/demoScan.json'
 
 const testimonials = [
   {
@@ -373,7 +374,7 @@ export function Landing() {
               <div className="p-6 bg-gradient-to-r from-primary/10 to-indigo-600/10 border-t border-white/10">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <p className="text-sm text-muted-foreground">
-                    See all 38 findings with AI-powered fix recommendations
+                    See all {demoData.findings_count} findings with AI-powered fix recommendations
                   </p>
                   <Button variant="primary" size="md" onClick={handleStartScan} glow>
                     Start Your Free Scan

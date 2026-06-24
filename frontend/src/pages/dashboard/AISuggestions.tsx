@@ -4,7 +4,7 @@ import {
   Copy, GitPullRequest, Eye, X, AlertCircle, RefreshCw,
   Shield, Zap, BarChart3, DollarSign, BookOpen,
   FileCode, Info,
-  Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench
+  Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { CodeBlock } from '../../components/ui/code-block'
@@ -93,17 +93,31 @@ function getSeveritySection(severity: string): SectionType {
 }
 
 function sanitizePath(filePath: string): string {
-  const parts = filePath.split('/')
+  const cleaned = filePath
+    .replace(/^\/tmp\/[^/]+\//, '')
+    .replace(/^\/home\/[^/]+\//, '')
+    .replace(/^\/app\/[^/]*\//, '')
+    .replace(/^\/var\/[^/]+\//, '')
+  const hashPrefix = cleaned.replace(/^([0-9a-f]{8,})_/, '')
+  const parts = hashPrefix.split('/')
   if (parts.length > 3) {
     return parts.slice(-3).join('/')
   }
-  return filePath
+  return hashPrefix
 }
 
 function extractRepo(filePath: string): string {
-  const parts = filePath.split('/')
+  const cleaned = filePath
+    .replace(/^\/tmp\/[^/]+\//, '')
+    .replace(/^\/home\/[^/]+\//, '')
+    .replace(/^\/app\/[^/]*\//, '')
+  const parts = cleaned.split('/')
   if (parts.length >= 2) {
-    return `${parts[0]}/${parts[1]}`
+    let first = parts[0]
+    // Strip scan hash prefix (e.g. "3a586b3c_gen-ai" -> "gen-ai")
+    const hashMatch = first.match(/^([0-9a-f]{8,})_(.+)$/)
+    if (hashMatch) first = hashMatch[2]
+    return first
   }
   return parts[0] || 'unknown'
 }
@@ -196,17 +210,21 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
   const panelRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
   const [creatingPR, setCreatingPR] = useState(false)
+  const [showPRPreview, setShowPRPreview] = useState(false)
 
   const canCopyFix = ['plus', 'pro', 'enterprise'].includes(userPlan)
   const canCreatePR = ['pro', 'enterprise'].includes(userPlan)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (showPRPreview) setShowPRPreview(false)
+        else onClose()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [onClose, showPRPreview])
 
   const handleCopyFix = async () => {
     if (!canCopyFix || !suggestion.fix_code) return
@@ -218,7 +236,12 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
     } catch { toast.error('Failed to copy') }
   }
 
-  const handleCreatePR = async () => {
+  const handleCreatePR = () => {
+    if (!canCreatePR) return
+    setShowPRPreview(true)
+  }
+
+  const handleConfirmPR = async () => {
     if (!canCreatePR) return
     setCreatingPR(true)
     try {
@@ -230,6 +253,7 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
         toast.success('PR created!')
         window.open(response.data.pr_url, '_blank')
         onStatusChange(suggestion.id, 'in_progress')
+        setShowPRPreview(false)
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to create PR')
@@ -246,6 +270,13 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
       toast.error(err.response?.data?.detail || 'Failed to ignore')
     }
   }
+
+  const prPreviewData = useMemo(() => ({
+    repository: extractRepo(suggestion.file_path),
+    file: sanitizePath(suggestion.file_path),
+    lineCount: suggestion.fix_code ? suggestion.fix_code.split('\n').length : 0,
+    riskReduction: suggestion.severity === 'critical' ? 'High' : suggestion.severity === 'high' ? 'Medium' : 'Low',
+  }), [suggestion.file_path, suggestion.fix_code, suggestion.severity])
 
   const CatIcon = getCategoryIcon(suggestion.category)
   const repoName = extractRepo(suggestion.file_path)
@@ -295,40 +326,103 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
         </div>
 
         <div className="px-6 py-5 space-y-6">
-          {/* Confidence (from backend) */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-              <Brain className="h-3 w-3 text-indigo-400" />
-              <span className="text-xs font-mono text-indigo-300/80">{(suggestion.confidence * 100).toFixed(0)}% confidence</span>
+          {/* Issue Summary */}
+          <div>
+            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Info className="h-3 w-3" />
+              Issue Summary
+            </h3>
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <p className="text-sm text-white/70 leading-relaxed">{suggestion.description || suggestion.title}</p>
             </div>
+          </div>
+
+          {/* Why This Matters */}
+          {suggestion.description && suggestion.description !== suggestion.title && (
+            <div>
+              <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <AlertCircle className="h-3 w-3" />
+                Why This Matters
+              </h3>
+              <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+                <p className="text-sm text-amber-200/70 leading-relaxed">{suggestion.description}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Security Impact */}
+          <div>
+            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Shield className="h-3 w-3" />
+              Security Impact
+            </h3>
+            <div className="p-3 rounded-xl bg-orange-500/5 border border-orange-500/15">
+              <p className="text-sm text-orange-200/60 leading-relaxed">
+                {suggestion.severity === 'critical' || suggestion.severity === 'high'
+                  ? `This ${suggestion.severity}-severity issue poses a significant risk to your infrastructure security posture.`
+                  : 'This issue has a moderate security impact on your infrastructure.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Affected Repository + File */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-1.5">Repository</h4>
+              <div className="flex items-center gap-1.5 text-sm text-white/70">
+                <FolderGit2 className="h-3.5 w-3.5 text-white/40" />
+                <span className="truncate">{repoName}</span>
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-1.5">Affected File</h4>
+              <div className="flex items-center gap-1.5 text-sm text-white/70">
+                <FileCode className="h-3.5 w-3.5 text-white/40" />
+                <span className="font-mono text-xs truncate">{sanitizePath(suggestion.file_path)}</span>
+                {suggestion.line_number && <span className="text-white/30 text-xs">:L{suggestion.line_number}</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Confidence + Metadata chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            {suggestion.confidence != null && (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                <Brain className="h-3 w-3 text-indigo-400" />
+                <span className="text-xs font-mono text-indigo-300/80">{(suggestion.confidence * 100).toFixed(0)}% confidence</span>
+              </div>
+            )}
             {suggestion.scan_id && (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
                 <Layers className="h-3 w-3 text-white/40" />
                 <span className="text-xs font-mono text-white/40">Scan: {suggestion.scan_id.slice(0, 8)}</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
-              <Files className="h-3 w-3 text-white/40" />
-              <span className="text-xs font-mono text-white/40">{sanitizePath(suggestion.file_path)}</span>
-            </div>
+            {suggestion.finding_id && (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                <Layers className="h-3 w-3 text-white/40" />
+                <span className="text-xs font-mono text-white/40">ID: {suggestion.finding_id.slice(0, 8)}</span>
+              </div>
+            )}
           </div>
 
-          {/* Description (from backend) */}
-          <div>
-            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Info className="h-3 w-3" />
-              Description
-            </h3>
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <p className="text-sm text-white/70 leading-relaxed">{suggestion.description}</p>
-            </div>
-          </div>
-
-          {/* Fix Code (from backend) */}
+          {/* Current Code (not available from backend) */}
           <div>
             <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Code className="h-3 w-3" />
-              {suggestion.fix_code ? 'Recommended Fix' : 'Fix'}
+              Current Code
+            </h3>
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center">
+              <Code className="h-5 w-5 text-white/20 mx-auto mb-2" />
+              <p className="text-xs text-white/40">Source code not available for this finding type</p>
+            </div>
+          </div>
+
+          {/* Suggested Code */}
+          <div>
+            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Wrench className="h-3 w-3" />
+              Suggested Code
             </h3>
             {suggestion.fix_code ? (
               <div className="relative">
@@ -346,26 +440,38 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
               </div>
             ) : (
               <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center">
-                <Code className="h-6 w-6 text-white/20 mx-auto mb-2" />
-                <p className="text-xs text-white/40">No fix code available for this recommendation</p>
+                <Code className="h-5 w-5 text-white/20 mx-auto mb-2" />
+                <p className="text-xs text-white/40">No suggested code available for this recommendation</p>
               </div>
             )}
           </div>
 
-          {/* Finding ID (from backend) */}
+          {/* Best Practice */}
           <div>
             <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Layers className="h-3 w-3" />
-              Finding ID
+              <Shield className="h-3 w-3" />
+              Best Practice
             </h3>
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center">
+              <Shield className="h-5 w-5 text-white/20 mx-auto mb-2" />
+              <p className="text-xs text-white/40">Best practice details not available for this finding</p>
+            </div>
+          </div>
+
+          {/* Reference Links */}
+          <div>
+            <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <BookOpen className="h-3 w-3" />
+              Reference Links
+            </h3>
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
               {suggestion.finding_id ? (
-                <div className="flex items-center gap-2 text-sm text-white/60">
+                <div className="flex items-center gap-2 text-sm text-white/50">
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                  <span className="font-mono text-white/50">{suggestion.finding_id}</span>
+                  <span className="font-mono text-xs">Finding ID: {suggestion.finding_id}</span>
                 </div>
               ) : (
-                <p className="text-sm text-white/40">Not available</p>
+                <p className="text-xs text-white/40">No reference links available</p>
               )}
             </div>
           </div>
@@ -397,6 +503,54 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
             </Button>
           </div>
         </div>
+
+        {/* PR Preview Modal */}
+        {showPRPreview && (
+          <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPRPreview(false)}>
+            <div className="bg-[#0a0a10] border border-white/[0.08] rounded-2xl max-w-lg w-full shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-white/[0.06]">
+                <h3 className="text-base font-semibold text-white/90">PR Preview</h3>
+                <p className="text-xs text-white/40 mt-1">Review the changes before creating the pull request</p>
+              </div>
+              <div className="p-5 space-y-3">
+                <div className="flex items-center gap-3 text-sm">
+                  <GitBranch className="h-4 w-4 text-white/40 shrink-0" />
+                  <span className="text-white/50">Repository</span>
+                  <span className="ml-auto text-white/80 font-medium">{prPreviewData.repository}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <FileCode className="h-4 w-4 text-white/40 shrink-0" />
+                  <span className="text-white/50">Affected File</span>
+                  <span className="ml-auto text-white/80 font-mono text-xs">{prPreviewData.file}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <ArrowUp className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span className="text-white/50">Lines Changed</span>
+                  <span className="ml-auto text-white/80 font-mono">{prPreviewData.lineCount} added</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <Shield className="h-4 w-4 text-amber-400 shrink-0" />
+                  <span className="text-white/50">Risk Reduction</span>
+                  <span className="ml-auto text-white/80">{prPreviewData.riskReduction}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <AlertCircle className="h-4 w-4 text-white/40 shrink-0" />
+                  <span className="text-white/50">Findings Fixed</span>
+                  <span className="ml-auto text-white/80 font-mono">1</span>
+                </div>
+              </div>
+              <div className="p-5 border-t border-white/[0.06] flex items-center gap-2 justify-end">
+                <Button variant="ghost" size="sm" onClick={() => setShowPRPreview(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm" glow onClick={handleConfirmPR} disabled={creatingPR}>
+                  <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />
+                  {creatingPR ? 'Creating...' : 'Create Pull Request'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   )
@@ -440,41 +594,22 @@ function RecommendationCard({
         <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-indigo-500/20 to-transparent transform rotate-45 translate-x-6 -translate-y-6" />
       </div>
 
-      <div className="p-4 sm:p-5 space-y-4">
-        {/* Row 1: Repository + Category + Severity */}
+      <div className="p-4 sm:p-5 space-y-3">
+        {/* Row 1: Repository + Severity */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <div className={cn(
-              'p-2 rounded-lg border shrink-0',
-              group.section === 'fix-first' ? 'bg-red-500/10 border-red-500/20' :
-              group.section === 'recommended' ? 'bg-amber-500/10 border-amber-500/20' :
-              'bg-cyan-500/10 border-cyan-500/20'
-            )}>
-              <Icon className={cn(
-                'h-4 w-4',
-                group.section === 'fix-first' ? 'text-red-400' :
-                group.section === 'recommended' ? 'text-amber-400' : 'text-cyan-400'
-              )} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <FolderGit2 className="h-3 w-3 text-white/30 shrink-0" />
-                <h3 className="text-sm font-semibold text-white/90 truncate">{group.repository}</h3>
-              </div>
-              <p className="text-[11px] text-white/50 truncate">{getCategoryLabel(group.category)}</p>
-            </div>
+            <FolderGit2 className="h-3.5 w-3.5 text-white/30 shrink-0" />
+            <span className="text-xs font-medium text-white/70 truncate">{group.repository}</span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <SeverityBadge severity={group.topSuggestion.severity} size="sm" />
-          </div>
+          <SeverityBadge severity={group.topSuggestion.severity} size="sm" />
         </div>
 
-        {/* Row 2: Recommendation description */}
-        <div className="text-xs text-white/60 leading-relaxed line-clamp-2">
-          {group.topSuggestion.description}
-        </div>
+        {/* Row 2: Issue Title */}
+        <h3 className="text-sm font-semibold text-white/90 leading-snug line-clamp-2">
+          {group.topSuggestion.title}
+        </h3>
 
-        {/* Row 3: Affected Files + Meta */}
+        {/* Row 3: Affected File + Fix Available + Confidence */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
             <FileCode className="h-3 w-3 text-white/30" />
@@ -482,22 +617,18 @@ function RecommendationCard({
               {hasMultipleFiles ? `${group.uniqueFiles.length} files` : sanitizePath(group.topSuggestion.file_path)}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
-            <Files className="h-3 w-3 text-white/30" />
-            <span className="text-[10px] font-mono text-white/50">
-              {group.count} {group.count === 1 ? 'finding' : 'findings'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
-            <Brain className="h-3 w-3 text-indigo-400/60" />
-            <span className="text-[10px] font-mono text-indigo-300/60">{(group.avgConfidence * 100).toFixed(0)}%</span>
-          </div>
           {fixAvailable && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
               <Wrench className="h-2.5 w-2.5 text-emerald-400" />
               <span className="text-[10px] font-medium text-emerald-300/80">Fix available</span>
             </div>
           )}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+            <Files className="h-3 w-3 text-white/30" />
+            <span className="text-[10px] font-mono text-white/50">
+              {group.count} {group.count === 1 ? 'finding' : 'findings'}
+            </span>
+          </div>
         </div>
 
         {/* Row 4: Actions */}
@@ -693,7 +824,7 @@ export function AISuggestionsPage() {
         <motion.div initial={shouldReduceMotion ? {} : { opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: shouldReduceMotion ? 0 : 0.4 }}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-white/90 tracking-tight">AI Recommendations</h1>
+              <h1 className="text-2xl font-bold text-white/90 tracking-tight">AI Suggestions</h1>
               <p className="text-sm text-white/40 mt-1">
                 {totalOpen > 0
                   ? `${totalOpen} open recommendation${totalOpen !== 1 ? 's' : ''} across ${grouped.length} ${grouped.length === 1 ? 'group' : 'groups'}`

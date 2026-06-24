@@ -16,20 +16,10 @@ import { InlineScanPanel } from '../components/InlineScanPanel'
 import { useState, useEffect } from 'react'
 
 import {
-  KpiRow, SecurityOverview, FindingsChart,
+  KpiRow, SecurityOverview,
   RiskTable, ActivityFeed, AiSuggestions,
   OnboardingView
 } from '../components/dashboard'
-
-const findingsData = [
-  { name: 'Mon', critical: 2, high: 5, medium: 12, low: 8 },
-  { name: 'Tue', critical: 1, high: 3, medium: 8, low: 15 },
-  { name: 'Wed', critical: 3, high: 7, medium: 15, low: 10 },
-  { name: 'Thu', critical: 1, high: 4, medium: 10, low: 12 },
-  { name: 'Fri', critical: 2, high: 6, medium: 14, low: 9 },
-  { name: 'Sat', critical: 0, high: 2, medium: 5, low: 7 },
-  { name: 'Sun', critical: 1, high: 3, medium: 7, low: 11 },
-]
 
 const getValidScore = (score: number | null | undefined) => {
   if (typeof score !== 'number' || Number.isNaN(score)) return null
@@ -145,20 +135,12 @@ export function Dashboard() {
     return getRepositoryCriticalCount(repo) > 0 || getRepositoryHighCount(repo) > 0 || (score !== null && score < 70)
   }).length
 
-  const riskScore = Math.min(100, Math.max(0, Math.round(
-    (100 - securityScore) + Math.min(35, criticalIssues * 4) + Math.min(20, repositoriesAtRisk * 3)
-  )))
-
   const sortedRecentScores = recentScans
     .map((scan) => getValidScore(scan.overall_score ?? scan.security_score))
     .filter((score): score is number => score !== null)
   const scoreDelta = sortedRecentScores.length >= 2
     ? formatScore(sortedRecentScores[0] - sortedRecentScores[1])
     : null
-  const fixedFindingsEstimate = scoreDelta !== null && scoreDelta > 0
-    ? Math.max(1, Math.round(scoreDelta / 3)) : 0
-  const newCriticalFindings = scoreDelta !== null && scoreDelta < 0 ? criticalIssues : 0
-
   // Loading state
   if (isLoading) {
     return (
@@ -314,12 +296,6 @@ export function Dashboard() {
               icon: AlertTriangle,
               trend: criticalIssues > 0 ? 'down' : 'up',
               trendValue: `${criticalIssues} open`,
-              severity: {
-                critical: criticalIssues,
-                high: Math.round(criticalIssues * 0.6),
-                medium: Math.round(criticalIssues * 1.5),
-                low: Math.round(criticalIssues * 2),
-              },
               accentColor: criticalIssues > 0 ? 'text-red-400' : 'text-green-400',
             },
             {
@@ -338,17 +314,11 @@ export function Dashboard() {
         <SecurityOverview
           securityScore={securityScore}
           hasSecurityScore={hasSecurityScore}
-          riskScore={riskScore}
           criticalIssues={criticalIssues}
           repositoriesAtRisk={repositoriesAtRisk}
           scoreDelta={scoreDelta}
-          newCriticalFindings={newCriticalFindings}
-          fixedFindingsEstimate={fixedFindingsEstimate}
           isLoading={isLoading}
         />
-
-        {/* Findings Chart */}
-        <FindingsChart data={findingsData} />
 
         {/* Risk Repositories & Activity Feed */}
         <div className="grid gap-5 lg:grid-cols-2">
@@ -366,7 +336,7 @@ export function Dashboard() {
           />
         </div>
 
-        {/* AI Recommendations */}
+        {/* AI Suggestions */}
         <AiSuggestions
           suggestions={suggestions}
           isLoading={suggestionsLoading}

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion"
-import { Shield, AlertTriangle, FileCode, Clock, Zap, GitPullRequest, TrendingUp } from "lucide-react"
+import { Shield, AlertTriangle, FileCode, Zap, GitPullRequest } from "lucide-react"
 import { Finding } from "../../types"
 import { cn, getSeverityColor } from "../../lib/utils"
 import { Button } from "../ui-animated"
@@ -11,19 +11,6 @@ interface FixTheseFirstProps {
   onGenerateFix?: (id: string) => void
   onCreatePR?: (id: string) => void
   selectedId?: string | null
-}
-
-function estimateScoreAfterFix(finding: Finding, currentScore: number): { score: number; boost: number } {
-  const boost = finding.severity === "critical" ? 15 : finding.severity === "high" ? 10 : finding.severity === "medium" ? 5 : 2
-  return { score: Math.min(100, currentScore + boost), boost }
-}
-
-function estimateFixTime(finding: Finding): string {
-  if (finding.severity === "critical") return "5 min"
-  if (finding.severity === "high") return "10 min"
-  if (finding.severity === "medium") return "15 min"
-  if (finding.severity === "low") return "30 min"
-  return "—"
 }
 
 export function FixTheseFirst({ findings, currentScore, onSelect, onGenerateFix, onCreatePR, selectedId }: FixTheseFirstProps) {
@@ -62,7 +49,6 @@ export function FixTheseFirst({ findings, currentScore, onSelect, onGenerateFix,
             const findingId = finding.id ?? finding.rule_id
             const severityColor = getSeverityColor(finding.severity)
             const isSelected = selectedId === findingId
-            const impact = estimateScoreAfterFix(finding, currentScore)
             return (
               <motion.div
                 key={findingId}
@@ -112,14 +98,6 @@ export function FixTheseFirst({ findings, currentScore, onSelect, onGenerateFix,
                           <FileCode className="w-3 h-3" />
                           {finding.file_path?.split("/").pop() ?? "unknown"}
                           {finding.line_number && `:${finding.line_number}`}
-                        </span>
-                        <span className="flex items-center gap-1 text-[11px] text-white/30">
-                          <Clock className="w-3 h-3" />
-                          Fix: {estimateFixTime(finding)}
-                        </span>
-                        <span className="flex items-center gap-1 text-[11px] text-emerald-400/60">
-                          <TrendingUp className="w-3 h-3" />
-                          +{impact.boost} pts
                         </span>
                       </div>
                     </div>

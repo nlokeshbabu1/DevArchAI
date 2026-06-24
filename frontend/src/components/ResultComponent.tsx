@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { api } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, sanitizePath } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
 interface Finding {
@@ -202,9 +202,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   }
 
   // Clean file path (remove /tmp/devarchai/...)
-  const cleanFilePath = (path: string) => {
-    return path.replace(/\/tmp\/devarchai\/[^/]+\//, '')
-  }
+  const cleanFilePath = (path: string) => sanitizePath(path)
 
   // Get documentation URL based on category and file path
   const getDocumentationUrl = (finding: Finding): string => {
@@ -373,7 +371,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
           category: f.category,
           description: f.description,
           recommendation: f.recommendation,
-          file_path: f.file_path,
+          file_path: sanitizePath(f.file_path),
           line_number: f.line_number,
         })),
         generated_at: new Date().toISOString(),
@@ -744,7 +742,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                               'px-2 py-1 rounded-full text-xs font-medium mt-1 inline-block',
                                               getConfidenceBadge(finding.confidence ?? finding.confidence_score).color
                                             )}>
-                                              {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence ({Math.round(((finding.confidence ?? finding.confidence_score) || 0.8) * 100)}%)
+                                              {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence ({Math.round(((finding.confidence ?? finding.confidence_score) ?? 0) * 100)}%)
                                             </span>
                                           )}
                                         </div>

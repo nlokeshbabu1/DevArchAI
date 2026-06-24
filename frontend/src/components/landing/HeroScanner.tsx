@@ -106,23 +106,11 @@ export function HeroScanner({ onScanComplete }: HeroScannerProps) {
     setErrorMessage('')
 
     try {
-      const progressInterval = setInterval(() => {
-        setScanProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return 90
-          }
-          return prev + 5
-        })
-      }, 200)
-
       const response = await api.post('/public/scan', {
         repository_url: cleanUrl,
         branch: branch,
       })
 
-      clearInterval(progressInterval)
-      setScanProgress(100)
       const data = response.data
 
       if (data.status === 'failed') {
@@ -339,20 +327,8 @@ export function HeroScanner({ onScanComplete }: HeroScannerProps) {
                   </p>
                 </div>
 
-                {/* Progress Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="text-foreground font-medium">{scanProgress}%</span>
-                  </div>
-                  <div className="h-3 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-primary to-indigo-600"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${scanProgress}%` }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </div>
+                <div className="flex justify-center">
+                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
                 </div>
               </div>
             ) : null}

@@ -23,16 +23,7 @@ interface FindingDetailsDrawerProps {
 
 interface PRConfirmation {
   show: boolean
-  currentScore: number
-  futureScore: number
   affectedFiles: number
-  riskReduction: string
-}
-
-function estimateScoreAfterFix(finding: Finding, currentScore: number): { score: number; reduction: string } {
-  const boost = finding.severity === "critical" ? 15 : finding.severity === "high" ? 10 : finding.severity === "medium" ? 5 : 2
-  const reduction = finding.severity === "critical" ? "Critical → None" : finding.severity === "high" ? "High → None" : "Medium → Low"
-  return { score: Math.min(100, currentScore + boost), reduction }
 }
 
 export function FindingDetailsDrawer({
@@ -46,7 +37,6 @@ export function FindingDetailsDrawer({
   if (!finding) return null
 
   const severityColor = getSeverityColor(finding.severity)
-  const scoreImpact = estimateScoreAfterFix(finding, currentScore)
 
   const handleCopy = async () => {
     if (!finding.fix_code) return
@@ -60,10 +50,7 @@ export function FindingDetailsDrawer({
     setShowFixPreview(false)
     setPrConfirm({
       show: true,
-      currentScore,
-      futureScore: scoreImpact.score,
       affectedFiles: 1,
-      riskReduction: scoreImpact.reduction,
     })
   }
 
@@ -149,22 +136,6 @@ export function FindingDetailsDrawer({
                     </div>
                   )}
 
-                  {/* Score impact card */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center">
-                      <div className="text-[10px] text-white/30 uppercase mb-1">Current</div>
-                      <div className="text-xl font-bold text-white/60">{currentScore}</div>
-                    </div>
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center">
-                      <div className="text-[10px] text-emerald-400/60 uppercase mb-1">After Fix</div>
-                      <div className="text-xl font-bold text-emerald-400">{scoreImpact.score}</div>
-                    </div>
-                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 text-center">
-                      <div className="text-[10px] text-indigo-400/60 uppercase mb-1">Risk</div>
-                      <div className="text-xs font-bold text-indigo-300 mt-1">{scoreImpact.reduction}</div>
-                    </div>
-                  </div>
-
                   {/* Current Code */}
                   {finding.before_code && (
                     <div>
@@ -180,12 +151,14 @@ export function FindingDetailsDrawer({
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Recommended Change</h4>
-                        <span className={cn(
-                          "text-[10px] font-medium px-1.5 py-0.5 rounded",
-                          (finding.confidence ?? 0.8) >= 0.8 ? "bg-emerald-500/10 text-emerald-400" : "bg-yellow-500/10 text-yellow-400"
-                        )}>
-                          {((finding.confidence ?? 0.8) * 100).toFixed(0)}% confident
-                        </span>
+                        {finding.confidence != null && (
+                          <span className={cn(
+                            "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                            finding.confidence >= 0.8 ? "bg-emerald-500/10 text-emerald-400" : "bg-yellow-500/10 text-yellow-400"
+                          )}>
+                            {(finding.confidence * 100).toFixed(0)}% confident
+                          </span>
+                        )}
                       </div>
                       <pre className="p-4 bg-black/40 border border-emerald-500/20 rounded-xl overflow-x-auto max-h-[300px] text-sm">
                         <code className="text-emerald-300 font-mono whitespace-pre">{finding.fix_code}</code>
@@ -302,20 +275,8 @@ export function FindingDetailsDrawer({
 
               <div className="space-y-3 mb-5">
                 <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
-                  <span className="text-sm text-white/60">Current Score</span>
-                  <span className="text-sm font-bold text-white/80">{prConfirm.currentScore}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-                  <span className="text-sm text-white/60">Future Score</span>
-                  <span className="text-sm font-bold text-emerald-400">+{prConfirm.futureScore - prConfirm.currentScore} → {prConfirm.futureScore}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
                   <span className="text-sm text-white/60">Affected Files</span>
                   <span className="text-sm font-bold text-white/80">{prConfirm.affectedFiles}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-4 py-3">
-                  <span className="text-sm text-white/60">Risk Reduction</span>
-                  <span className="text-sm font-bold text-indigo-300">{prConfirm.riskReduction}</span>
                 </div>
               </div>
 

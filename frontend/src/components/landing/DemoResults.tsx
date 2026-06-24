@@ -6,7 +6,7 @@ import {
   Download, Lock, ArrowRight, Code
 } from 'lucide-react'
 import { Card, Button } from '../ui-animated'
-import { cn } from '../../lib/utils'
+import { cn, sanitizePath } from '../../lib/utils'
 import demoData from '../../../public/data/demoScan.json'
 
 interface DemoResultsProps {
@@ -204,7 +204,7 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
                         <div>
                           <h5 className="text-sm font-semibold text-foreground mb-2">Location</h5>
                           <code className="text-sm text-muted-foreground bg-white/5 px-3 py-2 rounded-lg block">
-                            {finding.file_path}
+                            {sanitizePath(finding.file_path)}
                             {finding.line_number && ` (Line ${finding.line_number})`}
                           </code>
                         </div>

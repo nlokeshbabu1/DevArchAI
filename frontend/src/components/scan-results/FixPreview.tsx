@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { X, FileCode, Zap, TrendingUp, ArrowRight, GitPullRequest } from "lucide-react"
+import { X, FileCode, Zap, GitPullRequest } from "lucide-react"
 import { Finding } from "../../types"
 import { cn, getSeverityColor } from "../../lib/utils"
 import { Button } from "../ui-animated"
@@ -13,16 +13,10 @@ interface FixPreviewProps {
   onCreatePR: () => void
 }
 
-function estimateScoreAfterFix(finding: Finding, currentScore: number): { score: number; boost: number } {
-  const boost = finding.severity === "critical" ? 15 : finding.severity === "high" ? 10 : finding.severity === "medium" ? 5 : 2
-  return { score: Math.min(100, currentScore + boost), boost }
-}
-
 export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR }: FixPreviewProps) {
   if (!isOpen) return null
 
   const severityColor = getSeverityColor(finding.severity)
-  const impact = estimateScoreAfterFix(finding, currentScore)
 
   return (
     <motion.div
@@ -57,22 +51,6 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
             <span className="text-xs text-white/40 font-mono">{finding.rule_id}</span>
             <span className="text-xs text-white/20">·</span>
             <span className="text-xs text-white/40 truncate">{finding.file_path?.split("/").pop()}{finding.line_number ? `:${finding.line_number}` : ""}</span>
-          </div>
-
-          {/* Score Impact */}
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm font-medium text-emerald-300">Score Impact</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-white/40">{currentScore}</span>
-                <ArrowRight className="w-3.5 h-3.5 text-white/20" />
-                <span className="text-lg font-bold text-emerald-400">{impact.score}</span>
-                <span className="text-xs text-emerald-400/60">+{impact.boost} pts</span>
-              </div>
-            </div>
           </div>
 
           {/* Current Code */}

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock } from 'lucide-react'
 import { Button, Card } from '../components/ui-animated'
 import { api, buildWebSocketUrl } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, getFindingsCount } from '../lib/utils'
 import { ScanProgress } from '../components/ScanProgress'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
@@ -434,7 +434,7 @@ export function ScanPage() {
                   info: 0,
                 },
                 findings: results.findings || [],
-                total_findings: results.findings_count || results.findings?.length || 0,
+                total_findings: getFindingsCount(results),
                 files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
                 devops_stack: results.devops_stack,
                 detected_technologies: currentTechs.length > 0 ? currentTechs : (results.detected_technologies || []),
@@ -483,7 +483,7 @@ export function ScanPage() {
             security_score: results.security_score || 0,
             severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
             findings: results.findings || [],
-            total_findings: results.findings_count || 0,
+            total_findings: getFindingsCount(results),
             files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
             devops_stack: results.devops_stack,
             detected_technologies: timeoutTechs.length > 0 ? timeoutTechs : (results.detected_technologies || []),
@@ -627,7 +627,7 @@ export function ScanPage() {
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="flex-1"
               >
                 Go Home

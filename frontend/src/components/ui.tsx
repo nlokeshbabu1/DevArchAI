@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { cn } from '../lib/utils'
+import { cn, sanitizePath } from '../lib/utils'
 import { AlertTriangle, AlertCircle, CheckCircle, Info } from 'lucide-react'
 
 interface ScoreCircleProps {
@@ -462,7 +462,7 @@ export function FindingCard({
             <p className="text-sm text-muted-foreground line-clamp-2">{description}</p>
             {filePath && (
               <p className="text-xs text-muted-foreground mt-2 font-mono">
-                📁 {filePath}
+                📁 {sanitizePath(filePath)}
               </p>
             )}
           </div>

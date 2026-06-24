@@ -13,6 +13,7 @@ import { reportsApi } from '../api/endpoints/reports'
 import { scansApi } from '../api/endpoints/scans'
 import { ScanResultsDashboard } from '../components/scan-results/ScanResultsDashboard'
 import { ScanProgressOverlay } from '../components/scans/ScanProgressOverlay'
+import { getFindingsCount, sanitizePath } from '../lib/utils'
 
 interface Finding {
   id: string
@@ -189,7 +190,7 @@ export function ResultPage() {
   const repoName = scanResult?.repository_name || (scanResult?.repository_url?.split('/').slice(-2).join('/') ?? '')
   const score = scanResult?.overall_score ?? scanResult?.security_score ?? 0
   const grade = getGrade(score)
-  const findingsCount = scanResult?.total_findings ?? scanResult?.findings_count ?? scanResult?.findings?.length ?? 0
+  const findingsCount = getFindingsCount(scanResult)
   const filesScanned = scanResult?.files_analyzed ?? 0
   const techStack = scanResult?.detected_technologies ?? []
   const lastScanTime = relativeTime(scanResult?.completed_at ?? '')
@@ -216,9 +217,12 @@ export function ResultPage() {
       cost_score: scanResult.cost_score,
       observability_score: scanResult.observability_score,
       severity_counts,
-      findings_count: scanResult.total_findings || scanResult.findings_count || scanResult.findings?.length || 0,
+      findings_count: getFindingsCount(scanResult),
       files_analyzed: scanResult.files_analyzed,
-      findings: scanResult.findings || [],
+      findings: (scanResult.findings || []).map(f => ({
+        ...f,
+        file_path: sanitizePath(f.file_path),
+      })),
       generated_at: new Date().toISOString(),
     }
     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
@@ -262,95 +266,12 @@ export function ResultPage() {
     }
   }
 
-  const handleRescan = useCallback(async () => {
+  const handleRescan = useCallback(() => {
     if (!scanResult?.repository_url) return
-
-    const prevScore = score
-    const prevFindings = findingsCount
-    setPreviousScore(prevScore)
-    setPreviousFindingsCount(prevFindings)
-
-    setRescanActive(true)
-    setRescanProgress(0)
-    setRescanComplete(false)
-    setRescanFailed(false)
-    setRescanError(null)
-    setRescanResultSummary(undefined)
-
-    try {
-      const response = await scansApi.startUnifiedScan({
-        repository_url: scanResult.repository_url,
-        branch: scanResult.branch || 'main',
-      })
-
-      const newScanId = response.scan_id
-      rescanIdRef.current = newScanId
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const statusData = await scansApi.getScanProgress(newScanId)
-
-          if (statusData.status === 'completed' || statusData.progress >= 100) {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setRescanProgress(100)
-            setRescanComplete(true)
-
-            // Use unified results endpoint (works for both guest and auth scans)
-            const resultsResponse = await api.get(`/scan/results/${newScanId}`)
-            const results = resultsResponse.data
-
-            const unifiedResults: Partial<ScanResult> = {
-              scan_id: results.scan_id || newScanId,
-              repository_url: scanResult!.repository_url,
-              repository_name: scanResult!.repository_name,
-              branch: scanResult!.branch || 'main',
-              security_score: results.security_score || results.overall_score || 0,
-              overall_score: results.overall_score || results.security_score || 0,
-              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
-              completed_at: results.completed_at || new Date().toISOString(),
-              severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-              findings: results.findings || [],
-              total_findings: results.findings_count || results.findings?.length || 0,
-              detected_technologies: results.detected_technologies || [],
-              status: results.status || 'completed',
-              ai_status: results.ai_status || (results.findings ? 'completed' : 'pending'),
-            }
-
-            const newScore = unifiedResults.overall_score ?? unifiedResults.security_score ?? 0
-            setRescanResultSummary({
-              securityScore: newScore,
-              grade: getGrade(newScore),
-              severityCounts: {
-                critical: unifiedResults.severity_counts?.critical ?? 0,
-                high: unifiedResults.severity_counts?.high ?? 0,
-                medium: unifiedResults.severity_counts?.medium ?? 0,
-                low: unifiedResults.severity_counts?.low ?? 0,
-              },
-              filesScanned: unifiedResults.files_analyzed ?? 0,
-              scanDuration: 0,
-            })
-
-            // Update query cache for the current scan ID (same page, no navigation)
-            queryClient.setQueryData(['scan-result', id], unifiedResults)
-          } else if (statusData.status === 'failed') {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setRescanFailed(true)
-            setRescanError((statusData as any).error_message || 'Scan failed to complete')
-          } else {
-            setRescanProgress(statusData.progress)
-            setRescanStep(statusData.current_step || '')
-          }
-        } catch (err) {
-          console.error('Rescan polling error:', err)
-        }
-      }, 1000)
-    } catch (err: any) {
-      setRescanFailed(true)
-      setRescanError(err.message || 'Failed to start rescan')
-    }
-  }, [scanResult?.repository_url, scanResult?.branch, score, findingsCount, id, queryClient])
+    const repo = encodeURIComponent(scanResult.repository_url)
+    const branch = encodeURIComponent(scanResult.branch || 'main')
+    navigate(`/scan?url=${repo}&branch=${branch}&auto=true`)
+  }, [scanResult?.repository_url, scanResult?.branch, navigate])
 
   const handleViewResults = () => {
     setRescanActive(false)
