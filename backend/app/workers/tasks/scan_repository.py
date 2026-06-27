@@ -326,6 +326,25 @@ class SyncScanService:
                 # Mark current step as running
                 await self.progress_store.update_step(self.scan_id, step_name, StepStatus.RUNNING, progress)
 
+            # Broadcast progress update to all connected WebSocket clients
+            try:
+                from app.websockets.scan_progress import scan_progress_manager
+                progress_obj = await self.progress_store.get_progress(self.scan_id)
+                if progress_obj:
+                    sent = await scan_progress_manager.broadcast_progress(
+                        scan_id=self.scan_id,
+                        progress=progress,
+                        status="running",
+                        current_step=step_name or message,
+                        steps=[s.dict() for s in progress_obj.steps],
+                        logs=progress_obj.logs,
+                        detected_stack=progress_obj.detected_stack,
+                        files_list=getattr(progress_obj, 'files_list', None),
+                    )
+                    logger.debug(f"Broadcasted progress update to {sent} clients: {progress}% - {step_name or message}")
+            except Exception as e:
+                logger.warning(f"Failed to broadcast progress update: {e}")
+
     def _setup_parsers(self) -> ParserRegistry:
         """Initialize and register all parsers."""
         registry = ParserRegistry()
@@ -623,6 +642,24 @@ class SyncScanService:
                         )
                     )
 
+                # Broadcast scan completion to all connected WebSocket clients
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    progress_obj = _safe_await(self.progress_store.get_progress(self.scan_id))
+                    if progress_obj:
+                        sent = _safe_await(scan_progress_manager.broadcast_progress(
+                            scan_id=self.scan_id,
+                            progress=100,
+                            status="completed",
+                            current_step="Scan completed",
+                            steps=[s.dict() for s in progress_obj.steps],
+                            logs=progress_obj.logs,
+                            detected_stack=progress_obj.detected_stack,
+                        ))
+                        logger.info(f"Broadcasted scan_complete to {sent} clients for scan {self.scan_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast scan completion: {e}")
+
             self._update_progress(progress_callback, 100, "Scan complete")
 
             if scan.ai_status == "pending":
@@ -670,6 +707,21 @@ class SyncScanService:
             # Mark scan as failed in progress store
             if self.progress_store and self.scan_id:
                 _safe_await(self.progress_store.fail_scan(self.scan_id, str(e)))
+
+                # Broadcast scan failure to all connected WebSocket clients
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    sent = _safe_await(scan_progress_manager.broadcast_progress(
+                        scan_id=self.scan_id,
+                        progress=0,
+                        status="failed",
+                        current_step="Scan failed",
+                        error_message=str(e),
+                        logs=[str(e)],
+                    ))
+                    logger.info(f"Broadcasted scan_failed to {sent} clients for scan {self.scan_id}")
+                except Exception as broadcast_error:
+                    logger.warning(f"Failed to broadcast scan failure: {broadcast_error}")
 
             self._update_progress(progress_callback, 0, f"Failed: {str(e)}")
             raise

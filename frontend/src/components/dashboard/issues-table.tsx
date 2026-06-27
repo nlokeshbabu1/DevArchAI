@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { cn } from '../../lib/utils'
+import { cn, sanitizePath } from '../../lib/utils'
 import { SeverityBadge } from '../ui/severity-badge'
 import { AlertTriangle, AlertCircle, CheckCircle, Info, ChevronRight } from 'lucide-react'
 import { Button } from '../ui'
@@ -74,7 +74,7 @@ export function IssuesTable({ issues, onViewIssue, onFixIssue }: IssuesTableProp
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-foreground">{issue.filePath}</div>
+                    <div className="text-sm text-foreground">{sanitizePath(issue.filePath)}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-muted-foreground line-clamp-2 max-w-md">

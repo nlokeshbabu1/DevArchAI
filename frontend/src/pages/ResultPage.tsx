@@ -1,18 +1,20 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   RotateCcw, AlertCircle, ChevronRight, Brain, Download,
-  GitBranch, GitPullRequest, Clock, FileCode, Shield,
-  Star, Home, LayoutDashboard
+  GitPullRequest,
+  LayoutDashboard, BookOpen, CheckCircle2, XCircle, ExternalLink, Loader2, X
 } from 'lucide-react'
-import { Button, Card, ScoreCircle } from '../components/ui-animated'
-import api from '../lib/api'
-import { reportsApi } from '../api/endpoints/reports'
+import { Button, Card } from '../components/ui-animated'
 import { scansApi } from '../api/endpoints/scans'
+import { prApi } from '../api/endpoints/pull-requests'
+import { reportsApi } from '../api/endpoints/reports'
 import { ScanResultsDashboard } from '../components/scan-results/ScanResultsDashboard'
 import { ScanProgressOverlay } from '../components/scans/ScanProgressOverlay'
+import { api, buildWebSocketUrl } from '../lib/api'
+import { getFindingsCount, sanitizePath, cn } from '../lib/utils'
 
 interface Finding {
   id: string
@@ -77,42 +79,26 @@ interface ScanResult {
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
 type SortOption = 'severity' | 'date'
 
-function getGrade(score: number): string {
-  if (score >= 90) return 'A'
-  if (score >= 80) return 'B'
-  if (score >= 70) return 'C'
-  if (score >= 60) return 'D'
-  return 'F'
-}
 
-function getScoreColor(score: number): string {
-  if (score >= 80) return 'text-emerald-400'
-  if (score >= 60) return 'text-yellow-400'
-  return 'text-red-400'
-}
-
-function relativeTime(dateStr: string): string {
-  if (!dateStr) return 'N/A'
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  if (isNaN(then)) return 'N/A'
-  const diff = Math.max(0, Math.floor((now - then) / 1000))
-  if (diff < 60) return 'Just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
 
 export function ResultPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('severity')
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const defaultBranch = 'main'
+
+  // PR state
+  type PRStep = 'generating' | 'branch' | 'creating_pr' | null
+  const [prState, setPrState] = useState<{
+    step: PRStep
+    success: boolean
+    error: string | null
+    response: { prUrl: string; prNumber: number; scoreAfter: number; branchName: string } | null
+  }>({ step: null, success: false, error: null, response: null })
 
   // Rescan state
   const [rescanActive, setRescanActive] = useState(false)
@@ -130,8 +116,14 @@ export function ResultPage() {
   } | undefined>(undefined)
   const [previousScore, setPreviousScore] = useState<number | undefined>(undefined)
   const [previousFindingsCount, setPreviousFindingsCount] = useState<number | undefined>(undefined)
+  const [rescanId, setRescanId] = useState<string | null>(null)
   const rescanIdRef = useRef<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const rescanWsRef = useRef<WebSocket | null>(null)
+  const rescanProgressRef = useRef(0)
+  const rescanCompleteRef = useRef(false)
+  const rescanFailedRef = useRef(false)
+  const resultsFetchedRef = useRef(false)
 
   const isValidScanId = !!(id && id !== ':id' && id.length > 10)
 
@@ -151,21 +143,7 @@ export function ResultPage() {
     },
   })
 
-  const filteredFindings = useMemo(() => {
-    if (!result?.findings) return []
-    let filtered = [...result.findings]
-    if (severityFilter !== 'all') {
-      filtered = filtered.filter(f => f.severity === severityFilter)
-    }
-    const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
-    filtered.sort((a, b) => {
-      if (sortBy === 'severity') {
-        return severityOrder[a.severity] - severityOrder[b.severity]
-      }
-      return 0
-    })
-    return filtered
-  }, [result?.findings, severityFilter, sortBy])
+
 
   const severity_counts = useMemo(() => {
     if (!result?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
@@ -188,16 +166,67 @@ export function ResultPage() {
   const isAiReady = scanResult?.ai_status === 'completed'
   const repoName = scanResult?.repository_name || (scanResult?.repository_url?.split('/').slice(-2).join('/') ?? '')
   const score = scanResult?.overall_score ?? scanResult?.security_score ?? 0
-  const grade = getGrade(score)
-  const findingsCount = scanResult?.total_findings ?? scanResult?.findings_count ?? scanResult?.findings?.length ?? 0
-  const filesScanned = scanResult?.files_analyzed ?? 0
-  const techStack = scanResult?.detected_technologies ?? []
-  const lastScanTime = relativeTime(scanResult?.completed_at ?? '')
 
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
+
+  // Sync refs for polling / WS callbacks
+  useEffect(() => { rescanProgressRef.current = rescanProgress }, [rescanProgress])
+  useEffect(() => { rescanCompleteRef.current = rescanComplete }, [rescanComplete])
+  useEffect(() => { rescanFailedRef.current = rescanFailed }, [rescanFailed])
+
+  const fetchRescanResults = useCallback(async () => {
+    const scanId = rescanIdRef.current
+    if (!scanId || resultsFetchedRef.current) return
+    resultsFetchedRef.current = true
+
+    let attempts = 0
+    const maxAttempts = 5
+
+    while (attempts < maxAttempts) {
+      try {
+        const [scanRes, findingsRes] = await Promise.all([
+          api.get(`/scans/${scanId}?t=${Date.now()}`),
+          api.get(`/scans/${scanId}/findings?t=${Date.now()}`),
+        ])
+
+        const data = scanRes.data
+        const findings = findingsRes.data
+
+        const counts = findings.reduce((acc: any, f: any) => {
+          const sev = f.severity || 'info'
+          if (['critical', 'high', 'medium', 'low'].includes(sev)) {
+            acc[sev] = (acc[sev] || 0) + 1
+          }
+          return acc
+        }, { critical: 0, high: 0, medium: 0, low: 0 })
+
+        const newScore = data.overall_score ?? data.security_score ?? 0
+        const grade = newScore >= 90 ? 'A' : newScore >= 80 ? 'B' : newScore >= 70 ? 'C' : newScore >= 60 ? 'D' : 'F'
+
+        setRescanResultSummary({
+          securityScore: newScore,
+          grade,
+          severityCounts: counts,
+          filesScanned: data.files_analyzed || 0,
+          scanDuration: data.analysis_duration_seconds || 0,
+        })
+        setRescanComplete(true)
+        setRescanProgress(100)
+        return
+      } catch (err) {
+        attempts++
+        if (attempts >= maxAttempts) {
+          setRescanFailed(true)
+          setRescanError('Failed to fetch scan results')
+          return
+        }
+        await new Promise(r => setTimeout(r, Math.pow(2, attempts - 1) * 1000))
+      }
     }
   }, [])
 
@@ -216,9 +245,12 @@ export function ResultPage() {
       cost_score: scanResult.cost_score,
       observability_score: scanResult.observability_score,
       severity_counts,
-      findings_count: scanResult.total_findings || scanResult.findings_count || scanResult.findings?.length || 0,
+      findings_count: getFindingsCount(scanResult),
       files_analyzed: scanResult.files_analyzed,
-      findings: scanResult.findings || [],
+      findings: (scanResult.findings || []).map(f => ({
+        ...f,
+        file_path: sanitizePath(f.file_path),
+      })),
       generated_at: new Date().toISOString(),
     }
     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
@@ -265,106 +297,118 @@ export function ResultPage() {
   const handleRescan = useCallback(async () => {
     if (!scanResult?.repository_url) return
 
-    const prevScore = score
-    const prevFindings = findingsCount
-    setPreviousScore(prevScore)
-    setPreviousFindingsCount(prevFindings)
+    setPreviousScore(score)
+    setPreviousFindingsCount(getFindingsCount(scanResult))
 
     setRescanActive(true)
     setRescanProgress(0)
+    setRescanStep('')
     setRescanComplete(false)
     setRescanFailed(false)
     setRescanError(null)
     setRescanResultSummary(undefined)
+    setRescanId(null)
+    rescanIdRef.current = null
+    resultsFetchedRef.current = false
 
     try {
       const response = await scansApi.startUnifiedScan({
         repository_url: scanResult.repository_url,
         branch: scanResult.branch || 'main',
       })
-
-      const newScanId = response.scan_id
-      rescanIdRef.current = newScanId
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const statusData = await scansApi.getScanProgress(newScanId)
-
-          if (statusData.status === 'completed' || statusData.progress >= 100) {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setRescanProgress(100)
-            setRescanComplete(true)
-
-            // Use unified results endpoint (works for both guest and auth scans)
-            const resultsResponse = await api.get(`/scan/results/${newScanId}`)
-            const results = resultsResponse.data
-
-            const unifiedResults: Partial<ScanResult> = {
-              scan_id: results.scan_id || newScanId,
-              repository_url: scanResult!.repository_url,
-              repository_name: scanResult!.repository_name,
-              branch: scanResult!.branch || 'main',
-              security_score: results.security_score || results.overall_score || 0,
-              overall_score: results.overall_score || results.security_score || 0,
-              files_analyzed: results.files_analyzed || results.filesAnalyzed || 0,
-              completed_at: results.completed_at || new Date().toISOString(),
-              severity_counts: results.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-              findings: results.findings || [],
-              total_findings: results.findings_count || results.findings?.length || 0,
-              detected_technologies: results.detected_technologies || [],
-              status: results.status || 'completed',
-              ai_status: results.ai_status || (results.findings ? 'completed' : 'pending'),
-            }
-
-            const newScore = unifiedResults.overall_score ?? unifiedResults.security_score ?? 0
-            setRescanResultSummary({
-              securityScore: newScore,
-              grade: getGrade(newScore),
-              severityCounts: {
-                critical: unifiedResults.severity_counts?.critical ?? 0,
-                high: unifiedResults.severity_counts?.high ?? 0,
-                medium: unifiedResults.severity_counts?.medium ?? 0,
-                low: unifiedResults.severity_counts?.low ?? 0,
-              },
-              filesScanned: unifiedResults.files_analyzed ?? 0,
-              scanDuration: 0,
-            })
-
-            // Update query cache for the current scan ID (same page, no navigation)
-            queryClient.setQueryData(['scan-result', id], unifiedResults)
-          } else if (statusData.status === 'failed') {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setRescanFailed(true)
-            setRescanError((statusData as any).error_message || 'Scan failed to complete')
-          } else {
-            setRescanProgress(statusData.progress)
-            setRescanStep(statusData.current_step || '')
-          }
-        } catch (err) {
-          console.error('Rescan polling error:', err)
-        }
-      }, 1000)
+      rescanIdRef.current = response.scan_id
+      setRescanId(response.scan_id)
     } catch (err: any) {
       setRescanFailed(true)
-      setRescanError(err.message || 'Failed to start rescan')
+      setRescanError(err?.response?.data?.detail || err.message || 'Failed to start scan')
     }
-  }, [scanResult?.repository_url, scanResult?.branch, score, findingsCount, id, queryClient])
+  }, [scanResult, score])
+
+  // WebSocket for real-time rescan progress
+  useEffect(() => {
+    if (!rescanActive || !rescanId) return
+
+    const token = localStorage.getItem('access_token') || ''
+    const wsUrl = `${buildWebSocketUrl(`/ws/scan/${rescanId}`)}?token=${encodeURIComponent(token)}`
+
+    const ws = new WebSocket(wsUrl)
+    rescanWsRef.current = ws
+
+    ws.onopen = () => console.log('Rescan WS connected')
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        const { type, data } = msg
+
+        switch (type) {
+          case 'progress_update':
+            if (data.progress !== undefined) setRescanProgress(Math.round(data.progress))
+            if (data.current_step) setRescanStep(data.current_step)
+            break
+          case 'scan_complete':
+            setRescanProgress(100)
+            fetchRescanResults()
+            break
+          case 'scan_failed':
+            setRescanFailed(true)
+            setRescanError(data.error || 'Scan failed')
+            break
+        }
+      } catch {}
+    }
+
+    ws.onerror = () => {}
+    ws.onclose = () => { rescanWsRef.current = null }
+
+    return () => {
+      ws.close()
+      rescanWsRef.current = null
+    }
+  }, [rescanActive, rescanId])
+
+  // Polling fallback for completion detection
+  useEffect(() => {
+    if (!rescanActive || !rescanId) return
+
+    const startTime = Date.now()
+
+    const interval = setInterval(async () => {
+      if (rescanCompleteRef.current || rescanFailedRef.current) {
+        clearInterval(interval)
+        return
+      }
+
+      if (rescanProgressRef.current >= 100 && !resultsFetchedRef.current) {
+        clearInterval(interval)
+        const elapsed = Date.now() - startTime
+        const remaining = Math.max(0, 2000 - elapsed)
+        if (remaining > 0) await new Promise(r => setTimeout(r, remaining))
+        fetchRescanResults()
+      }
+    }, 1000)
+
+    pollRef.current = interval
+
+    return () => {
+      clearInterval(interval)
+      pollRef.current = null
+    }
+  }, [rescanActive, rescanId])
 
   const handleViewResults = () => {
-    setRescanActive(false)
-    setRescanComplete(false)
-    setRescanFailed(false)
-    setRescanProgress(0)
-    setRescanResultSummary(undefined)
-    refetch()
+    const newScanId = rescanIdRef.current
+    if (newScanId) {
+      navigate(`/scans/${newScanId}`, { replace: true })
+    }
   }
 
   const handleRescanRetry = () => {
     setRescanFailed(false)
     setRescanError(null)
     setRescanProgress(0)
+    setRescanComplete(false)
+    resultsFetchedRef.current = false
     handleRescan()
   }
 
@@ -388,24 +432,116 @@ export function ResultPage() {
     setExpandedFinding(findingId)
   }
 
-  const handleCreatePR = (findingId: string) => {
-    const finding = result?.findings?.find(f => f.id === findingId)
-    if (finding?.fix_code && scanResult) {
-      const effectiveScanId = scanResult.scan_id || scanResult.id || id
-      const prWindow = window.open('', '_blank')
-      if (prWindow) {
-        prWindow.document.write(`<pre>${finding.fix_code}</pre>`)
-        prWindow.document.close()
-      }
+  const handleCreatePR = async (findingId: string) => {
+    if (!scanResult) return
+    const effectiveScanId = scanResult.scan_id || scanResult.id || id
+    if (!effectiveScanId) return
+
+    setPrState({ step: 'generating', success: false, error: null, response: null })
+    await new Promise(r => setTimeout(r, 600))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'branch' })
+    await new Promise(r => setTimeout(r, 400))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'creating_pr' })
+
+    try {
+      const response = await prApi.createPR({
+        scan_id: effectiveScanId,
+        finding_ids: [findingId],
+      })
+      setPrState({
+        step: null,
+        success: true,
+        error: null,
+        response: {
+          prUrl: response.github_pr_url,
+          prNumber: response.github_pr_number,
+          scoreAfter: response.score_after,
+          branchName: response.branch_name,
+        },
+      })
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to create pull request'
+      setPrState({ step: null, success: false, error: message, response: null })
     }
   }
 
-  const handleCreateGlobalPR = () => {
+  const handleCreateGlobalPR = async () => {
+    if (!scanResult) return
     const fixableFindings = result?.findings?.filter(f => f.fix_code && (f.severity === 'critical' || f.severity === 'high')) ?? []
-    const target = fixableFindings[0]
-    if (target) {
-      handleCreatePR(target.id ?? target.rule_id)
+    if (fixableFindings.length === 0) return
+    const effectiveScanId = scanResult.scan_id || scanResult.id || id
+    if (!effectiveScanId) return
+    const findingIds = fixableFindings.map(f => f.id ?? f.rule_id)
+
+    setPrState({ step: 'generating', success: false, error: null, response: null })
+    await new Promise(r => setTimeout(r, 600))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'branch' })
+    await new Promise(r => setTimeout(r, 400))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'creating_pr' })
+
+    try {
+      const response = await prApi.createPR({
+        scan_id: effectiveScanId,
+        finding_ids: findingIds,
+      })
+      setPrState({
+        step: null,
+        success: true,
+        error: null,
+        response: {
+          prUrl: response.github_pr_url,
+          prNumber: response.github_pr_number,
+          scoreAfter: response.score_after,
+          branchName: response.branch_name,
+        },
+      })
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to create pull request'
+      setPrState({ step: null, success: false, error: message, response: null })
     }
+  }
+
+  const handleBatchCreatePR = async (findingIds: string[]) => {
+    if (!scanResult || findingIds.length === 0) return
+    const effectiveScanId = scanResult.scan_id || scanResult.id || id
+    if (!effectiveScanId) return
+
+    setPrState({ step: 'generating', success: false, error: null, response: null })
+    await new Promise(r => setTimeout(r, 600))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'branch' })
+    await new Promise(r => setTimeout(r, 400))
+
+    setPrState(prev => prev.error ? prev : { ...prev, step: 'creating_pr' })
+
+    try {
+      const response = await prApi.createPR({
+        scan_id: effectiveScanId,
+        finding_ids: findingIds,
+      })
+      setPrState({
+        step: null,
+        success: true,
+        error: null,
+        response: {
+          prUrl: response.github_pr_url,
+          prNumber: response.github_pr_number,
+          scoreAfter: response.score_after,
+          branchName: response.branch_name,
+        },
+      })
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to create pull request'
+      setPrState({ step: null, success: false, error: message, response: null })
+    }
+  }
+
+  const handleClosePRModal = () => {
+    setPrState({ step: null, success: false, error: null, response: null })
   }
 
   if (isLoading) {
@@ -484,92 +620,33 @@ export function ResultPage() {
                 variant="ghost"
                 size="sm"
                 onClick={handleCreateGlobalPR}
-                disabled={!result?.findings?.some(f => f.fix_code)}
+                disabled={!!prState.step || !result?.findings?.some(f => f.fix_code)}
               >
-                <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />
-                Create Fix PR
+                {prState.step ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {prState.step === 'generating' ? 'Generating fixes...' :
+                 prState.step === 'branch' ? 'Creating branch...' :
+                 prState.step === 'creating_pr' ? 'Creating PR...' :
+                 'Create Fix PR'}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => handleDownload('pdf')}>
                 <Download className="h-3.5 w-3.5 mr-1.5" />
                 Export
               </Button>
+              <button
+                onClick={() => navigate('/docs/security-findings')}
+                className="p-2 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors"
+                title="View Security Findings documentation"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
-          {/* Header Info Card */}
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              {/* Left: Repo name */}
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 shrink-0">
-                  <GitBranch className="h-4 w-4 text-indigo-400" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="text-sm font-semibold text-white/90 truncate">{repoName}</h1>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-white/[0.08] bg-white/[0.04] text-indigo-300/80">
-                      {scanResult?.branch || defaultBranch}
-                    </span>
-                    <span className="text-[11px] text-white/30 hidden sm:inline">{lastScanTime}</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Divider */}
-              <div className="hidden sm:block w-px h-8 bg-white/[0.06]" />
-
-              {/* Center: Score + Stats */}
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Score + Grade */}
-                <div className="flex items-center gap-2">
-                  <div className={cn(
-                    'text-lg font-bold font-mono tabular-nums',
-                    getScoreColor(score)
-                  )}>
-                    {score}
-                  </div>
-                  <div className={cn(
-                    'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                    grade === 'A' ? 'bg-emerald-500/15 text-emerald-400' :
-                    grade === 'B' ? 'bg-emerald-500/10 text-emerald-300' :
-                    grade === 'C' ? 'bg-yellow-500/10 text-yellow-400' :
-                    grade === 'D' ? 'bg-orange-500/10 text-orange-400' :
-                    'bg-red-500/10 text-red-400'
-                  )}>
-                    {grade}
-                  </div>
-                </div>
-
-                <div className="w-px h-4 bg-white/[0.06]" />
-
-                {/* Stats */}
-                <div className="flex items-center gap-3 text-[11px] text-white/50">
-                  <div className="flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3 text-white/30" />
-                    <span>{findingsCount} findings</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <FileCode className="h-3 w-3 text-white/30" />
-                    <span>{filesScanned} files</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Technology Badges */}
-            {techStack.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-white/[0.04]">
-                {techStack.map((tech) => (
-                  <span
-                    key={tech}
-                    className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-white/50"
-                  >
-                    {tech}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
@@ -618,15 +695,150 @@ export function ResultPage() {
         onFindFix={handleFindFix}
         onGenerateFix={handleGenerateFix}
         onCreatePR={handleCreatePR}
+        onBatchCreatePR={handleBatchCreatePR}
         hideHeaderActions
       />
+
+      {/* PR Progress Modal */}
+      <AnimatePresence>
+        {prState.step && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
+            >
+              <div className="space-y-4">
+                {[
+                  { step: 'generating' as const, label: 'Generating fixes', icon: '🔍' },
+                  { step: 'branch' as const, label: 'Creating branch', icon: '🌿' },
+                  { step: 'creating_pr' as const, label: 'Creating Pull Request', icon: '🔄' },
+                ].map((s) => {
+                  const isActive = prState.step === s.step
+                  const isDone = false // all sequential, so only one is active
+                  return (
+                    <div key={s.step} className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 transition-all duration-300",
+                        isActive ? "bg-indigo-500/20 text-indigo-400 ring-2 ring-indigo-500/40" : "bg-white/5 text-white/20"
+                      )}>
+                        {isActive ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : isDone ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-sm transition-colors",
+                        isActive ? "text-white/90 font-medium" : "text-white/30"
+                      )}>
+                        {s.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PR Success Modal */}
+      <AnimatePresence>
+        {prState.success && prState.response && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl border border-emerald-500/20 bg-slate-900 p-6 shadow-2xl"
+            >
+              <div className="text-center mb-5">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white/90">Pull Request Created</h3>
+                <p className="text-xs text-white/40 mt-1">
+                  PR #{prState.response.prNumber} opened on branch {prState.response.branchName}
+                </p>
+              </div>
+
+              <div className="space-y-3 mb-5">
+                <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
+                  <span className="text-sm text-white/60">PR Number</span>
+                  <span className="text-sm font-bold text-white/80">#{prState.response.prNumber}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                  <span className="text-sm text-emerald-300/80">Score After Fix</span>
+                  <span className="text-sm font-bold text-emerald-400">{prState.response.scoreAfter}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={handleClosePRModal} className="flex-1">
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  glow
+                  onClick={() => window.open(prState.response!.prUrl, '_blank', 'noopener')}
+                  className="flex-1"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Open PR
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PR Error Toast */}
+      <AnimatePresence>
+        {prState.error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 right-6 z-[70] max-w-sm"
+          >
+            <div className="rounded-xl border border-red-500/20 bg-red-950/90 backdrop-blur-xl p-4 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold text-red-300">Failed to create PR</h4>
+                  <p className="text-xs text-red-200/60 mt-0.5">{prState.error}</p>
+                </div>
+                <button onClick={() => setPrState(prev => ({ ...prev, error: null }))}>
+                  <X className="w-4 h-4 text-red-300/50 hover:text-red-300 transition-colors" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Rescan Overlay */}
       <ScanProgressOverlay
         isOpen={rescanActive}
         onClose={() => {
           setRescanActive(false)
-          if (pollRef.current) clearInterval(pollRef.current)
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+          if (rescanWsRef.current) { rescanWsRef.current.close(); rescanWsRef.current = null }
         }}
         repositoryName={repoName}
         branch={scanResult?.branch || defaultBranch}
@@ -647,6 +859,4 @@ export function ResultPage() {
   )
 }
 
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ')
-}
+

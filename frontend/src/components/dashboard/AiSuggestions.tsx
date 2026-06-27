@@ -52,7 +52,7 @@ export function AiSuggestions({ suggestions, isLoading }: AiSuggestionsProps) {
                 <Brain className="h-3.5 w-3.5 text-primary" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">AI Recommendations</h3>
+                <h3 className="text-sm font-semibold text-foreground">AI Suggestions</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Top remediation opportunities</p>
               </div>
             </div>

@@ -1,6 +1,7 @@
 """Repository Analysis model for storing analysis results."""
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -12,6 +13,9 @@ class RepoAnalysis(Base):
     __tablename__ = "repo_analysis"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # Tenant isolation
+    user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
 
     # Repository info
     repo_url = Column(String(500), nullable=False, index=True)

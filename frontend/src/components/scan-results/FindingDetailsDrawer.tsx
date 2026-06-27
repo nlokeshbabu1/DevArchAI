@@ -2,14 +2,15 @@ import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, AlertTriangle, Sparkles, Shield,
-  Copy, Check, Download, GitPullRequest, Eye,
-  TrendingUp, ArrowRight
+  Copy, Check, Download, GitPullRequest,
+  TrendingUp, Clock, Target,
+  FileCode, BookOpen, ExternalLink, MessageSquare,
+  HelpCircle
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath } from "../../lib/utils"
 import { Button } from "../ui-animated"
 import { DiffViewer } from "../DiffViewer"
-import { FixPreview } from "./FixPreview"
 
 interface FindingDetailsDrawerProps {
   finding: Finding | null
@@ -23,16 +24,42 @@ interface FindingDetailsDrawerProps {
 
 interface PRConfirmation {
   show: boolean
-  currentScore: number
-  futureScore: number
   affectedFiles: number
-  riskReduction: string
+  scoreImprovement: number
 }
 
-function estimateScoreAfterFix(finding: Finding, currentScore: number): { score: number; reduction: string } {
-  const boost = finding.severity === "critical" ? 15 : finding.severity === "high" ? 10 : finding.severity === "medium" ? 5 : 2
-  const reduction = finding.severity === "critical" ? "Critical → None" : finding.severity === "high" ? "High → None" : "Medium → Low"
-  return { score: Math.min(100, currentScore + boost), reduction }
+const estimateFixTime = (finding: Finding): string => {
+  if (finding.estimated_fix_time) return finding.estimated_fix_time
+  if (finding.fix_code) return "~5 min"
+  const map: Record<string, string> = {
+    critical: "~45 min",
+    high: "~25 min",
+    medium: "~10 min",
+    low: "~5 min",
+    info: "~5 min",
+  }
+  return map[finding.severity] || "~15 min"
+}
+
+const computeRiskReduction = (finding: Finding): number => {
+  if (finding.risk_reduction_score != null) return finding.risk_reduction_score
+  const map: Record<string, number> = { critical: 90, high: 65, medium: 35, low: 10, info: 5 }
+  return map[finding.severity] || 0
+}
+
+const computePredictedScore = (currentScore: number, finding: Finding): number => {
+  if (finding.predicted_score_after_fix != null) return finding.predicted_score_after_fix
+  const reduction = computeRiskReduction(finding)
+  const improvement = Math.round((reduction / 100) * (100 - currentScore) * 0.3)
+  return Math.min(100, currentScore + improvement)
+}
+
+const severityBorderColors: Record<string, string> = {
+  critical: "border-l-red-500",
+  high: "border-l-orange-500",
+  medium: "border-l-yellow-500",
+  low: "border-l-blue-500",
+  info: "border-l-gray-500",
 }
 
 export function FindingDetailsDrawer({
@@ -41,12 +68,15 @@ export function FindingDetailsDrawer({
 }: FindingDetailsDrawerProps) {
   const [copied, setCopied] = useState(false)
   const [prConfirm, setPrConfirm] = useState<PRConfirmation | null>(null)
-  const [showFixPreview, setShowFixPreview] = useState(false)
 
   if (!finding) return null
 
   const severityColor = getSeverityColor(finding.severity)
-  const scoreImpact = estimateScoreAfterFix(finding, currentScore)
+  const riskReduction = computeRiskReduction(finding)
+  const predictedScore = computePredictedScore(currentScore, finding)
+  const improvement = predictedScore - currentScore
+  const repoPath = sanitizePath(finding.file_path)
+  const severityBorder = severityBorderColors[finding.severity] || "border-l-gray-500"
 
   const handleCopy = async () => {
     if (!finding.fix_code) return
@@ -57,13 +87,10 @@ export function FindingDetailsDrawer({
   }
 
   const handleCreatePR = () => {
-    setShowFixPreview(false)
     setPrConfirm({
       show: true,
-      currentScore,
-      futureScore: scoreImpact.score,
       affectedFiles: 1,
-      riskReduction: scoreImpact.reduction,
+      scoreImprovement: improvement,
     })
   }
 
@@ -77,7 +104,6 @@ export function FindingDetailsDrawer({
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -86,21 +112,33 @@ export function FindingDetailsDrawer({
               className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
             />
 
-            {/* Drawer */}
             <motion.div
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl bg-[#0a0a10] border-l border-white/10 overflow-hidden flex flex-col"
+              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-[#0a0a10] border-l border-white/10 overflow-hidden flex flex-col"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider", severityColor.bg, severityColor.text)}>
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider",
+                    severityColor.bg, severityColor.text
+                  )}>
                     {finding.severity}
                   </span>
                   <span className="text-xs text-white/40 font-mono truncate">{finding.rule_id}</span>
+                  {finding.confidence != null && (
+                    <span className={cn(
+                      "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                      finding.confidence >= 0.8 ? "bg-emerald-500/10 text-emerald-400" :
+                      finding.confidence >= 0.5 ? "bg-yellow-500/10 text-yellow-400" :
+                      "bg-gray-500/10 text-gray-400"
+                    )}>
+                      {(finding.confidence * 100).toFixed(0)}% confidence
+                    </span>
+                  )}
                 </div>
                 <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0">
                   <X className="w-5 h-5" />
@@ -110,105 +148,132 @@ export function FindingDetailsDrawer({
               {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto">
                 <div className="p-6 space-y-5">
-                  {/* Issue title */}
+
+                  {/* 1. Finding Metadata */}
                   <div>
                     <h2 className="text-base font-semibold text-white/90">
                       {finding.summary || finding.message || finding.rule_name}
                     </h2>
-                    <p className="text-xs text-white/40 mt-1 font-mono">
-                      {finding.file_path?.split("/").pop()}{finding.line_number ? `:${finding.line_number}` : ""}
-                      <span className="text-white/20 mx-2">·</span>
-                      {finding.category}
-                    </p>
-                  </div>
-
-                  {/* Why This Matters */}
-                  {finding.summary && (
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
-                      <div className="flex items-start gap-3">
-                        <Sparkles className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-1">Why This Matters</h4>
-                          <p className="text-sm text-white/70 leading-relaxed">{finding.summary}</p>
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Category</div>
+                        <div className="text-xs font-medium text-white/70 capitalize truncate">{finding.category}</div>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">File Path</div>
+                        <div className="text-xs font-medium text-white/70 font-mono truncate" title={repoPath}>
+                          {repoPath || "\u2014"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Est. Fix Time</div>
+                        <div className="text-xs font-medium text-white/70">{estimateFixTime(finding)}</div>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Risk Reduction</div>
+                        <div className={cn(
+                          "text-xs font-bold",
+                          riskReduction >= 60 ? "text-emerald-400" :
+                          riskReduction >= 30 ? "text-yellow-400" : "text-blue-400"
+                        )}>
+                          +{riskReduction}%
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* 2. Why This Matters */}
+                  {(finding.description || finding.risk) && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <HelpCircle className="w-4 h-4 text-amber-400" />
+                        <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Why This Matters</h4>
+                      </div>
+                      <p className="text-sm text-amber-200/70 leading-relaxed">
+                        {finding.description || finding.risk}
+                      </p>
+                    </div>
                   )}
 
-                  {/* Security Impact */}
-                  {(finding.risk || finding.impact) && (
-                    <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
-                      <div className="flex items-start gap-3">
-                        <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <h4 className="text-xs font-semibold text-orange-300 uppercase tracking-wider mb-1">Security Impact</h4>
-                          {finding.risk && <p className="text-sm text-orange-200/70 leading-relaxed">{finding.risk}</p>}
-                          {finding.impact && <p className="text-sm text-orange-200/50 leading-relaxed mt-1">{finding.impact}</p>}
+                  {/* 3. Security Impact */}
+                  <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-orange-400" />
+                      <h4 className="text-xs font-semibold text-orange-300 uppercase tracking-wider">Security Impact</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-black/20 p-3">
+                        <div className="text-[10px] text-orange-300/50 uppercase tracking-wider mb-1">Risk Level</div>
+                        <div className={cn(
+                          "text-sm font-bold",
+                          (finding.risk_level || finding.severity) === "critical" ? "text-red-400" :
+                          (finding.risk_level || finding.severity) === "high" ? "text-orange-400" :
+                          (finding.risk_level || finding.severity) === "medium" ? "text-yellow-400" : "text-blue-400"
+                        )}>
+                          {(finding.risk_level || finding.severity).toUpperCase()}
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Score impact card */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center">
-                      <div className="text-[10px] text-white/30 uppercase mb-1">Current</div>
-                      <div className="text-xl font-bold text-white/60">{currentScore}</div>
-                    </div>
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center">
-                      <div className="text-[10px] text-emerald-400/60 uppercase mb-1">After Fix</div>
-                      <div className="text-xl font-bold text-emerald-400">{scoreImpact.score}</div>
-                    </div>
-                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 text-center">
-                      <div className="text-[10px] text-indigo-400/60 uppercase mb-1">Risk</div>
-                      <div className="text-xs font-bold text-indigo-300 mt-1">{scoreImpact.reduction}</div>
+                      <div className="rounded-lg bg-black/20 p-3">
+                        <div className="text-[10px] text-orange-300/50 uppercase tracking-wider mb-1">Attack Scenario</div>
+                        <p className="text-xs text-orange-200/70 leading-relaxed">{finding.attack_scenario || finding.risk || "\u2014"}</p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 p-3">
+                        <div className="text-[10px] text-orange-300/50 uppercase tracking-wider mb-1">Business Impact</div>
+                        <p className="text-xs text-orange-200/70 leading-relaxed">{finding.business_impact || finding.impact || "\u2014"}</p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 p-3">
+                        <div className="text-[10px] text-orange-300/50 uppercase tracking-wider mb-1">Environment Impact</div>
+                        <p className="text-xs text-orange-200/70 leading-relaxed">{finding.environment_impact || "\u2014"}</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Current Code */}
+                  {/* 4. Current Code */}
                   {finding.before_code && (
                     <div>
-                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Current Code</h4>
-                      <pre className="p-4 bg-black/40 border border-white/5 rounded-xl overflow-x-auto max-h-[300px] text-sm">
-                        <code className="text-red-300/80 font-mono whitespace-pre">{finding.before_code}</code>
-                      </pre>
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileCode className="w-3.5 h-3.5 text-white/40" />
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Current Code</h4>
+                      </div>
+                      <div className={cn(
+                        "rounded-xl border border-white/5 bg-black/40 overflow-hidden",
+                        "border-l-2", severityBorder
+                      )}>
+                        <pre className="p-4 overflow-x-auto max-h-[300px] text-sm">
+                          <code className="text-red-300/80 font-mono whitespace-pre">{finding.before_code}</code>
+                        </pre>
+                      </div>
                     </div>
                   )}
 
-                  {/* Recommended Change */}
+                  {/* 5. Recommended Code */}
                   {finding.fix_code && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Recommended Change</h4>
-                        <span className={cn(
-                          "text-[10px] font-medium px-1.5 py-0.5 rounded",
-                          (finding.confidence ?? 0.8) >= 0.8 ? "bg-emerald-500/10 text-emerald-400" : "bg-yellow-500/10 text-yellow-400"
-                        )}>
-                          {((finding.confidence ?? 0.8) * 100).toFixed(0)}% confident
-                        </span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Recommended Code</h4>
                       </div>
-                      <pre className="p-4 bg-black/40 border border-emerald-500/20 rounded-xl overflow-x-auto max-h-[300px] text-sm">
-                        <code className="text-emerald-300 font-mono whitespace-pre">{finding.fix_code}</code>
-                      </pre>
+                      <div className="rounded-xl border border-emerald-500/20 bg-black/40 border-l-2 border-l-emerald-500 overflow-hidden">
+                        <pre className="p-4 overflow-x-auto max-h-[300px] text-sm">
+                          <code className="text-emerald-300 font-mono whitespace-pre">{finding.fix_code}</code>
+                        </pre>
+                      </div>
                     </div>
                   )}
 
-                  {/* Diff View */}
+                  {/* 6. Diff View */}
                   {(finding.before_code || finding.after_code || finding.unified_diff) && (
                     <div>
-                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Diff View</h4>
-                      <div className="rounded-xl border border-white/5 overflow-hidden">
-                        <DiffViewer
-                          beforeCode={finding.before_code}
-                          afterCode={finding.after_code}
-                          unifiedDiff={finding.unified_diff}
-                          filename={finding.file_path || "file"}
-                        />
-                      </div>
+                      <DiffViewer
+                        beforeCode={finding.before_code}
+                        afterCode={finding.after_code}
+                        unifiedDiff={finding.unified_diff}
+                        filename={repoPath || "file"}
+                      />
                     </div>
                   )}
 
-                  {/* Best Practices */}
+                  {/* 7. Best Practices */}
                   {finding.best_practices && finding.best_practices.length > 0 && (
                     <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4">
                       <div className="flex items-center gap-2 mb-3">
@@ -226,12 +291,63 @@ export function FindingDetailsDrawer({
                     </div>
                   )}
 
-                  {/* Description fallback */}
-                  {finding.description && !finding.summary && (
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
-                      <p className="text-sm text-white/60 leading-relaxed">{finding.description}</p>
+                  {/* 8. AI Explanation */}
+                  {finding.ai_explanation && (
+                    <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <MessageSquare className="w-4 h-4 text-purple-400" />
+                        <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider">AI Explanation</h4>
+                      </div>
+                      <p className="text-sm text-purple-200/70 leading-relaxed">{finding.ai_explanation}</p>
                     </div>
                   )}
+
+                  {/* 9. References */}
+                  {finding.documentation_url && (
+                    <div className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                      <BookOpen className="w-4 h-4 text-white/30" />
+                      <span className="text-xs text-white/50 flex-1">References</span>
+                      <a
+                        href={finding.documentation_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                      >
+                        View Documentation
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* 10. Security Improvement */}
+                  <div className="rounded-xl border border-white/5 bg-gradient-to-br from-indigo-950/30 to-slate-900/50 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <TrendingUp className="w-4 h-4 text-indigo-400" />
+                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Security Improvement</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-lg border border-white/5 bg-white/[0.03] p-4 text-center">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Current</div>
+                        <div className="text-2xl font-bold text-white/60">{currentScore}</div>
+                      </div>
+                      <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-4 text-center">
+                        <div className="text-[10px] text-indigo-300/50 uppercase tracking-wider mb-1">After Fix</div>
+                        <div className="text-2xl font-bold text-indigo-300">{predictedScore}</div>
+                      </div>
+                      <div className={cn(
+                        "rounded-lg border p-4 text-center",
+                        improvement > 0 ? "border-emerald-500/20 bg-emerald-500/5" : "border-white/5 bg-white/[0.03]"
+                      )}>
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Delta</div>
+                        <div className={cn(
+                          "text-2xl font-bold flex items-center justify-center gap-1",
+                          improvement > 0 ? "text-emerald-400" : "text-white/40"
+                        )}>
+                          {improvement > 0 ? <>+{improvement}</> : "\u2014"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -253,10 +369,10 @@ export function FindingDetailsDrawer({
                     <GitPullRequest className="w-4 h-4 mr-1.5" />
                     PR
                   </Button>
-                  {finding.fix_code && (
-                    <Button variant="ghost" size="sm" onClick={() => setShowFixPreview(true)}>
-                      <Eye className="w-4 h-4 mr-1.5" />
-                      Preview
+                  {finding.documentation_url && (
+                    <Button variant="ghost" size="sm" onClick={() => window.open(finding.documentation_url, '_blank')}>
+                      <ExternalLink className="w-4 h-4 mr-1.5" />
+                      Docs
                     </Button>
                   )}
                 </div>
@@ -265,15 +381,6 @@ export function FindingDetailsDrawer({
           </>
         )}
       </AnimatePresence>
-
-      {/* Fix Preview Modal */}
-      <FixPreview
-        finding={finding}
-        currentScore={currentScore}
-        isOpen={showFixPreview}
-        onClose={() => setShowFixPreview(false)}
-        onCreatePR={handleCreatePR}
-      />
 
       {/* PR Confirmation Modal */}
       <AnimatePresence>
@@ -297,25 +404,16 @@ export function FindingDetailsDrawer({
 
               <p className="text-xs text-white/40 mb-5">
                 This will create a patch-based PR fixing only the lines related to this finding.
-                No unrelated code will be modified.
               </p>
 
               <div className="space-y-3 mb-5">
                 <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
-                  <span className="text-sm text-white/60">Current Score</span>
-                  <span className="text-sm font-bold text-white/80">{prConfirm.currentScore}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-                  <span className="text-sm text-white/60">Future Score</span>
-                  <span className="text-sm font-bold text-emerald-400">+{prConfirm.futureScore - prConfirm.currentScore} → {prConfirm.futureScore}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
                   <span className="text-sm text-white/60">Affected Files</span>
                   <span className="text-sm font-bold text-white/80">{prConfirm.affectedFiles}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-4 py-3">
-                  <span className="text-sm text-white/60">Risk Reduction</span>
-                  <span className="text-sm font-bold text-indigo-300">{prConfirm.riskReduction}</span>
+                <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                  <span className="text-sm text-emerald-300/80">Score Improvement</span>
+                  <span className="text-sm font-bold text-emerald-400">+{prConfirm.scoreImprovement}</span>
                 </div>
               </div>
 

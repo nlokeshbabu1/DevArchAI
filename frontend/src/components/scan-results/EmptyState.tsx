@@ -89,6 +89,12 @@ export function EmptyState({ score, repoName, filesAnalyzed, coveragePercent = 1
           transition={{ delay: 0.7 }}
           className="flex flex-wrap items-center justify-center gap-3"
         >
+          <p className="text-xs text-white/30 max-w-md mb-6">
+            Security scan completed. {rulesExecuted > 0 ? `${rulesExecuted} security rules executed` : "All applicable security rules evaluated"}; no violations detected.{" "}
+            {filesAnalyzed > 0 && `${filesAnalyzed.toLocaleString()} files scanned across all categories.`}
+            {" "}Your configurations, dependencies, secrets, and infrastructure code have been checked.
+          </p>
+
           {["SAST", "SCA", "Secrets", "IaC"].map((item, i) => (
             <motion.div
               key={item}

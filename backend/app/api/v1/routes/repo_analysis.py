@@ -44,6 +44,7 @@ router = APIRouter(prefix="/analyze", tags=["Repository Analysis"])
 )
 async def analyze_repository_deep(
     request: RepoAnalysisRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -111,6 +112,7 @@ async def analyze_repository_deep(
 )
 async def analyze_repository(
     request: RepoAnalysisRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -125,9 +127,10 @@ async def analyze_repository(
     logger.info("Repository analysis requested", repo_url=request.repo_url, branch=request.branch)
 
     try:
-        # Create a scan record
+        # Create a scan record with user ownership
         scan = Scan(
             id=uuid4(),
+            user_id=current_user.id,
             repository_url=request.repo_url,
             branch=request.branch or "main",
             status=ScanStatus.PENDING,
@@ -266,13 +269,16 @@ async def list_analyses(
     """List recent repository analyses."""
     offset = (page - 1) * page_size
 
-    # Get total count
-    count_query = select(func.count(RepoAnalysis.id))
+    # Get total count for current user
+    count_query = select(func.count(RepoAnalysis.id)).where(
+        RepoAnalysis.user_id == current_user.id
+    )
     total = await db.scalar(count_query)
 
-    # Get analyses
+    # Get analyses for current user
     result = await db.execute(
         select(RepoAnalysis)
+        .where(RepoAnalysis.user_id == current_user.id)
         .order_by(RepoAnalysis.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -315,7 +321,10 @@ async def get_analysis(
 ):
     """Get analysis result by ID."""
     result = await db.execute(
-        select(RepoAnalysis).where(RepoAnalysis.id == analysis_id)
+        select(RepoAnalysis).where(
+            RepoAnalysis.id == analysis_id,
+            RepoAnalysis.user_id == current_user.id,
+        )
     )
     analysis = result.scalar_one_or_none()
 
@@ -387,7 +396,10 @@ async def get_missing_best_practices(
 ):
     """Get missing best practices based on analysis."""
     result = await db.execute(
-        select(RepoAnalysis).where(RepoAnalysis.id == analysis_id)
+        select(RepoAnalysis).where(
+            RepoAnalysis.id == analysis_id,
+            RepoAnalysis.user_id == current_user.id,
+        )
     )
     analysis = result.scalar_one_or_none()
 
@@ -471,7 +483,10 @@ async def delete_analysis(
 ):
     """Delete analysis result."""
     result = await db.execute(
-        select(RepoAnalysis).where(RepoAnalysis.id == analysis_id)
+        select(RepoAnalysis).where(
+            RepoAnalysis.id == analysis_id,
+            RepoAnalysis.user_id == current_user.id,
+        )
     )
     analysis = result.scalar_one_or_none()
 

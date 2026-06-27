@@ -35,6 +35,7 @@ export function GitlabCallback() {
             email: response.user.email,
             username: response.user.username,
             avatar_url: response.user.avatar_url,
+            provider: 'gitlab',
             is_active: response.user.is_active ?? true,
             is_verified: response.user.is_verified ?? true,
             role: response.user.role ?? 'user',

@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Cloud, KeyRound, Loader2, Plus, ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { BookOpen, Cloud, KeyRound, Loader2, Plus, ShieldCheck } from 'lucide-react'
 import { awsApi, AwsAccount, AwsCostRecommendation, AwsFinding, AwsInventoryResponse, AwsOverview } from '../../api/endpoints/aws'
 import { Button } from '../../components/ui'
 import { AwsDashboard, AwsDashboardSkeleton } from '../../components/aws/AwsDashboard'
@@ -15,6 +16,7 @@ function apiErrorMessage(error: unknown) {
 }
 
 export function AwsPage() {
+  const navigate = useNavigate()
   const [accounts, setAccounts] = useState<AwsAccount[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>()
   const [overview, setOverview] = useState<AwsOverview | null>(null)
@@ -149,6 +151,13 @@ export function AwsPage() {
               <Cloud className="h-6 w-6 text-amber-300" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">AI Cloud Security & Cost Optimization</h1>
+            <button
+              onClick={() => navigate('/docs/aws-integration')}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              title="View AWS documentation"
+            >
+              <BookOpen className="h-4 w-4" />
+            </button>
           </div>
           <p className="mt-2 text-muted-foreground">Operational AWS posture, AI recommendations, inventory risk, and savings workflows.</p>
         </div>

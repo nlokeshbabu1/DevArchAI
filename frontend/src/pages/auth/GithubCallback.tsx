@@ -50,6 +50,8 @@ export function GithubCallback() {
         }
         setUser({
           ...tokenResponse.user,
+          provider: 'github',
+          has_github: true,
           is_active: tokenResponse.user.is_active ?? true,
           is_verified: tokenResponse.user.is_verified ?? false,
           role: tokenResponse.user.role ?? 'user',

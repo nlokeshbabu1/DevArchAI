@@ -29,11 +29,12 @@ import {
   Fingerprint,
   Calendar,
   Target,
+  BookOpen,
 } from 'lucide-react'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
 import { api } from '../lib/api'
 import { reportsApi } from '../api/endpoints/reports'
-import { cn } from '../lib/utils'
+import { cn, sanitizePath } from '../lib/utils'
 
 interface Finding {
   rule_id: string
@@ -144,7 +145,6 @@ export function Report() {
       const category_scores = Object.entries(reportData.category_scores || {}).map(([category, score]) => ({
         category,
         score: score as number,
-        findings_count: 0,
         icon: categoryIcons[category] || Activity,
       }))
 
@@ -206,7 +206,10 @@ export function Report() {
         branch: scannedBranch,
         analyzedAt: new Date().toISOString(),
         scores: finalScores,
-        findings: filteredFindings,
+        findings: filteredFindings.map((f: Finding) => ({
+          ...f,
+          file_path: sanitizePath(f.file_path),
+        })),
         summary: severitySummary,
       }
 
@@ -353,6 +356,13 @@ export function Report() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Analysis
         </Button>
+        <button
+          onClick={() => navigate('/docs/security-findings')}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors ml-auto"
+          title="View Security Findings documentation"
+        >
+          <BookOpen className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Scan Passport */}
@@ -859,7 +869,7 @@ export function Report() {
                     {rec.file_path && (
                       <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
                         <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground font-mono">{rec.file_path}</span>
+                        <span className="text-sm text-muted-foreground font-mono">{sanitizePath(rec.file_path)}</span>
                       </div>
                     )}
                   </div>
@@ -1016,7 +1026,7 @@ function FindingCard({
             <p className="text-sm text-muted-foreground line-clamp-2">{description}</p>
             {filePath && (
               <p className="text-xs text-muted-foreground mt-2 font-mono">
-                📁 {filePath}
+                📁 {sanitizePath(filePath)}
               </p>
             )}
           </div>

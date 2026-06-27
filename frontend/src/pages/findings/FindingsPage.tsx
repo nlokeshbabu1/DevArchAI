@@ -7,7 +7,7 @@ import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '../../lib/utils'
+import { cn, sanitizePath } from '../../lib/utils'
 
 interface Finding {
   id: string
@@ -89,7 +89,7 @@ export function Findings() {
       rule_name: finding.rule_name,
       severity: finding.severity,
       category: finding.category,
-      file_path: finding.file_path,
+      file_path: sanitizePath(finding.file_path),
       line_number: finding.line_number || '',
       risk: getRiskText(finding),
       impact: getImpactText(finding),
@@ -466,7 +466,7 @@ export function Findings() {
                               File Path
                             </div>
                             <code className="block truncate text-sm text-foreground">
-                              {finding.file_path || 'Path unavailable'}
+                              {sanitizePath(finding.file_path) || 'Path unavailable'}
                               {finding.line_number ? `:${finding.line_number}` : ''}
                             </code>
                           </div>

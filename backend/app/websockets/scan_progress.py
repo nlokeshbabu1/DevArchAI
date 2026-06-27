@@ -6,6 +6,7 @@ Provides a WebSocket endpoint at /ws/scan/{scan_id} that:
 - Handles the full connection lifecycle (connect, stream, disconnect)
 - Supports multiple concurrent clients per scan_id
 - Gracefully handles client disconnects and server errors
+- Enforces tenant isolation via JWT authentication
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from collections import defaultdict
 from typing import Any, Optional
 
 import structlog
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect, Query
 
 logger = structlog.get_logger(__name__)
 
@@ -345,6 +346,66 @@ class ScanProgressWebSocketManager:
 scan_progress_manager = ScanProgressWebSocketManager()
 
 
+async def _authenticate_websocket(
+    websocket: WebSocket,
+    scan_id: str,
+) -> bool:
+    """
+    Validate JWT token from query params and verify scan ownership.
+    Returns True if authenticated and authorized, False otherwise.
+    """
+    from app.core.security import decode_token
+    from app.db.session import get_sync_session_factory
+    from sqlalchemy import select
+    from app.models.scan import Scan
+
+    token = websocket.query_params.get("token", "")
+    if not token:
+        logger.warning("WebSocket auth failed: no token", scan_id=scan_id)
+        await websocket.close(code=4001, reason="Authentication required")
+        return False
+
+    payload = decode_token(token)
+    if not payload:
+        logger.warning("WebSocket auth failed: invalid token", scan_id=scan_id)
+        await websocket.close(code=4001, reason="Invalid or expired token")
+        return False
+
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4001, reason="Invalid token payload")
+        return False
+
+    from uuid import UUID
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        await websocket.close(code=4001, reason="Invalid user identifier")
+        return False
+
+    # Verify scan ownership
+    sync_db = get_sync_session_factory()()
+    try:
+        from uuid import UUID as ScanUUID
+        try:
+            scan_uuid = ScanUUID(scan_id)
+        except ValueError:
+            await websocket.close(code=4001, reason="Invalid scan identifier")
+            return False
+
+        result = sync_db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == user_uuid)
+        )
+        scan = result.scalar_one_or_none()
+        if not scan:
+            await websocket.close(code=4003, reason="Access denied: scan not found")
+            return False
+    finally:
+        sync_db.close()
+
+    return True
+
+
 async def scan_progress_websocket(
     websocket: WebSocket,
     scan_id: str,
@@ -361,11 +422,16 @@ async def scan_progress_websocket(
             await scan_progress_websocket(websocket, scan_id)
 
     The handler manages the full connection lifecycle:
+    0. Authenticates via JWT token from query params and verifies scan ownership
     1. Accepts the connection and registers it with the manager
     2. Sends an initial snapshot of progress (if available)
     3. Keeps the connection open, receiving optional client messages
     4. Cleans up on disconnect or error
     """
+    # 0. Tenant isolation: authenticate and authorize
+    if not await _authenticate_websocket(websocket, scan_id):
+        return
+
     # 1. Connect
     connected = await scan_progress_manager.connect(websocket, scan_id)
     if not connected:

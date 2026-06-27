@@ -10,7 +10,7 @@ import { Badge } from '../components/ui'
 import { AISuggestionBlur } from '../components/billing/AISuggestionBlur'
 import { TechStackDisplay } from '../components/TechStackDisplay'
 import { api } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, getFindingsCount, sanitizePath } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import { Layout } from '../components/layout/DashboardLayout'
 
@@ -106,7 +106,7 @@ export function ScanResultsPage() {
         findings: state.findings || [],
         user_plan: user?.plan || 'free',
         ai_preview_count: user?.plan === 'free' ? 2 : 0,
-        total_findings: state.findings?.length || 0,
+        total_findings: getFindingsCount(state),
       })
       setIsLoading(false)
       return
@@ -181,8 +181,8 @@ export function ScanResultsPage() {
           <p className="text-muted-foreground mb-4">
             This scan session has expired or doesn't exist.
           </p>
-          <Button onClick={() => navigate('/')}>
-            Start New Scan
+          <Button onClick={() => navigate('/dashboard')}>
+            Go to Dashboard
           </Button>
         </Card>
       </div>
@@ -260,11 +260,11 @@ export function ScanResultsPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Files Analyzed</div>
-                <div className="font-medium text-foreground">{(results as any).files_analyzed || results.total_findings || 0}</div>
+                <div className="font-medium text-foreground">{(results as any).files_analyzed || 0}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Total Findings</div>
-                <div className="font-medium text-foreground">{results.total_findings || 0}</div>
+                <div className="font-medium text-foreground">{getFindingsCount(results)}</div>
               </div>
             </div>
             {results.scan_id && (
@@ -500,7 +500,7 @@ export function ScanResultsPage() {
                                   Location
                                 </h5>
                                 <code className="text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded">
-                                  {finding.file_path}
+                                  {sanitizePath(finding.file_path)}
                                   {finding.line_number && ` (Line ${finding.line_number})`}
                                 </code>
                               </div>

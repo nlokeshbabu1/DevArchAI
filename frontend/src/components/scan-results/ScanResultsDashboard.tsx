@@ -1,22 +1,24 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { SecurityHero } from "./SecurityHero"
 import { ExecutiveSummary } from "./ExecutiveSummary"
 import { FixTheseFirst } from "./PriorityRisks"
 import { FindingsExplorer } from "./FindingsExplorer"
-import { SecurityCoverage } from "./SecurityCoverage"
-import { SecurityTrends } from "./SecurityTrends"
-import { FixRoadmap } from "./FixRoadmap"
-import { ReportCenter } from "./ReportCenter"
+import { DetectionCoverage } from "./DetectionCoverage"
+import { ScanCoverageSummary } from "./ScanCoverageSummary"
+import { RepositoryStats } from "./RepositoryStats"
 import { EmptyState } from "./EmptyState"
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
 import { motion } from "framer-motion"
-import { RefreshCw, Share2, Download } from "lucide-react"
-import { Button } from "../ui-animated"
+import { X } from "lucide-react"
+import { cn, getFileName } from "../../lib/utils"
 
 interface ScanResultData {
   overall_score?: number
   security_score?: number
   files_analyzed?: number
+  directories_scanned?: number
+  lines_analyzed?: number
+  repository_size?: string
   branch?: string
   repository_url?: string
   repository_name?: string
@@ -25,7 +27,8 @@ interface ScanResultData {
   detected_technologies?: string[]
   findings?: any[]
   severity_counts?: Record<string, number>
-  category_scores?: { category: string; score: number; findings_count?: number }[]
+  category_scores?: { category: string; score: number; findings_count?: number; files_scanned?: number }[]
+  commit_hash?: string
 }
 
 interface ScanResultsDashboardProps {
@@ -51,6 +54,7 @@ interface ScanResultsDashboardProps {
   onFindFix: (findingId: string) => void
   onGenerateFix: (findingId: string) => void
   onCreatePR: (findingId: string) => void
+  onBatchCreatePR?: (findingIds: string[]) => void
   hideHeaderActions?: boolean
 }
 
@@ -60,16 +64,73 @@ export function ScanResultsDashboard({
   severityFilter, sortBy, expandedFinding, searchQuery,
   onSeverityFilterChange, onSortByChange, onExpandedFindingChange,
   onSearchQueryChange, onRescan, onDownload, onShare, onFindFix,
-  onGenerateFix, onCreatePR, hideHeaderActions = false,
+  onGenerateFix, onCreatePR, onBatchCreatePR, hideHeaderActions = false,
 }: ScanResultsDashboardProps) {
   const [drawerFindingId, setDrawerFindingId] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const isEmpty = findings.length === 0
   const score = result.overall_score ?? 0
 
+  // --- Derived data with validation ---
+  // Files scanned: prefer backend value, fall back to unique file paths from findings
+  const filesScanned = useMemo(() => {
+    const backend = result.files_analyzed
+    const uniqueFiles = new Set(findings.map(f => f.file_path).filter(Boolean))
+    const derived = uniqueFiles.size
+    if ((backend === 0 || backend == null) && derived > 0) return derived
+    return Math.max(backend ?? 0, derived)
+  }, [result.files_analyzed, findings])
+
+  // Unique affected files
+  const affectedFiles = useMemo(() => {
+    return new Set(findings.map(f => f.file_path).filter(Boolean)).size
+  }, [findings])
+
+  // Rules executed: unique rule_ids
+  const rulesExecuted = useMemo(() => {
+    return new Set(findings.map(f => f.rule_id).filter(Boolean)).size
+  }, [findings])
+
+  // Directories scanned: unique directory paths from findings
+  const directoriesScanned = useMemo(() => {
+    if (result.directories_scanned != null) return result.directories_scanned
+    const dirs = new Set(findings.map(f => {
+      const p = f.file_path
+      if (!p) return null
+      const parts = p.split("/")
+      if (parts.length > 1) return parts.slice(0, -1).join("/")
+      return "/"
+    }).filter(Boolean))
+    return dirs.size > 0 ? dirs.size : undefined
+  }, [result.directories_scanned, findings])
+
+  // Technologies count
+  const technologiesCount = result.detected_technologies?.length ?? 0
+
+  // Coverage scores
   const coverageScores = result.category_scores?.reduce((acc, cat) => {
     acc[cat.category] = cat.score
     return acc
   }, {} as Record<string, number>) ?? {}
+
+  // Category filter logic
+  const filteredByCategory = useMemo(() => {
+    if (!categoryFilter) return findings
+    const catKey = categoryFilter.toLowerCase()
+    return findings.filter((f: any) => {
+      const fc = (f.category ?? "").toLowerCase()
+      const fp = (f.file_path ?? "").toLowerCase()
+      if (catKey === "secrets") return fc.includes("secret") || fc.includes("credential") || fc.includes("key") || fc.includes("token")
+      if (catKey === "sca") return fc.includes("dependency") || fc.includes("sca") || fc.includes("package") || fc.includes("npm") || fc.includes("pip")
+      if (catKey === "container") return fc.includes("container") || fc.includes("docker") || fp.includes("dockerfile")
+      if (catKey === "iac") return fc.includes("iac") || fc.includes("terraform") || fc.includes("tf") || fp.endsWith(".tf")
+      if (catKey === "sast") return fc.includes("sast") || fc.includes("code analysis") || fc.includes("static")
+      if (catKey === "cicd") return fc.includes("ci") || fc.includes("cd") || fc.includes("cicd") || fp.includes(".github") || fp.includes("workflow")
+      if (catKey === "misconfig") return fc.includes("misconfig") || fc.includes("misconfiguration") || fc.includes("hardening")
+      if (catKey === "license") return fc.includes("license") || fc.includes("licensing") || fc.includes("compliance")
+      return true
+    })
+  }, [findings, categoryFilter])
 
   const drawerFinding = drawerFindingId
     ? findings.find(f => (f.id ?? f.rule_id) === drawerFindingId)
@@ -93,7 +154,7 @@ export function ScanResultsDashboard({
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `fix-${finding.rule_id}-${finding.file_path?.split("/").pop() || "patch"}.patch`
+    link.download = `fix-${finding.rule_id}-${getFileName(finding.file_path) || "patch"}.patch`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -104,47 +165,24 @@ export function ScanResultsDashboard({
     onCreatePR(finding.id ?? finding.rule_id)
   }
 
+  const handleCategoryClick = (cat: string) => {
+    setCategoryFilter(cat || null)
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a10]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-6">
-        {/* Header Actions */}
-        {!hideHeaderActions && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between"
-          >
-            <div>
-              <h1 className="text-lg font-semibold text-white/80">Scan Results</h1>
-              <p className="text-xs text-white/30 mt-0.5">Detailed security analysis for {repoName}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={onRescan}>
-                <RefreshCw className="w-4 h-4 mr-1.5" />
-                Rescan
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onShare as any}>
-                <Share2 className="w-4 h-4 mr-1.5" />
-                Share
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onDownload("pdf")}>
-                <Download className="w-4 h-4 mr-1.5" />
-                Export
-              </Button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Section 1: Security Hero */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6 space-y-4">
+        {/* Section 1: Repository Header */}
         <SecurityHero
           overallScore={score}
           repoName={repoName}
           branch={result.branch}
-          techStack={result.detected_technologies}
-          filesAnalyzed={result.files_analyzed ?? 0}
-          totalFindings={result.findings?.length ?? 0}
           completedAt={result.completed_at}
+          techStack={result.detected_technologies}
+          filesAnalyzed={filesScanned}
+          totalFindings={findings.length}
           analysisDuration={result.analysis_duration_seconds}
+          affectedFiles={affectedFiles}
         />
 
         {/* Empty State */}
@@ -152,20 +190,34 @@ export function ScanResultsDashboard({
           <EmptyState
             score={score}
             repoName={repoName}
-            filesAnalyzed={result.files_analyzed ?? 0}
+            filesAnalyzed={filesScanned}
             coveragePercent={coverageScores.sast ?? 100}
-            rulesExecuted={0}
+            rulesExecuted={rulesExecuted}
             onRescan={onRescan}
           />
         ) : (
           <>
-            {/* Section 2 & 3: Executive Summary + Priority Risks */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Section 2: Scan Coverage Summary */}
+            <ScanCoverageSummary
+              filesScanned={filesScanned}
+              directoriesScanned={directoriesScanned}
+              rulesExecuted={rulesExecuted}
+              technologiesCount={technologiesCount}
+              scanDuration={result.analysis_duration_seconds}
+              linesAnalyzed={result.lines_analyzed}
+              repoSize={result.repository_size}
+            />
+
+            {/* Section 3 & 4: Executive Summary + Priority Risks */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <ExecutiveSummary
                   severityCounts={severityCounts}
                   categoryScores={result.category_scores ?? []}
+                  onCategoryClick={handleCategoryClick}
+                  activeCategory={categoryFilter}
                   findings={findings}
+                  detectedTechnologies={result.detected_technologies}
                 />
               </div>
               <div className="lg:col-span-1">
@@ -173,33 +225,53 @@ export function ScanResultsDashboard({
                   findings={priorityFixes}
                   currentScore={score}
                   onSelect={handleOpenDrawer}
-                  onGenerateFix={onGenerateFix}
-                  onCreatePR={handleCreatePR}
                   selectedId={drawerFindingId}
                 />
               </div>
             </div>
 
-            {/* Section 4: Fix Roadmap + Security Trends (side by side) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <FixRoadmap
-                  currentScore={score}
-                />
-              </div>
-              <div className="lg:col-span-1">
-                <SecurityTrends
-                  currentScore={score}
-                  criticalTrend={{ previous: severityCounts.critical || 0, current: severityCounts.critical || 0 }}
-                  highTrend={{ previous: severityCounts.high || 0, current: severityCounts.high || 0 }}
-                  mediumTrend={{ previous: severityCounts.medium || 0, current: severityCounts.medium || 0 }}
-                />
-              </div>
-            </div>
-
-            {/* Section 5: Findings Explorer */}
-            <FindingsExplorer
+            {/* Section 5: Detection Coverage */}
+            <DetectionCoverage
               findings={findings}
+              detectedTechnologies={result.detected_technologies ?? []}
+            />
+
+            {/* Section 6: Repository Statistics */}
+            <RepositoryStats
+              repoName={repoName}
+              filesCount={filesScanned}
+              directoriesCount={directoriesScanned}
+              findingsCount={findings.length}
+              rulesCount={rulesExecuted}
+              technologiesCount={technologiesCount}
+              scanDuration={result.analysis_duration_seconds}
+              completedAt={result.completed_at}
+              branch={result.branch}
+              commitHash={result.commit_hash}
+            />
+
+            {/* Category filter indicator */}
+            {categoryFilter && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2"
+              >
+                <span className="text-xs text-white/40">Filtered by category:</span>
+                <button
+                  onClick={() => setCategoryFilter(null)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                >
+                  {categoryFilter}
+                  <X className="w-3 h-3" />
+                </button>
+                <span className="text-xs text-white/20">{filteredByCategory.length} findings</span>
+              </motion.div>
+            )}
+
+            {/* Section 7: Findings Explorer */}
+            <FindingsExplorer
+              findings={filteredByCategory}
               severityFilter={severityFilter}
               sortBy={sortBy}
               searchQuery={searchQuery}
@@ -210,26 +282,8 @@ export function ScanResultsDashboard({
               onExpandedFindingChange={onExpandedFindingChange}
               onFindingClick={handleOpenDrawer}
             />
-
-            {/* Section 6: Security Coverage */}
-            <SecurityCoverage scores={coverageScores} />
           </>
         )}
-
-        {/* Report Center */}
-        <ReportCenter onDownload={onDownload} onShare={onShare} />
-
-        {/* Footer */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="text-center pb-8"
-        >
-          <p className="text-xs text-white/10">
-            DevArchAI Security Scan · {new Date().toISOString().split("T")[0]}
-          </p>
-        </motion.div>
       </div>
 
       {/* Finding Details Drawer */}

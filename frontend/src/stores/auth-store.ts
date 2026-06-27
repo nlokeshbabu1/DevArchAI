@@ -70,7 +70,15 @@ export const useAuthStore = create<AuthState>()(
             },
           })
 
-          set({ user: response.data, isAuthenticated: true })
+          const currentUser = get().user
+          set({
+            user: {
+              ...currentUser,
+              ...response.data,
+              provider: response.data.provider || currentUser?.provider || 'email',
+            } as User,
+            isAuthenticated: true,
+          })
         } catch (error: any) {
           console.error('Failed to fetch user info:', error)
           if (error?.response) {
