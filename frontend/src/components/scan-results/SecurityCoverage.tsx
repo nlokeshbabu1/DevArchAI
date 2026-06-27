@@ -10,7 +10,6 @@ interface CoverageItem {
   score: number
   description: string
   filesScanned?: number
-  rulesExecuted?: number
 }
 
 interface SecurityCoverageProps {
@@ -19,12 +18,12 @@ interface SecurityCoverageProps {
 }
 
 const coverageTypes: Omit<CoverageItem, "score" | "filesScanned">[] = [
-  { type: "sast", label: "Code Analysis (SAST)", icon: Code2, enabled: true, description: "Static analysis for vulnerability patterns" },
-  { type: "sca", label: "Dependency Scan (SCA)", icon: Database, enabled: true, description: "Open source dependency scanning" },
+  { type: "sast", label: "Code Analysis (SAST)", icon: Code2, enabled: true, description: "Static analysis" },
+  { type: "sca", label: "Dependency Scan (SCA)", icon: Database, enabled: true, description: "Open source dependencies" },
   { type: "secrets", label: "Secrets Detection", icon: Lock, enabled: true, description: "Credential and secret detection" },
-  { type: "iac", label: "IaC Scan (Terraform)", icon: Server, enabled: true, description: "Infrastructure as Code analysis" },
-  { type: "containers", label: "Container Scan", icon: Cloud, enabled: true, description: "Docker image vulnerability scanning" },
-  { type: "dast", label: "DAST", icon: Globe, enabled: true, description: "Dynamic application security testing" },
+  { type: "iac", label: "IaC Scan", icon: Server, enabled: true, description: "Infrastructure as Code" },
+  { type: "containers", label: "Container Scan", icon: Cloud, enabled: true, description: "Docker image vulnerabilities" },
+  { type: "dast", label: "DAST", icon: Globe, enabled: true, description: "Dynamic security testing" },
 ]
 
 export function SecurityCoverage({ scores, filesByCategory = {} }: SecurityCoverageProps) {
@@ -32,7 +31,6 @@ export function SecurityCoverage({ scores, filesByCategory = {} }: SecurityCover
     ...item,
     score: scores[item.type] ?? 0,
     filesScanned: filesByCategory[item.type] ?? 0,
-    rulesExecuted: Math.floor((scores[item.type] ?? 0) * 2.5),
   }))
 
   const avgScore = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.score, 0) / items.length) : 0
@@ -94,9 +92,8 @@ export function SecurityCoverage({ scores, filesByCategory = {} }: SecurityCover
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-[10px] text-white/20">
-                <span>{item.filesScanned} files</span>
-                <span>{item.rulesExecuted} rules</span>
+              <div className="flex items-center text-[10px] text-white/20">
+                <span>{(item.filesScanned ?? 0) > 0 ? `${item.filesScanned as number} files` : 'No data'}</span>
               </div>
             </motion.div>
           )

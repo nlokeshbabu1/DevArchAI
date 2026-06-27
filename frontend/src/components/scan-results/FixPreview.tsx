@@ -1,9 +1,22 @@
 import { motion } from "framer-motion"
-import { X, FileCode, Zap, GitPullRequest } from "lucide-react"
+import { X, FileCode, Zap, GitPullRequest, TrendingUp } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath } from "../../lib/utils"
 import { Button } from "../ui-animated"
 import { DiffViewer } from "../DiffViewer"
+
+const computeRiskReduction = (finding: Finding): number => {
+  if (finding.risk_reduction_score != null) return finding.risk_reduction_score
+  const map: Record<string, number> = { critical: 90, high: 65, medium: 35, low: 10, info: 5 }
+  return map[finding.severity] || 0
+}
+
+const computePredictedScore = (currentScore: number, finding: Finding): number => {
+  if (finding.predicted_score_after_fix != null) return finding.predicted_score_after_fix
+  const reduction = computeRiskReduction(finding)
+  const improvement = Math.round((reduction / 100) * (100 - currentScore) * 0.3)
+  return Math.min(100, currentScore + improvement)
+}
 
 interface FixPreviewProps {
   finding: Finding
@@ -17,6 +30,9 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
   if (!isOpen) return null
 
   const severityColor = getSeverityColor(finding.severity)
+  const repoPath = sanitizePath(finding.file_path)
+  const predictedScore = computePredictedScore(currentScore, finding)
+  const improvement = predictedScore - currentScore
 
   return (
     <motion.div
@@ -50,7 +66,7 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
             </span>
             <span className="text-xs text-white/40 font-mono">{finding.rule_id}</span>
             <span className="text-xs text-white/20">·</span>
-            <span className="text-xs text-white/40 truncate">{finding.file_path?.split("/").pop()}{finding.line_number ? `:${finding.line_number}` : ""}</span>
+            <span className="text-xs text-white/40 truncate font-mono" title={repoPath}>{repoPath}{finding.line_number ? `:${finding.line_number}` : ""}</span>
           </div>
 
           {/* Current Code */}
@@ -82,11 +98,41 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
                   beforeCode={finding.before_code}
                   afterCode={finding.after_code}
                   unifiedDiff={finding.unified_diff}
-                  filename={finding.file_path || "file"}
+                  filename={repoPath || "file"}
                 />
               </div>
             </div>
           )}
+
+          {/* Security Improvement Card */}
+          <div className="rounded-xl border border-white/5 bg-gradient-to-br from-indigo-950/30 to-slate-900/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="w-4 h-4 text-indigo-400" />
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Security Improvement</h4>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3 text-center">
+                <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Current</div>
+                <div className="text-lg font-bold text-white/60">{currentScore}</div>
+              </div>
+              <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 text-center">
+                <div className="text-[10px] text-indigo-300/50 uppercase tracking-wider mb-1">After Fix</div>
+                <div className="text-lg font-bold text-indigo-300">{predictedScore}</div>
+              </div>
+              <div className={cn(
+                "rounded-lg border p-3 text-center",
+                improvement > 0 ? "border-emerald-500/20 bg-emerald-500/5" : "border-white/5 bg-white/[0.03]"
+              )}>
+                <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Delta</div>
+                <div className={cn(
+                  "text-lg font-bold flex items-center justify-center gap-1",
+                  improvement > 0 ? "text-emerald-400" : "text-white/40"
+                )}>
+                  {improvement > 0 ? <>+{improvement}</> : "\u2014"}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Lines changed summary */}
           {finding.before_code && finding.fix_code && (

@@ -38,6 +38,11 @@ export function SecurityTrends({
           <div className="text-2xl font-bold text-white/50">
             {hasScoreData ? previousScore : "—"}
           </div>
+          {!hasScoreData && (
+            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5">
+              <span className="text-[9px] font-semibold text-indigo-300 uppercase tracking-wider">First Scan</span>
+            </div>
+          )}
         </div>
         <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 text-center">
           <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Current</div>
@@ -61,7 +66,9 @@ export function SecurityTrends({
                 {scoreDiff > 0 ? <ArrowUp className="w-5 h-5" /> : scoreDiff < 0 ? <ArrowDown className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
                 {scoreDiff > 0 ? "+" : ""}{scoreDiff}
               </>
-            ) : "—"}
+            ) : (
+              <Minus className="w-5 h-5" />
+            )}
           </div>
         </div>
       </div>
@@ -97,8 +104,11 @@ export function SecurityTrends({
       )}
 
       {!hasTrendData && !hasScoreData && (
-        <div className="flex items-center justify-center h-20 text-white/20 text-sm">
-          Run a previous scan to see improvement trends
+        <div className="flex items-center justify-center gap-2 h-20 text-white/20 text-sm">
+          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1">
+            <span className="text-[10px] font-semibold text-indigo-300">First Scan</span>
+          </span>
+          <span>Run a follow-up scan to see improvement trends</span>
         </div>
       )}
     </motion.div>

@@ -7,6 +7,7 @@ import {
   Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CodeBlock } from '../../components/ui/code-block'
 import { SeverityBadge } from '../../components/ui/severity-badge'
 import { Button } from '../../components/ui'
@@ -733,6 +734,7 @@ function SectionBlock({
 
 // ─── Main Page ──────────────────────────────────────────────
 export function AISuggestionsPage() {
+  const navigate = useNavigate()
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -823,13 +825,22 @@ export function AISuggestionsPage() {
         {/* === Header (real data only) === */}
         <motion.div initial={shouldReduceMotion ? {} : { opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: shouldReduceMotion ? 0 : 0.4 }}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-white/90 tracking-tight">AI Suggestions</h1>
-              <p className="text-sm text-white/40 mt-1">
-                {totalOpen > 0
-                  ? `${totalOpen} open recommendation${totalOpen !== 1 ? 's' : ''} across ${grouped.length} ${grouped.length === 1 ? 'group' : 'groups'}`
-                  : 'No open recommendations'}
-              </p>
+            <div className="flex items-center gap-2">
+              <div>
+                <h1 className="text-2xl font-bold text-white/90 tracking-tight">AI Suggestions</h1>
+                <p className="text-sm text-white/40 mt-1">
+                  {totalOpen > 0
+                    ? `${totalOpen} open recommendation${totalOpen !== 1 ? 's' : ''} across ${grouped.length} ${grouped.length === 1 ? 'group' : 'groups'}`
+                    : 'No open recommendations'}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/docs/ai-recommendations')}
+                className="p-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors flex-shrink-0"
+                title="View AI Recommendations documentation"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">

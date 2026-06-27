@@ -99,10 +99,7 @@ async def list_scans(
 
     # Filter by user if authenticated
     if current_user:
-        # Show ALL scans for authenticated user (including anonymous scans they made)
-        query = query.where(
-            (Scan.user_id == current_user.id) | (Scan.user_id.is_(None))
-        )
+        query = query.where(Scan.user_id == current_user.id)
         logger.info(f"Listing scans for user {current_user.id}")
     else:
         # For unauthenticated users, show only anonymous scans (last 7 days)
@@ -134,24 +131,19 @@ async def get_scan(
     """Get a specific scan with findings."""
     scan_uuid = _parse_scan_id(scan_id)
 
-    result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+    # Filter by user_id to enforce tenant isolation
+    if current_user:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
+        )
+    else:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
+        )
     scan = result.scalar_one_or_none()
 
     if not scan:
         raise ScanNotFoundException(scan_id)
-
-    # Verify ownership: authenticated users can access their own or anonymous scans
-    if current_user:
-        if scan.user_id is not None and scan.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You don't have permission to view this scan"
-            )
-    elif scan.user_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication required to view this scan"
-        )
 
     # Get findings count
     findings_count = await db.execute(
@@ -222,25 +214,20 @@ async def get_scan_progress(
 ):
     """Get scan progress."""
     scan_uuid = _parse_scan_id(scan_id)
-    
-    result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+
+    # Filter by user_id to enforce tenant isolation
+    if current_user:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
+        )
+    else:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
+        )
     scan = result.scalar_one_or_none()
 
     if not scan:
         raise ScanNotFoundException(scan_id)
-
-    # Verify ownership
-    if current_user:
-        if scan.user_id is not None and scan.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You don't have permission to view this scan"
-            )
-    elif scan.user_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication required to view this scan"
-        )
 
     # Get Celery task status if available
     progress = scan.progress
@@ -323,21 +310,20 @@ async def get_scan_findings(
 ):
     """Get all findings for a specific scan."""
     scan_uuid = _parse_scan_id(scan_id)
-    
-    # Verify scan exists
-    result = await db.execute(select(Scan).where(Scan.id == scan_uuid))
+
+    # Filter by user_id to enforce tenant isolation
+    if current_user:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
+        )
+    else:
+        result = await db.execute(
+            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
+        )
     scan = result.scalar_one_or_none()
 
     if not scan:
         raise ScanNotFoundException(scan_id)
-
-    # Check access - allow if scan has no user_id (public) or user owns the scan
-    if scan.user_id:
-        if not current_user or scan.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You don't have permission to view this scan's findings"
-            )
 
     # Get findings
     findings_result = await db.execute(

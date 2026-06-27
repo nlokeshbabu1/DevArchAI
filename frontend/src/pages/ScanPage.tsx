@@ -222,7 +222,8 @@ export function ScanPage() {
   useEffect(() => {
     if (!loading || !scanId) return
 
-    const wsUrl = buildWebSocketUrl(`/ws/scan/${scanId}`)
+    const token = localStorage.getItem('access_token') || ''
+    const wsUrl = `${buildWebSocketUrl(`/ws/scan/${scanId}`)}?token=${encodeURIComponent(token)}`
 
     console.log('🔌 Connecting to WebSocket:', wsUrl)
     const ws = new WebSocket(wsUrl)

@@ -2,11 +2,11 @@ import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
-  FileCode, AlertTriangle, ExternalLink, Eye, EyeOff,
-  ArrowLeft, ArrowRight
+  FileCode, Sparkles, ExternalLink, ArrowLeft, ArrowRight,
+  ScanSearch, Hash
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath, getFileName, classifyFindingScanner } from "../../lib/utils"
 import { Badge } from "../ui"
 import { DiffViewer } from "../DiffViewer"
 import { Button } from "../ui-animated"
@@ -24,14 +24,34 @@ interface FindingsExplorerProps {
   onFindingClick?: (id: string) => void
 }
 
+const SCANNER_LABELS: Record<string, string> = {
+  container: "Container",
+  kubernetes: "Kubernetes",
+  iac: "IaC",
+  cicd: "CI/CD",
+  secrets: "Secrets",
+  sast: "SAST",
+  sca: "SCA",
+  dast: "DAST",
+  api_security: "API Security",
+  license: "License",
+  malware: "Malware",
+}
+
+function mapScanner(finding: any): string {
+  const key = classifyFindingScanner(finding)
+  return SCANNER_LABELS[key] || key || "—"
+}
+
 const columns = [
-  { key: "severity", label: "Severity", width: "w-[90px]" },
-  { key: "category", label: "Category", width: "w-[100px]" },
-  { key: "rule_id", label: "Rule ID", width: "w-[130px]" },
-  { key: "issue", label: "Issue", width: "flex-1" },
-  { key: "file", label: "File", width: "w-[140px]" },
-  { key: "line", label: "Line", width: "w-[60px]" },
-  { key: "actions", label: "", width: "w-[40px]" },
+  { key: "severity", label: "Severity", width: "w-[80px]" },
+  { key: "rule_id", label: "Rule ID", width: "w-[120px]" },
+  { key: "scanner", label: "Scanner", width: "w-[90px]" },
+  { key: "category", label: "Category", width: "w-[90px]" },
+  { key: "issue", label: "Issue", width: "flex-1 min-w-[160px]" },
+  { key: "file", label: "File", width: "w-[130px]" },
+  { key: "confidence", label: "Conf.", width: "w-[60px]" },
+  { key: "actions", label: "", width: "w-[60px]" },
 ]
 
 export function FindingsExplorer({
@@ -81,7 +101,7 @@ export function FindingsExplorer({
 
   const totalPages = Math.ceil(filtered.length / perPage)
   const paged = filtered.slice((page - 1) * perPage, page * perPage)
-  const severityOptions = ["all", "critical", "high", "medium", "low"]
+  const severityOptions = ["all", "critical", "high", "medium", "low", "info"]
   const sortOptions = [
     { value: "severity", label: "Severity" },
     { value: "file", label: "File" },
@@ -165,7 +185,7 @@ export function FindingsExplorer({
             <AnimatePresence mode="popLayout">
               {paged.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-white/30">
+                  <td colSpan={8} className="px-3 py-12 text-center text-white/30">
                     <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No findings match your filters</p>
                   </td>
@@ -175,6 +195,9 @@ export function FindingsExplorer({
                   const findingId = finding.id ?? finding.rule_id
                   const severityColor = getSeverityColor(finding.severity)
                   const isExpanded = expandedFinding === findingId
+                  const confidence = finding.confidence ?? finding.confidence_score
+                  const scannerName = mapScanner(finding)
+                  const hasAutoFix = !!finding.fix_code
                   return (
                     <motion.tr
                       key={findingId}
@@ -195,8 +218,16 @@ export function FindingsExplorer({
                           {finding.severity}
                         </span>
                       </td>
+                      <td className="px-3 py-3">
+                        <span className="text-xs text-white/40 font-mono">{finding.rule_id}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-white/50">
+                          <ScanSearch className="w-2.5 h-2.5" />
+                          {scannerName}
+                        </span>
+                      </td>
                       <td className="px-3 py-3 text-xs text-white/50 capitalize">{finding.category || "—"}</td>
-                      <td className="px-3 py-3 text-xs text-white/40 font-mono">{finding.rule_id}</td>
                       <td className="px-3 py-3">
                         <button
                           onClick={() => onFindingClick?.(findingId)}
@@ -205,19 +236,37 @@ export function FindingsExplorer({
                           {finding.summary || finding.message || finding.rule_name || finding.rule_id}
                         </button>
                       </td>
-                      <td className="px-3 py-3 text-xs text-white/40 font-mono truncate max-w-[140px]">
-                        {finding.file_path?.split("/").pop() ?? "—"}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-white/30 font-mono">
-                        {finding.line_number ?? "—"}
+                      <td className="px-3 py-3 text-xs text-white/40 font-mono truncate max-w-[130px]" title={sanitizePath(finding.file_path) || ''}>
+                        {getFileName(finding.file_path)}
                       </td>
                       <td className="px-3 py-3">
-                        <button
-                          onClick={() => onExpandedFindingChange(isExpanded ? null : findingId)}
-                          className="text-white/20 hover:text-white/40 transition-colors"
-                        >
-                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        </button>
+                        {confidence != null ? (
+                          <span className={cn(
+                            "text-[10px] font-medium px-1 py-0.5 rounded",
+                            confidence >= 0.8 ? "bg-emerald-500/10 text-emerald-400" :
+                            confidence >= 0.5 ? "bg-yellow-500/10 text-yellow-400" :
+                            "bg-gray-500/10 text-gray-400"
+                          )}>
+                            {(confidence * 100).toFixed(0)}%
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-white/20">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-1">
+                          {hasAutoFix && (
+                            <span title="Auto-fix available" className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-500/10">
+                              <Sparkles className="w-3 h-3 text-emerald-400" />
+                            </span>
+                          )}
+                          <button
+                            onClick={() => onExpandedFindingChange(isExpanded ? null : findingId)}
+                            className="text-white/20 hover:text-white/40 transition-colors"
+                          >
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </td>
                     </motion.tr>
                   )
@@ -250,7 +299,7 @@ export function FindingsExplorer({
                     beforeCode={finding.before_code}
                     afterCode={finding.after_code}
                     unifiedDiff={finding.unified_diff}
-                    filename={finding.file_path || ""}
+                    filename={sanitizePath(finding.file_path) || "file"}
                   />
                 )}
                 <div className="flex items-center gap-2">

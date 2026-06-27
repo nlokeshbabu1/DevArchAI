@@ -29,6 +29,7 @@ import {
   Fingerprint,
   Calendar,
   Target,
+  BookOpen,
 } from 'lucide-react'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
 import { api } from '../lib/api'
@@ -355,6 +356,13 @@ export function Report() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Analysis
         </Button>
+        <button
+          onClick={() => navigate('/docs/security-findings')}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors ml-auto"
+          title="View Security Findings documentation"
+        >
+          <BookOpen className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Scan Passport */}

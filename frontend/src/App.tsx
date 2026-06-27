@@ -21,6 +21,7 @@ import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
 import { IntegrationsPage } from './pages/dashboard/Integrations'
 import { SettingsPage } from './pages/settings/SettingsPage'
 import { AwsPage } from './pages/aws/AwsPage'
+import { DocsHome, DocPage } from './pages/docs/DocsPage'
 import { useAuthStore } from './stores/auth-store'
 import { useEffect } from 'react'
 
@@ -79,6 +80,10 @@ export default function App() {
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
+
+      {/* Documentation - public */}
+      <Route path="/docs" element={<DocsHome />} />
+      <Route path="/docs/:slug" element={<DocPage />} />
 
       {/* Redirect old routes */}
       <Route path="/analyze" element={<Navigate to="/scan" replace />} />

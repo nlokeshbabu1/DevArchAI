@@ -65,6 +65,13 @@ export function Landing() {
               </div>
               <span className="text-xl font-bold gradient-text">DevArchAI</span>
             </motion.div>
+            <nav className="hidden md:flex items-center gap-1">
+              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Features</button>
+              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Solutions</button>
+              <button onClick={() => navigate('/docs')} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Documentation</button>
+              <button onClick={() => navigate('/pricing')} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Pricing</button>
+              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Blog</button>
+            </nav>
             <motion.div
               className="flex items-center gap-4"
               initial={{ opacity: 0, x: 20 }}

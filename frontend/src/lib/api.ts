@@ -148,7 +148,6 @@ export function buildWebSocketUrl(path: string): string {
   const url = new URL(normalizedPath, baseUrl)
 
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.search = ''
   url.hash = ''
 
   return url.toString()

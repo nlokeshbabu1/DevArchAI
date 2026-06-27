@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
   Brain, CreditCard, Settings, LogOut, Menu, X, Bell, Search,
-  Zap, Cloud, User, ChevronDown, Sparkles
+  Zap, Cloud, User, ChevronDown, Sparkles, BookOpen,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { Button } from '../ui'
@@ -22,6 +22,7 @@ const navigation = [
   { name: 'AI Suggestions', href: '/ai-suggestions', icon: Brain },
   { name: 'AWS Cloud', href: '/aws', icon: Cloud },
   { name: 'Integrations', href: '/integrations', icon: Cloud },
+  { name: 'Documentation', href: '/docs', icon: BookOpen },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

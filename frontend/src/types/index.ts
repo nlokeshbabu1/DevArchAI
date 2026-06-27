@@ -18,6 +18,7 @@ export interface CategoryScore {
   category: string
   score: number
   findings_count?: number
+  files_scanned?: number
   critical_count?: number
   high_count?: number
   medium_count?: number
@@ -50,6 +51,14 @@ export interface Finding {
   after_code?: string
   unified_diff?: string
   original_code?: string
+  // Security Impact fields
+  risk_level?: 'critical' | 'high' | 'medium' | 'low'
+  attack_scenario?: string
+  business_impact?: string
+  environment_impact?: string
+  risk_reduction_score?: number  // 0-100, how much fixing this improves security
+  predicted_score_after_fix?: number  // Estimated score after applying fix
+  estimated_fix_time?: string  // e.g. "~30 min"
   // Legacy fields (fallback only)
   fix_example?: string
   ai_explanation?: string
