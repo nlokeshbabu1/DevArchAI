@@ -1,10 +1,10 @@
 """Billing and subscription endpoints — production payment integration."""
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +13,8 @@ from app.config import settings
 from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
 from app.models.user import User
-from app.services.payment_clients import RazorpayClient, StripeClient
 from app.services.organization_provisioning import ensure_user_organization_membership
+from app.services.payment_clients import RazorpayClient, StripeClient
 from app.services.payment_service import PaymentService
 from app.services.webhook_handler import WebhookIdempotencyGuard
 
@@ -28,19 +28,19 @@ router = APIRouter(prefix="/billing", tags=["Billing"])
 class CheckoutRequest(BaseModel):
     plan: str
     billing: str = "monthly"  # monthly | yearly
-    coupon: Optional[str] = None
-    gateway: Optional[str] = None  # Optional user gateway override
+    coupon: str | None = None
+    gateway: str | None = None  # Optional user gateway override
 
 
 class RazorpayVerifyRequest(BaseModel):
-    payment_id: Optional[str] = None
-    order_id: Optional[str] = None
-    signature: Optional[str] = None
-    razorpay_payment_id: Optional[str] = None
-    razorpay_order_id: Optional[str] = None
-    razorpay_signature: Optional[str] = None
-    plan: Optional[str] = None
-    billing: Optional[str] = None
+    payment_id: str | None = None
+    order_id: str | None = None
+    signature: str | None = None
+    razorpay_payment_id: str | None = None
+    razorpay_order_id: str | None = None
+    razorpay_signature: str | None = None
+    plan: str | None = None
+    billing: str | None = None
 
     def resolved_payment_id(self) -> str:
         return (self.payment_id or self.razorpay_payment_id or "").strip()
@@ -53,14 +53,14 @@ class RazorpayVerifyRequest(BaseModel):
 
 
 class SubscriptionResponse(BaseModel):
-    id: Optional[str]
+    id: str | None
     user_id: str
     plan: str
     status: str
     current_period_start: str
-    current_period_end: Optional[str]
+    current_period_end: str | None
     cancel_at_period_end: bool
-    trial_end: Optional[str]
+    trial_end: str | None
     scans_this_period: int
     repositories_count: int
     team_members_count: int
@@ -75,7 +75,7 @@ PLAN_NAME_MAP = {
 }
 
 
-def _normalize_country_code(country: Optional[str]) -> Optional[str]:
+def _normalize_country_code(country: str | None) -> str | None:
     if not country:
         return None
     normalized = country.strip().upper()
@@ -102,7 +102,7 @@ def _detect_user_country(current_user: User, request: Request) -> str:
     return "US"
 
 
-def _normalize_gateway(gateway: Optional[str]) -> Optional[str]:
+def _normalize_gateway(gateway: str | None) -> str | None:
     if not gateway:
         return None
     normalized = gateway.strip().lower()
@@ -125,7 +125,7 @@ def _map_plan_name(plan_name: str) -> str:
     return PLAN_NAME_MAP.get(normalized, "free")
 
 
-def _normalize_billing_interval(billing_interval: Optional[str]) -> str:
+def _normalize_billing_interval(billing_interval: str | None) -> str:
     normalized = (billing_interval or "monthly").strip().lower()
     return normalized if normalized in {"monthly", "yearly"} else "monthly"
 
@@ -166,7 +166,7 @@ async def _get_plan_record(db: AsyncSession, plan_name: str, billing_interval: s
     return result.scalar_one_or_none()
 
 
-async def _get_plan_name_by_id(db: AsyncSession, plan_id) -> Optional[str]:
+async def _get_plan_name_by_id(db: AsyncSession, plan_id) -> str | None:
     from app.models.payment import Plan
 
     if not plan_id:
@@ -424,9 +424,10 @@ async def verify_payment(
     db: AsyncSession = Depends(get_db),
 ):
     """Verify a Razorpay payment signature and activate subscription."""
-    from app.models.subscription import Subscription
-    from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
     from datetime import timedelta
+
+    from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
+    from app.models.subscription import Subscription
 
     payment_id = request.resolved_payment_id()
     order_id = request.resolved_order_id()
@@ -472,7 +473,7 @@ async def verify_payment(
         plan_record = order_context["plan_record"]
         plan_tier = _map_plan_tier(plan_name)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         period_end = now + timedelta(days=30 if billing_interval == "monthly" else 365)
 
         result = await db.execute(
@@ -600,9 +601,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     MUST respond within 3 seconds. Heavy processing is deferred to Celery.
     """
-    from app.models.subscription import Subscription, PlanTier, SubscriptionStatus
     from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
-    from app.models.organization import OrganizationMember
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     payload = await request.body()
     sig_header = request.headers.get("Stripe-Signature")
@@ -650,7 +650,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                             sub.stripe_subscription_id = subscription_id
                             sub.provider = "stripe"
                             sub.status = SubscriptionStatus.ACTIVE.value
-                            sub.last_payment_at = datetime.now(timezone.utc)
+                            sub.last_payment_at = datetime.now(UTC)
                             payment = Payment(
                                 user_id=user.id,
                                 subscription_id=sub.id,
@@ -689,7 +689,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     sub.status = SubscriptionStatus.ACTIVE.value
                     sub.provider = "stripe"
                     sub.dunning_attempts = 0
-                    sub.last_payment_at = datetime.now(timezone.utc)
+                    sub.last_payment_at = datetime.now(UTC)
                     if user:
                         _apply_user_subscription_state(
                             user,
@@ -739,7 +739,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     )
                     user = user_result.scalar_one_or_none()
                     sub.status = SubscriptionStatus.CANCELED.value
-                    sub.cancelled_at = datetime.now(timezone.utc)
+                    sub.cancelled_at = datetime.now(UTC)
                     if user:
                         _apply_user_subscription_state(user, "free", "stripe", SubscriptionStatus.CANCELED.value)
 
@@ -755,8 +755,8 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 @router.post("/webhook/razorpay")
 async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Handle Razorpay webhooks with signature verification and idempotency."""
-    from app.models.subscription import Subscription, SubscriptionStatus
     from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     payload = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
@@ -803,7 +803,7 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
                     sub = sub_result.scalar_one_or_none()
                     if sub:
                         sub.status = SubscriptionStatus.ACTIVE.value
-                        sub.last_payment_at = datetime.now(timezone.utc)
+                        sub.last_payment_at = datetime.now(UTC)
                         sub.provider = "razorpay"
                         sub.razorpay_subscription_id = notes.get("subscription_id")
                         if user:
@@ -871,7 +871,7 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
             if sub:
                 sub.status = SubscriptionStatus.ACTIVE.value
                 sub.dunning_attempts = 0
-                sub.last_payment_at = datetime.now(timezone.utc)
+                sub.last_payment_at = datetime.now(UTC)
 
         # Record the event (inside same transaction)
         await guard.record_event(db, "razorpay", event_id, event_type, event)
@@ -884,7 +884,7 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
 
 @router.get("/subscription", response_model=SubscriptionResponse)
 async def get_subscription(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current subscription for user."""
@@ -939,16 +939,16 @@ async def activate_subscription(
     In production, subscription activation should happen via webhooks only.
     This endpoint is for mock/dev mode or manual activation.
     """
+    from datetime import datetime, timedelta
+
     from app.models.subscription import Subscription
-    from datetime import datetime, timezone, timedelta
-    from app.config import settings
 
     membership = await _ensure_user_membership(db, current_user)
 
     # Check if payment providers are configured
     stripe_configured = bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_SECRET_KEY != "sk_test_xxx")
     razorpay_configured = bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_ID != "rzp_test_xxx")
-    
+
     # If payment providers are configured, require payment verification
     # Only allow direct activation in mock/dev mode
     if stripe_configured or razorpay_configured:
@@ -961,7 +961,7 @@ async def activate_subscription(
             detail="Direct subscription activation is disabled when payment providers are configured. "
                    "Subscriptions are activated via payment webhooks only."
         )
-    
+
     # Mock/dev mode: allow direct activation
     logger.info(f"Mock mode: Activating subscription for user {current_user.id}, plan {request.plan}")
 
@@ -974,7 +974,7 @@ async def activate_subscription(
     )
     sub = result.scalar_one_or_none()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     billing_interval = _normalize_billing_interval(getattr(request, "billing", "monthly"))
     period_end = now + timedelta(days=30 if billing_interval == "monthly" else 365)
     plan_name = _map_plan_name(request.plan)
@@ -1039,7 +1039,7 @@ async def cancel_subscription(
         raise HTTPException(status_code=404, detail="No active subscription found")
 
     sub.cancel_at_period_end = True
-    sub.cancelled_at = datetime.now(timezone.utc)
+    sub.cancelled_at = datetime.now(UTC)
     await db.commit()
 
     return {
@@ -1088,7 +1088,7 @@ async def list_invoices(
 
 @router.get("/usage", response_model=dict)
 async def get_usage(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current usage for user."""
@@ -1120,7 +1120,7 @@ def _free_plan_response(user_id: str) -> dict:
         "user_id": user_id,
         "plan": "free",
         "status": "active",
-        "current_period_start": datetime.now(timezone.utc).isoformat(),
+        "current_period_start": datetime.now(UTC).isoformat(),
         "current_period_end": None,
         "cancel_at_period_end": False,
         "trial_end": None,

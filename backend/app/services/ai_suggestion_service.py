@@ -6,10 +6,11 @@ import asyncio
 import inspect
 import json
 import threading
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -67,7 +68,7 @@ def run_ai_suggestions_generation(scan_id: UUID | str) -> None:
 def generate_ai_suggestions_for_scan(
     scan_id: UUID | str,
     db: Session | None = None,
-    service: "AISuggestionGenerationService | None" = None,
+    service: AISuggestionGenerationService | None = None,
 ) -> AISuggestionGenerationResult:
     """Generate and persist AI suggestions for findings already saved in the database."""
     owns_session = db is None
@@ -97,6 +98,8 @@ class AISuggestionGenerationService:
         self.batch_size = batch_size
         self.max_file_chars = max_file_chars
         self.call_timeout_seconds = call_timeout_seconds
+        self.progress_store = None
+        self.scan_progress_manager = None
 
     def generate_for_scan(
         self,
@@ -155,12 +158,58 @@ class AISuggestionGenerationService:
                 file_snippets = self._load_file_snippets(Path(repo_path), findings)
 
             findings_updated = 0
-            for batch in _batched(findings, self.batch_size):
+            total_findings = len(findings)
+            batches = list(_batched(findings, self.batch_size))
+
+            # Initialize progress store for AI progress
+            try:
+                from app.services.scan_progress_store import scan_progress_store
+                self.progress_store = scan_progress_store
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    self.progress_store.add_log(str(scan_uuid), f"Generating AI recommendations for {total_findings} findings...")
+                )
+                loop.close()
+            except Exception:
+                pass
+
+            for batch_idx, batch in enumerate(batches):
                 batch_results = asyncio.run(
                     self._generate_batch_results(batch, file_snippets, ai_capable)
                 )
                 findings_updated += self._apply_batch_results(db, batch, batch_results)
                 db.commit()
+
+                # Update progress after each batch
+                try:
+                    from app.services.scan_progress_store import scan_progress_store
+                    from app.websockets.scan_progress import scan_progress_manager
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(
+                        scan_progress_store.add_log(
+                            str(scan_uuid),
+                            f"AI recommendations {batch_idx * self.batch_size + len(batch)} of {total_findings}",
+                        )
+                    )
+                    loop.run_until_complete(
+                        scan_progress_manager.broadcast_log(
+                            str(scan_uuid),
+                            f"AI recommendation {batch_idx * self.batch_size + len(batch)} of {total_findings}",
+                        )
+                    )
+                    loop.run_until_complete(
+                        scan_progress_manager.broadcast_progress(
+                            scan_id=str(scan_uuid),
+                            progress=100,
+                            status="completed",
+                            current_step=f"AI: {batch_idx * self.batch_size + len(batch)}/{total_findings}",
+                        )
+                    )
+                    loop.close()
+                except Exception:
+                    pass
 
             suggestions_upserted = self._upsert_ai_suggestions(db, scan_uuid, findings)
 
@@ -168,6 +217,32 @@ class AISuggestionGenerationService:
             scan.ai_completed_at = datetime.utcnow()
             scan.ai_error_message = None
             db.commit()
+
+            # Broadcast AI completion
+            try:
+                from app.websockets.scan_progress import (
+                    _make_message,
+                    scan_progress_manager,
+                )
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    scan_progress_manager.broadcast_log(str(scan_uuid), "AI recommendation generation completed")
+                )
+                loop.run_until_complete(
+                    self.progress_store.add_log(str(scan_uuid), "AI suggestions generated successfully")
+                )
+                # Send AI completion event
+                msg = _make_message(
+                    "ai_complete",
+                    {"scan_id": str(scan_uuid), "suggestions_count": suggestions_upserted},
+                )
+                loop.run_until_complete(
+                    scan_progress_manager._broadcast(str(scan_uuid), msg)
+                )
+                loop.close()
+            except Exception:
+                pass
 
             logger.info(
                 "AI suggestion generation complete",

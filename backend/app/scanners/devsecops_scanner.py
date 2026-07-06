@@ -6,15 +6,14 @@ Scans Dockerfile, Kubernetes YAML, Terraform, and CI/CD pipelines.
 """
 
 import json
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
-from app.rules.base import RuleFinding, Severity
+from app.rules.base import RuleFinding
 from app.rules.devsecops import RULE_COUNTS
 
 logger = structlog.get_logger(__name__)
@@ -83,7 +82,7 @@ class DevSecOpsScanner:
     def scan_repository(
         self,
         repo_path: str,
-        repo_name: Optional[str] = None,
+        repo_name: str | None = None,
     ) -> ScanResult:
         """
         Scan a repository for security issues.
@@ -406,7 +405,7 @@ class DevSecOpsScanner:
         )
 
 
-def scan_repository(repo_path: str, repo_name: Optional[str] = None) -> dict[str, Any]:
+def scan_repository(repo_path: str, repo_name: str | None = None) -> dict[str, Any]:
     """
     Convenience function to scan a repository.
 

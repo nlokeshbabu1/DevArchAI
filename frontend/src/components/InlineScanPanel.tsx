@@ -3,47 +3,15 @@
  * Allows users to start a scan without leaving the dashboard
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, GitBranch, Github, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { cn } from '../lib/utils'
-import { ScanProgress } from './ScanProgress'
+import { ScanProgressOverlay } from './scans/ScanProgressOverlay'
+import { scansApi } from '../api/endpoints/scans'
 import apiClient from '../api/endpoints/client'
 import { useQuery } from '@tanstack/react-query'
-
-interface FileBeingScanned {
-  path: string
-  type: 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
-  status: 'pending' | 'scanning' | 'completed'
-}
-
-// Helper function to determine file type from path
-function getFileTypeFromPath(path: string): FileBeingScanned['type'] {
-  const lowerPath = path.toLowerCase()
-
-  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
-    return 'docker'
-  }
-  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
-    return 'k8s'
-  }
-  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
-    return 'terraform'
-  }
-  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
-    return 'helm'
-  }
-  if (lowerPath.includes('.github') || lowerPath.includes('.gitlab') || lowerPath.includes('jenkins') ||
-      lowerPath.includes('ci/') || lowerPath.includes('pipeline') || lowerPath.includes('azure-pipelines')) {
-    return 'cicd'
-  }
-  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
-    return 'monitoring'
-  }
-
-  return 'cicd' // Default fallback
-}
 
 interface InlineScanPanelProps {
   isOpen: boolean
@@ -57,11 +25,9 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [currentStep, setCurrentStep] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
-  const [filesList, setFilesList] = useState<string[]>([])
-  const [logs, setLogs] = useState<string[]>([])
+  const [stepName, setStepName] = useState<string>('')
+  const scanIdRef = useRef<string>('')
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
@@ -88,6 +54,27 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
   const branches = branchesData?.branches || []
 
+  // Track scanId for overlay onViewResults
+  const [currentScanId, setCurrentScanId] = useState<string>('')
+
+  const handleViewResults = () => {
+    if (currentScanId) {
+      onScanComplete?.(currentScanId)
+    }
+  }
+
+  const handleCancel = () => {
+    setLoading(false)
+    setError(null)
+    setProgress(0)
+    onClose()
+  }
+
+  const handleRetry = () => {
+    setError(null)
+    setProgress(0)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -99,27 +86,25 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
     setLoading(true)
     setError(null)
     setProgress(0)
-    setCurrentStep(0)
-    setDetectedTechnologies([])
-    setFilesList([])
-    setLogs([])
+    setStepName('')
 
     try {
-      const response = await apiClient.post('/scan/start', {
+      const response = await scansApi.startUnifiedScan({
         repository_url: repoUrl.trim(),
         branch: selectedBranch || 'main',
       })
 
-      const data = response.data
-
-      if (!data.scan_id) {
+      if (!response.scan_id) {
         throw new Error('No scan_id returned from server')
       }
+
+      setCurrentScanId(response.scan_id)
+      scanIdRef.current = response.scan_id
 
       // Poll for real progress updates from API only
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await apiClient.get(`/scan/status/${data.scan_id}`)
+          const statusResponse = await apiClient.get(`/scan/status/${response.scan_id}`)
           const status = statusResponse.data
 
           // Update progress from API (real data only)
@@ -127,33 +112,14 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
             setProgress(Math.round(status.progress))
           }
 
-          // Update current step from backend - use steps array to derive index
-          if (status.current_step && status.steps && status.steps.length > 0) {
-            const stepIdx = status.steps.findIndex((s: {name: string}) => s.name === status.current_step)
-            if (stepIdx >= 0) {
-              setCurrentStep(stepIdx + 1)
-            }
-          }
-
-          // Update detected technologies from API
-          if (status.detected_stack && Array.isArray(status.detected_stack) && status.detected_stack.length > 0) {
-            setDetectedTechnologies(status.detected_stack)
-          }
-
-          // Update files list from API
-          if (status.files_list && Array.isArray(status.files_list) && status.files_list.length > 0) {
-            setFilesList(status.files_list)
-          }
-
-          // Update logs from API
-          if (status.logs && Array.isArray(status.logs) && status.logs.length > 0) {
-            setLogs(status.logs)
+          // Update current step from backend
+          if (status.current_step) {
+            setStepName(status.current_step)
           }
 
           // Check if scan FAILED
           if (status.status === 'failed') {
             clearInterval(pollInterval)
-            setLoading(false)
             setError(`Scan failed: ${status.error_message || 'Unknown error'}`)
             console.error('❌ Scan failed:', status.error_message)
             return
@@ -162,14 +128,9 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
           // Check if scan is complete using backend status
           if (status.status === 'completed') {
             clearInterval(pollInterval)
-
             setProgress(100)
-            setLoading(false)
-
-            if (onScanComplete) {
-              // Give user 2 seconds to see the completion state before navigating
-              setTimeout(() => onScanComplete(data.scan_id), 2000)
-            }
+            // Don't set loading=false - let overlay show completion state
+            // User clicks "View Results" to navigate
           }
         } catch (pollError) {
           console.error('Polling error:', pollError)
@@ -180,14 +141,69 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
       setTimeout(() => {
         clearInterval(pollInterval)
         setError('Scan timed out. Please try again.')
-        setLoading(false)
       }, 300000) // 5 minutes
 
     } catch (err: any) {
       console.error('Scan error:', err)
       setError(err.response?.data?.detail || err.message || 'Failed to analyze repository')
-      setLoading(false)
     }
+  }
+
+  // During scan, show overlay instead of form modal
+  if (loading) {
+    return (
+      <ScanProgressOverlay
+        isOpen={true}
+        onClose={handleCancel}
+        repositoryName={repoUrl.split('/').slice(-2).join('/')}
+        branch={selectedBranch}
+        progressData={{
+          progress,
+          currentStep: stepName || undefined,
+          error: error ?? undefined,
+        }}
+        isComplete={progress >= 100}
+        hasFailed={!!error}
+        onComplete={handleViewResults}
+        onRetry={handleRetry}
+      />
+    )
+  }
+
+  if (error) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setError(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Card className="p-8 text-center" hover={false}>
+              <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">Scan Failed</h3>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <div className="flex gap-3 justify-center">
+                <Button variant="secondary" onClick={() => setError(null)}>
+                  Try Again
+                </Button>
+                <Button variant="ghost" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
+            </Card>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    )
   }
 
   if (!isOpen) return null
@@ -229,143 +245,109 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
             {/* Content */}
             <div className="p-6">
-              {loading ? (
-                <div className="space-y-6">
-                  {/* Show simple progress - will navigate to results when complete */}
-                  <ScanProgress
-                    progress={progress}
-                    currentStep={currentStep}
-                    isComplete={progress >= 100}
-                    detectedTechnologies={detectedTechnologies}
-                    detectedFiles={filesList.map(path => ({
-                      path,
-                      type: getFileTypeFromPath(path),
-                      status: 'completed'
-                    }))}
-                    backendLogs={logs}
-                    filesScanned={filesList.length}
-                    findingsDetected={0}
-                  />
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-3">
+                    GitHub Repository URL
+                  </label>
+                  <div className="relative">
+                    <Github className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <input
+                      type="url"
+                      value={repoUrl}
+                      onChange={(e) => {
+                        setRepoUrl(e.target.value)
+                        setError(null)
+                      }}
+                      placeholder="https://github.com/organization/repository"
+                      className="input pl-12 text-base py-3"
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Enter a public GitHub repository URL
+                  </p>
                 </div>
-              ) : error ? (
-                <div className="text-center py-12">
-                  <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-foreground mb-2">
-                    Scan Failed
-                  </h3>
-                  <p className="text-muted-foreground mb-4">{error}</p>
+
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-3">
+                    Branch
+                  </label>
+                  <div className="relative">
+                    <GitBranch className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <button
+                      type="button"
+                      onClick={() => branches.length > 0 && setShowBranchDropdown(!showBranchDropdown)}
+                      disabled={isLoadingBranches || branches.length === 0}
+                      className="input pl-12 text-base py-3 w-full flex items-center justify-between bg-input hover:bg-input/80 transition-colors"
+                    >
+                      <span className="text-foreground">
+                        {isLoadingBranches ? (
+                          <Loader2 className="h-4 w-4 animate-spin inline" />
+                        ) : branches.length > 0 ? (
+                          selectedBranch
+                        ) : (
+                          selectedBranch
+                        )}
+                      </span>
+                      <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showBranchDropdown && 'rotate-180')} />
+                    </button>
+
+                    {/* Branch Dropdown */}
+                    {showBranchDropdown && branches.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-lg border border-white/10 bg-card shadow-lg">
+                        {branches.map((branch: any) => (
+                          <button
+                            key={branch.name}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBranch(branch.name)
+                              setShowBranchDropdown(false)
+                            }}
+                            className={cn(
+                              'w-full px-4 py-2 text-left flex items-center gap-2 hover:bg-white/5 transition-colors',
+                              selectedBranch === branch.name && 'bg-primary/10'
+                            )}
+                          >
+                            <GitBranch className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm text-foreground">{branch.name}</span>
+                            {branch.protected && (
+                              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                                Protected
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {isLoadingBranches ? 'Fetching branches...' : branches.length > 0 ? `${branches.length} branches available` : 'Enter repository URL to fetch branches'}
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-4">
                   <Button
-                    variant="secondary"
-                    onClick={() => setError(null)}
+                    type="button"
+                    variant="ghost"
+                    onClick={onClose}
+                    className="flex-1"
                   >
-                    Try Again
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    disabled={!repoUrl.trim()}
+                    className="flex-1"
+                    glow
+                  >
+                    <GitBranch className="h-5 w-5" />
+                    Start Analysis
                   </Button>
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-3">
-                      GitHub Repository URL
-                    </label>
-                    <div className="relative">
-                      <Github className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                      <input
-                        type="url"
-                        value={repoUrl}
-                        onChange={(e) => {
-                          setRepoUrl(e.target.value)
-                          setError(null)
-                        }}
-                        placeholder="https://github.com/organization/repository"
-                        className="input pl-12 text-base py-3"
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Enter a public GitHub repository URL
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-3">
-                      Branch
-                    </label>
-                    <div className="relative">
-                      <GitBranch className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                      <button
-                        type="button"
-                        onClick={() => branches.length > 0 && setShowBranchDropdown(!showBranchDropdown)}
-                        disabled={isLoadingBranches || branches.length === 0}
-                        className="input pl-12 text-base py-3 w-full flex items-center justify-between bg-input hover:bg-input/80 transition-colors"
-                      >
-                        <span className="text-foreground">
-                          {isLoadingBranches ? (
-                            <Loader2 className="h-4 w-4 animate-spin inline" />
-                          ) : branches.length > 0 ? (
-                            selectedBranch
-                          ) : (
-                            selectedBranch
-                          )}
-                        </span>
-                        <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showBranchDropdown && 'rotate-180')} />
-                      </button>
-
-                      {/* Branch Dropdown */}
-                      {showBranchDropdown && branches.length > 0 && (
-                        <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-lg border border-white/10 bg-card shadow-lg">
-                          {branches.map((branch: any) => (
-                            <button
-                              key={branch.name}
-                              type="button"
-                              onClick={() => {
-                                setSelectedBranch(branch.name)
-                                setShowBranchDropdown(false)
-                              }}
-                              className={cn(
-                                'w-full px-4 py-2 text-left flex items-center gap-2 hover:bg-white/5 transition-colors',
-                                selectedBranch === branch.name && 'bg-primary/10'
-                              )}
-                            >
-                              <GitBranch className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm text-foreground">{branch.name}</span>
-                              {branch.protected && (
-                                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
-                                  Protected
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {isLoadingBranches ? 'Fetching branches...' : branches.length > 0 ? `${branches.length} branches available` : 'Enter repository URL to fetch branches'}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={onClose}
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      size="lg"
-                      disabled={!repoUrl.trim()}
-                      className="flex-1"
-                      glow
-                    >
-                      <GitBranch className="h-5 w-5" />
-                      Start Analysis
-                    </Button>
-                  </div>
-                </form>
-              )}
+              </form>
             </div>
           </Card>
         </motion.div>

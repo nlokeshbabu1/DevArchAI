@@ -4,7 +4,6 @@ Provides context-specific documentation URLs for each rule based on technology t
 All links point to official vendor documentation.
 """
 
-from typing import Optional
 
 
 class DevOpsDocumentation:
@@ -22,7 +21,7 @@ class DevOpsDocumentation:
     GRAFANA_DOCS = "https://grafana.com/docs"
 
     @classmethod
-    def get_documentation_url(cls, rule_id: str, file_type: Optional[str] = None) -> Optional[str]:
+    def get_documentation_url(cls, rule_id: str, file_type: str | None = None) -> str | None:
         """
         Get official documentation URL for a specific rule.
 
@@ -275,6 +274,6 @@ class DevOpsDocumentation:
 
 
 # Convenience function
-def get_documentation_url(rule_id: str, file_type: Optional[str] = None) -> Optional[str]:
+def get_documentation_url(rule_id: str, file_type: str | None = None) -> str | None:
     """Get documentation URL for a rule."""
     return DevOpsDocumentation.get_documentation_url(rule_id, file_type)

@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter
 
+from app.api.aws_findings import router as aws_findings_router
+from app.api.v1.aws.routes import router as aws_router
 from app.api.v1.routes import (
     ai_suggestions,
     auth,
@@ -23,8 +25,7 @@ from app.api.v1.routes import (
     settings,
     unified_scan,
 )
-from app.api.v1.aws.routes import router as aws_router
-from app.api.aws_findings import router as aws_findings_router
+from app.api.v1.routes.repository_results import router as repository_results_router
 
 api_router = APIRouter()
 
@@ -47,6 +48,7 @@ api_router.include_router(repo_analysis.router)
 api_router.include_router(public_scans.router)
 api_router.include_router(settings.router)
 api_router.include_router(unified_scan.router)
+api_router.include_router(repository_results_router)
 api_router.include_router(aws_router)
 api_router.include_router(aws_findings_router)
 

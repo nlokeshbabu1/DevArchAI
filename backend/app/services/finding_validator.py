@@ -11,7 +11,7 @@ Validates findings before database insertion to ensure data integrity.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -299,7 +299,7 @@ class FindingValidator:
         self,
         finding: RuleFinding,
         field_name: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Retrieve a fallback value for a missing field.
 

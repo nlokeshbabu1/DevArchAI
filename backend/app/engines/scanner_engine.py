@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -32,11 +32,11 @@ class ScannerFinding:
     description: str
     recommendation: str
     file_path: str
-    line_number: Optional[int] = None
-    resource_name: Optional[str] = None
-    cve_id: Optional[str] = None
-    cvss_score: Optional[float] = None
-    raw_data: Optional[dict[str, Any]] = field(default_factory=dict)
+    line_number: int | None = None
+    resource_name: str | None = None
+    cve_id: str | None = None
+    cvss_score: float | None = None
+    raw_data: dict[str, Any] | None = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
@@ -111,7 +111,7 @@ class ScannerResult:
         scanner_id: str,
         findings: list[ScannerFinding],
         success: bool = True,
-        error: Optional[str] = None,
+        error: str | None = None,
         duration_seconds: float = 0.0,
     ):
         self.scanner_id = scanner_id

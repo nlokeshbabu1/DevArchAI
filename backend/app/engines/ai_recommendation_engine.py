@@ -1,7 +1,7 @@
 """AI Recommendation Engine for generating remediation guidance."""
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -17,8 +17,8 @@ class AIRecommendation:
     explanation: str
     impact: str
     remediation_steps: list[str]
-    code_example: Optional[str] = None
-    verification_steps: Optional[list[str]] = None
+    code_example: str | None = None
+    verification_steps: list[str] | None = None
     confidence: float = 1.0
 
 
@@ -30,7 +30,7 @@ class AIRecommendationEngine:
     Falls back to template-based recommendations if LLM unavailable.
     """
 
-    def __init__(self, llm_provider: Optional[Any] = None):
+    def __init__(self, llm_provider: Any | None = None):
         self.llm_provider = llm_provider
         self._templates = self._load_templates()
 
@@ -398,7 +398,7 @@ jobs:
         items = re.findall(r"^\d+\.\s*(.+)$", content, re.MULTILINE)
         return items
 
-    def _extract_code_block(self, text: str) -> Optional[str]:
+    def _extract_code_block(self, text: str) -> str | None:
         """Extract code block from template."""
         import re
         match = re.search(r"```(\w+)?\n(.*?)```", text, re.DOTALL)

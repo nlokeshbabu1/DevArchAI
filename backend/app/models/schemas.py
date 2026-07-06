@@ -40,6 +40,16 @@ class RuleFinding(BaseModel):
     ai_explanation: str | None = Field(None, description="AI-generated explanation")
     impact_analysis: str | None = Field(None, description="AI impact analysis")
     confidence_score: float = Field(default=1.0, ge=0, le=1, description="Confidence in finding")
+    # Scanner metadata fields (backward-compatible)
+    scanner_name: str | None = Field(None, description="External scanner name (e.g. Trivy, Gitleaks)")
+    scanner_rule_id: str | None = Field(None, description="Scanner-specific rule identifier")
+    package: str | None = Field(None, description="Affected package name (SCA findings)")
+    installed_version: str | None = Field(None, description="Installed vulnerable version")
+    fixed_version: str | None = Field(None, description="Version that fixes the vulnerability")
+    cve: str | None = Field(None, description="CVE identifier")
+    cwe: str | None = Field(None, description="CWE identifier")
+    references: list[str] | None = Field(None, description="Reference URLs")
+    evidence: str | None = Field(None, description="Raw evidence from scanner")
 
 
 class CategoryScore(BaseModel):

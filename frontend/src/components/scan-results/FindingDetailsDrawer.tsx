@@ -160,6 +160,12 @@ export function FindingDetailsDrawer({
                         <div className="text-xs font-medium text-white/70 capitalize truncate">{finding.category}</div>
                       </div>
                       <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Sources</div>
+                        <div className="text-xs font-medium text-white/70 truncate">
+                          {finding.scanner_name || "DevArchAI"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
                         <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">File Path</div>
                         <div className="text-xs font-medium text-white/70 font-mono truncate" title={repoPath}>
                           {repoPath || "\u2014"}

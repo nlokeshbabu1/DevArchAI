@@ -102,7 +102,7 @@ class CheckovScanner(BaseScanner):
                 repo_path=repo_path,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Checkov scan timed out", timeout=timeout_seconds)
         except Exception as e:
             logger.exception("Checkov scan failed", error=str(e))

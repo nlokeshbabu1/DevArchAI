@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import structlog
 from fastapi import Depends, HTTPException, status

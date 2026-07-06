@@ -5,14 +5,14 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_engine.explanation_engine import ExplanationEngine
 from app.config import settings
 from app.core.logging import get_logger
-from app.models.finding import Category, Finding, Severity
+from app.models.finding import Category, Finding
 from app.models.report import Report
 from app.models.scan import Scan, ScanStatus
 from app.parsers.base import ParserRegistry
@@ -47,7 +47,7 @@ class ScanService:
         self.repo_scanner = RepositoryScanner()
         self.parser_registry = self._setup_parsers()
         self.explanation_engine = ExplanationEngine() if include_ai_explanations else None
-        self.detected_stack: Optional[TechnologyStack] = None
+        self.detected_stack: TechnologyStack | None = None
         self.deduplicator = FindingsDeduplicator()
         self.enricher = FindingsEnricher()
         self.report_service = ReportService()
@@ -67,7 +67,7 @@ class ScanService:
         self,
         repo_url: str,
         branch: str = "main",
-        commit_hash: Optional[str] = None,
+        commit_hash: str | None = None,
     ) -> dict[str, Any]:
         """
         Synchronous repository analysis with stack detection.
@@ -179,12 +179,21 @@ class ScanService:
             "line_number": finding.line_number,
             "ai_explanation": finding.ai_explanation,
             "impact_analysis": finding.impact_analysis,
+            "scanner_name": getattr(finding, 'scanner_name', None),
+            "scanner_rule_id": getattr(finding, 'scanner_rule_id', None),
+            "package": getattr(finding, 'package', None),
+            "installed_version": getattr(finding, 'installed_version', None),
+            "fixed_version": getattr(finding, 'fixed_version', None),
+            "cve": getattr(finding, 'cve', None),
+            "cwe": getattr(finding, 'cwe', None),
+            "references": getattr(finding, 'references', None),
+            "evidence": getattr(finding, 'evidence', None),
         }
 
     async def execute_scan(
         self,
         scan: Scan,
-        progress_callback: Optional[Callable[[int, str], None]] = None,
+        progress_callback: Callable[[int, str], None] | None = None,
     ) -> Scan:
         """
         Execute a complete scan workflow.
@@ -554,7 +563,7 @@ class ScanService:
                 # Use module directory path instead of first .tf file to avoid confusion
                 # The issue is a module-level problem, not a file-specific problem
                 finding_file_path = module_path.rstrip('/') + '/'  # Use module directory as the "file"
-                
+
                 findings.append(RuleFinding(
                     rule_id="TF-STATE-002",
                     rule_name="Remote Backend Required",
@@ -682,7 +691,7 @@ class ScanService:
 
     def _update_progress(
         self,
-        callback: Optional[Callable[[int, str], None]],
+        callback: Callable[[int, str], None] | None,
         progress: int,
         message: str,
     ) -> None:

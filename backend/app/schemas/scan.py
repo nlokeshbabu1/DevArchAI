@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -32,8 +31,8 @@ class ScanCreate(BaseModel):
     """Scan creation request."""
 
     repository_url: str = Field(..., description="GitHub repository URL to scan")
-    branch: Optional[str] = Field(default="main", description="Branch to analyze")
-    commit_hash: Optional[str] = Field(None, description="Specific commit to analyze")
+    branch: str | None = Field(default="main", description="Branch to analyze")
+    commit_hash: str | None = Field(None, description="Specific commit to analyze")
     include_ai_explanations: bool = Field(default=True, description="Include AI explanations")
 
     class Config:
@@ -50,29 +49,29 @@ class ScanResponse(BaseModel):
     """Scan response."""
 
     id: str  # UUID as string
-    user_id: Optional[str]  # UUID as string, can be null
-    repository_id: Optional[str]  # UUID as string, can be null
+    user_id: str | None  # UUID as string, can be null
+    repository_id: str | None  # UUID as string, can be null
     repository_url: str
     branch: str
-    commit_hash: Optional[str]
+    commit_hash: str | None
     status: ScanStatus
     scan_status: ScanStatus
     ai_status: AIScanStatus = AIScanStatus.PENDING
     progress: int
-    error_message: Optional[str]
-    overall_score: Optional[float]
-    security_score: Optional[float]
-    scalability_score: Optional[float]
-    reliability_score: Optional[float]
-    cost_score: Optional[float]
-    observability_score: Optional[float]
-    detected_stack: Optional[dict] = None  # Detected technology stack
-    detected_technologies: Optional[list[str]] = None  # List of detected tech names
-    files_analyzed: Optional[int] = None  # Number of files analyzed
-    findings_count: Optional[int] = None  # Number of findings
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    analysis_duration_seconds: Optional[float]
+    error_message: str | None
+    overall_score: float | None
+    security_score: float | None
+    scalability_score: float | None
+    reliability_score: float | None
+    cost_score: float | None
+    observability_score: float | None
+    detected_stack: dict | None = None  # Detected technology stack
+    detected_technologies: list[str] | None = None  # List of detected tech names
+    files_analyzed: int | None = None  # Number of files analyzed
+    findings_count: int | None = None  # Number of findings
+    started_at: datetime | None
+    completed_at: datetime | None
+    analysis_duration_seconds: float | None
     created_at: datetime
     updated_at: datetime
 
@@ -105,9 +104,9 @@ class ScanProgressResponse(BaseModel):
     id: str
     status: ScanStatus
     progress: int
-    error_message: Optional[str]
+    error_message: str | None
     created_at: datetime
-    completed_at: Optional[datetime]
+    completed_at: datetime | None
 
     @field_validator('id', mode='before')
     @classmethod

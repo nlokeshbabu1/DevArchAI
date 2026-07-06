@@ -16,7 +16,7 @@ import { ScanWorkflow } from '../components/landing/ScanWorkflow'
 import { ReportingSection } from '../components/landing/ReportingSection'
 import { DashboardPreview } from '../components/landing/DashboardPreview'
 import { RoadmapSection } from '../components/landing/RoadmapSection'
-import demoData from '../../public/data/demoScan.json'
+import demoData from '../data/demoScan.json'
 
 const testimonials = [
   {

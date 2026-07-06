@@ -13,7 +13,7 @@ import { dashboardApi, type RecentScan } from '../api/endpoints/dashboard'
 import { repositoriesApi, type Repository } from '../api/endpoints/repositories'
 import apiClient from '../api/endpoints/client'
 import { InlineScanPanel } from '../components/InlineScanPanel'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 
 import {
   KpiRow, SecurityOverview,
@@ -176,21 +176,28 @@ export function Dashboard() {
   // Error state
   if (hasError) {
     return (
-      <div className="space-y-6">
-        <Card className="p-8 text-center" hover={false}>
-          <div className="p-3 rounded-full bg-red-500/10 border border-red-500/30 w-fit mx-auto mb-4">
-            <AlertTriangle className="h-8 w-8 text-red-400" />
-          </div>
-          <h2 className="text-lg font-bold text-foreground mb-2">Unable to Load Dashboard</h2>
-          <p className="text-sm text-muted-foreground mb-5">{errorMessage}</p>
-          <div className="flex gap-3 justify-center">
-            <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
-            <Button variant="primary" onClick={() => navigate('/scan')} icon={<Play className="h-4 w-4" />}>
-              Start Scan
-            </Button>
-          </div>
-        </Card>
-      </div>
+      <Fragment>
+        <div className="space-y-6">
+          <Card className="p-8 text-center" hover={false}>
+            <div className="p-3 rounded-full bg-red-500/10 border border-red-500/30 w-fit mx-auto mb-4">
+              <AlertTriangle className="h-8 w-8 text-red-400" />
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Unable to Load Dashboard</h2>
+            <p className="text-sm text-muted-foreground mb-5">{errorMessage}</p>
+            <div className="flex gap-3 justify-center">
+              <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
+              <Button variant="primary" onClick={() => setShowScanPanel(true)} icon={<Play className="h-4 w-4" />}>
+                Start Scan
+              </Button>
+            </div>
+          </Card>
+        </div>
+        <InlineScanPanel
+          isOpen={showScanPanel}
+          onClose={() => setShowScanPanel(false)}
+          onScanComplete={(scanId) => { setShowScanPanel(false); navigate(`/scans/${scanId}`) }}
+        />
+      </Fragment>
     )
   }
 

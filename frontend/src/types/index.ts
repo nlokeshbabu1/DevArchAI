@@ -59,10 +59,37 @@ export interface Finding {
   risk_reduction_score?: number  // 0-100, how much fixing this improves security
   predicted_score_after_fix?: number  // Estimated score after applying fix
   estimated_fix_time?: string  // e.g. "~30 min"
+  // Scanner metadata fields (from backend normalization)
+  scanner_name?: string
+  scanner_rule_id?: string
+  package?: string
+  installed_version?: string
+  fixed_version?: string
+  cve?: string
+  cwe?: string
+  references?: string[]
+  evidence?: string
   // Legacy fields (fallback only)
   fix_example?: string
   ai_explanation?: string
   impact_analysis?: string
+}
+
+export interface ScannerExecution {
+  scanner_name: string
+  scanner_id: string
+  version: string | null
+  status: 'DISCOVERED' | 'INITIALIZING' | 'RUNNING' | 'COMPLETED' | 'COMPLETED_WITH_FINDINGS' | 'COMPLETED_NO_FINDINGS' | 'SKIPPED_NOT_APPLICABLE' | 'UNAVAILABLE' | 'DISABLED' | 'FAILED'
+  applicable: boolean
+  enabled: boolean
+  execution_start: string | null
+  execution_end: string | null
+  duration_ms: number | null
+  files_scanned: number | null
+  rules_executed: number | null
+  findings_count: number
+  skipped_reason: string | null
+  error_message: string | null
 }
 
 export interface Summary {

@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 import yaml
@@ -150,7 +150,7 @@ class ConditionOperator:
 class YAMLRuleEngine:
     """Rule engine that evaluates YAML-defined rules."""
 
-    def __init__(self, rules_dir: Optional[str] = None):
+    def __init__(self, rules_dir: str | None = None):
         self.rules: dict[str, YAMLRule] = {}
         self.rules_by_file_type: dict[str, list[YAMLRule]] = {}
         self.rules_by_category: dict[str, list[YAMLRule]] = {}
@@ -199,7 +199,7 @@ class YAMLRuleEngine:
         logger.info("Rule engine initialized", total_rules=len(self.rules))
         return loaded_count
 
-    def _parse_rule(self, rule_data: dict[str, Any]) -> Optional[YAMLRule]:
+    def _parse_rule(self, rule_data: dict[str, Any]) -> YAMLRule | None:
         """Parse rule from dictionary."""
         try:
             return YAMLRule(
@@ -226,7 +226,7 @@ class YAMLRuleEngine:
         self,
         resources: list[dict[str, Any]],
         file_path: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
     ) -> list[RuleFinding]:
         """
         Evaluate rules against resources.
@@ -382,7 +382,7 @@ class YAMLRuleEngine:
 
         return value
 
-    def get_rule(self, rule_id: str) -> Optional[YAMLRule]:
+    def get_rule(self, rule_id: str) -> YAMLRule | None:
         """Get rule by ID."""
         return self.rules.get(rule_id)
 

@@ -36,17 +36,17 @@ class RuleFinding:
         category: Category,
         description: str,
         recommendation: str,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
-        resource_name: Optional[str] = None,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        resource_name: str | None = None,
         confidence: float = 1.0,
-        metadata: Optional[dict[str, Any]] = None,
-        ai_explanation: Optional[str] = None,
-        impact_analysis: Optional[str] = None,
-        documentation_url: Optional[str] = None,
-        risk: Optional[str] = None,
-        impact: Optional[str] = None,
-        fix_example: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        ai_explanation: str | None = None,
+        impact_analysis: str | None = None,
+        documentation_url: str | None = None,
+        risk: str | None = None,
+        impact: str | None = None,
+        fix_example: str | None = None,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -107,8 +107,8 @@ class Rule:
         severity: Severity,
         category: Category,
         enabled: bool = True,
-        tags: Optional[list[str]] = None,
-        file_types: Optional[list[str]] = None,
+        tags: list[str] | None = None,
+        file_types: list[str] | None = None,
     ):
         self.id = id
         self.name = name
@@ -172,7 +172,7 @@ class RuleRegistry:
             cls._instance._rules_by_file_type = {}
         return cls._instance
 
-    def register(self, rule_class: type[BaseRule], file_types: Optional[list[str]] = None) -> None:
+    def register(self, rule_class: type[BaseRule], file_types: list[str] | None = None) -> None:
         """
         Register a rule class.
 
@@ -223,7 +223,7 @@ class RuleRegistry:
 
         return []
 
-    def get_rule(self, rule_id: str) -> Optional[BaseRule]:
+    def get_rule(self, rule_id: str) -> BaseRule | None:
         """Get a rule by ID."""
         return self._rules.get(rule_id)
 
@@ -243,7 +243,7 @@ class RuleRegistry:
         self,
         resources: list[dict[str, Any]],
         file_path: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
     ) -> list[RuleFinding]:
         """
         Evaluate all rules against resources.
@@ -306,7 +306,7 @@ class RuleRegistry:
 registry = RuleRegistry()
 
 
-def register_rule(file_types: Optional[list[str]] = None):
+def register_rule(file_types: list[str] | None = None):
     """
     Decorator to register a rule.
 

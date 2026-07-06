@@ -1,7 +1,7 @@
 """File loader utility for parsing infrastructure files."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.core.logging import get_logger
 from app.parsers.base import ParsedFile, ParserRegistry
@@ -28,7 +28,7 @@ class FileLoader:
         registry.register(CICDParser())
         return registry
 
-    def load_file(self, file_path: Path) -> Optional[ParsedFile]:
+    def load_file(self, file_path: Path) -> ParsedFile | None:
         """
         Load and parse a single file.
 
@@ -86,7 +86,7 @@ class FileLoader:
     def load_directory(
         self,
         directory: Path,
-        file_types: Optional[list[str]] = None,
+        file_types: list[str] | None = None,
         max_depth: int = 10,
     ) -> list[ParsedFile]:
         """
@@ -159,7 +159,7 @@ class FileLoader:
 
         return parsed_files
 
-    def get_file_type(self, file_path: Path) -> Optional[str]:
+    def get_file_type(self, file_path: Path) -> str | None:
         """
         Get the file type for a given path.
 

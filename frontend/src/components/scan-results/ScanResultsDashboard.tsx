@@ -4,15 +4,21 @@ import { ExecutiveSummary } from "./ExecutiveSummary"
 import { FixTheseFirst } from "./PriorityRisks"
 import { FindingsExplorer } from "./FindingsExplorer"
 import { DetectionCoverage } from "./DetectionCoverage"
+import { ScannerExecutionTable } from "./ScannerExecutionTable"
 import { ScanCoverageSummary } from "./ScanCoverageSummary"
 import { RepositoryStats } from "./RepositoryStats"
 import { EmptyState } from "./EmptyState"
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
+import { ScannerExecutionCard } from "./ScannerExecutionCard"
+import { ScanTimeline } from "./ScanTimeline"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { cn, getFileName } from "../../lib/utils"
 
 interface ScanResultData {
+  ai_status?: "pending" | "processing" | "completed" | "failed"
+  status?: string
+  scan_id?: string
   overall_score?: number
   security_score?: number
   files_analyzed?: number
@@ -29,6 +35,9 @@ interface ScanResultData {
   severity_counts?: Record<string, number>
   category_scores?: { category: string; score: number; findings_count?: number; files_scanned?: number }[]
   commit_hash?: string
+  scanner_executions?: any[]
+  ai_suggestions_count?: number
+  findings_count?: number
 }
 
 interface ScanResultsDashboardProps {
@@ -70,6 +79,14 @@ export function ScanResultsDashboard({
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const isEmpty = findings.length === 0
   const score = result.overall_score ?? 0
+
+  // Raw findings count from scanner executions (before dedup)
+  const rawFindingsCount = useMemo(() => {
+    if (!result.scanner_executions) return undefined
+    return result.scanner_executions.reduce((sum: number, e: any) => sum + (e.findings_count || 0), 0)
+  }, [result.scanner_executions])
+
+  const scannersCount = result.scanner_executions?.length
 
   // --- Derived data with validation ---
   // Files scanned: prefer backend value, fall back to unique file paths from findings
@@ -234,7 +251,38 @@ export function ScanResultsDashboard({
             <DetectionCoverage
               findings={findings}
               detectedTechnologies={result.detected_technologies ?? []}
+              scannerExecutions={result.scanner_executions}
             />
+
+            {/* Scan Timeline */}
+            <ScanTimeline
+              currentStep={8}
+              totalScanners={result.scanner_executions?.length ?? 0}
+              completedScanners={result.scanner_executions?.filter((e: any) =>
+                ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"].includes(e.status)
+              ).length ?? 0}
+              aiStatus={result.ai_status ?? (isAiReady ? "completed" : isAiPending ? "processing" : "pending")}
+              scanStatus={result.status ?? "completed"}
+            />
+
+            {/* Scanner Execution Summary Table */}
+            {result.scanner_executions && result.scanner_executions.length > 0 && (
+              <>
+                <ScannerExecutionTable executions={result.scanner_executions} />
+                {/* Expandable execution details for every scanner */}
+                <div className="space-y-2">
+                  {result.scanner_executions.map((exec: any, i: number) => (
+                    <ScannerExecutionCard
+                      key={exec.scanner_id ?? i}
+                      execution={exec}
+                      findings={findings}
+                      allFindingsCount={findings.length}
+                      scanId={result.scan_id}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Section 6: Repository Statistics */}
             <RepositoryStats
@@ -248,6 +296,9 @@ export function ScanResultsDashboard({
               completedAt={result.completed_at}
               branch={result.branch}
               commitHash={result.commit_hash}
+              rawFindingsCount={rawFindingsCount}
+              aiSuggestionsCount={result.ai_suggestions_count}
+              scannersCount={scannersCount}
             />
 
             {/* Category filter indicator */}
@@ -281,6 +332,7 @@ export function ScanResultsDashboard({
               onSearchQueryChange={onSearchQueryChange}
               onExpandedFindingChange={onExpandedFindingChange}
               onFindingClick={handleOpenDrawer}
+              rawFindingsCount={rawFindingsCount}
             />
           </>
         )}

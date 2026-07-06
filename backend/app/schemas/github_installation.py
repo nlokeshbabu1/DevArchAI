@@ -1,7 +1,6 @@
 """GitHub App installation schemas."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,5 +61,5 @@ class InstallationValidateResponse(BaseModel):
     app_id: int
     permissions: dict
     events: list[str]
-    repository_selection: Optional[str]
+    repository_selection: str | None
     repo_full_name: str

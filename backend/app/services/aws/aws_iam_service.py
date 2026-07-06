@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
@@ -42,7 +42,7 @@ class AWSIAMService:
                     findings.append(self._finding("high", "IAM user has administrator access", f"IAM user {name} has AdministratorAccess.", "iam_user", name, "Use least privilege or a scoped role."))
 
             keys = await call_aws(iam.list_access_keys, UserName=name)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for key in keys.get("AccessKeyMetadata", []):
                 age_days = (now - key["CreateDate"]).days
                 if age_days > 90:
@@ -60,7 +60,7 @@ class AWSIAMService:
         findings = []
         try:
             attached = await call_aws(iam.list_attached_role_policies, RoleName=name)
-            if not attached.get("AttachedPolicies") and (datetime.now(timezone.utc) - role["CreateDate"]).days > 90:
+            if not attached.get("AttachedPolicies") and (datetime.now(UTC) - role["CreateDate"]).days > 90:
                 findings.append(self._finding("low", "Unused IAM role candidate", f"IAM role {name} has no attached managed policies.", "iam_role", name, "Review and remove unused roles."))
             for policy in attached.get("AttachedPolicies", []):
                 if policy.get("PolicyArn") == "arn:aws:iam::aws:policy/AdministratorAccess":

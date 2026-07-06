@@ -62,14 +62,6 @@ export const scansApi = {
   },
 
   /**
-   * Create new scan
-   */
-  createScan: async (data: ScanCreate): Promise<Scan> => {
-    const response = await apiClient.post<Scan>('/scans', data);
-    return response.data;
-  },
-
-  /**
    * Start unified scan (guest or authenticated)
    */
   startUnifiedScan: async (data: ScanCreate): Promise<UnifiedScanStartResponse> => {

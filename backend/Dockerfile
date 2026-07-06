@@ -46,6 +46,10 @@ COPY --chown=appuser:appgroup . .
 # Create temp directory
 RUN mkdir -p /tmp/devarchai && chown appuser:appgroup /tmp/devarchai
 
+# Copy and set up entrypoint
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Switch to non-root user
 USER appuser
 
@@ -53,10 +57,11 @@ USER appuser
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/ready || curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Run application with uvicorn
+# Run entrypoint which orchestrates: wait-for-db → migrate → validate → start
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 # ===========================================

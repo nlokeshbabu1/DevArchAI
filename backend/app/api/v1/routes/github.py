@@ -127,9 +127,9 @@ async def get_repository_branches(repo_url: str):
 
             # Get actual default branch from repository info
             default_branch = branches[0].name if branches else "main"
-            
+
             logger.info(f"Branches fetched successfully: {[b.name for b in branches]}, default: {default_branch}")
-            
+
             return {"branches": [b.to_dict() for b in branches], "default_branch": default_branch}
 
     except httpx.TimeoutException:

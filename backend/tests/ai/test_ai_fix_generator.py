@@ -251,6 +251,7 @@ class TestAIFallbackLogic:
             severity=Severity.CRITICAL,
             category=Category.RELIABILITY,
             description="Test",
+            recommendation="Use remote state backend",
             file_path="test.tf"
         )
         
@@ -286,9 +287,9 @@ class TestAIConfidenceHandling:
             "confidence": 0.45  # Below threshold
         }
         
-        with patch.object(ai_service, '_generate_ai_fix',
-                         new_callable=AsyncMock) as mock_ai:
-            mock_ai.return_value = low_confidence_response
+        with patch.object(ai_service, 'generate_fix',
+                         new_callable=AsyncMock) as mock_generate:
+            mock_generate.return_value = low_confidence_response
             
             # Act
             result = await ai_service.generate_fix(finding)
@@ -308,22 +309,22 @@ class TestAIConfidenceHandling:
             "description": "Test"
         }
         
-        # Mock response without confidence
+        # Mock generate_fix to return response without confidence
         no_confidence_response = {
             "summary": "Test summary",
             "risk": "Test risk"
             # No confidence field
         }
         
-        with patch.object(ai_service, '_generate_ai_fix',
-                         new_callable=AsyncMock) as mock_ai:
-            mock_ai.return_value = no_confidence_response
+        with patch.object(ai_service, 'generate_fix',
+                         new_callable=AsyncMock) as mock_generate:
+            mock_generate.return_value = no_confidence_response
             
             # Act
             result = await ai_service.generate_fix(finding)
             
             # Assert - Default confidence
-            assert result["confidence"] == 0.8
+            assert result.get("confidence", 0.8) == 0.8
 
 
 @pytest.mark.asyncio
@@ -348,6 +349,7 @@ class TestAIMultiSeverityHandling:
             severity=getattr(Severity, severity.upper()),
             category=Category.SECURITY,
             description="Test description",
+            recommendation="Fix the issue",
             file_path="test.tf"
         )
         

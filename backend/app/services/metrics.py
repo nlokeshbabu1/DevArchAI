@@ -14,19 +14,17 @@ Usage:
 Returns Prometheus-compatible metrics
 """
 
-import time
-from typing import Dict, Any
 
+import structlog
+from fastapi import APIRouter, Response
 from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
     generate_latest,
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
 )
-from fastapi import APIRouter, Response
-import structlog
 
 logger = structlog.get_logger(__name__)
 

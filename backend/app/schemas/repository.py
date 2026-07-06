@@ -1,7 +1,6 @@
 """Repository schemas."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -11,7 +10,7 @@ class RepositoryCreate(BaseModel):
     """Repository creation request."""
 
     url: str = Field(..., description="GitHub repository URL")
-    name: Optional[str] = Field(None, description="Repository name (auto-detected if not provided)")
+    name: str | None = Field(None, description="Repository name (auto-detected if not provided)")
 
     class Config:
         json_schema_extra = {
@@ -25,9 +24,9 @@ class RepositoryCreate(BaseModel):
 class RepositoryUpdate(BaseModel):
     """Repository update request."""
 
-    name: Optional[str] = Field(None, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, max_length=255)
+    description: str | None = Field(None, max_length=1000)
+    is_active: bool | None = None
 
 
 class RepositoryResponse(BaseModel):
@@ -36,22 +35,22 @@ class RepositoryResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    full_name: Optional[str]
+    full_name: str | None
     url: str
-    description: Optional[str]
+    description: str | None
     default_branch: str
     is_private: bool
     is_active: bool
-    last_analyzed_at: Optional[datetime]
+    last_analyzed_at: datetime | None
     created_at: datetime
     updated_at: datetime
     scan_count: int = 0
     # Enhanced fields for UI
-    last_scan_at: Optional[datetime] = None
-    scan_status: Optional[str] = None
-    overall_score: Optional[float] = None
-    tech_stack: List[str] = Field(default_factory=list)
-    issues: Dict[str, int] = Field(default_factory=dict)
+    last_scan_at: datetime | None = None
+    scan_status: str | None = None
+    overall_score: float | None = None
+    tech_stack: list[str] = Field(default_factory=list)
+    issues: dict[str, int] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True

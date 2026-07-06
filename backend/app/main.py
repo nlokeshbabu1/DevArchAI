@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down DevArchAI backend")
-    
+
     # Close Redis connection
     if hasattr(app.state, 'cache'):
         try:
@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
             logger.info("Redis cache closed")
         except Exception as e:
             logger.warning(f"Error closing Redis cache: {e}")
-    
+
     await close_db()
 
 
@@ -112,7 +112,11 @@ def create_app() -> FastAPI:
 
     # Enterprise Security Middleware
     try:
-        from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, SessionValidationMiddleware
+        from app.middleware.security import (
+            RateLimitMiddleware,
+            SecurityHeadersMiddleware,
+            SessionValidationMiddleware,
+        )
         app.add_middleware(SecurityHeadersMiddleware)
         app.add_middleware(RateLimitMiddleware)
         app.add_middleware(SessionValidationMiddleware)
@@ -139,14 +143,15 @@ def create_app() -> FastAPI:
 
     # PHASE 2B: Add WebSocket endpoint (NEW - Production Grade)
     try:
-        from app.websockets.scan_progress import scan_progress_websocket
         from fastapi import WebSocket
+
+        from app.websockets.scan_progress import scan_progress_websocket
 
         @app.websocket("/ws/scan/{scan_id}")
         async def websocket_scan_progress(websocket: WebSocket, scan_id: str):
             """WebSocket endpoint for real-time scan progress updates."""
             await scan_progress_websocket(websocket, scan_id)
-        
+
         logger.info("WebSocket endpoint registered at /ws/scan/{scan_id}")
     except Exception as e:
         logger.warning(f"WebSocket endpoint registration failed: {e}")
@@ -168,12 +173,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/ready")
     async def readiness_check():
-        """Readiness check - verifies database connectivity."""
+        """Readiness check - verifies database connectivity and migration state."""
         try:
             from sqlalchemy import text
             async with app.state.db_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
-            return {"status": "ready", "database": "connected"}
         except Exception as e:
             logger.error("Readiness check failed", error=str(e))
             from fastapi.responses import JSONResponse
@@ -181,6 +185,21 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "not ready", "database": "disconnected", "error": str(e)}
             )
+
+        # Check migration status (sync, run in thread executor)
+        import asyncio
+
+        from app.db.migrate import current_revision, pending_migrations
+
+        rev = await asyncio.to_thread(current_revision)
+        pending = await asyncio.to_thread(pending_migrations)
+
+        return {
+            "status": "ready",
+            "database": "connected",
+            "migration_revision": rev,
+            "pending_migrations": pending,
+        }
 
     return app
 

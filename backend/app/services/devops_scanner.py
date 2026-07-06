@@ -8,7 +8,7 @@ Only applies rules to relevant file types (e.g., Terraform rules only to .tf fil
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -292,7 +292,7 @@ class DevOpsScanner:
         repo_path: str,
         file_path: str,
         file_type: str,
-    ) -> Optional[ParsedFile]:
+    ) -> ParsedFile | None:
         """Parse a file using the appropriate parser."""
         try:
             full_path = Path(repo_path) / file_path

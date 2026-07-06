@@ -11,6 +11,7 @@ import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { ScansPage } from './pages/scans/ScansPage'
 import { Findings } from './pages/findings/FindingsPage'
 import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
+import { RepositoryResultsPage } from './pages/repositories/RepositoryResultsPage'
 import { BillingPage } from './pages/billing/BillingPage'
 import { BillingSuccess } from './pages/billing/BillingSuccess'
 import { PricingPage } from './pages/billing/PricingPage'
@@ -134,6 +135,14 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <RepositoriesPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/repositories/:repositoryId/results" element={
+        <ProtectedRoute>
+          <Layout>
+            <RepositoryResultsPage />
           </Layout>
         </ProtectedRoute>
       } />

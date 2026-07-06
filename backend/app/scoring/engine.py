@@ -3,7 +3,7 @@ Scoring Engine - Production Readiness Score Calculation
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from app.core.logging import get_logger
 from app.rule_engine.base import Category, RuleFinding, Severity
@@ -66,7 +66,7 @@ class ScoringWeights:
 class ScoringEngine:
     """Engine for calculating production readiness scores."""
 
-    def __init__(self, weights: Optional[ScoringWeights] = None):
+    def __init__(self, weights: ScoringWeights | None = None):
         self.weights = weights or ScoringWeights()
 
     def calculate_scores(

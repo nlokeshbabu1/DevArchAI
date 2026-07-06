@@ -1,28 +1,27 @@
 """Settings schemas."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class ProfileUpdate(BaseModel):
-    full_name: Optional[str] = Field(None, max_length=255)
-    username: Optional[str] = Field(None, min_length=3, max_length=100)
+    full_name: str | None = Field(None, max_length=255)
+    username: str | None = Field(None, min_length=3, max_length=100)
 
 
 class ProfileResponse(BaseModel):
     id: str
     email: str
     username: str
-    full_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    organization: Optional[str] = None
+    full_name: str | None = None
+    avatar_url: str | None = None
+    organization: str | None = None
     role: str
     is_verified: bool
     plan: str = "free"
-    created_at: Optional[datetime] = None
-    last_login_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
 
 
 class PasswordChange(BaseModel):
@@ -40,29 +39,29 @@ class NotificationPreferences(BaseModel):
 
 class SessionResponse(BaseModel):
     id: str
-    device_info: Optional[str] = None
-    ip_address: Optional[str] = None
+    device_info: str | None = None
+    ip_address: str | None = None
     is_current: bool = False
-    last_active_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    last_active_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class ApiKeyResponse(BaseModel):
     id: str
-    name: Optional[str] = None
+    name: str | None = None
     prefix: str
     key_preview: str
     is_active: bool = True
-    last_used_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    last_used_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class CreateApiKeyResponse(BaseModel):
     id: str
-    name: Optional[str] = None
+    name: str | None = None
     prefix: str
     full_key: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class DeleteAccountRequest(BaseModel):

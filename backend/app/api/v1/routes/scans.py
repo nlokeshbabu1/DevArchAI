@@ -1,12 +1,12 @@
 """Scan routes - Fixed UUID types and removed duplicates."""
 
-import structlog
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status, HTTPException
-from sqlalchemy import select, func
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ScanNotFoundException
 from app.core.security import get_current_user, get_optional_user
@@ -35,7 +35,7 @@ def _parse_scan_id(scan_id: str) -> UUID:
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid scan ID format: {scan_id}. Expected UUID."
+            detail=f"Invalid scan ID format: {scan_id}. Expected UUID.",
         )
 
 
@@ -45,6 +45,7 @@ def _serialize_scan(
     findings_count: int | None = None,
     files_analyzed: int | None = None,
     detected_technologies: list[str] | None = None,
+    scanner_executions: list | None = None,
 ) -> dict:
     """Serialize scan model for API responses."""
     scan_status = scan.status.value if hasattr(scan.status, "value") else str(scan.status)
@@ -76,6 +77,25 @@ def _serialize_scan(
         "analysis_duration_seconds": scan.analysis_duration_seconds,
         "created_at": scan.created_at.isoformat(),
         "updated_at": scan.updated_at.isoformat(),
+        "scanner_executions": [
+            {
+                "scanner_name": se.scanner_name,
+                "scanner_id": se.scanner_id,
+                "version": se.version,
+                "status": se.status,
+                "applicable": se.applicable,
+                "enabled": se.enabled,
+                "execution_start": se.execution_start.isoformat() if se.execution_start else None,
+                "execution_end": se.execution_end.isoformat() if se.execution_end else None,
+                "duration_ms": se.duration_ms,
+                "files_scanned": se.files_scanned,
+                "rules_executed": se.rules_executed,
+                "findings_count": se.findings_count,
+                "skipped_reason": se.skipped_reason,
+                "error_message": se.error_message,
+            }
+            for se in (scanner_executions or [])
+        ],
     }
 
 
@@ -83,9 +103,9 @@ def _serialize_scan(
 async def list_scans(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=100),
-    status_filter: Optional[str] = Query(None, alias="status_filter"),
+    status_filter: str | None = Query(None, alias="status_filter"),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """List all scans with pagination."""
     offset = (page - 1) * page_size
@@ -104,10 +124,9 @@ async def list_scans(
     else:
         # For unauthenticated users, show only anonymous scans (last 7 days)
         from datetime import datetime, timedelta
+
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        query = query.where(
-            (Scan.user_id.is_(None)) & (Scan.created_at >= seven_days_ago)
-        )
+        query = query.where((Scan.user_id.is_(None)) & (Scan.created_at >= seven_days_ago))
         logger.info("Listing anonymous scans for guest user")
 
     # Apply pagination
@@ -125,21 +144,21 @@ async def list_scans(
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan(
     scan_id: str,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific scan with findings."""
     scan_uuid = _parse_scan_id(scan_id)
 
     # Filter by user_id to enforce tenant isolation
+    # Eagerly load scanner_executions to avoid MissingGreenlet in async context
+    query = select(Scan).options(selectinload(Scan.scanner_executions))
     if current_user:
         result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
+            query.where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
         )
     else:
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
-        )
+        result = await db.execute(query.where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -150,66 +169,67 @@ async def get_scan(
         select(func.count()).select_from(Finding).where(Finding.scan_id == scan_uuid)
     )
     findings_count = findings_count.scalar() or 0
-    
+
     # Calculate files analyzed from detected_stack
     files_analyzed = 0
     if scan.detected_stack:
         stack = scan.detected_stack
         files_analyzed = (
-            len(stack.get('docker_files', [])) +
-            len(stack.get('terraform_files', [])) +
-            len(stack.get('kubernetes_files', [])) +
-            len(stack.get('github_actions_files', [])) +
-            len(stack.get('gitlab_ci_files', [])) +
-            len(stack.get('jenkins_files', [])) +
-            len(stack.get('docker_compose_files', [])) +
-            len(stack.get('helm_files', []))
+            len(stack.get("docker_files", []))
+            + len(stack.get("terraform_files", []))
+            + len(stack.get("kubernetes_files", []))
+            + len(stack.get("github_actions_files", []))
+            + len(stack.get("gitlab_ci_files", []))
+            + len(stack.get("jenkins_files", []))
+            + len(stack.get("docker_compose_files", []))
+            + len(stack.get("helm_files", []))
         )
-    
+
     # Convert to dict with additional fields
     # Build clean detected technologies list
     detected_tech_names = []
     if scan.detected_stack:
         stack = scan.detected_stack
-        if stack.get('has_docker') or stack.get('docker_files'):
-            detected_tech_names.append('Docker')
-        if stack.get('has_terraform') or stack.get('terraform_files'):
-            detected_tech_names.append('Terraform')
-        if stack.get('has_kubernetes') or stack.get('kubernetes_files'):
-            detected_tech_names.append('Kubernetes')
-        if stack.get('has_helm') or stack.get('helm_files'):
-            detected_tech_names.append('Helm')
-        if stack.get('has_github_actions') or stack.get('github_actions_files'):
-            detected_tech_names.append('GitHub Actions')
-        if stack.get('has_gitlab_ci') or stack.get('gitlab_ci_files'):
-            detected_tech_names.append('GitLab CI')
-        if stack.get('has_jenkins') or stack.get('jenkins_files'):
-            detected_tech_names.append('Jenkins')
-        if stack.get('has_docker_compose') or stack.get('docker_compose_files'):
-            detected_tech_names.append('Docker Compose')
-        if stack.get('has_ansible') or stack.get('ansible_files'):
-            detected_tech_names.append('Ansible')
-        if stack.get('has_circleci') or stack.get('circleci_files'):
-            detected_tech_names.append('CircleCI')
-        if stack.get('has_azure_devops') or stack.get('azure_devops_files'):
-            detected_tech_names.append('Azure DevOps')
-        if stack.get('has_travis') or stack.get('travis_files'):
-            detected_tech_names.append('Travis CI')
-        if stack.get('has_drone') or stack.get('drone_files'):
-            detected_tech_names.append('Drone CI')
-    
+        if stack.get("has_docker") or stack.get("docker_files"):
+            detected_tech_names.append("Docker")
+        if stack.get("has_terraform") or stack.get("terraform_files"):
+            detected_tech_names.append("Terraform")
+        if stack.get("has_kubernetes") or stack.get("kubernetes_files"):
+            detected_tech_names.append("Kubernetes")
+        if stack.get("has_helm") or stack.get("helm_files"):
+            detected_tech_names.append("Helm")
+        if stack.get("has_github_actions") or stack.get("github_actions_files"):
+            detected_tech_names.append("GitHub Actions")
+        if stack.get("has_gitlab_ci") or stack.get("gitlab_ci_files"):
+            detected_tech_names.append("GitLab CI")
+        if stack.get("has_jenkins") or stack.get("jenkins_files"):
+            detected_tech_names.append("Jenkins")
+        if stack.get("has_docker_compose") or stack.get("docker_compose_files"):
+            detected_tech_names.append("Docker Compose")
+        if stack.get("has_ansible") or stack.get("ansible_files"):
+            detected_tech_names.append("Ansible")
+        if stack.get("has_circleci") or stack.get("circleci_files"):
+            detected_tech_names.append("CircleCI")
+        if stack.get("has_azure_devops") or stack.get("azure_devops_files"):
+            detected_tech_names.append("Azure DevOps")
+        if stack.get("has_travis") or stack.get("travis_files"):
+            detected_tech_names.append("Travis CI")
+        if stack.get("has_drone") or stack.get("drone_files"):
+            detected_tech_names.append("Drone CI")
+
     return _serialize_scan(
         scan,
         findings_count=findings_count,
         files_analyzed=files_analyzed,
         detected_technologies=detected_tech_names,
+        scanner_executions=scan.scanner_executions or [],
     )
 
 
 @router.get("/{scan_id}/progress", response_model=ScanProgressResponse)
 async def get_scan_progress(
     scan_id: str,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get scan progress."""
@@ -221,9 +241,7 @@ async def get_scan_progress(
             select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
         )
     else:
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
-        )
+        result = await db.execute(select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -236,6 +254,7 @@ async def get_scan_progress(
     if scan.celery_task_id:
         try:
             from celery.result import AsyncResult
+
             task_result = AsyncResult(scan.celery_task_id)
             if task_result.state == "PROGRESS":
                 info = task_result.info
@@ -264,7 +283,7 @@ async def cancel_scan(
 ):
     """Cancel a running scan."""
     scan_uuid = _parse_scan_id(scan_id)
-    
+
     result = await db.execute(
         select(Scan).where(
             Scan.id == scan_uuid,
@@ -306,7 +325,7 @@ async def cancel_scan(
 async def get_scan_findings(
     scan_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Get all findings for a specific scan."""
     scan_uuid = _parse_scan_id(scan_id)
@@ -317,9 +336,7 @@ async def get_scan_findings(
             select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
         )
     else:
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None))
-        )
+        result = await db.execute(select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
     scan = result.scalar_one_or_none()
 
     if not scan:
@@ -338,9 +355,9 @@ async def get_scan_findings(
     repo_path = "/".join(repo_name) if len(repo_name) == 2 else scan.repository_url
 
     # Convert to dicts with diff generation and proper file paths
-    import json
     import difflib
-    
+    import json
+
     def generate_diff(before: str, after: str, filename: str = "file") -> str:
         """Generate unified diff between before and after code."""
         if not before or not after:
@@ -348,33 +365,34 @@ async def get_scan_findings(
         before_lines = before.splitlines(keepends=True)
         after_lines = after.splitlines(keepends=True)
         diff = difflib.unified_diff(
-            before_lines,
-            after_lines,
-            fromfile=f"a/{filename}",
-            tofile=f"b/{filename}",
-            n=3
+            before_lines, after_lines, fromfile=f"a/{filename}", tofile=f"b/{filename}", n=3
         )
-        return ''.join(diff)
-    
+        return "".join(diff)
+
     def clean_file_path(file_path: str) -> str:
         """Convert local temp path to GitHub-style path."""
         if not file_path:
             return ""
         # Remove /tmp/devarchai/..._repo_name/ prefix
         import re
-        match = re.search(r'/tmp/devarchai/[a-zA-Z0-9]+_[^/]+/(.*)', file_path)
+
+        match = re.search(r"/tmp/devarchai/[a-zA-Z0-9]+_[^/]+/(.*)", file_path)
         if match:
             return f"{repo_path}/{match.group(1)}"
         return file_path
-    
+
     return [
         {
             "id": str(finding.id),
             "scan_id": str(finding.scan_id),
             "rule_id": finding.rule_id,
             "rule_name": finding.rule_name,
-            "severity": finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
-            "category": finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
+            "severity": finding.severity.value
+            if hasattr(finding.severity, "value")
+            else str(finding.severity),
+            "category": finding.category.value
+            if hasattr(finding.category, "value")
+            else str(finding.category),
             "description": finding.description,
             "recommendation": finding.recommendation,
             "file_path": clean_file_path(finding.file_path),
@@ -397,8 +415,10 @@ async def get_scan_findings(
             "unified_diff": generate_diff(
                 finding.ai_explanation or finding.description,
                 finding.fix_code or finding.fix_example,
-                clean_file_path(finding.file_path) or "file"
-            ) if finding.ai_generated else "",
+                clean_file_path(finding.file_path) or "file",
+            )
+            if finding.ai_generated
+            else "",
         }
         for finding in findings
     ]
@@ -413,7 +433,7 @@ async def create_scan(
     """Create a new scan for a repository. Uses synchronous scanning for immediate results."""
     from app.db.session import get_sync_session_factory
     from app.workers.tasks.scan_repository import SyncScanService
-    
+
     # Check if repository exists, create if not
     result = await db.execute(
         select(Repository).where(
@@ -463,24 +483,26 @@ async def create_scan(
 
             # Get fresh scan from sync db
             from app.models.scan import Scan as SyncScan
+
             sync_scan = sync_db.get(SyncScan, scan.id)
 
             if sync_scan:
                 # Update status to processing
                 sync_scan.status = ScanStatus.PROCESSING
                 sync_db.commit()
-                
+
                 # Execute scan synchronously with timeout
                 import signal
+
                 from app.core.exceptions import ScanTimeoutError
-                
+
                 def timeout_handler(signum, frame):
                     raise ScanTimeoutError("Scan exceeded maximum execution time")
-                
+
                 # Set timeout (5 minutes)
                 old_handler = signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(300)  # 5 minutes
-                
+
                 try:
                     updated_scan = scan_service.execute_scan(sync_scan)
                     signal.alarm(0)  # Cancel alarm
@@ -489,7 +511,9 @@ async def create_scan(
                     await db.commit()
                     await db.refresh(scan)
 
-                    logger.info(f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}")
+                    logger.info(
+                        f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}"
+                    )
                 except ScanTimeoutError as e:
                     logger.error(f"Scan timed out: {scan.id}")
                     scan.status = ScanStatus.FAILED
@@ -568,4 +592,6 @@ async def analyze_repository(
     await db.refresh(scan)
 
     return _serialize_scan(scan)
+
+
 # reload trigger

@@ -16,7 +16,7 @@ Usage:
 
 import pytest
 import json
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, PropertyMock, patch, MagicMock
 from typing import Dict, Any
 
 from app.rule_engine.base import Category, RuleFinding, Severity
@@ -109,8 +109,10 @@ class TestGeminiProvider:
         mock_response = MagicMock()
         mock_response.text = json.dumps(MOCK_GEMINI_RESPONSE)
         
-        with patch.object(provider, 'client') as mock_client:
+        with patch.object(GeminiProvider, 'client', new_callable=PropertyMock) as mock_client_prop:
+            mock_client = MagicMock()
             mock_client.generate_content_async = AsyncMock(return_value=mock_response)
+            mock_client_prop.return_value = mock_client
             
             # Act
             result = await provider.generate("Test prompt")

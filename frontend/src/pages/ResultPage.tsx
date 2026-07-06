@@ -74,6 +74,14 @@ interface ScanResult {
   detected_stack?: Record<string, string[]>
   detected_technologies?: string[]
   status?: string
+  scanner_executions?: any[]
+  ai_suggestions_count?: number
+  analysis_duration_seconds?: number
+  commit_hash?: string
+  directories_scanned?: number
+  lines_analyzed?: number
+  repository_size?: string
+  category_scores?: { category: string; score: number; findings_count?: number; files_scanned?: number }[]
 }
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
@@ -397,10 +405,11 @@ export function ResultPage() {
   }, [rescanActive, rescanId])
 
   const handleViewResults = () => {
-    const newScanId = rescanIdRef.current
-    if (newScanId) {
-      navigate(`/scans/${newScanId}`, { replace: true })
-    }
+    // Stay on current page - just refresh data
+    refetch()
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    setRescanActive(false)
+    setRescanComplete(false)
   }
 
   const handleRescanRetry = () => {
@@ -852,7 +861,7 @@ export function ResultPage() {
         resultSummary={rescanResultSummary}
         previousScore={previousScore}
         previousFindingsCount={previousFindingsCount}
-        onViewResults={handleViewResults}
+        onComplete={handleViewResults}
         onRetry={handleRescanRetry}
       />
     </div>

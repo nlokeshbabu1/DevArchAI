@@ -4,7 +4,6 @@ Scan progress tracking schemas.
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,9 +21,9 @@ class ScanStep(BaseModel):
     name: str
     status: StepStatus
     progress: int = 0  # 0-100
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error: str | None = None
 
 
 class ScanProgressResponse(BaseModel):
@@ -32,19 +31,19 @@ class ScanProgressResponse(BaseModel):
     scan_id: str
     status: str  # pending, running, completed, failed
     progress: int = Field(ge=0, le=100, description="Overall progress percentage")
-    current_step: Optional[str] = None
-    steps: List[ScanStep] = []
-    detected_stack: List[str] = []
-    logs: List[str] = []
+    current_step: str | None = None
+    steps: list[ScanStep] = []
+    detected_stack: list[str] = []
+    logs: list[str] = []
     created_at: datetime
-    completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
     # Enhanced fields for better UI feedback
-    stage: Optional[str] = None  # cloned, detecting, scanning, ai, completed
+    stage: str | None = None  # cloned, detecting, scanning, ai, completed
     files_scanned: int = 0
     total_files: int = 0
-    files_list: List[str] = []  # Actual file paths being scanned
-    
+    files_list: list[str] = []  # Actual file paths being scanned
+
     class Config:
         json_schema_extra = {
             "example": {

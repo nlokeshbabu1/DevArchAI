@@ -14,10 +14,10 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 import structlog
-from fastapi import WebSocket, WebSocketDisconnect, Query
+from fastapi import WebSocket, WebSocketDisconnect
 
 logger = structlog.get_logger(__name__)
 
@@ -153,12 +153,12 @@ class ScanProgressWebSocketManager:
         scan_id: str,
         progress: int,
         status: str,
-        current_step: Optional[str] = None,
-        steps: Optional[list[dict[str, Any]]] = None,
-        logs: Optional[list[str]] = None,
-        detected_stack: Optional[list[str]] = None,
-        error_message: Optional[str] = None,
-        files_list: Optional[list[str]] = None,
+        current_step: str | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        logs: list[str] | None = None,
+        detected_stack: list[str] | None = None,
+        error_message: str | None = None,
+        files_list: list[str] | None = None,
     ) -> int:
         """
         Broadcast a progress update to all clients watching a scan.
@@ -212,7 +212,7 @@ class ScanProgressWebSocketManager:
         step_name: str,
         step_status: str,
         step_progress: int = 0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> int:
         """
         Broadcast an individual step status update.
@@ -354,9 +354,10 @@ async def _authenticate_websocket(
     Validate JWT token from query params and verify scan ownership.
     Returns True if authenticated and authorized, False otherwise.
     """
+    from sqlalchemy import select
+
     from app.core.security import decode_token
     from app.db.session import get_sync_session_factory
-    from sqlalchemy import select
     from app.models.scan import Scan
 
     token = websocket.query_params.get("token", "")
@@ -492,7 +493,7 @@ async def scan_progress_websocket(
                 except json.JSONDecodeError:
                     # Ignore non-JSON messages
                     pass
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No client message received -- continue listening
                 # Check if the connection is still active
                 if websocket not in scan_progress_manager._active:

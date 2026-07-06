@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from '../ui-animated'
 import { cn, sanitizePath } from '../../lib/utils'
-import demoData from '../../../public/data/demoScan.json'
+import demoData from '../../data/demoScan.json'
 
 interface DemoResultsProps {
   onUnlock: () => void

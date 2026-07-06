@@ -4,7 +4,7 @@ This service generates REAL, production-ready, context-aware fixes for DevOps se
 Output format is strictly JSON for direct integration with production SaaS UI.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -21,7 +21,7 @@ EXPECTED_FIX_TYPES: dict[str, dict[str, Any]] = {
     "K8S-SEC-002": {"type": "securityContext", "keywords": ["securityContext", "runAsNonRoot", "runAsUser", "allowPrivilegeEscalation"]},
     "K8S-005": {"type": "securityContext", "keywords": ["securityContext", "privileged", "false"]},
     "K8S-006": {"type": "securityContext", "keywords": ["securityContext", "runAsNonRoot", "runAsUser"]},
-    
+
     # Kubernetes Reliability Rules
     "K8S-001": {"type": "resources.limits", "keywords": ["resources", "limits", "cpu", "memory"]},
     "K8S-002": {"type": "resources.requests", "keywords": ["resources", "requests", "cpu", "memory"]},
@@ -29,13 +29,13 @@ EXPECTED_FIX_TYPES: dict[str, dict[str, Any]] = {
     "K8S-004": {"type": "readinessProbe", "keywords": ["readinessProbe", "httpGet", "tcpSocket", "exec"]},
     "K8S-REL-002": {"type": "PodDisruptionBudget", "keywords": ["PodDisruptionBudget", "policy/v1", "minAvailable", "maxUnavailable"]},
     "K8S-SCALE-001": {"type": "HorizontalPodAutoscaler", "keywords": ["HorizontalPodAutoscaler", "autoscaling", "minReplicas", "maxReplicas"]},
-    
+
     # Docker Rules
     "DKR-SEC-001": {"type": "USER instruction", "keywords": ["USER", "adduser", "addgroup", "non-root"]},
     "DKR-REL-001": {"type": "HEALTHCHECK", "keywords": ["HEALTHCHECK", "CMD", "interval", "timeout", "retries"]},
     "DKR-001": {"type": "USER instruction", "keywords": ["USER", "adduser", "addgroup", "non-root"]},
     "DKR-004": {"type": "HEALTHCHECK", "keywords": ["HEALTHCHECK", "CMD", "interval", "timeout", "retries"]},
-    
+
     # Terraform Rules
     "TF-STATE-001": {"type": "terraform backend", "keywords": ["terraform", "backend", "s3", "dynamodb_table"]},
     "TF-STATE-002": {"type": "terraform backend", "keywords": ["terraform", "backend", "s3", "remote"]},
@@ -56,7 +56,7 @@ class AIFixGenerator:
     - Strict JSON output for UI integration
     """
 
-    def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
+    def __init__(self, llm_provider: BaseLLMProvider | None = None):
         self.llm_provider = llm_provider
         self._provider_name = "auto"  # Use auto-detection based on API keys
 
@@ -94,14 +94,19 @@ class AIFixGenerator:
             # Try with current provider first
             return await self._generate_ai_fix_with_fallback(finding, file_content)
         except Exception as e:
-            logger.warning("AI fix generation failed, using static fallback", 
+            logger.warning("AI fix generation failed, using static fallback",
                           provider=self._provider_name, error=str(e))
             # Return static fallback with proper flags
             return self._generate_mock_fix(finding, file_content)
 
     async def _generate_ai_fix_with_fallback(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
         """Generate AI fix with automatic fallback to next provider on failure."""
-        from app.ai.engine import GeminiProvider, OpenAIProvider, AnthropicProvider, MistralProvider, MockLLMProvider
+        from app.ai.engine import (
+            AnthropicProvider,
+            GeminiProvider,
+            MistralProvider,
+            OpenAIProvider,
+        )
 
         # Try Gemini first if available
         if settings.GEMINI_API_KEY and isinstance(self.llm_provider, GeminiProvider):
@@ -175,7 +180,7 @@ class AIFixGenerator:
         """Generate fix using OpenAI."""
         if not self.llm_provider or not isinstance(self.llm_provider, OpenAIProvider):
             self.llm_provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY)
-        
+
         prompt = self._build_fix_prompt(finding, file_content)
         response = await self.llm_provider.generate(prompt)
         result = self._parse_ai_response(response, finding)
@@ -215,30 +220,30 @@ class AIFixGenerator:
         """
         if not self.llm_provider:
             self.llm_provider = get_llm_provider()
-        
+
         # Verify it's actually a Gemini provider
         from app.ai.engine import GeminiProvider
         if not isinstance(self.llm_provider, GeminiProvider):
             # If provider isn't Gemini, use generic method
             return await self._generate_ai_fix(finding, file_content)
-        
+
         prompt = self._build_fix_prompt(finding, file_content)
-        
+
         try:
             # Call Gemini API
             response = await self.llm_provider.generate(prompt)
-            
+
             # Parse response with robust JSON extraction
             result = self._parse_gemini_response(response, finding)
-            
+
             # Validate confidence - fallback if too low
             if result.get("confidence", 0) < 0.6:
                 logger.warning("Gemini confidence too low, using fallback", confidence=result.get("confidence"))
                 return self._generate_mock_fix(finding, file_content)
-            
+
             logger.info("Gemini fix generated", rule_id=finding.get("rule_id"), confidence=result.get("confidence"))
             return result
-            
+
         except Exception as e:
             logger.error("Gemini fix generation failed", error=str(e))
             # Fallback to mock on any error
@@ -270,7 +275,7 @@ class AIFixGenerator:
             # VALIDATE: Ensure fix matches rule_id
             rule_id = finding.get("rule_id", "")
             is_valid, error_msg = self._validate_ai_fix(result, rule_id)
-            
+
             if not is_valid:
                 logger.warning("AI fix validation failed - using fallback", rule_id=rule_id, error=error_msg)
                 return self._generate_mock_fix(finding)
@@ -604,11 +609,11 @@ Respond ONLY with valid JSON, no other text."""
 
         # Generate context-aware mock fix based on technology and issue type
         result = self._generate_tech_specific_fix(tech, rule_id, title, description, file_content, file_path)
-        
+
         # Set static fallback flags
         result["ai_generated"] = False
         result["source"] = "Static"
-        
+
         return result
 
     def _detect_technology(self, file_path: str, rule_id: str, file_type: str) -> str:
@@ -1992,7 +1997,7 @@ jobs:
 
 
 # Singleton instance
-_fix_generator: Optional[AIFixGenerator] = None
+_fix_generator: AIFixGenerator | None = None
 
 
 def get_fix_generator() -> AIFixGenerator:

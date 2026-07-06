@@ -3,7 +3,17 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -77,6 +87,10 @@ class Scan(Base):
     repository = relationship("Repository", back_populates="scans")
     findings = relationship("Finding", back_populates="scan", cascade="all, delete-orphan")
     report = relationship("Report", back_populates="scan", uselist=False, cascade="all, delete-orphan")
+    scanner_executions = relationship(
+        "ScannerExecutionRecord", back_populates="scan",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Scan(id={self.id}, status={self.status})>"

@@ -1,7 +1,8 @@
 import { motion } from "framer-motion"
 import {
   GitBranch, GitCommit, Files, FolderTree,
-  List, Shield, Code2, Clock, Activity
+  List, Shield, Code2, Clock, Activity, BarChart3,
+  ScanSearch, Layers, Sparkles,
 } from "lucide-react"
 import { cn, formatDuration, getRelativeTime } from "../../lib/utils"
 
@@ -16,29 +17,42 @@ interface RepositoryStatsProps {
   completedAt?: string
   branch?: string
   commitHash?: string
+  rawFindingsCount?: number
+  aiSuggestionsCount?: number
+  scannersCount?: number
 }
 
 const statItems = [
-  { key: "files", icon: Files, label: "Files", color: "text-indigo-400", bg: "bg-indigo-500/10" },
+  { key: "files", icon: Files, label: "Files Scanned", color: "text-indigo-400", bg: "bg-indigo-500/10" },
   { key: "directories", icon: FolderTree, label: "Directories", color: "text-cyan-400", bg: "bg-cyan-500/10" },
   { key: "findings", icon: List, label: "Findings", color: "text-rose-400", bg: "bg-rose-500/10" },
-  { key: "rules", icon: Shield, label: "Rules", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  { key: "rawFindings", icon: BarChart3, label: "Raw Scanner Findings", color: "text-orange-400", bg: "bg-orange-500/10" },
+  { key: "rules", icon: Shield, label: "Rules Executed", color: "text-emerald-400", bg: "bg-emerald-500/10" },
   { key: "technologies", icon: Code2, label: "Technologies", color: "text-purple-400", bg: "bg-purple-500/10" },
+  { key: "scanners", icon: ScanSearch, label: "Scanners", color: "text-sky-400", bg: "bg-sky-500/10" },
+  { key: "aiSuggestions", icon: Sparkles, label: "AI Suggestions", color: "text-pink-400", bg: "bg-pink-500/10" },
   { key: "duration", icon: Clock, label: "Scan Duration", color: "text-amber-400", bg: "bg-amber-500/10" },
   { key: "scanned", icon: GitCommit, label: "Last Scanned", color: "text-blue-400", bg: "bg-blue-500/10" },
 ]
 
 export function RepositoryStats({
   repoName, filesCount, directoriesCount, findingsCount,
-  rulesCount, technologiesCount, scanDuration, completedAt, branch, commitHash
+  rulesCount, technologiesCount, scanDuration, completedAt, branch, commitHash,
+  rawFindingsCount, aiSuggestionsCount, scannersCount,
 }: RepositoryStatsProps) {
   const items = [
     { value: filesCount.toLocaleString(), display: statItems[0] },
     { value: directoriesCount != null ? directoriesCount.toLocaleString() : "—", display: statItems[1] },
     { value: findingsCount.toLocaleString(), display: statItems[2] },
-    { value: rulesCount.toLocaleString(), display: statItems[3] },
-    { value: technologiesCount.toString(), display: statItems[4] },
-    { value: scanDuration != null ? formatDuration(scanDuration) : "—", display: statItems[5] },
+    {
+      value: rawFindingsCount != null ? rawFindingsCount.toLocaleString() : "—",
+      display: statItems[3],
+    },
+    { value: rulesCount.toLocaleString(), display: statItems[4] },
+    { value: technologiesCount.toString(), display: statItems[5] },
+    { value: scannersCount != null ? String(scannersCount) : "—", display: statItems[6] },
+    { value: aiSuggestionsCount != null ? String(aiSuggestionsCount) : "—", display: statItems[7] },
+    { value: scanDuration != null ? formatDuration(scanDuration) : "—", display: statItems[8] },
     {
       value: (
         <span className="flex flex-col items-center gap-0.5">
@@ -50,7 +64,7 @@ export function RepositoryStats({
           )}
         </span>
       ),
-      display: statItems[6]
+      display: statItems[9]
     },
   ]
 
@@ -75,7 +89,7 @@ export function RepositoryStats({
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {items.map((item, i) => {
           const Icon = item.display.icon
           return (
@@ -83,7 +97,7 @@ export function RepositoryStats({
               key={item.display.key}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
+              transition={{ delay: i * 0.03 }}
               className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center hover:border-white/10 transition-colors"
             >
               <div className={cn(

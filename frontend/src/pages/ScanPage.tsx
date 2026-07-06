@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -6,7 +6,8 @@ import { Github, ArrowRight, Loader2, AlertCircle, GitBranch, ChevronDown, Lock 
 import { Button, Card } from '../components/ui-animated'
 import { api, buildWebSocketUrl } from '../lib/api'
 import { cn, getFindingsCount } from '../lib/utils'
-import { ScanProgress } from '../components/ScanProgress'
+import { ScanProgressOverlay } from '../components/scans/ScanProgressOverlay'
+import { scansApi } from '../api/endpoints/scans'
 import { ResultComponent } from '../components/ResultComponent'
 import { useAuthStore } from '../stores/auth-store'
 
@@ -27,39 +28,6 @@ interface SeverityCounts {
   medium: number
   low: number
   info: number
-}
-
-interface FileBeingScanned {
-  path: string
-  type: 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
-  status: 'pending' | 'scanning' | 'completed'
-}
-
-// Helper function to determine file type from path
-function getFileTypeFromPath(path: string): FileBeingScanned['type'] {
-  const lowerPath = path.toLowerCase()
-  
-  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
-    return 'docker'
-  }
-  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
-    return 'k8s'
-  }
-  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
-    return 'terraform'
-  }
-  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
-    return 'helm'
-  }
-  if (lowerPath.includes('.github') || lowerPath.includes('.gitlab') || lowerPath.includes('jenkins') || 
-      lowerPath.includes('ci/') || lowerPath.includes('pipeline') || lowerPath.includes('azure-pipelines')) {
-    return 'cicd'
-  }
-  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
-    return 'monitoring'
-  }
-  
-  return 'cicd' // Default fallback
 }
 
 interface DevOpsStack {
@@ -125,13 +93,10 @@ export function ScanPage() {
   const [error, setError] = useState<string | null>(null)
   const [scanId, setScanId] = useState<string>('')
   const [detectedTechnologies, setDetectedTechnologies] = useState<string[]>([])
-  const [filesScanned, setFilesScanned] = useState(0)
-  const [filesList, setFilesList] = useState<string[]>([])
-  const [scanLogs, setScanLogs] = useState<string[]>([])
   const [stepsFromBackend, setStepsFromBackend] = useState<Array<{name: string; status: string}>>([])
 
   // Fetch branches when repo URL changes
-  const { data: branchesData, isLoading: isLoadingBranches, error: branchesError, refetch, isFetching } = useQuery({
+  const { data: branchesData, isLoading: isLoadingBranches, error: branchesError, isFetching } = useQuery({
     queryKey: ['branches', repoUrl],
     queryFn: async () => {
       const trimmedUrl = repoUrl.trim()
@@ -252,36 +217,6 @@ export function ScanPage() {
             if (data.detected_stack && Array.isArray(data.detected_stack) && data.detected_stack.length > 0) {
               setDetectedTechnologies(data.detected_stack)
             }
-            if (data.files_list && Array.isArray(data.files_list) && data.files_list.length > 0) {
-              setFilesList(data.files_list)
-            }
-            if (data.logs && Array.isArray(data.logs)) {
-              setScanLogs(prevLogs => {
-                const logSet = new Set(prevLogs)
-                let hasNew = false
-                for (const log of data.logs) {
-                  if (!logSet.has(log)) {
-                    logSet.add(log)
-                    hasNew = true
-                  }
-                }
-                if (!hasNew) return prevLogs
-                const all = Array.from(logSet)
-                return all.length > 200 ? all.slice(-200) : all
-              })
-            }
-            break
-
-          case 'log_message':
-            console.log("WS log received:", message)
-            if (data.message) {
-              const logEntry = data.timestamp ? `[${data.timestamp}] ${data.message}` : data.message
-              setScanLogs(prev => {
-                if (prev.includes(logEntry)) return prev
-                const updated = [...prev, logEntry]
-                return updated.length > 200 ? updated.slice(-200) : updated
-              })
-            }
             break
 
           case 'step_update':
@@ -357,29 +292,25 @@ export function ScanPage() {
     try {
       console.log('Starting scan for:', trimmedUrl, 'branch:', selectedBranch)
 
-      // Minimum animation duration: 15 seconds (ensures UI shows for reasonable time)
-      const MIN_ANIMATION_DURATION = 15000
-      const startTime = Date.now()
-
       // Clear any previous state
       setProgress(0)
       setCurrentStep(0)
 
-      // ❌ REMOVED local progress animation - Backend provides REAL progress updates
-      // Progress is now updated ONLY from backend polling (no fake animation)
+      const startTime = Date.now()
 
       // Use same endpoint for both authenticated and anonymous users
-      const response = await api.post('/scan/start', {
+      const response = await scansApi.startUnifiedScan({
         repository_url: trimmedUrl,
         branch: selectedBranch || 'main',
       })
 
-      const data = response.data
-      console.log('✅ Scan started:', data)
+      console.log('✅ Scan started:', response)
 
-      if (!data.scan_id) {
+      if (!response.scan_id) {
         throw new Error('No scan_id returned from server')
       }
+
+      const data = response
 
       // Save scan ID - WebSocket will handle real-time updates
       setScanId(data.scan_id)
@@ -643,26 +574,24 @@ export function ScanPage() {
   // Render progress if loading
   if (loading) {
     return (
-      <div className="min-h-screen py-12">
-        <div className="max-w-6xl w-full mx-auto px-6">
-          {/* Scan Progress with Logs and File Tree */}
-          <ScanProgress
-            progress={progress}
-            currentStep={currentStep}
-            isComplete={progress >= 100}
-            detectedTechnologies={detectedTechnologies}
-            detectedFiles={filesList.map(path => ({
-              path,
-              type: getFileTypeFromPath(path),
-              status: 'completed'
-            }))}
-            backendLogs={scanLogs}
-            steps={stepsFromBackend.map(s => s.name)}
-            filesScanned={filesList.length}
-            findingsDetected={0}
-          />
-        </div>
-      </div>
+      <Fragment>
+        <ScanProgressOverlay
+          isOpen={true}
+          onClose={() => { setLoading(false); setError('Scan cancelled') }}
+          repositoryName={repoUrl.split('/').slice(-2).join('/')}
+          branch={selectedBranch}
+          progressData={{
+            progress,
+            currentStep: stepsFromBackend[Math.max(0, currentStep - 1)]?.name,
+            error: error ?? undefined,
+          }}
+          isComplete={progress >= 100}
+          hasFailed={!!error}
+          onComplete={() => {}}
+          onRetry={handleNewScan}
+        />
+        <div className="min-h-screen py-12" />
+      </Fragment>
     )
   }
 

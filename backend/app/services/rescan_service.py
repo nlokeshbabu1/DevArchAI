@@ -121,7 +121,7 @@ class RescanService:
 
             for finding in scan.findings:
                 signature = self._create_finding_signature(finding)
-                
+
                 if signature in resolved_signatures:
                     # Update associated suggestions to FIXED
                     for suggestion in finding.ai_suggestions:
@@ -165,13 +165,14 @@ class RescanService:
         try:
             # Load scans
             from sqlalchemy import select
+
             from app.models.scan import Scan
-            
+
             old_scan_result = await self.db.execute(
                 select(Scan).where(Scan.id == old_scan_id)
             )
             old_scan = old_scan_result.scalar_one_or_none()
-            
+
             new_scan_result = await self.db.execute(
                 select(Scan).where(Scan.id == new_scan_id)
             )
@@ -185,7 +186,7 @@ class RescanService:
 
             # Compare findings
             comparison = await self.compare_findings(old_scan, new_scan)
-            
+
             if not comparison["success"]:
                 return comparison
 
