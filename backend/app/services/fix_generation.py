@@ -746,13 +746,13 @@ class FixGenerationService:
         # Check for common issues
         errors = []
         warnings = []
-        
+
         if "TODO" in fix_code or "FIXME" in fix_code:
             warnings.append("Fix contains TODO/FIXME comments")
-        
+
         if "# Replace" in fix_code or "# Add your" in fix_code:
             warnings.append("Fix contains placeholder comments - review required")
-        
+
         # Check for syntax issues based on file type
         if ".tf" in file_path:
             # Basic Terraform validation
@@ -764,7 +764,7 @@ class FixGenerationService:
             # Basic Dockerfile validation
             if "FROM" not in fix_code:
                 errors.append("No FROM instruction found")
-        
+
         return {
             "valid": len(errors) == 0,
             "errors": errors,
@@ -789,7 +789,7 @@ class FixGenerationService:
             Enhanced fix with instructions
         """
         instructions = []
-        
+
         # Generate file-specific instructions
         if ".tf" in file_path:
             instructions.extend([
@@ -814,7 +814,7 @@ class FixGenerationService:
                     "3. Apply: `kubectl apply -f file.yaml`",
                     "4. Verify: `kubectl get pods`",
                 ])
-        
+
         return {
             "fix_code": fix_code,
             "instructions": instructions,

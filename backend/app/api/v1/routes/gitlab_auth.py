@@ -2,7 +2,7 @@
 
 import time
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -17,7 +17,6 @@ from app.core.security import (
     create_refresh_token,
     decrypt_user_email,
     encrypt_user_email,
-    get_current_user,
     hash_email,
 )
 from app.db.session import get_db
@@ -251,7 +250,7 @@ async def gitlab_callback(
 
             user.failed_login_attempts = 0
             user.locked_until = None
-            user.last_login_at = datetime.now(timezone.utc)
+            user.last_login_at = datetime.now(UTC)
             await ensure_user_organization_membership(db, user)
             await db.flush()
 

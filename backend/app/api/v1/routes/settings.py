@@ -1,11 +1,10 @@
 """Settings routes for user profile, preferences, sessions, API keys, and account management."""
 
 import secrets
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -210,7 +209,7 @@ async def get_sessions(
     # Fallback to in-memory store
     uid = str(current_user.id)
     existing = _sessions_store.get(uid, [])
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     current_session = {
         "id": f"sess_{secrets.token_urlsafe(8)}",
         "device": "Chrome on Linux",
@@ -235,8 +234,9 @@ async def revoke_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke a session by ID."""
-    from app.models.settings import UserSession
     from uuid import UUID as UUIDType
+
+    from app.models.settings import UserSession
     try:
         session_uuid = UUIDType(session_id)
         result = await db.execute(
@@ -292,7 +292,7 @@ async def create_api_key(
     key_id = f"key_{secrets.token_urlsafe(12)}"
     raw_key = f"sk-{secrets.token_urlsafe(32)}"
     name = body.get("name", "")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     entry = {
         "id": key_id,
         "name": name,

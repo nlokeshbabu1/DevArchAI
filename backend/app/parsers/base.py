@@ -5,7 +5,7 @@ Base Parser Interface
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -52,14 +52,14 @@ class ParserRegistry:
         """Register a parser."""
         self._parsers.append(parser)
 
-    def get_parser(self, file_path: Path) -> Optional[BaseParser]:
+    def get_parser(self, file_path: Path) -> BaseParser | None:
         """Get appropriate parser for a file."""
         for parser in self._parsers:
             if parser.can_parse(file_path):
                 return parser
         return None
 
-    def parse_file(self, file_path: Path, content: str) -> Optional[ParsedFile]:
+    def parse_file(self, file_path: Path, content: str) -> ParsedFile | None:
         """Parse a file using the appropriate parser."""
         parser = self.get_parser(file_path)
         if parser:

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.encryption import encrypt_email, decrypt_email
+from app.core.encryption import decrypt_email, encrypt_email
 from app.db.session import get_db
 from app.models.user import User
 
@@ -117,8 +117,10 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str) -> dict[str, Any] | None:
+def decode_token(token: str | None) -> dict[str, Any] | None:
     """Decode and validate a JWT token."""
+    if token is None:
+        return None
     try:
         payload = jwt.decode(
             token,

@@ -18,6 +18,11 @@ export ENVIRONMENT=development
 export LOG_LEVEL=INFO
 export LOG_FORMAT=console
 
+# Run database migrations
+echo "Running database migrations..."
+python3 -c "from app.db.migrate import run_migrations; run_migrations()"
+echo "Migrations complete"
+
 # Start uvicorn
 exec uvicorn app.main:app \
     --host 0.0.0.0 \

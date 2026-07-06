@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Optional
 
 import structlog
 
@@ -15,7 +14,7 @@ BLACKLIST_PREFIX = "devarchai:blacklist:"
 DEFAULT_TTL = timedelta(days=7)
 
 
-async def blacklist_token(jti: str, expires_in: Optional[timedelta] = None) -> bool:
+async def blacklist_token(jti: str, expires_in: timedelta | None = None) -> bool:
     """Add a token's jti to the Redis blacklist.
 
     Args:

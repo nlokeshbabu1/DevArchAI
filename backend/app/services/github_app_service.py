@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -50,14 +50,14 @@ class GitHubAppToken:
             return True
         # Consider token expired 2 minutes before actual expiry for safety margin
         expiry_with_buffer = self.expires_at - timedelta(minutes=2)
-        return datetime.now(timezone.utc) > expiry_with_buffer
+        return datetime.now(UTC) > expiry_with_buffer
 
     @property
     def time_until_expiry(self) -> float:
         """Get seconds until token expires."""
         if not self.expires_at:
             return 0
-        return (self.expires_at - datetime.now(timezone.utc)).total_seconds()
+        return (self.expires_at - datetime.now(UTC)).total_seconds()
 
 
 class GitHubAppService:

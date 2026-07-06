@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -19,16 +18,16 @@ class Token(BaseModel):
     """JWT token response."""
 
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
 
 
 class TokenData(BaseModel):
     """Decoded token data."""
 
-    user_id: Optional[str] = None
-    email: Optional[str] = None
-    exp: Optional[datetime] = None
+    user_id: str | None = None
+    email: str | None = None
+    exp: datetime | None = None
 
 
 class UserCreate(BaseModel):
@@ -37,9 +36,9 @@ class UserCreate(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=100)
     password: str = Field(..., min_length=8, max_length=100)
-    full_name: Optional[str] = Field(None, max_length=255)
-    organization_name: Optional[str] = Field(None, max_length=255)
-    country: Optional[str] = Field("US", max_length=2)  # ISO 3166-1 alpha-2
+    full_name: str | None = Field(None, max_length=255)
+    organization_name: str | None = Field(None, max_length=255)
+    country: str | None = Field("US", max_length=2)  # ISO 3166-1 alpha-2
 
     class Config:
         json_schema_extra = {
@@ -77,13 +76,13 @@ class UserResponse(BaseModel):
     id: str
     email: str
     username: str
-    full_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    full_name: str | None = None
+    avatar_url: str | None = None
     role: UserRole = UserRole.USER
     is_active: bool = True
     is_verified: bool = False
     created_at: datetime
-    last_login_at: Optional[datetime] = None
+    last_login_at: datetime | None = None
     has_api_key: bool = False
     plan: str = "free"  # Subscription plan: free, plus, pro, enterprise
     has_github: bool = False
@@ -94,10 +93,10 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     """User update request."""
 
-    full_name: Optional[str] = Field(None, max_length=255)
-    avatar_url: Optional[str] = Field(None, max_length=500)
-    current_password: Optional[str] = Field(None, max_length=100)
-    new_password: Optional[str] = Field(None, min_length=8, max_length=100)
+    full_name: str | None = Field(None, max_length=255)
+    avatar_url: str | None = Field(None, max_length=500)
+    current_password: str | None = Field(None, max_length=100)
+    new_password: str | None = Field(None, min_length=8, max_length=100)
 
 
 class APIKeyResponse(BaseModel):

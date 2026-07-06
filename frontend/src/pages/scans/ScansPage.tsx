@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react'
 import { Card, Button, Badge, Progress } from '../../components/ui'
+import { scansApi } from '../../api/endpoints/scans'
 import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
@@ -37,11 +38,11 @@ export function ScansPage() {
 
   const triggerScanMutation = useMutation({
     mutationFn: async (repoUrl: string) => {
-      const response = await api.post('/scans/analyze', {
+      const response = await scansApi.startUnifiedScan({
         repository_url: repoUrl,
         branch: 'main',
       })
-      return response.data
+      return response
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })

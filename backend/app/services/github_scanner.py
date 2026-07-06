@@ -3,7 +3,7 @@ GitHub Scanner Service
 Fetches repository file tree using GitHub API.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import structlog
@@ -21,10 +21,10 @@ class GitHubScanner:
     GITHUB_API_BASE = "https://api.github.com"
     GITHUB_API_VERSION = "2022-11-28"
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or settings.GITHUB_TOKEN
         self.validator = GitHubValidator()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._cache = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -52,7 +52,7 @@ class GitHubScanner:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
-    async def fetch_file_tree(self, repo_url: str, branch: Optional[str] = None) -> list[str]:
+    async def fetch_file_tree(self, repo_url: str, branch: str | None = None) -> list[str]:
         """
         Fetch the file tree of a GitHub repository.
 
@@ -299,7 +299,7 @@ class GitHubScanner:
 _scanner = GitHubScanner()
 
 
-async def fetch_repo_files(repo_url: str, branch: Optional[str] = None) -> list[str]:
+async def fetch_repo_files(repo_url: str, branch: str | None = None) -> list[str]:
     """
     Fetch file tree from a GitHub repository.
 

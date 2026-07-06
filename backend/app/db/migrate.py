@@ -1,0 +1,136 @@
+"""Database migration runner using Alembic.
+
+Handles stamping existing databases and running pending migrations
+on application startup.
+"""
+
+import structlog
+from sqlalchemy import create_engine, inspect
+
+from app.config import settings
+
+logger = structlog.get_logger(__name__)
+
+_ALEMBIC_CFG_PATH = "alembic.ini"
+
+# Tables that should exist after migrations are applied (any one will do)
+_APP_TABLES = {"users", "scans", "findings"}
+
+
+def _sync_url() -> str:
+    """Convert async DATABASE_URL to a sync-compatible URL."""
+    url = settings.DATABASE_URL
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    elif url.startswith("sqlite+aiosqlite://"):
+        url = url.replace("sqlite+aiosqlite://", "sqlite:///")
+    return url
+
+
+def check_db_connection() -> bool:
+    """Verify the database is reachable with a simple query."""
+    try:
+        engine = create_engine(_sync_url())
+        with engine.connect() as conn:
+            conn.execute(conn.default_schema_name or "SELECT 1")
+        engine.dispose()
+        return True
+    except Exception:
+        return False
+
+
+def stamp_if_needed() -> bool:
+    """Stamp the database at the latest migration if alembic_version is missing.
+
+    Returns True if a stamp was applied, False if alembic_version already existed.
+    """
+    import alembic.command
+    import alembic.config
+
+    url = _sync_url()
+    engine = create_engine(url)
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+
+    has_version_table = "alembic_version" in existing_tables
+    has_app_tables = bool(existing_tables & _APP_TABLES)
+
+    engine.dispose()
+
+    if has_version_table:
+        return False
+
+    if not has_app_tables:
+        return False
+
+    # Database has app tables but no alembic_version — stamp at head
+    cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
+    cfg.set_main_option("sqlalchemy.url", url)
+    alembic.command.stamp(cfg, "head")
+    logger.info("Stamped existing database at head migration")
+    return True
+
+
+def run_migrations() -> None:
+    """Run all pending Alembic migrations."""
+    import alembic.command
+    import alembic.config
+
+    url = _sync_url()
+    cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
+    cfg.set_main_option("sqlalchemy.url", url)
+
+    stamp_if_needed()
+
+    alembic.command.upgrade(cfg, "head")
+    logger.info("Database migrations up to date")
+
+
+def current_revision() -> str | None:
+    """Return the current Alembic revision of the database, or None."""
+    import alembic.command
+    import alembic.config
+
+    url = _sync_url()
+    cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
+    cfg.set_main_option("sqlalchemy.url", url)
+    try:
+        result = alembic.command.current(cfg)
+        return result.strip() if result else None
+    except Exception:
+        return None
+
+
+def pending_migrations() -> list[str]:
+    """Return a list of migration revisions that have not been applied yet."""
+    import alembic.config
+
+    url = _sync_url()
+    cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
+    cfg.set_main_option("sqlalchemy.url", url)
+
+    try:
+        from sqlalchemy import create_engine
+
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        script = ScriptDirectory.from_config(cfg)
+        head = script.get_current_head()
+
+        if head:
+            engine = create_engine(url)
+            with engine.connect() as conn:
+                context = MigrationContext.configure(conn)
+                current = context.get_current_revision()
+            engine.dispose()
+
+            if current == head:
+                return []
+            pending = []
+            for rev in script.walk_revisions(base=current, head=head):
+                pending.append(rev.revision)
+            return pending
+        return []
+    except Exception:
+        return []

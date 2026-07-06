@@ -6,7 +6,7 @@ No actual sending is implemented yet.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -18,8 +18,8 @@ class NotificationService:
     @staticmethod
     async def prepare_notification(
         action: str,
-        actor_id: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
+        actor_id: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Prepare a notification for security-relevant events.
 

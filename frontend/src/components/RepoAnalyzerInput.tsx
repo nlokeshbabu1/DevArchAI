@@ -5,7 +5,7 @@ import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap
 import { Button, Card } from '../components/ui'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
-import { ScanProgress } from './ScanProgress'
+
 
 interface DevOpsStack {
   docker: boolean

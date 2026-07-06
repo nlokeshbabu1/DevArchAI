@@ -6,7 +6,6 @@ Allows unauthenticated users to run scans and view limited results.
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
 
 from sqlalchemy import Column, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -22,7 +21,7 @@ class AnonymousScan(Base):
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     session_token = Column(String(255), unique=True, index=True, nullable=False)
-    
+
     # Scan details
     repository_url = Column(String(500), nullable=False)
     repository_name = Column(String(255), nullable=True)
@@ -41,25 +40,25 @@ class AnonymousScan(Base):
     # Full results (stored but gated)
     findings_summary = Column(Text, nullable=True)  # JSON string of findings
     ai_suggestions = Column(Text, nullable=True)  # JSON string of AI suggestions (blurred for anon)
-    
+
     # Status
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     error_message = Column(Text, nullable=True)
-    
+
     # Expiration
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     def __repr__(self) -> str:
         return f"<AnonymousScan(id={self.id}, repository={self.repository_name})>"
-    
+
     @classmethod
     def generate_session_token(cls) -> str:
         """Generate a unique session token."""
         return f"anon_{uuid.uuid4().hex}"
-    
+
     @classmethod
     def get_expiry(cls) -> datetime:
         """Get expiration time (24 hours from now)."""

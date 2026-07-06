@@ -5,7 +5,6 @@ Maps file types to their relevant rule modules and ensures rules only run on app
 """
 
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
@@ -66,7 +65,7 @@ IGNORE_PATTERNS = {
 }
 
 
-def detect_file_type(file_path: str) -> Optional[str]:
+def detect_file_type(file_path: str) -> str | None:
     """
     Detect the file type based on path, extension, and name.
 
@@ -276,9 +275,9 @@ class FileTypeRuleFilter:
     """
 
     def __init__(self):
-        self._file_type_cache: dict[str, Optional[str]] = {}
+        self._file_type_cache: dict[str, str | None] = {}
 
-    def get_file_type(self, file_path: str) -> Optional[str]:
+    def get_file_type(self, file_path: str) -> str | None:
         """Get file type with caching."""
         if file_path not in self._file_type_cache:
             self._file_type_cache[file_path] = detect_file_type(file_path)

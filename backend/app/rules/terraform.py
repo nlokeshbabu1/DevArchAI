@@ -7,7 +7,6 @@ from typing import Any
 
 from app.rules.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
-
 # NOTE: TF-STATE-002 (Remote Backend Required) is now checked at module level in scan_service.py
 # This file-level rule is disabled to avoid duplicate/incorrect findings on output.tf files
 # The module-level check ensures we only report once per root module, not per file

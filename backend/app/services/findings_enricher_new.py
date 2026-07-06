@@ -9,7 +9,7 @@ This module provides:
 
 import hashlib
 import json
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -677,7 +677,7 @@ CMD ["node", "server.js"]''',
 class AIFixEnrichmentService:
     """AI-powered fix enrichment service with caching and guaranteed fallback."""
 
-    def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
+    def __init__(self, llm_provider: BaseLLMProvider | None = None):
         self.llm_provider = llm_provider
 
         # Determine if we should use mock based on provider and API keys
@@ -797,7 +797,6 @@ Respond ONLY with the JSON, no other text."""
 
     def _parse_ai_response(self, response: str, finding: dict[str, Any]) -> dict[str, Any]:
         """Parse AI response into structured format."""
-        import json
         import re
 
         try:
@@ -850,7 +849,7 @@ class FindingsEnricher:
 
     def __init__(self):
         self._fix_examples = FIX_EXAMPLES
-        self._ai_service: Optional[AIFixEnrichmentService] = None
+        self._ai_service: AIFixEnrichmentService | None = None
 
     def _get_ai_service(self) -> AIFixEnrichmentService:
         """Get or create AI enrichment service."""
@@ -933,7 +932,7 @@ class FindingsEnricher:
                     finding.impact_analysis = ai_fix.get("impact", finding.impact_analysis)
                 if ai_fix.get("confidence", 0) > (finding.confidence or 0):
                     finding.confidence = ai_fix.get("confidence", finding.confidence)
-                
+
                 # Mark as AI-generated
                 finding.ai_generated = True
 

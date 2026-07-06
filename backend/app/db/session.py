@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.db.base import Base
+from app.db.migrate import run_migrations
 
 logger = structlog.get_logger(__name__)
 
@@ -87,17 +87,19 @@ SessionLocal = get_sync_session_factory
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
-    engine = get_engine()
-    try:
-        async with engine.begin() as conn:
-            # Import all models to ensure they're registered
-            from app.models import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory, Finding, GitHubInstallation, Report, Repository, Scan, User  # noqa: F401
+    """Initialize database via Alembic migrations.
 
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables created successfully")
+    Replaces the old ``Base.metadata.create_all()`` call.
+    On first run with an existing (create_all-built) database, stamps the
+    current head revision so Alembic is aware of the schema state.
+    """
+    import asyncio
+
+    try:
+        await asyncio.to_thread(run_migrations)
+        logger.info("Database initialized via Alembic migrations")
     except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
+        logger.error("Failed to run database migrations", error=str(e))
         raise
 
 

@@ -121,7 +121,7 @@ export function ScanHistoryPage() {
 
   const handleScanClick = (scanId: string) => {
     console.log('🔍 Navigating to scan result:', scanId)
-    navigate(`/scan/result/${scanId}`)
+    navigate(`/scans/${scanId}`)
   }
 
   const handleNewScan = () => {

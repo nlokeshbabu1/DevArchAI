@@ -95,9 +95,9 @@ class TechnologyStack:
             scanners.append("docker")
         if self.has_kubernetes or self.has_helm:
             scanners.append("kubernetes")
-        if (self.has_github_actions or self.has_gitlab_ci or 
-            self.has_jenkins or self.has_circleci or 
-            self.has_azure_devops or self.has_travis or 
+        if (self.has_github_actions or self.has_gitlab_ci or
+            self.has_jenkins or self.has_circleci or
+            self.has_azure_devops or self.has_travis or
             self.has_drone):
             scanners.append("cicd")
 
@@ -178,7 +178,7 @@ def detect_technology_stack(files: list[str]) -> TechnologyStack:
             if "charts/" in file_path or "helm/" in file_path or "/chart/" in file_lower:
                 stack.has_helm = True
                 stack.helm_files.append(file_path)
-        
+
         # Also check for Chart.yaml anywhere (some repos don't follow standard structure)
         if file_name == "chart.yaml":
             stack.has_helm = True

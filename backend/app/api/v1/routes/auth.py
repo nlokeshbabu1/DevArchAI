@@ -11,7 +11,7 @@ Supports:
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -73,7 +73,7 @@ def _safe_email(user: User) -> str:
 def user_to_response(user: User) -> dict:
     """Convert User model to response dict with proper UUID serialization."""
     email = _safe_email(user)
-    
+
     return {
         "id": str(user.id) if isinstance(user.id, uuid.UUID) else user.id,
         "email": email,
@@ -260,7 +260,7 @@ async def _create_session(
         user_agent=user_agent,
         device_name=request.headers.get("Sec-Ch-UA-Platform", device),
         is_current=True,
-        expires_at=datetime.now(timezone.utc).replace(hour=0, minute=0, second=0)
+        expires_at=datetime.now(UTC).replace(hour=0, minute=0, second=0)
         + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(session)
@@ -284,8 +284,8 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 async def _check_account_locked(user: User) -> None:
     """Check if account is locked due to too many failed attempts."""
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() / 60)
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail=f"Account is locked. Try again in {remaining} minutes.",
@@ -322,7 +322,7 @@ async def login(
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
-                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
+                user.locked_until = datetime.now(UTC) + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
                 await db.commit()
             else:
                 await db.commit()
@@ -358,7 +358,7 @@ async def login(
     # Reset failed attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await ensure_user_organization_membership(db, user)
     await db.flush()
 
@@ -588,7 +588,7 @@ async def github_callback(
             # Reset failed attempts on successful login
             user.failed_login_attempts = 0
             user.locked_until = None
-            user.last_login_at = datetime.now(timezone.utc)
+            user.last_login_at = datetime.now(UTC)
             await ensure_user_organization_membership(db, user)
             await db.flush()
 
@@ -735,7 +735,7 @@ async def list_sessions(
         if auth_header and auth_header.startswith("Bearer "):
             raw_token = auth_header.replace("Bearer ", "")
             _warn_if_local_storage_used(request)
-    
+
     current_token_hash = hash_token(raw_token) if raw_token else None
 
     session_list = []

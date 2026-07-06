@@ -24,7 +24,6 @@ from typing import Any
 
 from app.rule_engine.base import BaseRule, Category, Rule, RuleFinding, Severity, register_rule
 
-
 # ============================================================================
 # JENKINS RULES (20 rules)
 # ============================================================================
@@ -2275,43 +2274,43 @@ def _is_ansible_file(file_path: str, content: str) -> bool:
     """
     if not file_path:
         return False
-    
+
     # Skip GitHub Actions workflows explicitly
     if '.github/workflows/' in file_path:
         return False
-    
+
     # Skip GitLab CI
     if file_path.endswith('.gitlab-ci.yml'):
         return False
-    
+
     # Skip Jenkinsfile
     if 'Jenkinsfile' in file_path:
         return False
-    
+
     # Check for Ansible-specific keywords in content
     if content:
         # Must have 'hosts:' or 'tasks:' to be considered Ansible
         has_hosts = 'hosts:' in content
         has_tasks = 'tasks:' in content
         has_plays = 'name:' in content and ('- name:' in content or '  - name:' in content)
-        
+
         # If it has GitHub Actions keywords, it's NOT Ansible
         has_github_actions = ('on:' in content and 'jobs:' in content) or 'uses:' in content
-        
+
         if has_github_actions:
             return False
-        
+
         # If it has Ansible keywords, it IS Ansible
         if has_hosts or has_tasks:
             return True
-    
+
     # Check file path for Ansible indicators
     path_lower = file_path.lower()
     if 'ansible' in path_lower or 'playbook' in path_lower:
         return True
     if '/roles/' in path_lower or path_lower.endswith('/roles'):
         return True
-    
+
     return False
 
 

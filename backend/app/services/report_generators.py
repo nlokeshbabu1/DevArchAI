@@ -656,6 +656,15 @@ def _normalize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "file_path": file_path,
                 "line_number": line_number,
                 "location": location,
+                "scanner_name": finding.get("scanner_name"),
+                "scanner_rule_id": finding.get("scanner_rule_id"),
+                "package": finding.get("package"),
+                "installed_version": finding.get("installed_version"),
+                "fixed_version": finding.get("fixed_version"),
+                "cve": finding.get("cve"),
+                "cwe": finding.get("cwe"),
+                "references": finding.get("references"),
+                "evidence": finding.get("evidence"),
             }
         )
     normalized.sort(key=lambda item: (_severity_rank(item["severity"]), item["title"]))

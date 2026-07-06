@@ -5,9 +5,10 @@ Celery Tasks for Repository Scanning with Dynamic Scanner Execution
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -22,7 +23,9 @@ from app.parsers.kubernetes import KubernetesParser
 from app.parsers.terraform import TerraformParser
 from app.rule_engine.base import RuleFinding, RuleRegistry
 from app.scanners.azure_scanner import AzureScanner
+from app.scanners.deduplicator import deduplicate_across_scanners
 from app.scanners.helm_scanner import HelmScanner
+from app.scanners.registry import ScannerRegistry
 from app.scoring.engine import ScoringEngine
 from app.services.ai_suggestion_service import schedule_ai_suggestions_generation
 from app.services.report_service import ReportService
@@ -34,13 +37,14 @@ logger = get_logger(__name__)
 
 def _run_ai_enrichment_in_process(findings_data, file_contents_data):
     """Run AI enrichment in a separate process with its own event loop.
-    
+
     This function MUST be at module level for multiprocessing to work.
     """
-    from app.services.findings_enricher import enrich_findings_with_ai
-    from app.rule_engine.base import RuleFinding, Severity, Category
     import asyncio
-    
+
+    from app.rule_engine.base import Category, RuleFinding, Severity
+    from app.services.findings_enricher import enrich_findings_with_ai
+
     # Recreate findings from serialized data
     findings = []
     for f_data in findings_data:
@@ -56,11 +60,11 @@ def _run_ai_enrichment_in_process(findings_data, file_contents_data):
             resource_name=f_data.get('resource_name'),
         )
         findings.append(finding)
-    
+
     # Create NEW event loop for this process (avoids uvloop conflict)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     try:
         enriched = loop.run_until_complete(enrich_findings_with_ai(findings, file_contents_data))
         return enriched
@@ -68,29 +72,50 @@ def _run_ai_enrichment_in_process(findings_data, file_contents_data):
         loop.close()
 
 
-def _safe_await(coro):
+def _safe_await(coro, loop=None):
     """
     Safely await a coroutine from sync code.
     ALWAYS runs synchronously to ensure progress updates complete.
+
+    Args:
+        coro: The coroutine to await.
+        loop: Optional persistent event loop. If provided, uses this loop
+              instead of creating/destroying loops repeatedly.
     """
+    import structlog as _structlog
+    _logger = _structlog.get_logger(__name__)
+
+    # If a persistent loop is provided, use it directly
+    if loop is not None:
+        try:
+            if loop.is_closed():
+                _logger.error("Persistent event loop is closed — cannot execute coroutine")
+                return None
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(loop.run_until_complete, coro)
+                    return future.result(timeout=30.0)
+            else:
+                return loop.run_until_complete(coro)
+        except Exception as e:
+            _logger.error(f"Progress update failed on persistent loop: {e}")
+            return None
+
+    # Fallback: no loop provided — use dynamic loop resolution
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # Use run_until_complete in a new thread or run synchronously
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(asyncio.run, coro)
-                return future.result(timeout=5.0)  # 5 second timeout
+                return future.result(timeout=5.0)
         else:
             return loop.run_until_complete(coro)
     except RuntimeError:
-        # No event loop - safe to run synchronously
         return asyncio.run(coro)
     except Exception as e:
-        # Log error but don't break scan
-        import structlog
-        logger = structlog.get_logger(__name__)
-        logger.warning(f"Progress update failed: {e}")
+        _logger.warning(f"Progress update failed (fallback): {e}")
         return None
 
 
@@ -286,16 +311,18 @@ class SyncScanService:
     """Synchronous scan service for Celery tasks with dynamic scanner execution."""
 
     def __init__(
-        self, 
-        db, 
+        self,
+        db,
         include_ai_explanations: bool = True,
         progress_store = None,
         scan_id: str = None,
+        event_loop = None,
     ):
         self.db = db
         self.include_ai_explanations = include_ai_explanations
         self.progress_store = progress_store
         self.scan_id = scan_id
+        self.event_loop = event_loop
         self.rule_registry = RuleRegistry()
         self.scoring_engine = ScoringEngine()
         self.repo_scanner = RepositoryScanner()
@@ -303,7 +330,7 @@ class SyncScanService:
         self.detected_stack = DetectedTechnologyStack()
         self.report_service = ReportService()
 
-    async def _update_progress_async(self, progress: int, message: str, step_name: Optional[str] = None, stage: Optional[str] = None, files_scanned: int = 0, total_files: int = 0):
+    async def _update_progress_async(self, progress: int, message: str, step_name: str | None = None, stage: str | None = None, files_scanned: int = 0, total_files: int = 0):
         """Update progress in the store (async)."""
         if self.progress_store and self.scan_id:
             await self.progress_store.update_status(self.scan_id, "running", progress, step_name or message)
@@ -345,6 +372,10 @@ class SyncScanService:
             except Exception as e:
                 logger.warning(f"Failed to broadcast progress update: {e}")
 
+    def _exec_async(self, coro):
+        """Execute a coroutine synchronously using the persistent event loop."""
+        return _safe_await(coro, loop=self.event_loop)
+
     def _setup_parsers(self) -> ParserRegistry:
         """Initialize and register all parsers."""
         registry = ParserRegistry()
@@ -357,18 +388,22 @@ class SyncScanService:
     def execute_scan(
         self,
         scan: Scan,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Callable | None = None,
     ) -> Scan:
         """Execute a complete scan workflow synchronously with dynamic scanner execution."""
-        import asyncio
-        import time  # Explicit import to avoid scoping issues
 
         start_time = time.time()
         repo_path = None
 
+        logger.info(
+            f"[LIFECYCLE] scan={self.scan_id} event=EXECUTE_SCAN_START "
+            f"repo={scan.repository_url} branch={scan.branch} "
+            f"timestamp={datetime.utcnow().isoformat()}"
+        )
+
         # PHASE 6: Record scan start (NEW - Observability)
         try:
-            from app.services.metrics import record_scan_start, record_scan
+            from app.services.metrics import record_scan, record_scan_start
             record_scan_start()
         except Exception:
             pass  # Don't break scan if metrics fail
@@ -381,7 +416,7 @@ class SyncScanService:
 
             # Initialize progress tracking
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub", stage="cloning"))
+                self._exec_async(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub", stage="cloning"))
 
             self._update_progress(progress_callback, 10, "Cloning repository...")
 
@@ -394,7 +429,7 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository", stage="detecting"))
+                self._exec_async(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository", stage="detecting"))
 
             self._update_progress(progress_callback, 20, "Detecting technology stack...")
 
@@ -407,7 +442,7 @@ class SyncScanService:
             if self.progress_store and self.scan_id:
                 detected = self.detected_stack.get_detected_technologies()
                 if detected:
-                    _safe_await(self.progress_store.update_detected_stack(self.scan_id, detected))
+                    self._exec_async(self.progress_store.update_detected_stack(self.scan_id, detected))
 
             logger.info(
                 "Technology stack detected",
@@ -415,27 +450,27 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(30, "Loading files...", "Detecting technologies", stage="detecting"))
+                self._exec_async(self._update_progress_async(30, "Loading files...", "Detecting technologies", stage="detecting"))
 
             self._update_progress(progress_callback, 30, "Loading files...")
 
             # Load and parse files with progress tracking
             logger.info("Starting file parsing...")
             parsed_files = self._load_and_parse_files(Path(repo_path))
-            
+
             if not parsed_files:
                 raise ValueError("No analyzable files found in repository")
-            
+
             logger.info(f"✅ File parsing completed: {len(parsed_files)} files parsed")
-            
+
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(40, f"Parsed {len(parsed_files)} files...", "Detecting technologies", stage="detecting"))
+                self._exec_async(self._update_progress_async(40, f"Parsed {len(parsed_files)} files...", "Detecting technologies", stage="detecting"))
             self._update_progress(progress_callback, 40, f"Parsed {len(parsed_files)} files...")
 
             # Extract file paths from parsed files
             file_paths = [str(pf.file_path) for pf in parsed_files]
             logger.info(f"📁 Extracted {len(file_paths)} file paths from parsed files")
-            
+
             # Clean file paths for display (remove /tmp/devarchai/... prefix)
             import re
             cleaned_file_paths = []
@@ -446,15 +481,15 @@ class SyncScanService:
                     cleaned_file_paths.append(match.group(1))
                 else:
                     cleaned_file_paths.append(fp)
-            
+
             logger.info(f"📁 Cleaned file paths example: {cleaned_file_paths[:3] if len(cleaned_file_paths) >= 3 else cleaned_file_paths}")
 
             # Update progress with actual file count and file list
             if self.progress_store and self.scan_id:
                 # Store the file list in the progress store (use cleaned paths)
                 logger.info(f"📁 Updating files_list with {len(cleaned_file_paths)} files")
-                _safe_await(self.progress_store.update_files_list(self.scan_id, cleaned_file_paths))
-                _safe_await(self._update_progress_async(
+                self._exec_async(self.progress_store.update_files_list(self.scan_id, cleaned_file_paths))
+                self._exec_async(self._update_progress_async(
                     50,
                     f"Running rule engine ({len(parsed_files)} files)...",
                     "Running security rules",
@@ -465,7 +500,7 @@ class SyncScanService:
                 # Broadcast file list via WebSocket (fire and forget, don't block on it)
                 try:
                     from app.websockets.scan_progress import scan_progress_manager
-                    _safe_await(
+                    self._exec_async(
                         scan_progress_manager.broadcast_progress(
                             self.scan_id,
                             50,
@@ -483,16 +518,89 @@ class SyncScanService:
             logger.info("Extracting resources from parsed files...")
             resources = self._extract_resources(parsed_files)
             logger.info(f"Extracted {len(resources)} resources")
-            
+
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(60, "Running security rules...", "Running security rules", stage="scanning"))
+                self._exec_async(self._update_progress_async(60, "Running security rules...", "Running security rules", stage="scanning"))
             self._update_progress(progress_callback, 60, "Running security rules...")
-            
+
             rule_findings = self._run_rules(resources, parsed_files)
             logger.info(f"Rule engine completed with {len(rule_findings)} findings")
 
+            # PHASE: Run external scanners (after rule engine, before enrichment)
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(70, "Building recommendations...", "Preparing findings", stage="scanning"))
+                self._exec_async(self._update_progress_async(63, "Running external scanners...", "Running external scanners", stage="scanning"))
+            self._update_progress(progress_callback, 63, "Running external scanners...")
+
+            scanner_results: list[Any] = []
+            try:
+                from pathlib import Path as _Path
+
+                from app.models.scanner_execution import ScannerExecutionRecord
+                scanner_registry = ScannerRegistry()
+                scanner_results = scanner_registry.run_for_repo(
+                    repo_path=_Path(repo_path),
+                    detected_stack=self.detected_stack.to_dict(),
+                )
+                external_findings: list[RuleFinding] = []
+                for result in scanner_results:
+                    if result.status.value in ("COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"):
+                        external_findings.extend(result.findings)
+                        logger.info(f"External scanner {result.scanner_id} completed: {result.findings_count} findings")
+
+                # Persist scanner execution records
+                for result in scanner_results:
+                    try:
+                        db_record = ScannerExecutionRecord(
+                            scan_id=self.scan_id,
+                            scanner_name=result.scanner_name,
+                            scanner_id=result.scanner_id,
+                            version=result.version,
+                            status=result.status.value,
+                            applicable=result.applicable,
+                            enabled=result.enabled,
+                            execution_start=result.execution_start,
+                            execution_end=result.execution_end,
+                            duration_ms=result.duration_ms,
+                            files_scanned=result.files_scanned,
+                            rules_executed=result.rules_executed,
+                            findings_count=result.findings_count,
+                            skipped_reason=result.skipped_reason,
+                            error_message=result.error_message,
+                        )
+                        self.db.add(db_record)
+                    except Exception as db_err:
+                        logger.warning("Failed to persist scanner execution record for %s: %s", result.scanner_id, db_err)
+                self.db.commit()
+
+                if external_findings:
+                    all_findings = rule_findings + external_findings
+                    cross_deduped, cross_stats = deduplicate_across_scanners(all_findings)
+                    logger.info(
+                        "Cross-scanner deduplication",
+                        original=len(all_findings),
+                        deduplicated=len(cross_deduped),
+                        merges=cross_stats.merges,
+                    )
+                    rule_findings = cross_deduped
+
+                    if self.progress_store and self.scan_id:
+                        self._exec_async(self.progress_store.add_log(
+                            self.scan_id,
+                            f"🔀 External scanners: {len(external_findings)} findings, "
+                            f"merged into {len(all_findings) - len(cross_deduped)} duplicates",
+                        ))
+            except Exception as e:
+                logger.error(f"❌ External scanner integration failed: {e}")
+                # Recover the session so subsequent DB operations don't fail
+                try:
+                    self.db.rollback()
+                    logger.info("Session rolled back after scanner integration failure")
+                except Exception as rb_err:
+                    logger.warning("Session rollback after scanner failure also failed: %s", rb_err)
+                # Continue with rule engine findings only
+
+            if self.progress_store and self.scan_id:
+                self._exec_async(self._update_progress_async(70, "Building recommendations...", "Preparing findings", stage="scanning"))
             self._update_progress(progress_callback, 70, "Building recommendations...")
 
             logger.info("Applying static enrichment before background AI generation", findings_count=len(rule_findings))
@@ -501,7 +609,7 @@ class SyncScanService:
             rule_findings = enrich_findings(rule_findings)
 
             if self.progress_store and self.scan_id:
-                _safe_await(
+                self._exec_async(
                     self.progress_store.add_log(
                         self.scan_id,
                         "Background AI suggestions queued after static scan results are saved",
@@ -520,9 +628,9 @@ class SyncScanService:
                     duplicates_removed=dedup_stats.duplicates_removed,
                     dedup_ratio=f"{dedup_ratio:.1f}%",
                 )
-                
+
                 if self.progress_store and self.scan_id:
-                    _safe_await(self.progress_store.add_log(self.scan_id, f"🔍 Deduplicated: {dedup_stats.deduplicated_count} findings ({dedup_stats.duplicates_removed} duplicates removed)"))
+                    self._exec_async(self.progress_store.add_log(self.scan_id, f"🔍 Deduplicated: {dedup_stats.deduplicated_count} findings ({dedup_stats.duplicates_removed} duplicates removed)"))
             except Exception as e:
                 logger.error(f"❌ Deduplication failed: {e}")
                 # Continue with non-deduplicated findings - don't break pipeline
@@ -539,10 +647,10 @@ class SyncScanService:
                     fallbacks_applied=validation_stats.total_fallbacks_applied,
                     fallback_rate=f"{fallback_rate:.1f}%",
                 )
-                
+
                 if self.progress_store and self.scan_id:
-                    _safe_await(self._update_progress_async(88, "Validating findings...", "Quality check", stage="completed"))
-                    _safe_await(self.progress_store.add_log(self.scan_id, f"✅ Validated {validation_stats.total_findings} findings"))
+                    self._exec_async(self._update_progress_async(88, "Validating findings...", "Quality check", stage="completed"))
+                    self._exec_async(self.progress_store.add_log(self.scan_id, f"✅ Validated {validation_stats.total_findings} findings"))
             except Exception as e:
                 logger.error(f"❌ Validation failed: {e}")
                 # Continue with non-validated findings - don't break pipeline
@@ -571,7 +679,7 @@ class SyncScanService:
                     )
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(90, "Calculating scores...", "Computing metrics", stage="completed"))
+                self._exec_async(self._update_progress_async(90, "Calculating scores...", "Computing metrics", stage="completed"))
 
             self._update_progress(progress_callback, 90, "Calculating scores...")
 
@@ -579,22 +687,22 @@ class SyncScanService:
             scores = self.scoring_engine.calculate_scores(rule_findings)
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(92, f"Security score: {scores.score:.0f}%", "Score calculation complete", stage="completed"))
+                self._exec_async(self._update_progress_async(92, f"Security score: {scores.score:.0f}%", "Score calculation complete", stage="completed"))
 
             self._update_progress(progress_callback, 92, f"Security score: {scores.score:.0f}%")
 
             # Save findings to database
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(94, "Saving findings to database...", "Persisting results", stage="completed"))
-                _safe_await(self.progress_store.add_log(self.scan_id, "💾 Saving findings to database..."))
-            
+                self._exec_async(self._update_progress_async(94, "Saving findings to database...", "Persisting results", stage="completed"))
+                self._exec_async(self.progress_store.add_log(self.scan_id, "💾 Saving findings to database..."))
+
             self._save_findings(scan.id, rule_findings)
 
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(96, "Generating downloadable reports...", "Building reports", stage="completed"))
+                self._exec_async(self._update_progress_async(96, "Generating downloadable reports...", "Building reports", stage="completed"))
 
             if self.progress_store and self.scan_id:
-                _safe_await(self.progress_store.add_log(self.scan_id, "📄 Building downloadable reports..."))
+                self._exec_async(self.progress_store.add_log(self.scan_id, "📄 Building downloadable reports..."))
 
             self._create_report(
                 scan=scan,
@@ -602,10 +710,10 @@ class SyncScanService:
                 scores=scores,
                 files_analyzed=cleaned_file_paths,
             )
-            
+
             if self.progress_store and self.scan_id:
-                _safe_await(self._update_progress_async(98, "Finalizing scan...", "Almost done", stage="completed"))
-                _safe_await(self.progress_store.add_log(self.scan_id, "✅ Scan complete! Preparing results..."))
+                self._exec_async(self._update_progress_async(98, "Finalizing scan...", "Almost done", stage="completed"))
+                self._exec_async(self.progress_store.add_log(self.scan_id, "✅ Scan complete! Preparing results..."))
 
             # Update scan with results
             analysis_duration = time.time() - start_time
@@ -632,10 +740,14 @@ class SyncScanService:
 
             # Mark scan as complete in progress store
             if self.progress_store and self.scan_id:
-                _safe_await(self.progress_store.complete_scan(self.scan_id))
-                _safe_await(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
+                logger.info(
+                    f"[LIFECYCLE] scan={self.scan_id} event=COMPLETING "
+                    f"timestamp={datetime.utcnow().isoformat()}"
+                )
+                self._exec_async(self.progress_store.complete_scan(self.scan_id))
+                self._exec_async(self.progress_store.add_log(self.scan_id, "Scan completed successfully"))
                 if scan.ai_status == "pending":
-                    _safe_await(
+                    self._exec_async(
                         self.progress_store.add_log(
                             self.scan_id,
                             "AI suggestions are being generated in the background",
@@ -645,9 +757,9 @@ class SyncScanService:
                 # Broadcast scan completion to all connected WebSocket clients
                 try:
                     from app.websockets.scan_progress import scan_progress_manager
-                    progress_obj = _safe_await(self.progress_store.get_progress(self.scan_id))
+                    progress_obj = self._exec_async(self.progress_store.get_progress(self.scan_id))
                     if progress_obj:
-                        sent = _safe_await(scan_progress_manager.broadcast_progress(
+                        sent = self._exec_async(scan_progress_manager.broadcast_progress(
                             scan_id=self.scan_id,
                             progress=100,
                             status="completed",
@@ -671,14 +783,14 @@ class SyncScanService:
                 from app.services.metrics import record_scan, record_scan_end
                 duration = time.time() - start_time
                 record_scan_end()
-                
+
                 # Record for each detected technology
                 if detected:
                     for tech in detected:
                         record_scan(status="completed", technology=tech, duration=duration)
                 else:
                     record_scan(status="completed", technology="none", duration=duration)
-                
+
                 logger.info(
                     "Scan metrics recorded",
                     duration=duration,
@@ -706,12 +818,12 @@ class SyncScanService:
 
             # Mark scan as failed in progress store
             if self.progress_store and self.scan_id:
-                _safe_await(self.progress_store.fail_scan(self.scan_id, str(e)))
+                self._exec_async(self.progress_store.fail_scan(self.scan_id, str(e)))
 
                 # Broadcast scan failure to all connected WebSocket clients
                 try:
                     from app.websockets.scan_progress import scan_progress_manager
-                    sent = _safe_await(scan_progress_manager.broadcast_progress(
+                    sent = self._exec_async(scan_progress_manager.broadcast_progress(
                         scan_id=self.scan_id,
                         progress=0,
                         status="failed",
@@ -832,11 +944,11 @@ class SyncScanService:
         azure_scanner = AzureScanner()
         azure_findings = azure_scanner.scan(parsed_files)
         all_findings.extend(azure_findings)
-        
+
         # Run Helm scanner on chart files
         helm_scanner = HelmScanner()
         helm_findings = helm_scanner.scan("", [
-            {"file_path": pf.file_path, "content": pf.raw_content} 
+            {"file_path": pf.file_path, "content": pf.raw_content}
             for pf in parsed_files if pf.file_type == "helm"
         ])
         all_findings.extend(helm_findings)
@@ -854,7 +966,7 @@ class SyncScanService:
             file_resources = resources_by_file.get(file_path, [])
             # Pass file type to enable proper rule filtering
             file_findings = self.rule_registry.evaluate_all(
-                file_resources, 
+                file_resources,
                 file_path,
                 file_type=parsed_file.file_type
             )
@@ -864,6 +976,7 @@ class SyncScanService:
 
     def _save_findings(self, scan_id, findings: list[RuleFinding]):
         """Save findings to database with deduplication and error handling."""
+        import re
         try:
             # Track unique findings to avoid duplicates
             seen = set()
@@ -896,7 +1009,7 @@ class SyncScanService:
                             return None
                         if isinstance(value, str):
                             return value
-                        if isinstance(value, (dict, list)):
+                        if isinstance(value, dict | list):
                             logger.debug(f"Converting {field_name} from {type(value).__name__} to JSON string")
                             return json.dumps(value)
                         return str(value)
@@ -919,10 +1032,18 @@ class SyncScanService:
 
                     # Log any dict/list values
                     for field_name, value in text_fields.items():
-                        if isinstance(value, (dict, list)):
+                        if isinstance(value, dict | list):
                             logger.warning(
                                 f"⚠️ Field '{field_name}' is {type(value).__name__}, converting to string"
                             )
+
+                    # Strip temp directory prefix from file_path for clean relative paths
+                    raw_file_path = finding.file_path
+                    cleaned_file_path = str(raw_file_path) if raw_file_path else None
+                    if cleaned_file_path:
+                        match = re.search(r'/tmp/devarchai/[a-zA-Z0-9]+_[^/]+/(.*)', str(cleaned_file_path))
+                        if match:
+                            cleaned_file_path = match.group(1)
 
                     db_finding = FindingModel(
                         scan_id=scan_id,
@@ -945,11 +1066,24 @@ class SyncScanService:
                         documentation_url=ensure_text_field(finding.documentation_url, 'documentation_url'),
                         ai_generated=getattr(finding, 'ai_generated', False),
                         # Legacy fields
-                        file_path=finding.file_path,
+                        file_path=cleaned_file_path,
                         line_number=finding.line_number,
                         resource_name=finding.resource_name,
                         ai_explanation=ensure_text_field(finding.ai_explanation, 'ai_explanation'),
                         impact_analysis=ensure_text_field(finding.impact_analysis, 'impact_analysis'),
+                        # Scanner metadata fields
+                        scanner_name=getattr(finding, 'scanner_name', None),
+                        scanner_rule_id=getattr(finding, 'scanner_rule_id', None),
+                        package=getattr(finding, 'package', None),
+                        installed_version=getattr(finding, 'installed_version', None),
+                        fixed_version=getattr(finding, 'fixed_version', None),
+                        cve=getattr(finding, 'cve', None),
+                        cwe=getattr(finding, 'cwe', None),
+                        references=ensure_text_field(
+                            json.dumps(finding.references) if getattr(finding, 'references', None) else None,
+                            'references',
+                        ),
+                        evidence=getattr(finding, 'evidence', None),
                     )
                     self.db.add(db_finding)
                 except Exception as finding_error:
@@ -988,6 +1122,7 @@ class SyncScanService:
             with self.db.begin_nested():
                 # Get all findings from database for this scan
                 from sqlalchemy import select
+
                 from app.models.finding import Finding as FindingModel
 
                 result = self.db.execute(
@@ -1119,7 +1254,7 @@ def scan_repository_task(
     scan_id: str,
     repository_url: str,
     branch: str = "main",
-    commit_hash: Optional[str] = None,
+    commit_hash: str | None = None,
     include_ai_explanations: bool = True,
 ) -> dict[str, Any]:
     """Celery task to scan a repository."""
@@ -1178,7 +1313,7 @@ def scan_repository_task(
             # Get findings count before session closes
             findings_count = len(updated_scan.findings) if hasattr(updated_scan, 'findings') else 0
             overall_score = updated_scan.overall_score
-            
+
             # Extract detected technologies from findings
             detected_technologies = []
             devops_stack = {
@@ -1197,7 +1332,7 @@ def scan_repository_task(
                 'azure': False,
                 'gcp': False,
             }
-            
+
             # Analyze findings to detect technologies
             if hasattr(updated_scan, 'findings') and updated_scan.findings:
                 categories = set()
@@ -1205,35 +1340,35 @@ def scan_repository_task(
                     if hasattr(finding, 'category'):
                         cat = finding.category.value if hasattr(finding.category, 'value') else str(finding.category)
                         categories.add(cat.lower())
-                    
+
                     # Detect from file paths
                     if hasattr(finding, 'file_path') and finding.file_path:
                         path = finding.file_path.lower()
-                        
+
                         # Containerization
                         if 'docker' in path or 'dockerfile' in path or 'docker-compose' in path:
                             if 'docker' not in detected_technologies:
                                 detected_technologies.append('docker')
                             devops_stack['docker'] = True
-                        
+
                         # Infrastructure as Code - Terraform
                         if 'terraform' in path or '.tf' in path or '.tfvars' in path:
                             if 'terraform' not in detected_technologies:
                                 detected_technologies.append('terraform')
                             devops_stack['terraform'] = True
-                        
+
                         # Kubernetes
                         if 'kubernetes' in path or 'k8s' in path or '.yaml' in path or '.yml' in path:
                             if 'kubernetes' not in detected_technologies:
                                 detected_technologies.append('kubernetes')
                             devops_stack['kubernetes'] = True
-                        
+
                         # Helm
                         if 'helm' in path or 'chart.yaml' in path or 'chart.yml' in path or 'values.yaml' in path:
                             if 'helm' not in detected_technologies:
                                 detected_technologies.append('helm')
                             devops_stack['helm'] = True
-                        
+
                         # CI/CD
                         if '.github/workflows' in path or 'circleci' in path or 'jenkins' in path or 'gitlab-ci' in path or '.gitlab-ci.yml' in path or 'azure-pipelines' in path or 'buildkite' in path:
                             if '.github' in path:
@@ -1250,7 +1385,7 @@ def scan_repository_task(
                                 devops_stack['cicd'] = 'other'
                             if 'cicd' not in detected_technologies:
                                 detected_technologies.append('cicd')
-                        
+
                         # Monitoring & Observability
                         if 'prometheus' in path or 'alertmanager' in path or 'promtail' in path:
                             if 'prometheus' not in detected_technologies:
@@ -1270,43 +1405,43 @@ def scan_repository_task(
                             if 'jaeger' not in detected_technologies:
                                 detected_technologies.append('jaeger')
                             devops_stack['monitoring'] = True
-                        
+
                         # Configuration Management
                         if 'ansible' in path or '.yml' in path and 'playbook' in path or 'inventory' in path:
                             if 'ansible' not in detected_technologies:
                                 detected_technologies.append('ansible')
                             devops_stack['ansible'] = True
-                        
+
                         # Infrastructure as Code - Pulumi
                         if 'pulumi' in path or 'Pulumi.yaml' in path or 'Pulumi.dev.yaml' in path:
                             if 'pulumi' not in detected_technologies:
                                 detected_technologies.append('pulumi')
                             devops_stack['pulumi'] = True
-                        
+
                         # Security Scanning
                         if 'security' in path or 'trivy' in path or 'snyk' in path or 'sonarqube' in path or 'aquasec' in path:
                             if 'security_scanning' not in detected_technologies:
                                 detected_technologies.append('security_scanning')
                             devops_stack['security_scanning'] = True
-                        
+
                         # Cloud Providers - AWS
                         if 'aws' in path or 'amazon' in path or '.aws' in path or 'ec2' in path or 's3' in path or 'lambda' in path or 'cloudformation' in path or 'iam' in path or 'vpc' in path or 'rds' in path or 'eks' in path or 'ecs' in path or 'dynamodb' in path or 'sqs' in path or 'sns' in path or 'cloudwatch' in path or 'cloudfront' in path or 'route53' in path or 'elastic' in path:
                             if 'aws' not in detected_technologies:
                                 detected_technologies.append('aws')
                             devops_stack['aws'] = True
-                        
+
                         # Cloud Providers - Azure
                         if 'azure' in path or 'microsoft' in path or '.azure' in path or 'aks' in path or 'arm' in path or 'bicep' in path or 'app service' in path or 'function app' in path or 'cosmos' in path or 'blob storage' in path or 'azure devops' in path or 'azure ad' in path or 'key vault' in path or 'service bus' in path:
                             if 'azure' not in detected_technologies:
                                 detected_technologies.append('azure')
                             devops_stack['azure'] = True
-                        
+
                         # Cloud Providers - GCP
                         if 'gcp' in path or 'google' in path or '.gcp' in path or 'gke' in path or 'bigquery' in path or 'cloud functions' in path or 'cloud run' in path or 'gcs' in path or 'pubsub' in path or 'cloud sql' in path or 'iam' in path and 'google' in path:
                             if 'gcp' not in detected_technologies:
                                 detected_technologies.append('gcp')
                             devops_stack['gcp'] = True
-                        
+
                         # Additional DevOps Tools
                         if 'nginx' in path or 'apache' in path or 'traefik' in path or 'envoy' in path:
                             if 'load_balancer' not in detected_technologies:
@@ -1335,7 +1470,7 @@ def scan_repository_task(
                         if 'nexus' in path or 'artifactory' in path or 'package registry' in path:
                             if 'artifact_registry' not in detected_technologies:
                                 detected_technologies.append('artifact_registry')
-                
+
                 # Add categories as detected technologies
                 if 'security' in categories and 'security_scanning' not in detected_technologies:
                     detected_technologies.append('security')
@@ -1351,9 +1486,9 @@ def scan_repository_task(
                     if 'monitoring' not in detected_technologies:
                         detected_technologies.append('monitoring')
                         devops_stack['monitoring'] = True
-            
+
             # Remove duplicates and sort
-            detected_technologies = sorted(list(set(detected_technologies)))
+            detected_technologies = sorted(set(detected_technologies))
         finally:
             db.close()
 

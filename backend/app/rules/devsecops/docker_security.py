@@ -85,9 +85,9 @@ class DockerLatestTagRule(BaseRule):
                     recommendation=self.rule.recommendation,
                     file_path=file_path,
                     metadata={"base_image": base_image.get("full")},
-                    
-                    
-                    
+
+
+
                 ))
 
         return findings
@@ -187,9 +187,9 @@ class DockerMissingUserInstructionRule(BaseRule):
                     description=self.rule.description,
                     recommendation=self.rule.recommendation,
                     file_path=file_path,
-                    
-                    
-                    
+
+
+
                 ))
 
         return findings
@@ -227,7 +227,7 @@ class DockerAddInsteadOfCopyRule(BaseRule):
                     # Allow ADD for remote URLs or tar extraction (documented use cases)
                     is_remote = source.startswith("http://") or source.startswith("https://")
                     is_archive = source.endswith(".tar.gz") or source.endswith(".tar") or source.endswith(".tgz") or source.endswith(".tar.bz2")
-                    
+
                     if not (is_remote or is_archive):
                         findings.append(RuleFinding(
                             rule_id=self.rule.id,
@@ -239,8 +239,8 @@ class DockerAddInsteadOfCopyRule(BaseRule):
                             file_path=file_path,
                             line_number=instruction.get("line_number"),
                             metadata={"arguments": args},
-                            
-                            
+
+
                         ))
 
         return findings
@@ -285,9 +285,9 @@ class DockerMissingHealthcheckRule(BaseRule):
                     description=self.rule.description,
                     recommendation=self.rule.recommendation,
                     file_path=file_path,
-                    
-                    
-                    
+
+
+
                 ))
 
         return findings
@@ -314,7 +314,7 @@ class DockerPrivilegedContainerRule(BaseRule):
 
         for resource in resources:
             file_type = resource.get("file_type")
-            
+
             if file_type == "dockerfile":
                 # Check for privileged runtime hints
                 instructions = resource.get("instructions", [])
@@ -330,9 +330,9 @@ class DockerPrivilegedContainerRule(BaseRule):
                             recommendation=self.rule.recommendation,
                             file_path=file_path,
                             line_number=instruction.get("line_number"),
-                            
-                            
-                            
+
+
+
                         ))
 
             elif file_type == "kubernetes":
@@ -350,8 +350,8 @@ class DockerPrivilegedContainerRule(BaseRule):
                                 recommendation=self.rule.recommendation,
                                 file_path=file_path,
                                 resource_name=container.get("name"),
-                                
-                                
+
+
                             ))
 
         return findings
@@ -378,7 +378,7 @@ class DockerResourceLimitsRule(BaseRule):
 
         for resource in resources:
             file_type = resource.get("file_type")
-            
+
             if file_type == "kubernetes":
                 if resource.get("kind") in ["Deployment", "Pod", "DaemonSet", "StatefulSet"]:
                     containers = resource.get("properties", {}).get("containers", [])
@@ -397,8 +397,8 @@ class DockerResourceLimitsRule(BaseRule):
                                 file_path=file_path,
                                 resource_name=container.get("name"),
                                 metadata={"container": container.get("name")},
-                                
-                                
+
+
                             ))
 
         return findings
@@ -447,8 +447,8 @@ class DockerLargeBaseImageRule(BaseRule):
                     recommendation=self.rule.recommendation,
                     file_path=file_path,
                     metadata={"base_image": base_image.get("full")},
-                    
-                    
+
+
                 ))
 
         return findings
@@ -492,9 +492,9 @@ class DockerSSHInstalledRule(BaseRule):
                             recommendation=self.rule.recommendation,
                             file_path=file_path,
                             line_number=instruction.get("line_number"),
-                            
-                            
-                            
+
+
+
                         ))
                         break
 

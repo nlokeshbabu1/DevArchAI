@@ -90,6 +90,7 @@ export function sanitizePath(filePath: string | null | undefined): string {
     .replace(/^\/app\/[^/]*\//, '')
     .replace(/^\/var\/[^/]+\//, '')
     .replace(/^\.\//, '')
+    .replace(/^[a-fA-F0-9]{8,}_/, '')
   return cleaned
 }
 
@@ -107,11 +108,86 @@ export function isValidPercentage(value: number | null | undefined): value is nu
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
 }
 
-// --- Scanner mapping utilities ---
-// Maps a finding to the correct scanner based on rule_id, file_path, and summary.
+// --- Scanner family and source utilities ---
+
+export interface ScannerFamilyDef {
+  key: string
+  label: string
+  scannerIds: string[]
+  icon: string
+}
+
+export const SCANNER_FAMILIES: ScannerFamilyDef[] = [
+  {
+    key: "container",
+    label: "Container",
+    scannerIds: ["hadolint", "trivy_filesystem", "trivy_config", "checkov"],
+    icon: "cloud",
+  },
+  {
+    key: "kubernetes",
+    label: "Kubernetes",
+    scannerIds: ["kube_score", "trivy_config", "checkov"],
+    icon: "server",
+  },
+  {
+    key: "iac",
+    label: "Terraform / IaC",
+    scannerIds: ["checkov", "tfsec"],
+    icon: "git-branch",
+  },
+  {
+    key: "secrets",
+    label: "Secrets",
+    scannerIds: ["gitleaks"],
+    icon: "lock",
+  },
+  {
+    key: "sca",
+    label: "SCA",
+    scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"],
+    icon: "shield",
+  },
+  {
+    key: "cicd",
+    label: "CI/CD",
+    scannerIds: ["gitleaks"],
+    icon: "globe",
+  },
+  {
+    key: "dockerfile",
+    label: "Dockerfile",
+    scannerIds: ["hadolint", "checkov"],
+    icon: "code",
+  },
+  {
+    key: "sast",
+    label: "SAST",
+    scannerIds: [],
+    icon: "search",
+  },
+]
+
+export function getFamilyForScanner(scannerId: string): string {
+  for (const family of SCANNER_FAMILIES) {
+    if (family.scannerIds.includes(scannerId)) return family.key
+  }
+  if (scannerId.startsWith("trivy")) return "container"
+  return "sast"
+}
+
+export function getScannerFamilyLabel(key: string): string {
+  return SCANNER_FAMILIES.find(f => f.key === key)?.label ?? key
+}
+
+export function parseScannerSources(scannerName: string | null | undefined): string[] {
+  if (!scannerName) return ["DevArchAI"]
+  return scannerName.split(",").map(s => s.trim()).filter(Boolean)
+}
+
+// Maps a finding to the correct scanner based on backend metadata (scanner_name), falling back to heuristic.
 
 const CI_CD_FILES = [".github/", "workflow", "gitlab-ci", "jenkins", ".circleci", ".drone", "azure-pipelines"]
-const CI_CD_EXTENSIONS = [".github/workflows/", ".gitlab-ci.yml", "Jenkinsfile"]
 
 function classifyByRuleId(ruleId: string): string | null {
   const r = (ruleId || "").toLowerCase()
@@ -154,20 +230,20 @@ export function classifyFindingScanner(finding: any): string {
   const filePath = finding.file_path || ""
   const summary = finding.summary || finding.message || finding.rule_name || ""
 
-  return classifyByRuleId(ruleId)
-    ?? classifyByFilePath(filePath, summary)
-    ?? classifyBySummary(summary)
-    ?? "sast"
-}
+  const byRuleId = classifyByRuleId(ruleId)
+  if (byRuleId) return byRuleId
+  const byFilePath = classifyByFilePath(filePath, summary)
+  if (byFilePath) return byFilePath
+  const bySummary = classifyBySummary(summary)
+  if (bySummary) return bySummary
 
-export function mapCategoryToScanner(category: string): string {
-  const c = (category || "").toLowerCase()
-  if (c === "security") return "sast"
-  if (c === "scalability") return "sast"
-  if (c === "reliability") return "sast"
-  if (c === "cost") return "sast"
-  if (c === "observability") return "sast"
-  return c
+  const scannerName = finding.scanner_name
+  if (scannerName && typeof scannerName === "string" && scannerName.trim()) {
+    const firstSource = scannerName.split(",")[0].trim()
+    return getFamilyForScanner(firstSource.toLowerCase().replace(/\s+/g, "_"))
+  }
+
+  return "sast"
 }
 
 export const SCANNER_DEFINITIONS = [
@@ -183,17 +259,6 @@ export const SCANNER_DEFINITIONS = [
   { key: "license", label: "License Compliance Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "malware", label: "Malware Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
 ]
-
-export function getScannerStatus(scannerKey: string, detectedTechnologies: string[]): "active" | "coming_soon" | "disabled" {
-  const def = SCANNER_DEFINITIONS.find(s => s.key === scannerKey)
-  if (!def) return "disabled"
-
-  if (def.defaultStatus) return def.defaultStatus
-
-  if (scannerKey === "secrets") return "active"
-
-  return def.techKeys.some(t => detectedTechnologies.includes(t)) ? "active" : "disabled"
-}
 
 export function getRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "—"

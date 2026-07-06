@@ -212,7 +212,7 @@ class PaymentRouter:
         if not price_id:
             # Check if Stripe is configured at all
             stripe_configured = bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_SECRET_KEY != "sk_test_xxx")
-            
+
             if stripe_configured:
                 # Stripe keys are set but plan price IDs are missing - this is an error
                 raise ValueError(
