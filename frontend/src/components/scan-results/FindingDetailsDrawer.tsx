@@ -5,7 +5,8 @@ import {
   Copy, Check, Download, GitPullRequest,
   TrendingUp, Clock, Target,
   FileCode, BookOpen, ExternalLink, MessageSquare,
-  HelpCircle
+  HelpCircle, GitBranch, BadgeCheck, ScanSearch,
+  Zap, Search, GitMerge
 } from "lucide-react"
 import { Finding } from "../../types"
 import { cn, getSeverityColor, sanitizePath } from "../../lib/utils"
@@ -325,7 +326,68 @@ export function FindingDetailsDrawer({
                     </div>
                   )}
 
-                  {/* 10. Security Improvement */}
+                  {/* 10. AI Analysis Pipeline */}
+                  <div className="rounded-xl border border-indigo-500/10 bg-gradient-to-b from-indigo-950/20 to-slate-900/30 p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Analysis Pipeline</h4>
+                    </div>
+                    <div className="relative">
+                      {(() => {
+                        const stages = [
+                          { icon: ScanSearch, label: "Scanner Detection", description: `Identified by ${finding.scanner_name || "DevArchAI"}`, active: true },
+                          { icon: GitMerge, label: "Finding Normalization", description: "Standardized into common format across scanners", active: true },
+                          { icon: Search, label: "AI Analysis", description: "Deep security context analysis", active: !!finding.ai_explanation },
+                          { icon: Zap, label: "Risk Scoring", description: `${finding.severity.toUpperCase()} severity — ${computeRiskReduction(finding)}% risk reduction if fixed`, active: true },
+                          { icon: Shield, label: "Business Impact", description: finding.business_impact || finding.impact || "Contextual business risk assessment", active: !!finding.business_impact },
+                          { icon: Sparkles, label: "Fix Generation", description: "AI-powered remediation", active: !!finding.fix_code },
+                          { icon: GitPullRequest, label: "One-Click PR", description: "Create patch PR with a single click", active: true },
+                        ]
+                        return stages.map((stage, idx) => (
+                          <div key={idx} className="flex items-start gap-3 pb-4 last:pb-0 relative">
+                            {idx < stages.length - 1 && (
+                              <div className="absolute left-[11px] top-6 bottom-0 w-px bg-gradient-to-b from-indigo-500/20 to-indigo-500/5" />
+                            )}
+                            <div className={cn(
+                              "w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 z-10 ring-2 ring-[#0a0a10]",
+                              stage.active
+                                ? "bg-indigo-500/20 border border-indigo-500/30"
+                                : "bg-white/5 border border-white/10"
+                            )}>
+                              {stage.active ? (
+                                <stage.icon className="w-2.5 h-2.5 text-indigo-400" />
+                              ) : (
+                                <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0 pt-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  "text-xs font-medium",
+                                  stage.active ? "text-white/70" : "text-white/30"
+                                )}>
+                                  {stage.label}
+                                </span>
+                                {stage.active && (
+                                  <BadgeCheck className="w-3 h-3 text-emerald-400/60 shrink-0" />
+                                )}
+                              </div>
+                              {stage.description && (
+                                <p className={cn(
+                                  "text-[10px] leading-relaxed mt-0.5",
+                                  stage.active ? "text-white/30" : "text-white/20"
+                                )}>
+                                  {stage.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* 11. Security Improvement */}
                   <div className="rounded-xl border border-white/5 bg-gradient-to-br from-indigo-950/30 to-slate-900/50 p-5">
                     <div className="flex items-center gap-2 mb-4">
                       <TrendingUp className="w-4 h-4 text-indigo-400" />

@@ -42,7 +42,7 @@ def detect_sca_scanners(repo_path: Path) -> list[str]:
     seen: set[str] = set()
 
     for manifest, scs in SCA_MANIFEST_MAP.items():
-        if (repo_path / manifest).exists():
+        if any(repo_path.rglob(manifest)):
             for s in scs:
                 if s not in seen:
                     scanners.append(s)

@@ -6,11 +6,9 @@ import { FindingsExplorer } from "./FindingsExplorer"
 import { DetectionCoverage } from "./DetectionCoverage"
 import { ScannerExecutionTable } from "./ScannerExecutionTable"
 import { ScanCoverageSummary } from "./ScanCoverageSummary"
-import { RepositoryStats } from "./RepositoryStats"
 import { EmptyState } from "./EmptyState"
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
-import { ScannerExecutionCard } from "./ScannerExecutionCard"
-import { ScanTimeline } from "./ScanTimeline"
+import { Diagnostics } from "./Diagnostics"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { cn, getFileName } from "../../lib/utils"
@@ -80,7 +78,6 @@ export function ScanResultsDashboard({
   const isEmpty = findings.length === 0
   const score = result.overall_score ?? 0
 
-  // Raw findings count from scanner executions (before dedup)
   const rawFindingsCount = useMemo(() => {
     if (!result.scanner_executions) return undefined
     return result.scanner_executions.reduce((sum: number, e: any) => sum + (e.findings_count || 0), 0)
@@ -88,8 +85,6 @@ export function ScanResultsDashboard({
 
   const scannersCount = result.scanner_executions?.length
 
-  // --- Derived data with validation ---
-  // Files scanned: prefer backend value, fall back to unique file paths from findings
   const filesScanned = useMemo(() => {
     const backend = result.files_analyzed
     const uniqueFiles = new Set(findings.map(f => f.file_path).filter(Boolean))
@@ -98,17 +93,14 @@ export function ScanResultsDashboard({
     return Math.max(backend ?? 0, derived)
   }, [result.files_analyzed, findings])
 
-  // Unique affected files
   const affectedFiles = useMemo(() => {
     return new Set(findings.map(f => f.file_path).filter(Boolean)).size
   }, [findings])
 
-  // Rules executed: unique rule_ids
   const rulesExecuted = useMemo(() => {
     return new Set(findings.map(f => f.rule_id).filter(Boolean)).size
   }, [findings])
 
-  // Directories scanned: unique directory paths from findings
   const directoriesScanned = useMemo(() => {
     if (result.directories_scanned != null) return result.directories_scanned
     const dirs = new Set(findings.map(f => {
@@ -121,16 +113,13 @@ export function ScanResultsDashboard({
     return dirs.size > 0 ? dirs.size : undefined
   }, [result.directories_scanned, findings])
 
-  // Technologies count
   const technologiesCount = result.detected_technologies?.length ?? 0
 
-  // Coverage scores
   const coverageScores = result.category_scores?.reduce((acc, cat) => {
     acc[cat.category] = cat.score
     return acc
   }, {} as Record<string, number>) ?? {}
 
-  // Category filter logic
   const filteredByCategory = useMemo(() => {
     if (!categoryFilter) return findings
     const catKey = categoryFilter.toLowerCase()
@@ -153,17 +142,10 @@ export function ScanResultsDashboard({
     ? findings.find(f => (f.id ?? f.rule_id) === drawerFindingId)
     : null
 
-  const handleOpenDrawer = (id: string) => {
-    setDrawerFindingId(id)
-  }
+  const handleOpenDrawer = (id: string) => setDrawerFindingId(id)
+  const handleCloseDrawer = () => setDrawerFindingId(null)
 
-  const handleCloseDrawer = () => {
-    setDrawerFindingId(null)
-  }
-
-  const handleCopyFix = (code: string) => {
-    navigator.clipboard.writeText(code)
-  }
+  const handleCopyFix = (code: string) => navigator.clipboard.writeText(code)
 
   const handleDownloadPatch = (finding: any) => {
     if (!finding.fix_code) return
@@ -178,18 +160,14 @@ export function ScanResultsDashboard({
     URL.revokeObjectURL(url)
   }
 
-  const handleCreatePR = (finding: any) => {
-    onCreatePR(finding.id ?? finding.rule_id)
-  }
-
-  const handleCategoryClick = (cat: string) => {
-    setCategoryFilter(cat || null)
-  }
+  const handleCreatePR = (finding: any) => onCreatePR(finding.id ?? finding.rule_id)
+  const handleCategoryClick = (cat: string) => setCategoryFilter(cat || null)
 
   return (
     <div className="min-h-screen bg-[#0a0a10]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6 space-y-4">
-        {/* Section 1: Repository Header */}
+
+        {/* ===== SECTION 1: Repository Summary ===== */}
         <SecurityHero
           overallScore={score}
           repoName={repoName}
@@ -214,7 +192,7 @@ export function ScanResultsDashboard({
           />
         ) : (
           <>
-            {/* Section 2: Scan Coverage Summary */}
+            {/* Scan Coverage Metrics */}
             <ScanCoverageSummary
               filesScanned={filesScanned}
               directoriesScanned={directoriesScanned}
@@ -225,81 +203,57 @@ export function ScanResultsDashboard({
               repoSize={result.repository_size}
             />
 
-            {/* Section 3 & 4: Executive Summary + Priority Risks */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <ExecutiveSummary
-                  severityCounts={severityCounts}
-                  categoryScores={result.category_scores ?? []}
-                  onCategoryClick={handleCategoryClick}
-                  activeCategory={categoryFilter}
-                  findings={findings}
-                  detectedTechnologies={result.detected_technologies}
-                />
-              </div>
-              <div className="lg:col-span-1">
-                <FixTheseFirst
-                  findings={priorityFixes}
-                  currentScore={score}
-                  onSelect={handleOpenDrawer}
-                  selectedId={drawerFindingId}
-                />
-              </div>
-            </div>
-
-            {/* Section 5: Detection Coverage */}
+            {/* ===== SECTION 2: Technology Coverage ===== */}
             <DetectionCoverage
-              findings={findings}
-              detectedTechnologies={result.detected_technologies ?? []}
               scannerExecutions={result.scanner_executions}
+              findings={findings}
             />
 
-            {/* Scan Timeline */}
-            <ScanTimeline
-              currentStep={8}
-              totalScanners={result.scanner_executions?.length ?? 0}
-              completedScanners={result.scanner_executions?.filter((e: any) =>
-                ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"].includes(e.status)
-              ).length ?? 0}
-              aiStatus={result.ai_status ?? (isAiReady ? "completed" : isAiPending ? "processing" : "pending")}
-              scanStatus={result.status ?? "completed"}
-            />
+            {/* ===== SECTION 3: Security Findings (PRIMARY) ===== */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 rounded-full bg-indigo-500" />
+                <h2 className="text-base font-bold text-white/80">Security Findings</h2>
+                <span className="text-xs text-white/30">{findings.length} issue{findings.length !== 1 ? "s" : ""}</span>
+              </div>
 
-            {/* Scanner Execution Summary Table */}
-            {result.scanner_executions && result.scanner_executions.length > 0 && (
-              <>
-                <ScannerExecutionTable executions={result.scanner_executions} />
-                {/* Expandable execution details for every scanner */}
-                <div className="space-y-2">
-                  {result.scanner_executions.map((exec: any, i: number) => (
-                    <ScannerExecutionCard
-                      key={exec.scanner_id ?? i}
-                      execution={exec}
-                      findings={findings}
-                      allFindingsCount={findings.length}
-                      scanId={result.scan_id}
-                    />
-                  ))}
+              {/* AI Recommendations + Priority Risks */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <ExecutiveSummary
+                    severityCounts={severityCounts}
+                    categoryScores={result.category_scores ?? []}
+                    onCategoryClick={handleCategoryClick}
+                    activeCategory={categoryFilter}
+                    findings={findings}
+                    detectedTechnologies={result.detected_technologies}
+                  />
                 </div>
-              </>
-            )}
+                <div className="lg:col-span-1">
+                  <FixTheseFirst
+                    findings={priorityFixes}
+                    currentScore={score}
+                    onSelect={handleOpenDrawer}
+                    selectedId={drawerFindingId}
+                  />
+                </div>
+              </div>
 
-            {/* Section 6: Repository Statistics */}
-            <RepositoryStats
-              repoName={repoName}
-              filesCount={filesScanned}
-              directoriesCount={directoriesScanned}
-              findingsCount={findings.length}
-              rulesCount={rulesExecuted}
-              technologiesCount={technologiesCount}
-              scanDuration={result.analysis_duration_seconds}
-              completedAt={result.completed_at}
-              branch={result.branch}
-              commitHash={result.commit_hash}
-              rawFindingsCount={rawFindingsCount}
-              aiSuggestionsCount={result.ai_suggestions_count}
-              scannersCount={scannersCount}
-            />
+              {/* Findings Table */}
+              <FindingsExplorer
+                findings={filteredByCategory}
+                severityFilter={severityFilter}
+                sortBy={sortBy}
+                searchQuery={searchQuery}
+                expandedFinding={expandedFinding}
+                onSeverityFilterChange={onSeverityFilterChange}
+                onSortByChange={onSortByChange}
+                onSearchQueryChange={onSearchQueryChange}
+                onExpandedFindingChange={onExpandedFindingChange}
+                onFindingClick={handleOpenDrawer}
+                rawFindingsCount={rawFindingsCount}
+              />
+            </div>
 
             {/* Category filter indicator */}
             {categoryFilter && (
@@ -320,19 +274,33 @@ export function ScanResultsDashboard({
               </motion.div>
             )}
 
-            {/* Section 7: Findings Explorer */}
-            <FindingsExplorer
-              findings={filteredByCategory}
-              severityFilter={severityFilter}
-              sortBy={sortBy}
-              searchQuery={searchQuery}
-              expandedFinding={expandedFinding}
-              onSeverityFilterChange={onSeverityFilterChange}
-              onSortByChange={onSortByChange}
-              onSearchQueryChange={onSearchQueryChange}
-              onExpandedFindingChange={onExpandedFindingChange}
-              onFindingClick={handleOpenDrawer}
+            {/* ===== SECTION 5: Scanner Health ===== */}
+            {result.scanner_executions && result.scanner_executions.length > 0 && (
+              <ScannerExecutionTable executions={result.scanner_executions} />
+            )}
+
+            {/* ===== SECTION 6: Diagnostics ===== */}
+            <Diagnostics
+              repoName={repoName}
+              filesCount={filesScanned}
+              directoriesCount={directoriesScanned}
+              findingsCount={findings.length}
+              rulesCount={rulesExecuted}
+              technologiesCount={technologiesCount}
+              scanDuration={result.analysis_duration_seconds}
+              completedAt={result.completed_at}
+              branch={result.branch}
+              commitHash={result.commit_hash}
               rawFindingsCount={rawFindingsCount}
+              aiSuggestionsCount={result.ai_suggestions_count}
+              scannersCount={scannersCount}
+              currentStep={8}
+              totalScanners={result.scanner_executions?.length ?? 0}
+              completedScanners={result.scanner_executions?.filter((e: any) =>
+                ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"].includes(e.status)
+              ).length ?? 0}
+              aiStatus={result.ai_status ?? (isAiReady ? "completed" : isAiPending ? "processing" : "pending")}
+              scanStatus={result.status ?? "completed"}
             />
           </>
         )}

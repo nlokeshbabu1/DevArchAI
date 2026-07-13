@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Shield, CheckCircle2, AlertCircle, Clock, SkipForward, Ban, Loader2,
+  Shield, CheckCircle2, AlertCircle, Clock, SkipForward, Loader2,
   Timer, Calendar, FileText, Bug, Package2, Layers, FolderTree,
   ChevronDown, ChevronRight, ExternalLink, Sparkles, BarChart3,
-  GitMerge, Terminal, Eye, List, Lock, HelpCircle,
+  GitMerge, Terminal, Eye, List, Lock, HelpCircle, GitPullRequest,
+  Info,
 } from "lucide-react"
-import { cn, formatDuration } from "../../lib/utils"
+import { cn, formatDuration, getScannerPurpose, getScannerTechnologies } from "../../lib/utils"
 import type { ScannerExecution, Finding } from "../../types"
 
 interface ScannerExecutionCardProps {
@@ -30,15 +31,15 @@ const STATUS_STYLES: Record<string, { label: string; icon: typeof Shield; color:
     color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20",
   },
   SKIPPED_NOT_APPLICABLE: {
-    label: "Skipped", icon: SkipForward,
+    label: "Not Applicable", icon: SkipForward,
     color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20",
   },
   UNAVAILABLE: {
     label: "Unavailable", icon: HelpCircle,
-    color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20",
+    color: "text-zinc-400", bg: "bg-zinc-500/10 border-zinc-500/20",
   },
   DISABLED: {
-    label: "Disabled", icon: Ban,
+    label: "Unavailable", icon: HelpCircle,
     color: "text-zinc-400", bg: "bg-zinc-500/10 border-zinc-500/20",
   },
   FAILED: {
@@ -61,15 +62,15 @@ function formatDateTime(iso: string | null | undefined): string {
     const d = new Date(iso)
     return d.toLocaleString("en-US", {
       month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour: "2-digit", minute: "2-digit",
     })
   } catch {
     return "—"
   }
 }
 
-function StatRow({ icon: Icon, label, value, color }: {
-  icon: typeof Shield; label: string; value: string | number | null | undefined; color?: string
+function StatRow({ icon: Icon, label, value, color, tooltip }: {
+  icon: typeof Shield; label: string; value: string | number | null | undefined; color?: string; tooltip?: string
 }) {
   if (value == null || value === "" || value === "—") return null
   return (
@@ -77,6 +78,14 @@ function StatRow({ icon: Icon, label, value, color }: {
       <Icon className={cn("w-3.5 h-3.5 shrink-0", color ?? "text-white/30")} />
       <span className="text-[11px] text-white/40 min-w-[100px]">{label}</span>
       <span className={cn("text-[11px] font-medium text-white/70 font-mono ml-auto", color)}>{value}</span>
+      {tooltip && (
+        <span className="relative group cursor-help">
+          <Info className="w-3 h-3 text-white/20 hover:text-white/40 transition-colors" />
+          <span className="absolute bottom-full right-0 mb-1 w-56 p-2 rounded-lg bg-slate-800 border border-white/10 text-[9px] text-white/60 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            {tooltip}
+          </span>
+        </span>
+      )}
     </div>
   )
 }
@@ -158,11 +167,10 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
   const [expanded, setExpanded] = useState(false)
   const cfg = STATUS_STYLES[execution.status] || STATUS_STYLES.DISCOVERED
   const Icon = cfg.icon
-  const isCompleted = execution.status === "COMPLETED" || execution.status === "COMPLETED_WITH_FINDINGS" || execution.status === "COMPLETED_NO_FINDINGS"
+  const isCompleted = ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"].includes(execution.status)
   const hasFindings = (execution.findings_count ?? 0) > 0
   const isSkipped = execution.status === "SKIPPED_NOT_APPLICABLE"
-  const isUnavailable = execution.status === "UNAVAILABLE"
-  const isDisabled = execution.status === "DISABLED"
+  const isUnavailable = execution.status === "UNAVAILABLE" || execution.status === "DISABLED"
   const isFailed = execution.status === "FAILED"
   const isRunning = execution.status === "RUNNING"
 
@@ -175,6 +183,9 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
   const isTerraform = scannerIdLower.includes("tfsec") || scannerIdLower.includes("checkov")
   const isGitleaks = scannerIdLower.includes("gitleaks")
 
+  const purpose = getScannerPurpose(execution.scanner_id)
+  const technologies = getScannerTechnologies(execution.scanner_id)
+
   return (
     <motion.div
       layout
@@ -184,8 +195,7 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
         isCompleted && !hasFindings ? "border-emerald-500/10 bg-emerald-500/[0.02]" :
         isFailed ? "border-red-500/10 bg-red-500/[0.02]" :
         isSkipped ? "border-amber-500/10 bg-amber-500/[0.02]" :
-        isUnavailable ? "border-amber-500/10 bg-amber-500/[0.02]" :
-        isDisabled ? "border-zinc-500/10 bg-zinc-500/[0.02]" :
+        isUnavailable ? "border-zinc-500/10 bg-zinc-500/[0.02]" :
         "border-white/5 bg-white/[0.02]"
       )}
     >
@@ -225,8 +235,8 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
                 {execution.findings_count} finding{(execution.findings_count ?? 0) !== 1 ? "s" : ""}
               </span>
             )}
-              {!hasFindings && isCompleted && (
-              <span className="text-[9px] text-emerald-400/60">Completed (0 findings)</span>
+            {!hasFindings && isCompleted && (
+              <span className="text-[9px] text-emerald-400/60">No security issues detected</span>
             )}
           </div>
         </div>
@@ -265,31 +275,19 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
                   <SkipForward className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-amber-300">Scanner skipped</p>
+                    <p className="text-[11px] font-medium text-amber-300">Not applicable</p>
                     <p className="text-[10px] text-amber-400/70 mt-0.5">{execution.skipped_reason}</p>
                   </div>
                 </div>
               )}
 
               {isUnavailable && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
-                  <HelpCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-[11px] font-medium text-amber-300">CLI tool not installed</p>
-                    <p className="text-[10px] text-amber-400/70 mt-0.5">
-                      {execution.skipped_reason || "CLI tool not available on system PATH."}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {isDisabled && (
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-zinc-500/5 border border-zinc-500/10">
-                  <Ban className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                  <HelpCircle className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-zinc-300">Scanner disabled</p>
+                    <p className="text-[11px] font-medium text-zinc-300">Unavailable</p>
                     <p className="text-[10px] text-zinc-400/70 mt-0.5">
-                      {execution.skipped_reason || "Scanner disabled in configuration."}
+                      {execution.skipped_reason || "This scanner is not enabled on the current scanning worker."}
                     </p>
                   </div>
                 </div>
@@ -308,21 +306,43 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
               {isCompleted && !hasFindings && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <p className="text-[11px] text-emerald-300">Completed (0 findings)</p>
+                  <p className="text-[11px] text-emerald-300">No security issues detected</p>
                 </div>
               )}
 
-              {/* Generic metadata grid */}
+              {/* Scanner Purpose */}
               <div>
-                <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Execution Details</h4>
+                <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Scanner Purpose</h4>
+                <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                  <p className="text-xs text-white/60">{purpose}</p>
+                </div>
+              </div>
+
+              {/* Supported Technologies */}
+              {technologies.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Supported Technologies</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {technologies.map(tech => (
+                      <span key={tech} className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-medium border border-white/10 bg-white/[0.03] text-white/50">
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Execution metadata grid */}
+              <div>
+                <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Execution Summary</h4>
                 <div className="grid grid-cols-2 gap-1.5">
                   <StatRow icon={Calendar} label="Started" value={formatDateTime(execution.execution_start)} />
                   <StatRow icon={Calendar} label="Ended" value={formatDateTime(execution.execution_end)} />
                   <StatRow icon={Timer} label="Duration" value={execution.duration_ms ? formatDuration(execution.duration_ms / 1000) : "—"} />
                   <StatRow icon={FolderTree} label="Files Scanned" value={execution.files_scanned} />
                   <StatRow icon={Layers} label="Rules Executed" value={execution.rules_executed} />
-                  <StatRow icon={BarChart3} label="Raw Findings" value={execution.findings_count} />
-                  <StatRow icon={GitMerge} label="Normalized Findings" value={allFindingsCount ?? execution.findings_count} />
+                  <StatRow icon={BarChart3} label="Scanner Findings" value={execution.findings_count} />
+                  <StatRow icon={GitMerge} label="Normalized Findings" value={allFindingsCount ?? execution.findings_count} tooltip="Normalized findings are standardized security issues after merging outputs from multiple scanners." />
                   <StatRow icon={Bug} label="Duplicates Removed" value={
                     (execution.findings_count ?? 0) - (allFindingsCount ?? execution.findings_count ?? 0) > 0
                       ? String((execution.findings_count ?? 0) - (allFindingsCount ?? execution.findings_count ?? 0))
@@ -332,20 +352,74 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
               </div>
 
               {/* Scanner-specific details */}
-              {isTrivy && hasFindings && (
-                <div>
-                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Trivy Scan Results</h4>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <StatRow icon={Bug} label="Vulnerabilities" value={metrics.vulnCount} color="text-red-400" />
-                    <StatRow icon={Package2} label="Unique Packages" value={metrics.packageCount} />
-                    <StatRow icon={Shield} label="Secrets" value={metrics.secretCount} color="text-amber-400" />
-                    <StatRow icon={FileText} label="Misconfigurations" value={metrics.misconfigCount} color="text-orange-400" />
-                    <StatRow icon={BarChart3} label="Critical" value={metrics.criticalCount} color="text-red-400" />
-                    <StatRow icon={BarChart3} label="High" value={metrics.highCount} color="text-orange-400" />
-                    <StatRow icon={BarChart3} label="Medium" value={metrics.mediumCount} color="text-yellow-400" />
-                    <StatRow icon={BarChart3} label="Low" value={metrics.lowCount} color="text-blue-400" />
+              {isTrivy && (
+                <>
+                  {hasFindings && (
+                    <div>
+                      <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Trivy Scan Results</h4>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <StatRow icon={Bug} label="Vulnerabilities" value={metrics.vulnCount} color="text-red-400" />
+                        <StatRow icon={Package2} label="Unique Packages" value={metrics.packageCount} />
+                        <StatRow icon={Shield} label="Secrets" value={metrics.secretCount} color="text-amber-400" />
+                        <StatRow icon={FileText} label="Misconfigurations" value={metrics.misconfigCount} color="text-orange-400" />
+                        <StatRow icon={BarChart3} label="Critical" value={metrics.criticalCount} color="text-red-400" />
+                        <StatRow icon={BarChart3} label="High" value={metrics.highCount} color="text-orange-400" />
+                        <StatRow icon={BarChart3} label="Medium" value={metrics.mediumCount} color="text-yellow-400" />
+                        <StatRow icon={BarChart3} label="Low" value={metrics.lowCount} color="text-blue-400" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Trivy capability badges */}
+                  <div>
+                    <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Trivy Capabilities</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "Container CVEs", color: "bg-rose-500/10 text-rose-300 border-rose-500/20" },
+                        { label: "OS Packages", color: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
+                        { label: "Language Packages", color: "bg-purple-500/10 text-purple-300 border-purple-500/20" },
+                        { label: "Secrets", color: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
+                        { label: "Misconfiguration", color: "bg-orange-500/10 text-orange-300 border-orange-500/20" },
+                        { label: "License Scanning", color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20" },
+                      ].map(badge => (
+                        <span key={badge.label} className={cn("inline-flex items-center px-2 py-0.5 rounded text-[9px] font-medium border", badge.color)}>
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+
+                  {/* Why DevArchAI uses Trivy */}
+                  <div className="rounded-xl border border-indigo-500/10 bg-gradient-to-b from-indigo-950/20 to-slate-900/30 p-3.5">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <h4 className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider">Why DevArchAI uses Trivy</h4>
+                    </div>
+                    <p className="text-[9px] text-white/40 mb-2 leading-relaxed">
+                      Instead of simply running Trivy, DevArchAI enhances every scan result with:
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { icon: GitMerge, label: "Normalization", desc: "Standardizes findings" },
+                        { icon: Layers, label: "Deduplication", desc: "Merges across scanners" },
+                        { icon: FileText, label: "CWE Mapping", desc: "Industry-standard taxonomy" },
+                        { icon: Sparkles, label: "AI Explanations", desc: "Deep security context" },
+                        { icon: GitPullRequest, label: "Auto Fix PRs", desc: "One-click remediation" },
+                        { icon: BarChart3, label: "Trend Tracking", desc: "Score over time" },
+                        { icon: Shield, label: "Compliance", desc: "Auto-generated reports" },
+                        { icon: Eye, label: "Dedup View", desc: "One issue once" },
+                      ].map(item => (
+                        <div key={item.label} className="flex items-center gap-1.5 py-1 px-2 rounded bg-white/[0.02]">
+                          <item.icon className="w-2.5 h-2.5 text-indigo-400/60 shrink-0" />
+                          <div>
+                            <span className="text-[9px] font-medium text-white/60">{item.label}</span>
+                            <span className="text-[8px] text-white/30 ml-1">{item.desc}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
 
               {isSca && hasFindings && (
@@ -424,16 +498,50 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
                 </div>
               )}
 
+              {/* AI Analysis Pipeline */}
+              <div className="rounded-xl border border-indigo-500/10 bg-gradient-to-b from-indigo-950/20 to-slate-900/30 p-3.5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <h4 className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider">AI Analysis Pipeline</h4>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[
+                    { label: "Scanner", icon: Eye, active: true },
+                    { label: "Normalization", icon: GitMerge, active: true },
+                    { label: "AI Analysis", icon: Sparkles, active: true },
+                    { label: "Risk Score", icon: BarChart3, active: hasFindings },
+                    { label: "Business Impact", icon: Shield, active: hasFindings },
+                    { label: "Fix Rec", icon: FileText, active: hasFindings },
+                    { label: "Auto PR", icon: GitPullRequest, active: hasFindings },
+                  ].map((step, idx) => (
+                    <div key={step.label} className="flex items-center">
+                      <div className={cn(
+                        "flex items-center gap-1 px-2 py-1 rounded text-[9px] font-medium border",
+                        step.active
+                          ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300"
+                          : "bg-white/[0.02] border-white/5 text-white/30"
+                      )}>
+                        <step.icon className="w-2.5 h-2.5" />
+                        {step.label}
+                      </div>
+                      {idx < 6 && (
+                        <div className="mx-0.5 text-white/10">→</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Action buttons */}
               <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5">
                 {isCompleted && (
                   <>
                     <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-medium text-white/60 hover:text-white/80 transition-colors">
                       <Eye className="w-3 h-3" />
-                      View Findings
+                      View Scanner Findings
                     </button>
                     <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-medium text-white/60 hover:text-white/80 transition-colors">
-                      <List className="w-3 h-3" />
+                      <GitMerge className="w-3 h-3" />
                       Normalized View
                     </button>
                   </>
@@ -446,9 +554,9 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
                 )}
                 <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-medium text-white/60 hover:text-white/80 transition-colors">
                   <ExternalLink className="w-3 h-3" />
-                  Raw Output
+                  Execution Logs
                 </button>
-                {(isSkipped || isUnavailable || isDisabled) && (
+                {(isSkipped || isUnavailable) && (
                   <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-[10px] font-medium text-indigo-300 hover:text-indigo-200 transition-colors">
                     <Sparkles className="w-3 h-3" />
                     AI Analysis
@@ -462,5 +570,3 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
     </motion.div>
   )
 }
-
-

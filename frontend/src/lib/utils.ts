@@ -275,3 +275,101 @@ export function getRelativeTime(dateStr: string | null | undefined): string {
   if (diff < 2592000) return `${Math.floor(diff / 604800)} weeks ago`
   return `${Math.floor(diff / 2592000)} months ago`
 }
+
+export interface TechnologyDef {
+  key: string
+  label: string
+  scannerIds: string[]
+  detectionLabel: string
+}
+
+export const TECHNOLOGY_COVERAGE: TechnologyDef[] = [
+  { key: "container", label: "Container", scannerIds: ["hadolint", "trivy_filesystem", "trivy", "checkov"], detectionLabel: "Docker detected" },
+  { key: "dockerfile", label: "Dockerfile", scannerIds: ["hadolint", "checkov"], detectionLabel: "Dockerfile found" },
+  { key: "kubernetes", label: "Kubernetes", scannerIds: ["kube_score", "trivy_config", "checkov"], detectionLabel: "K8s manifests found" },
+  { key: "terraform", label: "Terraform", scannerIds: ["tfsec", "checkov"], detectionLabel: "Terraform configs found" },
+  { key: "cicd", label: "CI/CD", scannerIds: ["gitleaks"], detectionLabel: "CI/CD pipelines detected" },
+  { key: "secrets", label: "Secrets", scannerIds: ["gitleaks"], detectionLabel: "Secrets scanning enabled" },
+  { key: "dependencies", label: "Dependencies", scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"], detectionLabel: "Dependencies detected" },
+]
+
+export function getTechnologiesForScanner(scannerId: string): string[] {
+  return TECHNOLOGY_COVERAGE
+    .filter(t => t.scannerIds.includes(scannerId))
+    .map(t => t.key)
+}
+
+export const SCANNER_PURPOSE: Record<string, string> = {
+  trivy: "Container vulnerabilities",
+  trivy_filesystem: "Container & filesystem scanning",
+  trivy_config: "Misconfiguration scanning",
+  checkov: "IaC Security",
+  hadolint: "Docker Best Practices",
+  gitleaks: "Secrets Detection",
+  tfsec: "Terraform Security",
+  kube_score: "Kubernetes Best Practices",
+  npm_audit: "Node Dependency Security",
+  pip_audit: "Python Dependency Security",
+  govulncheck: "Go Dependency Security",
+  dependency_check: "Dependency Vulnerability Scanning",
+}
+
+export function getScannerPurpose(scannerId: string): string {
+  return SCANNER_PURPOSE[scannerId] || "Security scanning"
+}
+
+export const SCANNER_TECHNOLOGIES: Record<string, string[]> = {
+  trivy: ["Container", "OS Packages", "Language Packages", "Filesystem"],
+  trivy_filesystem: ["Container", "Filesystem"],
+  trivy_config: ["Kubernetes", "Terraform", "Docker", "Cloud"],
+  checkov: ["Terraform", "Kubernetes", "Docker", "CloudFormation", "ARM"],
+  hadolint: ["Dockerfile"],
+  gitleaks: ["Git", "CI/CD", "Config Files"],
+  tfsec: ["Terraform", "OpenTofu"],
+  kube_score: ["Kubernetes", "Helm"],
+  npm_audit: ["Node.js", "npm"],
+  pip_audit: ["Python", "pip"],
+  govulncheck: ["Go"],
+  dependency_check: ["Java", ".NET", "Python", "Node.js", "Ruby"],
+}
+
+export function getScannerTechnologies(scannerId: string): string[] {
+  return SCANNER_TECHNOLOGIES[scannerId] || []
+}
+
+// Scanners that improve coverage but are not required for basic operation
+const OPTIONAL_SCANNERS = new Set([
+  "gitleaks", "hadolint", "kube_score", "tfsec",
+  "govulncheck", "dependency_check", "pip_audit",
+])
+
+export function isScannerOptional(scannerId: string): boolean {
+  return OPTIONAL_SCANNERS.has(scannerId)
+}
+
+const CLASSIFICATION_TO_TECH: Record<string, string> = {
+  container: "container",
+  iac: "terraform",
+  kubernetes: "kubernetes",
+  cicd: "cicd",
+  secrets: "secrets",
+  sca: "dependencies",
+}
+
+export function classifyFindingTechnology(finding: any): string {
+  const classification = classifyFindingScanner(finding)
+  const scannerName = (finding.scanner_name || "").toLowerCase()
+  if (scannerName.includes("hadolint")) return "dockerfile"
+  return CLASSIFICATION_TO_TECH[classification] || "container"
+}
+
+export function getTechnologySeverityCounts(findings: any[], techKey: string): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const f of findings) {
+    if (classifyFindingTechnology(f) === techKey) {
+      const sev = (f.severity || "info").toLowerCase()
+      counts[sev] = (counts[sev] || 0) + 1
+    }
+  }
+  return counts
+}

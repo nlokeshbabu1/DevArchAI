@@ -180,7 +180,7 @@ export function FindingsExplorer({
           <div className="mt-3 flex items-center gap-2 text-[10px] text-white/30 bg-white/[0.02] rounded-lg px-3 py-2 border border-white/5">
             <GitMerge className="w-3 h-3 text-indigo-400/60" />
             <span>
-              <span className="text-white/50 font-medium">{rawFindingsCount}</span> raw findings deduplicated to{" "}
+              <span className="text-white/50 font-medium">{rawFindingsCount}</span> scanner findings deduplicated to{" "}
               <span className="text-white/50 font-medium">{findings.length}</span> unique findings
             </span>
             <span className="text-white/10">·</span>
@@ -262,7 +262,7 @@ export function FindingsExplorer({
                           {hasMergedSources && (
                             <span
                               className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-indigo-500/10 text-indigo-400/70 border border-indigo-500/10 cursor-help"
-                              title="Finding merged from multiple scanners"
+                              title={`Detected by ${sources.join(", ")}`}
                             >
                               <GitMerge className="w-2 h-2" />
                               merged
