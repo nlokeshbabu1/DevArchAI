@@ -7,13 +7,15 @@ import {
   Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { Skeleton, SkeletonCard } from '../../components/ui-animated'
 import { useNavigate } from 'react-router-dom'
 import { CodeBlock } from '../../components/ui/code-block'
 import { SeverityBadge } from '../../components/ui/severity-badge'
 import { Button } from '../../components/ui'
+import { ErrorState } from '../../components/ui/error-state'
 import { useAuthStore } from '../../stores/auth-store'
 import { apiClient } from '../../api/client'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 
 const toast = {
   success: (msg: string) => console.log('✓', msg),
@@ -230,7 +232,7 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
   const handleCopyFix = async () => {
     if (!canCopyFix || !suggestion.fix_code) return
     try {
-      await navigator.clipboard.writeText(suggestion.fix_code)
+      await copyToClipboard(suggestion.fix_code)
       setCopied(true)
       toast.success('Fix code copied!')
       setTimeout(() => setCopied(false), 2000)
@@ -948,33 +950,33 @@ export function AISuggestionsPage() {
 
         {/* === Content === */}
         {error ? (
-          <motion.div
-            initial={shouldReduceMotion ? {} : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="text-center py-16"
-          >
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <AlertCircle className="h-8 w-8 text-red-400" />
-            </div>
-            <h3 className="text-base font-semibold text-white/60 mb-1">Failed to load recommendations</h3>
-            <p className="text-sm text-white/40 mb-6 max-w-md mx-auto">{error}</p>
-            <button
-              onClick={fetchAllSuggestions}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors text-sm font-medium"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Retry
-            </button>
-          </motion.div>
+          <ErrorState
+            title="Failed to load recommendations"
+            message={`${error}. You can retry to fetch the latest AI suggestions.`}
+            onRetry={fetchAllSuggestions}
+          />
         ) : loading ? (
-          <div className="text-center py-16">
-            <motion.div
-              animate={shouldReduceMotion ? {} : { rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
-              className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full mx-auto mb-4"
-            />
-            <p className="text-sm text-white/40">Loading recommendations...</p>
+          <div className="space-y-6" aria-label="Loading recommendations">
+            {([1, 2, 3]).map((i) => (
+              <div key={i} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-3.5 w-24 rounded" />
+                    <Skeleton className="h-3.5 w-16 rounded" />
+                  </div>
+                  <Skeleton className="h-5 w-14 rounded-full" />
+                </div>
+                <Skeleton className="h-4 w-3/4 rounded" />
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-6 w-32 rounded-lg" />
+                  <Skeleton className="h-6 w-20 rounded-lg" />
+                </div>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <Skeleton className="h-7 w-20 rounded-lg" />
+                  <Skeleton className="h-7 w-20 rounded-lg" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : searchFiltered.length === 0 ? (
           <motion.div initial={shouldReduceMotion ? {} : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: shouldReduceMotion ? 0 : 0.3 }} className="text-center py-16">

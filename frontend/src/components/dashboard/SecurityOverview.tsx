@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, AlertTriangle, TrendingUp, FolderGit2, Info } from 'lucide-react'
 import { cn } from '../../lib/utils'
@@ -13,7 +14,7 @@ interface SecurityOverviewProps {
   isLoading?: boolean
 }
 
-export function SecurityOverview({
+export const SecurityOverview = memo(function SecurityOverview({
   securityScore, hasSecurityScore,
   criticalIssues, repositoriesAtRisk,
   scoreDelta, isLoading
@@ -104,4 +105,4 @@ export function SecurityOverview({
       </div>
     </div>
   )
-}
+})

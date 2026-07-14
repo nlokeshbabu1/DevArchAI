@@ -337,7 +337,7 @@ export function BillingPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Card className="p-8 text-center glow-primary" hover={false}>
+        <Card className="p-8 text-center" hover={false}>
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600">
               <Building2 className="h-8 w-8 text-white" />

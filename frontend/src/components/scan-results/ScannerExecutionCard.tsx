@@ -424,7 +424,7 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
 
               {isSca && hasFindings && (
                 <div>
-                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">SCA Scan Results</h4>
+                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Dependency Scan Results</h4>
                   <div className="grid grid-cols-2 gap-1.5">
                     <StatRow icon={Package2} label="Vulnerable Packages" value={metrics.packageCount} />
                     <StatRow icon={Bug} label="Vulnerabilities" value={metrics.vulnCount} color="text-red-400" />
@@ -488,7 +488,7 @@ export function ScannerExecutionCard({ execution, findings, allFindingsCount, sc
 
               {isGitleaks && (
                 <div>
-                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Secrets Scan</h4>
+                  <h4 className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Secret Detection Scan</h4>
                   <div className="grid grid-cols-2 gap-1.5">
                     <StatRow icon={FolderTree} label="Files Scanned" value={execution.files_scanned ?? metrics.uniqueFiles.length} />
                     <StatRow icon={Lock} label="Secrets Found" value={hasFindings ? execution.findings_count : 0} color={hasFindings ? "text-amber-400" : "text-emerald-400"} />

@@ -18,12 +18,12 @@ interface SecurityCoverageProps {
 }
 
 const coverageTypes: Omit<CoverageItem, "score" | "filesScanned">[] = [
-  { type: "sast", label: "Code Analysis (SAST)", icon: Code2, enabled: true, description: "Static analysis" },
-  { type: "sca", label: "Dependency Scan (SCA)", icon: Database, enabled: true, description: "Open source dependencies" },
+  { type: "sast", label: "Code Security", icon: Code2, enabled: true, description: "Static analysis" },
+  { type: "sca", label: "Dependency Security", icon: Database, enabled: true, description: "Open source dependencies" },
   { type: "secrets", label: "Secrets Detection", icon: Lock, enabled: true, description: "Credential and secret detection" },
-  { type: "iac", label: "IaC Scan", icon: Server, enabled: true, description: "Infrastructure as Code" },
+  { type: "iac", label: "Infrastructure Security", icon: Server, enabled: true, description: "Infrastructure as Code" },
   { type: "containers", label: "Container Scan", icon: Cloud, enabled: true, description: "Docker image vulnerabilities" },
-  { type: "dast", label: "DAST", icon: Globe, enabled: true, description: "Dynamic security testing" },
+  { type: "dast", label: "Dynamic Security Testing", icon: Globe, enabled: true, description: "Dynamic security testing" },
 ]
 
 export function SecurityCoverage({ scores, filesByCategory = {} }: SecurityCoverageProps) {

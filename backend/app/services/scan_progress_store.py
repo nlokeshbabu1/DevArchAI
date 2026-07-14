@@ -129,7 +129,7 @@ class ScanProgressStore:
                 entry._last_progress = getattr(entry, '_last_progress', entry.progress)
             return entry
 
-    async def _cleanup_scan(self, scan_id: str):
+    async def cleanup_scan(self, scan_id: str):
         """Remove a scan entry from the progress store (used when DB has authoritative terminal state)."""
         async with self._lock:
             self._store.pop(scan_id, None)

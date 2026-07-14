@@ -3,6 +3,7 @@
  */
 
 import apiClient from './client';
+import type { StageMetadata } from '../../types';
 
 export interface Scan {
   id: string;
@@ -70,6 +71,14 @@ export const scansApi = {
   },
 
   /**
+   * Get scan stage metadata (labels, icons, order)
+   */
+  getStages: async (): Promise<StageMetadata[]> => {
+    const response = await apiClient.get<{ stages: StageMetadata[] }>('/scan/stages');
+    return response.data.stages;
+  },
+
+  /**
    * Get scan by ID
    */
   getScan: async (scanId: string): Promise<Scan> => {
@@ -128,6 +137,26 @@ export const scansApi = {
    */
   deleteScan: async (scanId: string): Promise<{ message: string }> => {
     const response = await apiClient.delete(`/scans/${scanId}`);
+    return response.data;
+  },
+
+  /**
+   * Get authoritative scan state (for reconnect sync and progress tracking)
+   */
+  getScanState: async (scanId: string): Promise<{
+    scan_id: string
+    status: string
+    current_stage: string | null
+    progress: number
+    is_terminal: boolean
+    error_message?: string
+    detected_stack: string[]
+    started_at?: string
+    completed_at?: string
+    overall_score?: number
+    created_at: string
+  }> => {
+    const response = await apiClient.get(`/scan/state/${scanId}`);
     return response.data;
   },
 

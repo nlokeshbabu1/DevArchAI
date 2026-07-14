@@ -9,7 +9,7 @@ import {
   Zap, Search, GitMerge
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor, sanitizePath } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath, copyToClipboard } from "../../lib/utils"
 import { Button } from "../ui-animated"
 import { DiffViewer } from "../DiffViewer"
 
@@ -81,7 +81,7 @@ export function FindingDetailsDrawer({
 
   const handleCopy = async () => {
     if (!finding.fix_code) return
-    await navigator.clipboard.writeText(finding.fix_code)
+    await copyToClipboard(finding.fix_code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
     onCopyFix(finding.fix_code)
@@ -119,6 +119,9 @@ export function FindingDetailsDrawer({
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-[#0a0a10] border-l border-white/10 overflow-hidden flex flex-col"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Finding details"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
@@ -141,7 +144,7 @@ export function FindingDetailsDrawer({
                     </span>
                   )}
                 </div>
-                <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0">
+                <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0" aria-label="Close finding details">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -361,7 +364,7 @@ export function FindingDetailsDrawer({
                               )}
                             </div>
                             <div className="flex-1 min-w-0 pt-0.5">
-                              <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                                 <span className={cn(
                                   "text-xs font-medium",
                                   stage.active ? "text-white/70" : "text-white/30"
@@ -464,6 +467,9 @@ export function FindingDetailsDrawer({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Create pull request"
             >
               <div className="flex items-center gap-2 mb-4">
                 <GitPullRequest className="w-5 h-5 text-indigo-400" />

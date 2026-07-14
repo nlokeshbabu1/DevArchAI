@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp, FileCode, FolderGit2, Shield, Wrench, FileText } from 'lucide-react'
+import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp, FileCode, FolderGit2, Shield, Wrench, FileText, ShieldCheck } from 'lucide-react'
 import { Card, Button, Badge } from '../../components/ui'
 import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
 import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn, sanitizePath } from '../../lib/utils'
+import { cn, sanitizePath, copyToClipboard } from '../../lib/utils'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface Finding {
   id: string
@@ -406,15 +407,16 @@ export function Findings() {
             )}
           </Card>
         ) : filteredFindings?.length === 0 ? (
-          <Card className="p-12 text-center">
-            <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No findings found</h3>
-            <p className="text-muted-foreground">
-              {findings?.length === 0
-                ? "No findings detected. Run a scan to identify issues."
-                : "No findings match your current filters."}
-            </p>
-          </Card>
+          <EmptyState
+            icon={<ShieldCheck className="h-12 w-12 text-muted-foreground" />}
+            title="No findings yet"
+            description="Run a scan to detect security issues, misconfigurations, and vulnerabilities."
+            action={
+              <Button onClick={() => navigate('/repositories')}>
+                Start Scanning
+              </Button>
+            }
+          />
         ) : (
           filteredFindings?.map((finding: Finding) => {
             const Icon = severityIcons[finding.severity]
@@ -528,7 +530,7 @@ export function Findings() {
                           variant="ghost"
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => navigator.clipboard.writeText(finding.fix_code || '')}
+                           onClick={() => copyToClipboard(finding.fix_code || '')}
                         >
                           Copy
                         </Button>
@@ -601,7 +603,7 @@ export function Findings() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigator.clipboard.writeText(finding.full_example || '')}
+                          onClick={() => copyToClipboard(finding.full_example || '')}
                         >
                           Copy Full File
                         </Button>

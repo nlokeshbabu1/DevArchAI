@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText } from 'lucide-react'
+import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText, Scan } from 'lucide-react'
 import { Card, Button, Badge, Progress } from '../../components/ui'
 import { scansApi } from '../../api/endpoints/scans'
 import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface Scan {
   id: string
@@ -151,7 +152,7 @@ export function ScansPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         <Card className="p-4">
           <div className="text-2xl font-bold text-foreground">
             {stats.completed}
@@ -180,7 +181,7 @@ export function ScansPage() {
 
       {/* Filter */}
       <Card className="p-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-foreground font-medium">Filter:</span>
           <select
             value={statusFilter}
@@ -206,17 +207,17 @@ export function ScansPage() {
             <p className="text-muted-foreground">Loading scans...</p>
           </div>
         ) : filteredScans?.length === 0 ? (
-          <Card className="p-12 text-center">
-            <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No scans found</h3>
-            <p className="text-muted-foreground mb-4">
-              Start by scanning a repository to see results here
-            </p>
-            <Button onClick={handleQuickScan}>
-              <Play className="h-4 w-4 mr-2" />
-              Start First Scan
-            </Button>
-          </Card>
+          <EmptyState
+            icon={<Scan className="h-12 w-12 text-muted-foreground" />}
+            title="No scans yet"
+            description="Run a repository scan to generate security findings."
+            action={
+              <Button onClick={handleQuickScan}>
+                <Play className="h-4 w-4 mr-2" />
+                Start First Scan
+              </Button>
+            }
+          />
         ) : (
           filteredScans?.map((scan: Scan) => {
             const Icon = statusIcons[scan.status]

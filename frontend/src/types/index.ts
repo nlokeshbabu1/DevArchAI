@@ -110,3 +110,169 @@ export interface AnalysisJob {
   error_message?: string
   report_id?: string
 }
+
+export type ScanStage =
+  | 'connecting'
+  | 'cloning'
+  | 'technology_detection'
+  | 'scanner_selection'
+  | 'scanning'
+  | 'normalization'
+  | 'deduplication'
+  | 'ai_generation'
+  | 'report_generation'
+
+export interface StageMetadata {
+  id: ScanStage
+  label: string
+  icon: string
+  order: number
+}
+
+export interface ScanState {
+  scan_id: string
+  status: string
+  current_stage: ScanStage | null
+  progress: number
+  is_terminal: boolean
+  error_message?: string
+  detected_stack: string[]
+  started_at?: string
+  completed_at?: string
+  overall_score?: number
+  created_at: string
+}
+
+export type ScanLifecycleState =
+  | 'idle'
+  | 'creating'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'reconnecting'
+
+// --- Enterprise Pipeline Types ---
+
+export interface ScannerStatus {
+  scanner_id: string
+  scanner_name: string
+  status: 'pending' | 'running' | 'completed' | 'completed_with_findings' | 'completed_no_findings' | 'skipped' | 'unavailable' | 'failed'
+  rules_count?: number
+  findings_count: number
+  started_at?: string
+  completed_at?: string
+  duration_ms?: number
+  error?: string
+}
+
+export interface LiveFinding {
+  rule_id: string
+  rule_name: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  category: string
+  file_path?: string
+  line_number?: number
+  description: string
+  timestamp: string
+}
+
+export interface AIGenerationProgress {
+  phase: string
+  message: string
+  progress: number
+  findings_processed: number
+  findings_total: number
+  timestamp: string
+}
+
+export interface StageTransition {
+  stage: ScanStage
+  stage_label: string
+  progress: number
+  status: 'running' | 'completed' | 'failed'
+  timestamp: string
+}
+
+export interface SeverityCounts {
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+}
+
+export type ScanEventType =
+  | 'connecting'
+  | 'cloning'
+  | 'cloned'
+  | 'indexed'
+  | 'dockerfile_found'
+  | 'terraform_found'
+  | 'helm_found'
+  | 'k8s_found'
+  | 'github_actions_found'
+  | 'tech_detection_complete'
+  | 'running_docker_rules'
+  | 'running_terraform_rules'
+  | 'running_k8s_rules'
+  | 'running_secret_detection'
+  | 'finding_discovered'
+  | 'ai_suggestion_generation'
+  | 'creating_pull_request'
+  | 'uploading_report'
+  | 'scan_completed'
+  | 'scan_failed'
+  | 'progress_update'
+  | 'scanner_start'
+  | 'scanner_complete'
+  | 'stack_detected'
+  | 'log_message'
+  | 'ai_progress'
+  | 'stage_transition'
+  | 'connection_ack'
+  | 'unknown'
+
+export interface ScanEvent {
+  id: number
+  type: ScanEventType
+  timestamp: string
+  progress: number
+  stage: string
+  message: string
+  metadata: Record<string, any>
+}
+
+export interface ScanProgressSnapshot {
+  scanId: string
+  status: string
+  currentStage: ScanStage | null
+  progress: number
+  currentStep?: string
+  detectedStack: string[]
+  isTerminal: boolean
+  errorMessage?: string
+  startedAt?: string
+  completedAt?: string
+  scanners: Record<string, ScannerStatus>
+  liveFindings: LiveFinding[]
+  aiProgress: AIGenerationProgress | null
+  stageTransitions: StageTransition[]
+  filesScanned: number
+  totalFiles: number
+  severityCounts: SeverityCounts
+  logs: string[]
+  events: ScanEvent[]
+}
+
+export interface RepoMetadata {
+  owner: string
+  repo: string
+  branch: string
+  visibility: string
+  defaultBranch: string
+  description?: string
+  stars?: number
+  language?: string
+}

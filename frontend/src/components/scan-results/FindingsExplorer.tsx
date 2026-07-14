@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, memo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
@@ -6,7 +6,7 @@ import {
   ScanSearch, Hash, GitMerge, BadgeCheck,
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor, sanitizePath, getFileName, parseScannerSources } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath, getFileName, parseScannerSources, copyToClipboard } from "../../lib/utils"
 import { Badge } from "../ui"
 import { DiffViewer } from "../DiffViewer"
 import { Button } from "../ui-animated"
@@ -59,7 +59,7 @@ const columns = [
   { key: "actions", label: "", width: "w-[60px]" },
 ]
 
-export function FindingsExplorer({
+export const FindingsExplorer = memo(function FindingsExplorer({
   findings, severityFilter, sortBy, searchQuery,
   expandedFinding, onSeverityFilterChange, onSortByChange,
   onSearchQueryChange, onExpandedFindingChange, onFindingClick,
@@ -350,7 +350,7 @@ export function FindingsExplorer({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => navigator.clipboard.writeText(finding.fix_code || "")}
+                      onClick={() => copyToClipboard(finding.fix_code || "")}
                     >
                       Copy Fix
                     </Button>
@@ -407,4 +407,4 @@ export function FindingsExplorer({
       )}
     </motion.div>
   )
-}
+})

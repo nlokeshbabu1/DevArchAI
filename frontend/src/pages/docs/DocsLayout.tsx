@@ -140,6 +140,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            aria-hidden="true"
           />
         )}
       </AnimatePresence>
@@ -153,6 +154,9 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.96 }}
             className="fixed top-[15%] left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl mx-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search documentation"
           >
             <div className="bg-card border border-white/10 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden">
               <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10">
@@ -214,7 +218,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
               <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-indigo-600">
                 <Shield className="h-4 w-4 text-white" />
               </div>
-              <span className="text-sm font-bold gradient-text">DevArchAI</span>
+              <span className="text-sm font-bold text-primary">DevArchAI</span>
               <span className="hidden sm:inline text-xs text-muted-foreground/60 font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10">Docs</span>
             </Link>
           </div>
@@ -260,7 +264,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           )}
         >
-          <nav className="p-4 space-y-1">
+          <nav className="p-4 space-y-1" aria-label="Documentation sections">
             {DOC_SECTIONS.map((section) => {
               const isExpanded = expandedSections.includes(section.label)
               return (
@@ -384,7 +388,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
             <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-3">
               On this page
             </div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-0.5" aria-label="Table of contents">
               {page.headings.map((h) => (
                 <a
                   key={h.id}

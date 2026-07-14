@@ -3,16 +3,19 @@
  * Allows users to start a scan without leaving the dashboard
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, GitBranch, Github, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
+import { X, GitBranch, Github, Gitlab, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
+
 import { Card, Button } from './ui-animated'
 import { cn } from '../lib/utils'
 import { ScanProgressOverlay } from './scans/ScanProgressOverlay'
 import { scansApi } from '../api/endpoints/scans'
 import apiClient from '../api/endpoints/client'
-import { useQuery } from '@tanstack/react-query'
+import { useScanWebSocket } from '../hooks/useScanWebSocket'
 
+type RepoProvider = 'github' | 'gitlab' | 'unknown'
 interface InlineScanPanelProps {
   isOpen: boolean
   onClose: () => void
@@ -24,28 +27,35 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
   const [selectedBranch, setSelectedBranch] = useState<string>('main')
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [stepName, setStepName] = useState<string>('')
-  const scanIdRef = useRef<string>('')
+  const [currentScanId, setCurrentScanId] = useState<string>('')
+
+  const parsedProvider = useMemo((): RepoProvider => {
+    const trimmed = repoUrl.trim().replace(/\/+$/, '')
+    if (/github\.com\//i.test(trimmed)) return 'github'
+    if (/gitlab\.com\//i.test(trimmed)) return 'gitlab'
+    return 'unknown'
+  }, [repoUrl])
 
   // Fetch branches when repo URL changes
   const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
     queryKey: ['branches', repoUrl],
     queryFn: async () => {
-      if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
+      const trimmed = repoUrl.trim()
+      if (!trimmed || parsedProvider === 'unknown') {
         return { branches: [], default_branch: 'main' }
       }
-      const response = await apiClient.get('/github/branches', {
-        params: { repo_url: repoUrl }
+      const endpoint = parsedProvider === 'gitlab' ? '/gitlab/branches' : '/github/branches'
+      const response = await apiClient.get(endpoint, {
+        params: { repo_url: trimmed }
       })
       return response.data
     },
-    enabled: !!repoUrl && repoUrl.startsWith('https://github.com/') && isOpen,
+    enabled: !!repoUrl && parsedProvider !== 'unknown' && isOpen,
     staleTime: 5 * 60 * 1000,
+    retry: false,
   })
 
-  // Update selected branch when branches are loaded
   useEffect(() => {
     if (branchesData?.default_branch) {
       setSelectedBranch(branchesData.default_branch)
@@ -54,26 +64,38 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
   const branches = branchesData?.branches || []
 
-  // Track scanId for overlay onViewResults
-  const [currentScanId, setCurrentScanId] = useState<string>('')
-
-  const handleViewResults = () => {
+  const handleViewResults = useCallback(() => {
     if (currentScanId) {
       onScanComplete?.(currentScanId)
     }
-  }
+  }, [currentScanId, onScanComplete])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setLoading(false)
     setError(null)
-    setProgress(0)
     onClose()
-  }
+  }, [onClose])
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     setError(null)
-    setProgress(0)
-  }
+  }, [])
+
+  const handleScanComplete = useCallback(async (data: Record<string, any>) => {
+    // Scan completed - keep overlay open so user can click View Results
+  }, [])
+
+  const handleScanFailed = useCallback((data: Record<string, any>) => {
+    setError(`Scan failed: ${data.error || 'Unknown error'}`)
+    setLoading(false)
+  }, [])
+
+  // WebSocket hook for real-time scan progress
+  const { scanState } = useScanWebSocket({
+    scanId: currentScanId || null,
+    enabled: loading && !!currentScanId,
+    onComplete: handleScanComplete,
+    onFailed: handleScanFailed,
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,8 +107,6 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
     setLoading(true)
     setError(null)
-    setProgress(0)
-    setStepName('')
 
     try {
       const response = await scansApi.startUnifiedScan({
@@ -99,71 +119,34 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
       }
 
       setCurrentScanId(response.scan_id)
-      scanIdRef.current = response.scan_id
-
-      // Poll for real progress updates from API only
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await apiClient.get(`/scan/status/${response.scan_id}`)
-          const status = statusResponse.data
-
-          // Update progress from API (real data only)
-          if (status.progress !== undefined) {
-            setProgress(Math.round(status.progress))
-          }
-
-          // Update current step from backend
-          if (status.current_step) {
-            setStepName(status.current_step)
-          }
-
-          // Check if scan FAILED
-          if (status.status === 'failed') {
-            clearInterval(pollInterval)
-            setError(`Scan failed: ${status.error_message || 'Unknown error'}`)
-            console.error('❌ Scan failed:', status.error_message)
-            return
-          }
-
-          // Check if scan is complete using backend status
-          if (status.status === 'completed') {
-            clearInterval(pollInterval)
-            setProgress(100)
-            // Don't set loading=false - let overlay show completion state
-            // User clicks "View Results" to navigate
-          }
-        } catch (pollError) {
-          console.error('Polling error:', pollError)
-        }
-      }, 1000) // Poll every 1 second
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval)
-        setError('Scan timed out. Please try again.')
-      }, 300000) // 5 minutes
+      // WebSocket hook handles real-time updates
 
     } catch (err: any) {
-      console.error('Scan error:', err)
       setError(err.response?.data?.detail || err.message || 'Failed to analyze repository')
+      setLoading(false)
     }
   }
 
   // During scan, show overlay instead of form modal
   if (loading) {
+    const progress = scanState?.progress ?? 0
+    const currentStep = scanState?.currentStep ?? undefined
+    const isComplete = scanState?.isTerminal && scanState?.status === 'completed'
+    const hasFailed = scanState?.isTerminal && scanState?.status === 'failed'
+
     return (
       <ScanProgressOverlay
         isOpen={true}
         onClose={handleCancel}
-        repositoryName={repoUrl.split('/').slice(-2).join('/')}
+        repositoryName={repoUrl.replace(/\/+$/, '').split('/').slice(-2).join('/')}
         branch={selectedBranch}
         progressData={{
           progress,
-          currentStep: stepName || undefined,
-          error: error ?? undefined,
+          currentStep,
+          error: hasFailed ? (scanState?.errorMessage || error || undefined) : undefined,
         }}
-        isComplete={progress >= 100}
-        hasFailed={!!error}
+        isComplete={isComplete ?? false}
+        hasFailed={hasFailed ?? false}
         onComplete={handleViewResults}
         onRetry={handleRetry}
       />
@@ -225,7 +208,6 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
           onClick={(e) => e.stopPropagation()}
         >
           <Card className="p-0 overflow-hidden" hover={false}>
-            {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-white/10">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">
@@ -243,29 +225,32 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
               </button>
             </div>
 
-            {/* Content */}
             <div className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-3">
-                    GitHub Repository URL
+                    Repository URL
                   </label>
                   <div className="relative">
                     <Github className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                     <input
-                      type="url"
+                      type="text"
                       value={repoUrl}
                       onChange={(e) => {
                         setRepoUrl(e.target.value)
                         setError(null)
                       }}
-                      placeholder="https://github.com/organization/repository"
-                      className="input pl-12 text-base py-3"
+                      placeholder="https://github.com/org/repo or https://gitlab.com/org/repo"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      className="scan-input pl-12 rounded-xl"
                       required
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Enter a public GitHub repository URL
+                    Enter a public GitHub or GitLab repository URL
                   </p>
                 </div>
 
@@ -279,7 +264,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
                       type="button"
                       onClick={() => branches.length > 0 && setShowBranchDropdown(!showBranchDropdown)}
                       disabled={isLoadingBranches || branches.length === 0}
-                      className="input pl-12 text-base py-3 w-full flex items-center justify-between bg-input hover:bg-input/80 transition-colors"
+                      className="scan-input pl-12 w-full flex items-center justify-between hover:bg-white/[0.06] transition-colors"
                     >
                       <span className="text-foreground">
                         {isLoadingBranches ? (
@@ -293,7 +278,6 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
                       <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showBranchDropdown && 'rotate-180')} />
                     </button>
 
-                    {/* Branch Dropdown */}
                     {showBranchDropdown && branches.length > 0 && (
                       <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-lg border border-white/10 bg-card shadow-lg">
                         {branches.map((branch: any) => (

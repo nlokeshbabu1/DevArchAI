@@ -56,6 +56,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"WebSocket manager initialization failed: {e}")
 
+    # Start scan timeout detector (marks stuck scans as failed)
+    try:
+        from app.services.scan_timeout import start_timeout_detector
+        await start_timeout_detector()
+        logger.info("Scan timeout detector started")
+    except Exception as e:
+        logger.warning(f"Scan timeout detector failed to start: {e}")
+
     yield
 
     # Shutdown

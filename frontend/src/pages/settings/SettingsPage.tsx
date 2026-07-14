@@ -13,7 +13,7 @@ import { authApi, type SessionInfo } from '../../api/endpoints/auth'
 import { settingsApi, type ProfileData, type NotificationPrefs, type SessionData, type ApiKeyData, type CreateApiKeyResponse } from '../../api/endpoints/settings'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -721,9 +721,9 @@ export function SettingsPage() {
     }
   }
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboardLocal = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
       setCopiedKey(true)
       setTimeout(() => setCopiedKey(false), 2000)
     } catch {
@@ -870,7 +870,7 @@ export function SettingsPage() {
                 setNewPassword={setNewPassword} setConfirmPassword={setConfirmPassword}
                 setShowPassword={setShowPassword} saving={saving} handleChangePassword={handleChangePassword}
                 apiKeys={apiKeys} newKeyData={newKeyData} handleCreateApiKey={handleCreateApiKey}
-                handleRevokeKey={handleRevokeKey} copyToClipboard={copyToClipboard}
+                handleRevokeKey={handleRevokeKey} copyToClipboard={copyToClipboardLocal}
                 copiedKey={copiedKey} setNewKeyData={setNewKeyData}
                 showDeleteModal={showDeleteModal} setShowDeleteModal={setShowDeleteModal}
                 deletePassword={deletePassword} setDeletePassword={setDeletePassword}

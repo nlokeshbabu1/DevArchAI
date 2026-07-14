@@ -15,7 +15,7 @@ from app.core.logging import get_logger
 from app.db.session import get_sync_session_factory
 from app.models.finding import Category, Finding as FindingModel
 from app.models.report import Report
-from app.models.scan import Scan, ScanStatus
+from app.models.scan import Scan, ScanStage, ScanStatus
 from app.parsers.base import ParsedFile, ParserRegistry
 from app.parsers.cicd import CICDParser
 from app.parsers.dockerfile import DockerfileParser
@@ -358,6 +358,31 @@ class SyncScanService:
                 from app.websockets.scan_progress import scan_progress_manager
                 progress_obj = await self.progress_store.get_progress(self.scan_id)
                 if progress_obj:
+                    # Get scan record for timestamps
+                    started_at_str = None
+                    completed_at_str = None
+                    try:
+                        scan_rec = self.db.query(Scan).filter(Scan.id == self.scan_id).first()
+                        if scan_rec:
+                            if scan_rec.started_at:
+                                started_at_str = scan_rec.started_at.isoformat()
+                            if scan_rec.completed_at:
+                                completed_at_str = scan_rec.completed_at.isoformat()
+                    except Exception:
+                        pass
+
+                    # Calculate severity counts from findings in DB
+                    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+                    try:
+                        from app.models.finding import Finding as FindingModel
+                        db_findings = self.db.query(FindingModel).filter(FindingModel.scan_id == self.scan_id).all()
+                        for f in db_findings:
+                            sev = getattr(f, 'severity', None) or 'info'
+                            if isinstance(sev, str) and sev in severity_counts:
+                                severity_counts[sev] += 1
+                    except Exception:
+                        pass
+
                     sent = await scan_progress_manager.broadcast_progress(
                         scan_id=self.scan_id,
                         progress=progress,
@@ -367,6 +392,11 @@ class SyncScanService:
                         logs=progress_obj.logs,
                         detected_stack=progress_obj.detected_stack,
                         files_list=getattr(progress_obj, 'files_list', None),
+                        files_scanned=getattr(progress_obj, 'files_scanned', 0) or 0,
+                        total_files=getattr(progress_obj, 'total_files', 0) or 0,
+                        started_at=started_at_str,
+                        completed_at=completed_at_str,
+                        severity_counts=severity_counts,
                     )
                     logger.debug(f"Broadcasted progress update to {sent} clients: {progress}% - {step_name or message}")
             except Exception as e:
@@ -375,6 +405,28 @@ class SyncScanService:
     def _exec_async(self, coro):
         """Execute a coroutine synchronously using the persistent event loop."""
         return _safe_await(coro, loop=self.event_loop)
+
+    def _transition_stage(self, scan, stage, progress_pct, message):
+        """Transition to a new scan stage, persisting to DB and broadcasting via WebSocket.
+
+        This is the single source of truth for stage transitions. Every stage change
+        goes through here, ensuring the DB always reflects the current stage.
+        """
+        scan.current_stage = stage
+        scan.progress = progress_pct
+        self.db.commit()
+
+        logger.info(
+            f"[STAGE] scan={self.scan_id} stage={stage.value} "
+            f"progress={progress_pct} message={message} "
+            f"timestamp={datetime.utcnow().isoformat()}"
+        )
+
+        # Broadcast via progress store + WebSocket
+        if self.progress_store and self.scan_id:
+            self._exec_async(
+                self._update_progress_async(progress_pct, message, stage.value, stage=stage.value)
+            )
 
     def _setup_parsers(self) -> ParserRegistry:
         """Initialize and register all parsers."""
@@ -414,11 +466,13 @@ class SyncScanService:
             scan.started_at = datetime.utcnow()
             self.db.commit()
 
-            # Initialize progress tracking
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(10, "Cloning repository...", "Connecting to GitHub", stage="cloning"))
+            # Stage: CONNECTING
+            self._transition_stage(scan, ScanStage.CONNECTING, 5, "Connecting to repository...")
 
-            self._update_progress(progress_callback, 10, "Cloning repository...")
+            self._update_progress(progress_callback, 8, "Cloning repository...")
+
+            # Stage: CLONING
+            self._transition_stage(scan, ScanStage.CLONING, 10, "Cloning repository...")
 
             # Clone repository
             repo_path, repo_info = self.repo_scanner.clone_repository(
@@ -428,8 +482,18 @@ class SyncScanService:
                 settings.GITHUB_TOKEN,
             )
 
+            # Broadcast detected stack after clone
             if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(20, "Detecting technology stack...", "Fetching repository", stage="detecting"))
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    self._exec_async(scan_progress_manager.broadcast_log(
+                        self.scan_id, f"Repository cloned: {repo_info.get('file_count', 0)} files"
+                    ))
+                except Exception:
+                    pass
+
+            # Stage: TECHNOLOGY_DETECTION
+            self._transition_stage(scan, ScanStage.TECHNOLOGY_DETECTION, 20, "Detecting technology stack...")
 
             self._update_progress(progress_callback, 20, "Detecting technology stack...")
 
@@ -443,14 +507,19 @@ class SyncScanService:
                 detected = self.detected_stack.get_detected_technologies()
                 if detected:
                     self._exec_async(self.progress_store.update_detected_stack(self.scan_id, detected))
+                    # Broadcast stack detected event
+                    try:
+                        from app.websockets.scan_progress import scan_progress_manager
+                        self._exec_async(scan_progress_manager.broadcast_stack_detected(
+                            self.scan_id, detected
+                        ))
+                    except Exception:
+                        pass
 
             logger.info(
                 "Technology stack detected",
                 stack=",".join(detected) or "none",
             )
-
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(30, "Loading files...", "Detecting technologies", stage="detecting"))
 
             self._update_progress(progress_callback, 30, "Loading files...")
 
@@ -463,8 +532,9 @@ class SyncScanService:
 
             logger.info(f"✅ File parsing completed: {len(parsed_files)} files parsed")
 
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(40, f"Parsed {len(parsed_files)} files...", "Detecting technologies", stage="detecting"))
+            # Stage: SCANNER_SELECTION
+            self._transition_stage(scan, ScanStage.SCANNER_SELECTION, 40, f"Parsed {len(parsed_files)} files. Selecting scanners...")
+
             self._update_progress(progress_callback, 40, f"Parsed {len(parsed_files)} files...")
 
             # Extract file paths from parsed files
@@ -486,31 +556,8 @@ class SyncScanService:
 
             # Update progress with actual file count and file list
             if self.progress_store and self.scan_id:
-                # Store the file list in the progress store (use cleaned paths)
                 logger.info(f"📁 Updating files_list with {len(cleaned_file_paths)} files")
                 self._exec_async(self.progress_store.update_files_list(self.scan_id, cleaned_file_paths))
-                self._exec_async(self._update_progress_async(
-                    50,
-                    f"Running rule engine ({len(parsed_files)} files)...",
-                    "Running security rules",
-                    stage="scanning",
-                    files_scanned=len(parsed_files),
-                    total_files=len(parsed_files)
-                ))
-                # Broadcast file list via WebSocket (fire and forget, don't block on it)
-                try:
-                    from app.websockets.scan_progress import scan_progress_manager
-                    self._exec_async(
-                        scan_progress_manager.broadcast_progress(
-                            self.scan_id,
-                            50,
-                            "running",
-                            current_step="Running security rules",
-                            files_list=cleaned_file_paths
-                        )
-                    )
-                except Exception as broadcast_error:
-                    logger.warning(f"WebSocket broadcast failed (non-critical): {broadcast_error}")
 
             self._update_progress(progress_callback, 50, f"Running rule engine ({len(parsed_files)} files)...")
 
@@ -519,16 +566,15 @@ class SyncScanService:
             resources = self._extract_resources(parsed_files)
             logger.info(f"Extracted {len(resources)} resources")
 
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(60, "Running security rules...", "Running security rules", stage="scanning"))
+            # Stage: SCANNING
+            self._transition_stage(scan, ScanStage.SCANNING, 50, f"Running security rules on {len(parsed_files)} files...")
+
             self._update_progress(progress_callback, 60, "Running security rules...")
 
             rule_findings = self._run_rules(resources, parsed_files)
             logger.info(f"Rule engine completed with {len(rule_findings)} findings")
 
             # PHASE: Run external scanners (after rule engine, before enrichment)
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(63, "Running external scanners...", "Running external scanners", stage="scanning"))
             self._update_progress(progress_callback, 63, "Running external scanners...")
 
             scanner_results: list[Any] = []
@@ -537,6 +583,27 @@ class SyncScanService:
 
                 from app.models.scanner_execution import ScannerExecutionRecord
                 scanner_registry = ScannerRegistry()
+
+                # Broadcast scanner selection
+                if self.progress_store and self.scan_id:
+                    try:
+                        from app.websockets.scan_progress import scan_progress_manager
+                        available = scanner_registry.get_available_ids()
+                        self._exec_async(scan_progress_manager.broadcast_log(
+                            self.scan_id,
+                            f"Running {len(available)} scanners: {', '.join(available)}"
+                        ))
+                        # Broadcast scanner_start for each available scanner
+                        for scanner_id in available:
+                            self._exec_async(scan_progress_manager.broadcast_scanner_start(
+                                scan_id=self.scan_id,
+                                scanner_id=scanner_id,
+                                scanner_name=scanner_id,
+                                rules_count=0,
+                            ))
+                    except Exception:
+                        pass
+
                 scanner_results = scanner_registry.run_for_repo(
                     repo_path=_Path(repo_path),
                     detected_stack=self.detected_stack.to_dict(),
@@ -546,6 +613,25 @@ class SyncScanService:
                     if result.status.value in ("COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"):
                         external_findings.extend(result.findings)
                         logger.info(f"External scanner {result.scanner_id} completed: {result.findings_count} findings")
+
+                    # Broadcast per-scanner completion event
+                    if self.progress_store and self.scan_id:
+                        try:
+                            from app.websockets.scan_progress import scan_progress_manager
+                            duration_ms = None
+                            if result.execution_start and result.execution_end:
+                                duration_ms = int((result.execution_end - result.execution_start).total_seconds() * 1000)
+                            self._exec_async(scan_progress_manager.broadcast_scanner_complete(
+                                scan_id=self.scan_id,
+                                scanner_id=result.scanner_id,
+                                scanner_name=result.scanner_name,
+                                status=result.status.value,
+                                findings_count=result.findings_count,
+                                duration_ms=duration_ms,
+                                error=result.error_message,
+                            ))
+                        except Exception:
+                            pass
 
                 # Persist scanner execution records
                 for result in scanner_results:
@@ -586,7 +672,7 @@ class SyncScanService:
                     if self.progress_store and self.scan_id:
                         self._exec_async(self.progress_store.add_log(
                             self.scan_id,
-                            f"🔀 External scanners: {len(external_findings)} findings, "
+                            f"External scanners: {len(external_findings)} findings, "
                             f"merged into {len(all_findings) - len(cross_deduped)} duplicates",
                         ))
             except Exception as e:
@@ -599,8 +685,9 @@ class SyncScanService:
                     logger.warning("Session rollback after scanner failure also failed: %s", rb_err)
                 # Continue with rule engine findings only
 
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(70, "Building recommendations...", "Preparing findings", stage="scanning"))
+            # Stage: NORMALIZATION
+            self._transition_stage(scan, ScanStage.NORMALIZATION, 70, "Normalizing and enriching findings...")
+
             self._update_progress(progress_callback, 70, "Building recommendations...")
 
             logger.info("Applying static enrichment before background AI generation", findings_count=len(rule_findings))
@@ -615,6 +702,9 @@ class SyncScanService:
                         "Background AI suggestions queued after static scan results are saved",
                     )
                 )
+
+            # Stage: DEDUPLICATION
+            self._transition_stage(scan, ScanStage.DEDUPLICATION, 80, "Deduplicating findings...")
 
             # PHASE 1C: Deduplicate findings (NEW - Production Grade)
             try:
@@ -649,7 +739,6 @@ class SyncScanService:
                 )
 
                 if self.progress_store and self.scan_id:
-                    self._exec_async(self._update_progress_async(88, "Validating findings...", "Quality check", stage="completed"))
                     self._exec_async(self.progress_store.add_log(self.scan_id, f"✅ Validated {validation_stats.total_findings} findings"))
             except Exception as e:
                 logger.error(f"❌ Validation failed: {e}")
@@ -678,28 +767,51 @@ class SyncScanService:
                         confidence=getattr(f, 'confidence', None),
                     )
 
+            # Stage: AI_GENERATION
+            self._transition_stage(scan, ScanStage.AI_GENERATION, 90, "Generating AI suggestions...")
+
+            # Broadcast AI progress events
             if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(90, "Calculating scores...", "Computing metrics", stage="completed"))
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    self._exec_async(scan_progress_manager.broadcast_ai_progress(
+                        scan_id=self.scan_id,
+                        phase="analyzing",
+                        message_text="Analyzing findings and grouping by category...",
+                        progress=90,
+                        findings_total=len(rule_findings),
+                    ))
+                except Exception:
+                    pass
 
             self._update_progress(progress_callback, 90, "Calculating scores...")
 
             # Calculate scores
             scores = self.scoring_engine.calculate_scores(rule_findings)
 
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(92, f"Security score: {scores.score:.0f}%", "Score calculation complete", stage="completed"))
-
             self._update_progress(progress_callback, 92, f"Security score: {scores.score:.0f}%")
 
-            # Save findings to database
+            # Broadcast AI progress - scoring complete
             if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(94, "Saving findings to database...", "Persisting results", stage="completed"))
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    self._exec_async(scan_progress_manager.broadcast_ai_progress(
+                        scan_id=self.scan_id,
+                        phase="scoring",
+                        message_text=f"Security score calculated: {scores.score:.0f}%",
+                        progress=94,
+                        findings_total=len(rule_findings),
+                    ))
+                except Exception:
+                    pass
+
+            # Stage: REPORT_GENERATION
+            self._transition_stage(scan, ScanStage.REPORT_GENERATION, 96, "Generating reports...")
+
+            if self.progress_store and self.scan_id:
                 self._exec_async(self.progress_store.add_log(self.scan_id, "💾 Saving findings to database..."))
 
             self._save_findings(scan.id, rule_findings)
-
-            if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(96, "Generating downloadable reports...", "Building reports", stage="completed"))
 
             if self.progress_store and self.scan_id:
                 self._exec_async(self.progress_store.add_log(self.scan_id, "📄 Building downloadable reports..."))
@@ -712,7 +824,6 @@ class SyncScanService:
             )
 
             if self.progress_store and self.scan_id:
-                self._exec_async(self._update_progress_async(98, "Finalizing scan...", "Almost done", stage="completed"))
                 self._exec_async(self.progress_store.add_log(self.scan_id, "✅ Scan complete! Preparing results..."))
 
             # Update scan with results
@@ -721,6 +832,7 @@ class SyncScanService:
             scan.status = ScanStatus.COMPLETED
             scan.completed_at = datetime.utcnow()
             scan.analysis_duration_seconds = analysis_duration
+            scan.current_stage = None  # Clear stage on completion
             scan.overall_score = scores.score
             scan.security_score = next((cs.score for cs in scores.category_scores if cs.category == Category.SECURITY), None)
             scan.scalability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.SCALABILITY), None)
@@ -734,9 +846,6 @@ class SyncScanService:
                 scan.ai_completed_at = datetime.utcnow()
 
             self.db.commit()
-
-            # Small delay to ensure database commit is visible to other connections
-            time.sleep(0.1)
 
             # Mark scan as complete in progress store
             if self.progress_store and self.scan_id:
@@ -814,6 +923,7 @@ class SyncScanService:
             scan.ai_status = "failed"
             scan.error_message = str(e)
             scan.completed_at = datetime.utcnow()
+            scan.current_stage = None  # Clear stage on failure
             self.db.commit()
 
             # Mark scan as failed in progress store
@@ -1101,6 +1211,35 @@ class SyncScanService:
                 unique_findings=len(seen),
                 duplicates_removed=len(findings) - len(seen)
             )
+
+            # Broadcast live findings to WebSocket clients (batched)
+            if self.progress_store and self.scan_id and seen:
+                try:
+                    from app.websockets.scan_progress import scan_progress_manager
+                    # Send top findings (max 20) as live stream
+                    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+                    sorted_findings = sorted(
+                        [f for f in findings if f.rule_id in {k[0] for k in seen}],
+                        key=lambda f: severity_order.get(
+                            f.severity.value if hasattr(f.severity, 'value') else str(f.severity), 5
+                        ),
+                    )
+                    for finding in sorted_findings[:20]:
+                        sev = finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity)
+                        self._exec_async(scan_progress_manager.broadcast_finding_added(
+                            scan_id=self.scan_id,
+                            finding={
+                                "rule_id": finding.rule_id,
+                                "rule_name": finding.rule_name,
+                                "severity": sev,
+                                "category": finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
+                                "file_path": finding.file_path,
+                                "line_number": finding.line_number,
+                                "description": str(finding.description)[:200] if finding.description else "",
+                            },
+                        ))
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Error in _save_findings: {e}")
             import traceback

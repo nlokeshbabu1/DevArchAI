@@ -45,7 +45,7 @@ function WelcomeHero({ onStartScan }: { onStartScan: () => void }) {
           </motion.div>
           <h1 className="text-3xl md:text-4xl font-bold text-foreground leading-tight mb-4">
             Secure Your DevOps Stack<br />
-            <span className="bg-gradient-to-r from-primary via-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+            <span className="text-primary">
               Before Production
             </span>
           </h1>
@@ -187,10 +187,10 @@ function QuickStartChecklist() {
 const coverageItems = [
   { icon: Shield, title: 'Repository Security', desc: 'Comprehensive code and config analysis', color: 'from-blue-500/20 to-blue-600/10', border: 'border-blue-500/30', iconBg: 'bg-blue-500/20', textColor: 'text-blue-400' },
   { icon: Eye, title: 'Secrets Detection', desc: 'Find leaked credentials and tokens', color: 'from-red-500/20 to-red-600/10', border: 'border-red-500/30', iconBg: 'bg-red-500/20', textColor: 'text-red-400' },
-  { icon: Package, title: 'Dependency Security', desc: 'SCA for vulnerable packages', color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/30', iconBg: 'bg-purple-500/20', textColor: 'text-purple-400' },
+  { icon: Package, title: 'Dependency Security', desc: 'Dependency scanning for vulnerable packages', color: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/30', iconBg: 'bg-purple-500/20', textColor: 'text-purple-400' },
   { icon: Box, title: 'Docker Security', desc: 'Container image and config scanning', color: 'from-cyan-500/20 to-cyan-600/10', border: 'border-cyan-500/30', iconBg: 'bg-cyan-500/20', textColor: 'text-cyan-400' },
   { icon: Grid3x3, title: 'Kubernetes Security', desc: 'K8s manifest and admission audit', color: 'from-indigo-500/20 to-indigo-600/10', border: 'border-indigo-500/30', iconBg: 'bg-indigo-500/20', textColor: 'text-indigo-400' },
-  { icon: Terminal, title: 'Terraform Security', desc: 'IaC misconfiguration detection', color: 'from-violet-500/20 to-violet-600/10', border: 'border-violet-500/30', iconBg: 'bg-violet-500/20', textColor: 'text-violet-400' },
+  { icon: Terminal, title: 'Terraform Security', desc: 'Infrastructure misconfiguration detection', color: 'from-violet-500/20 to-violet-600/10', border: 'border-violet-500/30', iconBg: 'bg-violet-500/20', textColor: 'text-violet-400' },
   { icon: Cpu, title: 'CI/CD Security', desc: 'Pipeline integrity and secret exposure', color: 'from-orange-500/20 to-orange-600/10', border: 'border-orange-500/30', iconBg: 'bg-orange-500/20', textColor: 'text-orange-400' },
   { icon: Cloud, title: 'Cloud Security', desc: 'AWS/GCP/Azure posture assessment', color: 'from-sky-500/20 to-sky-600/10', border: 'border-sky-500/30', iconBg: 'bg-sky-500/20', textColor: 'text-sky-400' },
   { icon: Sparkles, title: 'AI Remediation', desc: 'Automated fix suggestions with code', color: 'from-emerald-500/20 to-emerald-600/10', border: 'border-emerald-500/30', iconBg: 'bg-emerald-500/20', textColor: 'text-emerald-400' },

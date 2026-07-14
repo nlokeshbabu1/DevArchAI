@@ -1,12 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Shield, Mail, Lock, User, Eye, EyeOff, Check, Github, Loader2, Globe } from 'lucide-react'
-import { Button, Input, Card } from '../../components/ui'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Mail, Lock, User, Eye, EyeOff, Check, CheckCircle, Github, Loader2,
+  AlertCircle, ArrowRight, Globe
+} from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
+import { AuthLayout } from './AuthLayout'
+
+const EASE_OUT = [0.16, 1, 0.3, 1] as const
 
 export function Register() {
   const navigate = useNavigate()
@@ -16,17 +22,17 @@ export function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [shakeField, setShakeField] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     email: '',
     username: '',
     password: '',
     confirmPassword: '',
     organization_name: '',
-    country: 'IN', // Default to India for better payment routing
+    country: 'IN',
     agreeToTerms: false,
   })
 
-  // Password strength calculation
   const getPasswordStrength = (password: string) => {
     let strength = 0
     if (password.length >= 8) strength++
@@ -39,23 +45,17 @@ export function Register() {
   }
 
   const passwordStrength = getPasswordStrength(formData.password)
-  const passwordStrengthLabels = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong', 'Excellent']
-  const passwordStrengthColors = [
-    'bg-red-500',
-    'bg-orange-500',
-    'bg-yellow-500',
-    'bg-lime-500',
-    'bg-green-500',
-    'bg-emerald-500',
-  ]
+  const strengthLabels = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong', 'Excellent']
+  const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-lime-500', 'bg-green-500', 'bg-emerald-500']
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    // Validation
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
+      setShakeField('confirmPassword')
+      setTimeout(() => setShakeField(null), 500)
       return
     }
 
@@ -67,7 +67,6 @@ export function Register() {
     setIsLoading(true)
 
     try {
-      // Register user
       await authApi.register({
         email: formData.email,
         username: formData.username,
@@ -76,26 +75,22 @@ export function Register() {
         country: formData.country,
       })
 
-      // Auto-login after registration
       const loginResponse = await authApi.login({
         email: formData.email,
         password: formData.password,
       })
 
-      // Store refresh token if present
       if (loginResponse.refresh_token) {
         localStorage.setItem('refresh_token', loginResponse.refresh_token)
       }
 
-      // Update auth store (login() syncs access_token to localStorage)
       login(loginResponse.access_token)
 
-      // Fetch user info
       try {
         const userResponse = await authApi.getCurrentUser()
         setUser(userResponse)
-      } catch (err) {
-        console.warn('Failed to fetch user info', err)
+      } catch {
+        console.warn('Failed to fetch user info')
       }
 
       queryClient.clear()
@@ -109,6 +104,8 @@ export function Register() {
       } else {
         setError('Registration failed. Please try again.')
       }
+      setShakeField('form')
+      setTimeout(() => setShakeField(null), 500)
     } finally {
       setIsLoading(false)
     }
@@ -118,13 +115,12 @@ export function Register() {
     try {
       const authUrl = await githubAuthApi.getAuthorizationUrl()
       if (!authUrl) {
-        setError('GitHub OAuth is not configured. Please use email/password to register.')
+        setError('GitHub OAuth is not configured.')
         return
       }
       window.location.href = authUrl
-    } catch (error) {
-      setError('GitHub OAuth is not configured. Please use email/password to register.')
-      console.error('GitHub OAuth error:', error)
+    } catch {
+      setError('GitHub OAuth is not configured.')
     }
   }
 
@@ -132,283 +128,308 @@ export function Register() {
     try {
       const authUrl = await gitlabAuthApi.getAuthorizationUrl()
       if (!authUrl) {
-        setError('GitLab OAuth is not configured. Please use email/password to register.')
+        setError('GitLab OAuth is not configured.')
         return
       }
       window.location.href = authUrl
-    } catch (error) {
-      setError('GitLab OAuth is not configured. Please use email/password to register.')
-      console.error('GitLab OAuth error:', error)
+    } catch {
+      setError('GitLab OAuth is not configured.')
     }
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary/20 to-indigo-600/20 items-center justify-center p-12">
-        <div className="max-w-md text-center">
-          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30 mb-6">
-            <Shield className="h-16 w-16 text-white" />
+    <AuthLayout>
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl sm:text-[1.75rem] font-bold text-white tracking-tight">Create an account</h1>
+          <p className="text-sm text-slate-400 mt-1.5">Start scanning your DevOps infrastructure</p>
+        </div>
+
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              className="p-3.5 rounded-xl bg-red-500/[0.08] border border-red-500/20 flex items-center gap-2.5"
+              role="alert"
+              aria-live="polite"
+            >
+              <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+              <span className="text-sm text-red-300">{error}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* OAuth */}
+        <div className="space-y-2.5">
+          <button
+            type="button"
+            onClick={handleGithubLogin}
+            disabled={isLoading}
+            className="auth-oauth-btn group"
+            aria-label="Sign up with GitHub"
+          >
+            <Github className="h-4 w-4 text-slate-400 group-hover:text-white transition-colors" />
+            <span>Sign up with GitHub</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleGitlabLogin}
+            disabled={isLoading}
+            className="auth-oauth-btn group"
+            aria-label="Sign up with GitLab"
+          >
+            <svg className="h-4 w-4 text-slate-400 group-hover:text-orange-400 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
+            </svg>
+            <span>Sign up with GitLab</span>
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-white/[0.06]" />
           </div>
-          <h1 className="text-4xl font-bold mb-4 gradient-text">Get Started</h1>
-          <p className="text-lg text-muted-foreground mb-8">
-            Start analyzing your infrastructure today
-          </p>
-          <div className="space-y-4">
-            {[
-              'Free tier includes 10 scans/month',
-              'No credit card required',
-              'Setup takes less than 2 minutes',
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 justify-center">
-                <div className="w-5 h-5 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0">
-                  <Check className="w-3 h-3 text-green-400" />
-                </div>
-                <span className="text-muted-foreground">{item}</span>
-              </div>
-            ))}
+          <div className="relative flex justify-center">
+            <span className="px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wider bg-[#0B1020]">
+              or continue with email
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* Right side - Register Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-background overflow-y-auto">
-        <Card className="w-full max-w-md p-8" hover={false}>
-          <div className="text-center mb-8">
-            <div className="lg:hidden inline-flex p-3 rounded-xl bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30 mb-4">
-              <Shield className="h-8 w-8 text-white" />
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+          {/* Email */}
+          <div className={shakeField === 'email' ? 'auth-shake' : ''}>
+            <label htmlFor="reg-email" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Email address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <input
+                id="reg-email"
+                type="email"
+                placeholder="you@company.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="auth-input pl-10"
+                required
+              />
             </div>
-            <h1 className="text-2xl font-bold mb-2 text-foreground">Create an account</h1>
-            <p className="text-muted-foreground">Start analyzing your DevOps infrastructure</p>
           </div>
 
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-              {error}
+          {/* Username */}
+          <div className={shakeField === 'username' ? 'auth-shake' : ''}>
+            <label htmlFor="reg-username" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Username
+            </label>
+            <div className="relative">
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <input
+                id="reg-username"
+                type="text"
+                placeholder="johndoe"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="auth-input pl-10"
+                required
+                minLength={3}
+              />
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    placeholder="you@example.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="pl-10"
-                    required
-                  />
-                </div>
+          {/* Organization */}
+          <div>
+            <label htmlFor="reg-org" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Organization <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <div className="relative">
+              <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <input
+                id="reg-org"
+                type="text"
+                placeholder="Acme Inc"
+                value={formData.organization_name}
+                onChange={(e) => setFormData({ ...formData, organization_name: e.target.value })}
+                className="auth-input pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Country */}
+          <div>
+            <label htmlFor="reg-country" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Country
+            </label>
+            <div className="relative">
+              <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <select
+                id="reg-country"
+                value={formData.country}
+                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                className="auth-input pl-10 appearance-none cursor-pointer"
+              >
+                <option value="IN">India</option>
+                <option value="US">United States</option>
+                <option value="GB">United Kingdom</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="SG">Singapore</option>
+                <option value="JP">Japan</option>
+                <option value="OTHER">Other</option>
+              </select>
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </div>
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Username
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="johndoe"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="pl-10"
-                    required
-                    minLength={3}
-                  />
+          {/* Password */}
+          <div className={shakeField === 'password' ? 'auth-shake' : ''}>
+            <label htmlFor="reg-password" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <input
+                id="reg-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Min 8 characters"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="auth-input pl-10 pr-10"
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {/* Strength indicator */}
+            {formData.password && (
+              <div className="mt-2 space-y-1">
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4, 5].map((level) => (
+                    <div
+                      key={level}
+                      className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                        level < passwordStrength
+                          ? strengthColors[passwordStrength - 1]
+                          : 'bg-white/[0.06]'
+                      }`}
+                    />
+                  ))}
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Organization Name
-                </label>
-                <div className="relative">
-                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Acme Inc"
-                    value={formData.organization_name}
-                    onChange={(e) => setFormData({ ...formData, organization_name: e.target.value })}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Country
-                </label>
-                <div className="relative">
-                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <select
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-white/20 bg-white/5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
-                  >
-                    <option value="IN">🇮🇳 India</option>
-                    <option value="US">🇺🇸 United States</option>
-                    <option value="GB">🇬🇧 United Kingdom</option>
-                    <option value="CA">🇨🇦 Canada</option>
-                    <option value="AU">🇦🇺 Australia</option>
-                    <option value="DE">🇩🇪 Germany</option>
-                    <option value="FR">🇫🇷 France</option>
-                    <option value="SG">🇸🇬 Singapore</option>
-                    <option value="JP">🇯🇵 Japan</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  This helps us route payments to the correct payment provider
+                <p className="text-[11px] text-slate-500">
+                  {strengthLabels[passwordStrength - 1] || 'Too short'}
                 </p>
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="pl-10 pr-10"
-                    required
-                    minLength={8}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-                {formData.password && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex gap-1">
-                      {[0, 1, 2, 3, 4, 5].map((level) => (
-                        <div
-                          key={level}
-                          className={`h-1 flex-1 rounded-full transition-colors ${
-                            level < passwordStrength
-                              ? passwordStrengthColors[passwordStrength - 1]
-                              : 'bg-white/10'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Password strength: <span className={passwordStrength > 0 ? 'text-foreground font-medium' : ''}>
-                        {passwordStrengthLabels[passwordStrength - 1] || 'Too short'}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="pl-10 pr-10"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-                {formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                  <p className="mt-1 text-xs text-red-400">Passwords do not match</p>
-                )}
-              </div>
+          {/* Confirm Password */}
+          <div className={shakeField === 'confirmPassword' ? 'auth-shake' : ''}>
+            <label htmlFor="reg-confirm" className="block text-[13px] font-medium text-slate-300 mb-1.5">
+              Confirm password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+              <input
+                id="reg-confirm"
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Re-enter password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className={`auth-input pl-10 pr-10 ${
+                  formData.confirmPassword && formData.password !== formData.confirmPassword
+                    ? 'auth-input-error'
+                    : ''
+                }`}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                tabIndex={-1}
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
+            <AnimatePresence>
+              {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -4, height: 0 }}
+                  className="text-[12px] text-red-400 mt-1.5 flex items-center gap-1"
+                  role="alert"
+                >
+                  <AlertCircle className="h-3 w-3" />
+                  Passwords do not match
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
 
-            <div className="flex items-start gap-2">
+          {/* Terms checkbox */}
+          <label className="flex items-start gap-2.5 cursor-pointer group">
+            <div className="relative mt-0.5">
               <input
                 type="checkbox"
                 checked={formData.agreeToTerms}
                 onChange={(e) => setFormData({ ...formData, agreeToTerms: e.target.checked })}
-                className="mt-1 rounded border-white/20 bg-white/5 text-primary focus:ring-primary"
+                className="sr-only peer"
               />
-              <label className="text-sm text-muted-foreground">
-                I agree to the{' '}
-                <a href="#" className="text-primary hover:underline">Terms of Service</a>
-                {' '}and{' '}
-                <a href="#" className="text-primary hover:underline">Privacy Policy</a>
-              </label>
+              <div className="auth-checkbox" />
+              <CheckCircle className="auth-checkbox-check" />
             </div>
+            <span className="text-[13px] text-slate-400 group-hover:text-slate-300 transition-colors leading-snug">
+              I agree to the{' '}
+              <a href="#" className="text-primary hover:text-primary/80 transition-colors font-medium">Terms of Service</a>
+              {' '}and{' '}
+              <a href="#" className="text-primary hover:text-primary/80 transition-colors font-medium">Privacy Policy</a>
+            </span>
+          </label>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating account...
-                </div>
-              ) : (
-                'Create account'
-              )}
-            </Button>
-          </form>
+          {/* Submit */}
+          <button
+            type="submit"
+            className="auth-submit-btn"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="h-4 w-4" />
+            )}
+            <span>{isLoading ? 'Creating account...' : 'Create account'}</span>
+          </button>
+        </form>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-card text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <Button
-              variant="secondary"
-              onClick={handleGithubLogin}
-              className="w-full"
-            >
-              <Github className="h-4 w-4 mr-2" />
-              Sign up with GitHub
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={handleGitlabLogin}
-              className="w-full"
-            >
-              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/>
-              </svg>
-              Sign up with GitLab
-            </Button>
-          </div>
-
-          <div className="mt-8 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link to="/login" className="text-primary hover:underline font-medium transition-colors">
-              Sign in
-            </Link>
-          </div>
-        </Card>
+        {/* Sign in link */}
+        <p className="text-center text-[13px] text-slate-400">
+          Already have an account?{' '}
+          <Link to="/login" className="text-primary hover:text-primary/80 font-semibold transition-colors">
+            Sign in
+          </Link>
+        </p>
       </div>
-    </div>
+    </AuthLayout>
   )
 }

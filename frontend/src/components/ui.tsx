@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { cn, sanitizePath } from '../lib/utils'
-import { AlertTriangle, AlertCircle, CheckCircle, Info } from 'lucide-react'
+import { SeverityBadge } from './ui/severity-badge'
 
 interface ScoreCircleProps {
   score: number
@@ -85,7 +85,7 @@ export function ScoreCircle({
   }, [score, animated, delay])
   
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-4" role="img" aria-label={`${label}: ${displayScore.toFixed(1)} out of 100, Grade ${getGrade(score)}`}>
       <div className="relative" style={{ width: dim, height: dim }}>
         {/* Glow effect behind */}
         <div 
@@ -164,80 +164,7 @@ export function ScoreCircle({
   )
 }
 
-interface SeverityBadgeProps {
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  size?: 'sm' | 'md' | 'lg'
-  showIcon?: boolean
-  animated?: boolean
-}
-
-export function SeverityBadge({ severity, size = 'md', showIcon = true, animated = false }: SeverityBadgeProps) {
-  const config = {
-    critical: { 
-      bg: 'bg-red-500/15', 
-      text: 'text-red-400', 
-      border: 'border-red-500/40',
-      icon: AlertTriangle,
-      glow: 'shadow-red-500/25'
-    },
-    high: { 
-      bg: 'bg-orange-500/15', 
-      text: 'text-orange-400', 
-      border: 'border-orange-500/40',
-      icon: AlertCircle,
-      glow: 'shadow-orange-500/25'
-    },
-    medium: { 
-      bg: 'bg-yellow-500/15', 
-      text: 'text-yellow-400', 
-      border: 'border-yellow-500/40',
-      icon: AlertCircle,
-      glow: 'shadow-yellow-500/25'
-    },
-    low: { 
-      bg: 'bg-green-500/15', 
-      text: 'text-green-400', 
-      border: 'border-green-500/40',
-      icon: CheckCircle,
-      glow: 'shadow-green-500/25'
-    },
-    info: { 
-      bg: 'bg-blue-500/15', 
-      text: 'text-blue-400', 
-      border: 'border-blue-500/40',
-      icon: Info,
-      glow: 'shadow-blue-500/25'
-    },
-  }
-  
-  const sizeConfig = {
-    sm: 'text-xs px-2 py-0.5',
-    md: 'text-sm px-2.5 py-1',
-    lg: 'text-base px-3 py-1.5',
-  }
-  
-  const iconSize = {
-    sm: 'h-3 w-3',
-    md: 'h-4 w-4',
-    lg: 'h-5 w-5',
-  }
-  
-  const { bg, text, border, icon: Icon, glow } = config[severity]
-  
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-1.5 rounded-full font-medium border',
-      'backdrop-blur-sm',
-      bg, text, border,
-      `shadow-lg ${glow}`,
-      sizeConfig[size],
-      animated && 'animate-fade-in'
-    )}>
-      {showIcon && <Icon className={iconSize[size]} />}
-      {severity.charAt(0).toUpperCase() + severity.slice(1)}
-    </span>
-  )
-}
+export { SeverityBadge } from './ui/severity-badge'
 
 interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'outline' | 'secondary'
@@ -551,46 +478,4 @@ export function FindingCard({
     </div>
   )
 }
-interface StatCardProps {
-  title: string
-  value: string | number
-  icon?: React.ReactNode
-  trend?: 'up' | 'down' | 'neutral'
-  trendValue?: number
-}
-
-export function StatCard({ title, value, icon, trend, trendValue }: StatCardProps) {
-  return (
-    <Card className="p-6" hover>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-3xl font-bold text-foreground">{value}</p>
-          {trend && (
-            <div className={cn(
-              'flex items-center gap-1 mt-2 text-sm',
-              trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-muted-foreground'
-            )}>
-              {trend === 'up' && (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-              )}
-              {trend === 'down' && (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
-                </svg>
-              )}
-              {trendValue && <span>{trendValue}%</span>}
-            </div>
-          )}
-        </div>
-        {icon && (
-          <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-            {icon}
-          </div>
-        )}
-      </div>
-    </Card>
-  )
-}
+export { StatCard } from './ui/StatCard'

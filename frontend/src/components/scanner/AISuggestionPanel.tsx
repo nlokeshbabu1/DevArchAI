@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '../ui-animated'
 import { Badge, Card } from '../ui'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 
 interface AISuggestionPanelProps {
   finding: {
@@ -84,7 +84,7 @@ export function AISuggestionPanel({
 
   const handleCopy = async (text: string) => {
     if (text) {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
     }
   }
 

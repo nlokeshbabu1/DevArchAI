@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 
 MAX_FINDINGS_PER_BATCH = 10
 MAX_FILE_CONTEXT_CHARS = 2000
-AI_CALL_TIMEOUT_SECONDS = 10
+AI_CALL_TIMEOUT_SECONDS = 60
 
 
 @dataclass
@@ -289,9 +289,10 @@ class AISuggestionGenerationService:
             )
             parsed = self._parse_batch_response(raw_response)
         except Exception as exc:
+            error_msg = str(exc) or type(exc).__name__
             logger.warning(
                 "AI batch generation failed, using fallback suggestions",
-                error=str(exc),
+                error=error_msg,
                 findings=len(findings),
             )
             parsed = []

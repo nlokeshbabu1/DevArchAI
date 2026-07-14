@@ -27,6 +27,7 @@ import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
 import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
+import { EmptyState } from '@/components/ui/empty-state'
 
 type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
 
@@ -608,63 +609,53 @@ export function RepositoriesPage() {
             </div>
           ) : filteredRepos.length === 0 ? (
               displayRepos.length === 0 ? (
-              <Card className="col-span-full p-12 text-center" hover={false}>
-                {user?.provider === 'password'
-                  ? <GitBranch className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                  : activeProvider === 'github'
-                  ? <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                  : <Gitlab className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <EmptyState
+                className="col-span-full"
+                icon={
+                  user?.provider === 'password'
+                    ? <GitBranch className="h-12 w-12 text-muted-foreground" />
+                    : activeProvider === 'github'
+                    ? <Github className="h-12 w-12 text-muted-foreground" />
+                    : <Gitlab className="h-12 w-12 text-muted-foreground" />
                 }
-                <h3 className="mb-2 text-lg font-semibold text-foreground">
-                  {user?.provider === 'password'
-                    ? 'No repositories yet'
-                    : activeProvider === 'github' && githubConnected
-                    ? 'No repositories found'
-                    : 'No repositories yet'}
-                </h3>
-                <p className="mb-6 text-muted-foreground">
-                  {user?.provider === 'password'
-                    ? 'Add a repository manually to start scanning.'
-                    : activeProvider === 'github' && githubConnected
-                    ? 'Your GitHub repositories will appear here. Add one to get started.'
-                    : activeProvider === 'gitlab' && gitlabConnected
-                    ? 'Your GitLab projects will appear here. Add one to get started.'
-                    : 'Connect a provider or add a repository manually to start scanning'}
-                </p>
-                <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                  {user?.provider !== 'password' && (
+                title="No repositories connected"
+                description="Import your first repository to begin continuous security analysis."
+                action={
+                  <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                    {user?.provider !== 'password' && (
+                      <Button
+                        variant="secondary"
+                        icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
+                        onClick={() => setShowImportModal(true)}
+                      >
+                        Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                      </Button>
+                    )}
                     <Button
-                      variant="secondary"
-                      icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
-                      onClick={() => setShowImportModal(true)}
+                      variant="primary"
+                      icon={<Plus className="h-4 w-4" />}
+                      onClick={() => setShowAddModal(true)}
                     >
-                      Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                      Add Repository
                     </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    icon={<Plus className="h-4 w-4" />}
-                    onClick={() => setShowAddModal(true)}
-                  >
-                    Add Repository
-                  </Button>
-                </div>
-              </Card>
+                  </div>
+                }
+              />
             ) : (
-              <Card className="col-span-full p-12 text-center" hover={false}>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">
-                  No repositories match this filter
-                </h3>
-                <p className="mb-4 text-muted-foreground">
-                  Try selecting a different status filter
-                </p>
-                <Button
-                  variant="secondary"
-                  onClick={() => setStatusFilter('all')}
-                >
-                  Show All
-                </Button>
-              </Card>
+              <EmptyState
+                className="col-span-full"
+                icon={<GitBranch className="h-12 w-12 text-muted-foreground" />}
+                title="No repositories match this filter"
+                description="Try selecting a different status filter."
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    Show All
+                  </Button>
+                }
+              />
             )
           ) : (
             filteredRepos.map((repo, index) => {

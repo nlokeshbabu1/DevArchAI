@@ -24,7 +24,7 @@ const categoryIcons: Record<string, any> = {
 }
 
 const categoryLabels: Record<string, string> = {
-  secrets: "Secrets",
+  secrets: "Secret Detection",
   sca: "Dependencies",
   docker: "Docker",
   terraform: "Terraform",

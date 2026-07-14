@@ -8,6 +8,7 @@ import {
   XCircle, ExternalLink, Loader2, X, CheckCheck
 } from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
+import { ErrorState } from '../../components/ui/error-state'
 import { prApi } from '../../api/endpoints/pull-requests'
 import { reportsApi } from '../../api/endpoints/reports'
 import { ScanResultsDashboard } from '../../components/scan-results/ScanResultsDashboard'
@@ -16,7 +17,7 @@ import { AIProgressBanner } from '../../components/scans/AIProgressBanner'
 import apiClient from '../../api/endpoints/client'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
 import { useRepositoryScan } from '../../hooks/useRepositoryScan'
-import { getFindingsCount, sanitizePath, cn } from '../../lib/utils'
+import { getFindingsCount, sanitizePath, cn, copyToClipboard } from '../../lib/utils'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
 type SortOption = 'severity' | 'date'
@@ -90,19 +91,15 @@ export function RepositoryResultsPage() {
   useScanWebSocket({
     scanId: scanState.scanId,
     enabled: scanState.isScanning,
-    onProgress: handleProgressUpdate,
     onComplete: (data) => {
       void handleScanComplete(data)
-      // Keep overlay open so user sees completion state (closes on interaction)
     },
     onFailed: (data) => {
       handleScanFailed(data)
-      // Keep overlay open so user sees failure state
     },
-    onAIComplete: () => {
-      void handleAIComplete()
+    onStageChange: (stage) => {
+      handleProgressUpdate({ currentStage: stage })
     },
-    onLog: handleLog,
   })
 
   // Auto-refresh on scan complete
@@ -309,39 +306,72 @@ export function RepositoryResultsPage() {
         url: window.location.href,
       }).catch(() => {})
     } else {
-      void navigator.clipboard.writeText(window.location.href)
+      void copyToClipboard(window.location.href)
     }
   }
 
   if (isLoading && !repoData) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-            className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-400 rounded-full mx-auto"
-          />
-          <p className="text-muted-foreground">Loading repository results...</p>
+      <div className="min-h-screen bg-background">
+        <div className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#07070d]/90 backdrop-blur-2xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex items-center gap-2 text-xs mb-2">
+              <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+              <div className="h-3 w-3 bg-white/5 rounded" />
+              <div className="h-3 w-20 bg-white/10 rounded animate-pulse" />
+            </div>
+            <div className="h-3 w-24 bg-white/10 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-3">
+                <div className="h-3 w-20 bg-white/10 rounded animate-pulse" />
+                <div className="h-8 w-12 bg-white/10 rounded animate-pulse" />
+                <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-6 space-y-4">
+            <div className="h-6 w-40 bg-white/10 rounded animate-pulse" />
+            <div className="h-4 w-full bg-white/10 rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-white/10 rounded animate-pulse" />
+            <div className="grid grid-cols-2 gap-3 pt-4">
+              <div className="h-12 bg-white/[0.04] rounded-lg border border-white/[0.06] animate-pulse" />
+              <div className="h-12 bg-white/[0.04] rounded-lg border border-white/[0.06] animate-pulse" />
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-6 space-y-3">
+            <div className="h-5 w-32 bg-white/10 rounded animate-pulse" />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <div className="h-6 w-6 rounded-full bg-white/10 animate-pulse" />
+                <div className="h-4 flex-1 bg-white/10 rounded animate-pulse" />
+                <div className="h-4 w-12 bg-white/10 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )
   }
 
   if (error && !repoData) {
+    const errorMessage = (error as Error)?.message || 'Failed to load repository results'
+    const isNotFound = /404|not found/i.test(errorMessage)
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Card className="p-8 max-w-md text-center" hover={false}>
-          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-foreground mb-2">Error Loading Results</h2>
-          <p className="text-muted-foreground mb-4">
-            {(error as Error)?.message || 'Failed to load repository results'}
-          </p>
-          <div className="flex gap-2 justify-center">
-            <Button variant="secondary" onClick={() => { void refetch(); }}>Retry</Button>
-            <Button variant="ghost" onClick={() => navigate('/repositories')}>Back to Repositories</Button>
-          </div>
-        </Card>
+        <ErrorState
+          title={isNotFound ? 'Repository not found' : 'Unable to load scan results'}
+          message={
+            isNotFound
+              ? 'This repository may have been removed or you may not have access. Check the repository URL and try again.'
+              : `Could not fetch results for this repository. ${errorMessage}`
+          }
+          onRetry={isNotFound ? undefined : () => { void refetch() }}
+          className="py-8"
+        />
       </div>
     )
   }
@@ -353,7 +383,7 @@ export function RepositoryResultsPage() {
         <div className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#07070d]/90 backdrop-blur-2xl">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div className="flex items-center justify-between mb-2">
-              <nav className="flex items-center gap-2 text-xs">
+            <nav className="flex items-center gap-2 text-xs min-w-0">
                 <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors">
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   Dashboard
@@ -423,7 +453,7 @@ export function RepositoryResultsPage() {
       <div className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#07070d]/90 backdrop-blur-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between mb-2">
-            <nav className="flex items-center gap-2 text-xs">
+            <nav className="flex items-center gap-2 text-xs min-w-0">
               <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors">
                 <LayoutDashboard className="w-3.5 h-3.5" />
                 Dashboard
@@ -435,7 +465,7 @@ export function RepositoryResultsPage() {
               <ChevronRight className="w-3 h-3 text-white/20" />
               <span className="text-white/60 truncate max-w-[160px]">{repoName}</span>
             </nav>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
               <Button
                 variant="ghost"
                 size="sm"

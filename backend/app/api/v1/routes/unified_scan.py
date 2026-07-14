@@ -332,12 +332,12 @@ async def start_unified_scan(
             session_token=session_token,
         )
 
-        # Return response IMMEDIATELY with "running" status
+        # Return response IMMEDIATELY — scan hasn't started yet, status is PENDING
         return {
             "scan_id": scan_id,
             "session_token": session_token,
-            "status": "running",
-            "message": "Scan started successfully - progress will be updated",
+            "status": "pending",
+            "message": "Scan queued — progress will be streamed via WebSocket",
             "repository_id": str(repository.id) if repository else None,
             "repository_url": repository_url,
             "branch": branch,
@@ -351,6 +351,28 @@ async def start_unified_scan(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start scan: {str(e)}",
         )
+
+
+@router.get("/stages", response_model=dict[str, Any])
+async def get_scan_stages():
+    """
+    Get scan stage metadata for the frontend.
+
+    Returns the ordered list of stages with display labels and icons.
+    The frontend renders these directly — no hardcoded stage definitions.
+    """
+    from app.models.scan import ScanStage
+
+    stages = []
+    for stage in ScanStage.ordered():
+        meta = ScanStage.metadata()[stage]
+        stages.append({
+            "id": stage.value,
+            "label": meta["label"],
+            "icon": meta["icon"],
+            "order": meta["order"],
+        })
+    return {"stages": stages}
 
 
 @router.get("/status/{scan_id}", response_model=dict[str, Any])
@@ -403,7 +425,7 @@ async def get_scan_status(
         # Clean up any stale progress store entry
         if progress:
             logger.info(f"🗑️ Cleaning up stale progress store entry for completed scan {scan_id}")
-            await store._cleanup_scan(scan_id)
+            await store.cleanup_scan(scan_id)
 
         detected_techs = []
         if db_scan.detected_stack:
@@ -763,4 +785,78 @@ async def get_scan_results(
         "ai_suggestions_count": len(suggestions),
         "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
         "analysis_duration_seconds": scan.analysis_duration_seconds,
+    }
+
+
+@router.get("/state/{scan_id}", response_model=dict[str, Any])
+async def get_scan_state(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
+    """
+    Get authoritative scan state for WebSocket reconnect synchronization.
+
+    This endpoint is called by the frontend when:
+    - WebSocket reconnects after disconnection
+    - Page is refreshed during an active scan
+    - Browser recovers from crash
+
+    Returns the single source of truth from the database, including:
+    - current_stage (granular stage enum)
+    - status (terminal state)
+    - progress percentage
+    - Whether the scan is in a terminal state
+    """
+    # Get scan from DB (single source of truth)
+    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    scan = result.scalar_one_or_none()
+
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan not found",
+        )
+
+    # Check access for authenticated scans
+    if scan.user_id and not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authentication required",
+        )
+
+    if scan.user_id and current_user and scan.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    is_terminal = scan.status in (ScanStatus.COMPLETED, ScanStatus.FAILED, ScanStatus.CANCELLED)
+
+    # Get detected technologies from detected_stack
+    detected_techs = []
+    if scan.detected_stack:
+        if isinstance(scan.detected_stack, dict):
+            detected_techs = scan.detected_stack.get("detected_stack", [])
+        elif isinstance(scan.detected_stack, list):
+            detected_techs = scan.detected_stack
+
+    logger.info(
+        f"[RECONNECT] scan={scan_id} status={scan.status.value} "
+        f"current_stage={scan.current_stage.value if scan.current_stage else None} "
+        f"progress={scan.progress} is_terminal={is_terminal}"
+    )
+
+    return {
+        "scan_id": str(scan.id),
+        "status": scan.status.value,
+        "current_stage": scan.current_stage.value if scan.current_stage else None,
+        "progress": scan.progress,
+        "is_terminal": is_terminal,
+        "error_message": scan.error_message,
+        "detected_stack": detected_techs,
+        "started_at": scan.started_at.isoformat() if scan.started_at else None,
+        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+        "overall_score": scan.overall_score,
+        "created_at": scan.created_at.isoformat(),
     }

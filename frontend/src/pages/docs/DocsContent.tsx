@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 import {
   Check, Copy, ChevronDown, ChevronRight, AlertTriangle,
   Info, CheckCircle, BookOpen, ArrowRight,
@@ -11,7 +11,7 @@ import {
 function CodeBlock({ code, lang = 'bash' }: { code: string; lang?: string }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = () => {
-    navigator.clipboard.writeText(code)
+    copyToClipboard(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

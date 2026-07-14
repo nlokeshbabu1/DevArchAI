@@ -11,7 +11,7 @@ import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
 import { Diagnostics } from "./Diagnostics"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
-import { cn, getFileName } from "../../lib/utils"
+import { cn, getFileName, copyToClipboard } from "../../lib/utils"
 
 interface ScanResultData {
   ai_status?: "pending" | "processing" | "completed" | "failed"
@@ -145,7 +145,7 @@ export function ScanResultsDashboard({
   const handleOpenDrawer = (id: string) => setDrawerFindingId(id)
   const handleCloseDrawer = () => setDrawerFindingId(null)
 
-  const handleCopyFix = (code: string) => navigator.clipboard.writeText(code)
+  const handleCopyFix = (code: string) => copyToClipboard(code)
 
   const handleDownloadPatch = (finding: any) => {
     if (!finding.fix_code) return

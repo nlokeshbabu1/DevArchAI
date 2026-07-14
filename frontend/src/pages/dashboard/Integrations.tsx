@@ -12,6 +12,7 @@ import { AwsConnectModal } from '../../components/integrations/AwsConnectModal'
 import { AzureConnectModal } from '../../components/integrations/AzureConnectModal'
 import { integrationsApi, type IntegrationInfo } from '../../api/endpoints/integrations'
 import { useAuthStore } from '../../stores/auth-store'
+import { EmptyState } from '@/components/ui/empty-state'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   github: Github,
@@ -278,7 +279,21 @@ export function IntegrationsPage() {
       )}
 
       {/* Integrations Grid */}
-      {!loading && (
+      {!loading && integrations.length === 0 && (
+        <EmptyState
+          icon={<Plug className="h-12 w-12 text-muted-foreground" />}
+          title="No integrations connected"
+          description="Connect AWS, Azure, or GitHub to unlock cloud and repository analysis."
+          action={
+            <Button variant="secondary" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          }
+        />
+      )}
+
+      {!loading && integrations.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {integrations.map((integration) => (
             <IntegrationCard

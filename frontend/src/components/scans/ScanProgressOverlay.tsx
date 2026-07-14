@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  CheckCircle, Clock, GitBranch, FileCode, Layers,
+  CheckCircle, Clock, GitBranch,
   Shield, Activity, Search, FileText,
   Loader2, X, AlertCircle, TrendingUp, TrendingDown,
-  CheckCheck
+  CheckCheck, Brain, Filter, Layers, Download
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { formatDuration } from '../../lib/utils'
 import { Button } from '../ui-animated'
+import type { StageMetadata, ScanStage } from '../../types'
 
 interface ScanProgressData {
   progress: number
@@ -46,58 +47,55 @@ interface ScanProgressOverlayProps {
   onComplete: () => void
   onRetry?: () => void
   slideIn?: boolean
+  stages?: StageMetadata[]
+  currentStage?: ScanStage | null
+  startedAt?: string
 }
 
-const SCAN_STAGES = [
-  { id: 'clone', label: 'Connecting Repository', icon: GitBranch },
-  { id: 'cloning', label: 'Cloning Repository', icon: GitBranch },
-  { id: 'detect', label: 'Detecting Technologies', icon: Search },
-  { id: 'terraform', label: 'Running Terraform Rules', icon: FileCode },
-  { id: 'k8s', label: 'Running Kubernetes Rules', icon: Layers },
-  { id: 'docker', label: 'Running Docker Rules', icon: Layers },
-  { id: 'cicd', label: 'Running CI/CD Rules', icon: Activity },
-  { id: 'secrets', label: 'Running Secrets Scan', icon: Shield },
-  { id: 'finalize', label: 'Saving Findings', icon: FileText },
-]
-
-const STEP_TO_STAGE_MAP: Record<string, string> = {
-  'Connecting to GitHub': 'clone',
-  'Fetching repository': 'cloning',
-  'Cloning repository': 'cloning',
-  'Detecting technology stack': 'detect',
-  'Detecting technologies': 'detect',
-  'Loading files': 'detect',
-  'Running security rules': 'terraform',
-  'Running Terraform Rules': 'terraform',
-  'Running Kubernetes Rules': 'k8s',
-  'Running Docker Rules': 'docker',
-  'Running CI/CD Rules': 'cicd',
-  'Running external scanners': 'secrets',
-  'Preparing findings': 'cicd',
-  'Quality check': 'secrets',
-  'Computing metrics': 'finalize',
-  'Building reports': 'finalize',
-  'Persisting results': 'finalize',
-  'Almost done': 'finalize',
-  'Score calculation complete': 'finalize',
-  'Scan completed': 'finalize',
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
+  'git-branch': GitBranch,
+  'download': Download,
+  'search': Search,
+  'layers': Layers,
+  'shield': Shield,
+  'filter': Filter,
+  'check-circle': CheckCircle,
+  'brain': Brain,
+  'file-text': FileText,
 }
 
-function useElapsedTime(startedAt: number, isRunning: boolean) {
+function useElapsedTime(startedAt: string | undefined, isRunning: boolean) {
   const [elapsed, setElapsed] = useState(0)
+  const frozenRef = useRef(0)
 
   useEffect(() => {
     if (!isRunning) {
-      setElapsed(0)
+      frozenRef.current = elapsed
       return
     }
+
+    // Compute initial elapsed from backend started_at
+    if (startedAt) {
+      const startMs = new Date(startedAt).getTime()
+      const nowMs = Date.now()
+      if (!isNaN(startMs) && startMs > 0) {
+        setElapsed(Math.floor((nowMs - startMs) / 1000))
+      }
+    }
+
     const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+      if (startedAt) {
+        const startMs = new Date(startedAt).getTime()
+        const nowMs = Date.now()
+        if (!isNaN(startMs) && startMs > 0) {
+          setElapsed(Math.floor((nowMs - startMs) / 1000))
+        }
+      }
     }, 1000)
     return () => clearInterval(interval)
   }, [startedAt, isRunning])
 
-  return elapsed
+  return isRunning ? elapsed : frozenRef.current
 }
 
 export function ScanProgressOverlay({
@@ -114,8 +112,10 @@ export function ScanProgressOverlay({
   onComplete,
   onRetry,
   slideIn = false,
+  stages = [],
+  currentStage = null,
+  startedAt,
 }: ScanProgressOverlayProps) {
-  const [startedAt] = useState(Date.now())
   const isRunning = isOpen && !isComplete && !hasFailed
   const elapsed = useElapsedTime(startedAt, isRunning)
   const completeHandledRef = useRef(false)
@@ -135,42 +135,39 @@ export function ScanProgressOverlay({
     }
   }, [isComplete])
 
+  // Compute completed stages from backend current_stage
   const completedStageIds = useMemo(() => {
     const ids = new Set<string>()
-    const step = progressData.currentStep || ''
-    if (step && STEP_TO_STAGE_MAP[step]) {
-      const matchedId = STEP_TO_STAGE_MAP[step]
-      for (const stage of SCAN_STAGES) {
+    if (!currentStage || stages.length === 0) return ids
+
+    const currentOrder = stages.find(s => s.id === currentStage)?.order ?? -1
+    for (const stage of stages) {
+      if (stage.order < currentOrder) {
         ids.add(stage.id)
-        if (stage.id === matchedId) break
       }
     }
     if (isComplete || progressData.progress >= 100) {
-      SCAN_STAGES.forEach(s => ids.add(s.id))
+      stages.forEach(s => ids.add(s.id))
     }
     return ids
-  }, [progressData.currentStep, isComplete, progressData.progress])
+  }, [currentStage, stages, isComplete, progressData.progress])
 
   const activeStageId = useMemo(() => {
     if (isComplete || hasFailed) return null
-    const step = progressData.currentStep || ''
-    if (step && STEP_TO_STAGE_MAP[step]) {
-      return STEP_TO_STAGE_MAP[step]
-    }
-    const completedCount = completedStageIds.size
-    if (completedCount < SCAN_STAGES.length) {
-      return SCAN_STAGES[completedCount]?.id || null
-    }
-    return null
-  }, [progressData.currentStep, completedStageIds, isComplete, hasFailed])
+    return currentStage || null
+  }, [currentStage, isComplete, hasFailed])
 
   const currentStepLabel = useMemo(() => {
-    if (isComplete) return 'Static scan completed'
+    if (isComplete) return 'Scan completed'
     if (hasFailed) return 'Scan Failed'
+    if (currentStage) {
+      const meta = stages.find(s => s.id === currentStage)
+      return meta?.label || currentStage
+    }
     return progressData.currentStep || 'Initializing...'
-  }, [progressData.currentStep, isComplete, hasFailed])
+  }, [currentStage, stages, progressData.currentStep, isComplete, hasFailed])
 
-  const allStagesDone = completedStageIds.size >= SCAN_STAGES.length
+  const allStagesDone = completedStageIds.size >= stages.length
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-400'
@@ -225,7 +222,7 @@ export function ScanProgressOverlay({
             </h2>
             <p className="text-sm text-white/40 mt-0.5">
               {isComplete
-                ? 'Static analysis finished. AI recommendations may follow.'
+                ? 'Analysis finished. AI recommendations may follow.'
                 : hasFailed
                   ? progressData.error || 'An error occurred during the scan'
                   : 'Running infrastructure analysis'
@@ -264,7 +261,7 @@ export function ScanProgressOverlay({
           <div className="flex flex-col items-center gap-3 p-6 rounded-xl bg-gradient-to-br from-indigo-500/[0.08] to-emerald-500/[0.04] border border-white/[0.06]">
             <CheckCheck className="h-10 w-10 text-emerald-400" />
             <div className="text-center">
-              <div className="text-xl font-bold text-white/90">Static Scan Complete</div>
+              <div className="text-xl font-bold text-white/90">Scan Complete</div>
               <div className="text-sm text-white/40 mt-0.5">Repository infrastructure analyzed</div>
             </div>
 
@@ -358,10 +355,14 @@ export function ScanProgressOverlay({
         <div className="mb-6 p-4 rounded-xl bg-red-500/[0.06] border border-red-500/20">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-red-400 mt-0.5 shrink-0" />
-            <div>
+            <div className="space-y-1.5">
               <p className="text-sm font-medium text-red-300">Scan failed to complete</p>
-              <p className="text-sm text-red-400/70 mt-1">
-                {progressData.error || 'An unexpected error occurred. Please try again.'}
+              <p className="text-sm text-red-400/70">
+                {progressData.error || 'An unexpected error occurred during the scan.'}
+              </p>
+              <p className="text-xs text-red-400/50">
+                Common causes: repository access issues, unsupported file formats, or a temporary server error.
+                You can retry the scan or check that the repository is accessible.
               </p>
             </div>
           </div>
@@ -370,7 +371,7 @@ export function ScanProgressOverlay({
 
       {/* ===== PROGRESS BAR ===== */}
       {!isComplete && !hasFailed && (
-        <div className="mb-6">
+        <div className="mb-6" aria-live="polite" aria-atomic="true">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
@@ -392,21 +393,21 @@ export function ScanProgressOverlay({
       )}
 
       {/* ===== STAGES TIMELINE ===== */}
-      {!isComplete && !hasFailed && (
+      {!isComplete && !hasFailed && stages.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Activity className="h-3.5 w-3.5 text-white/30" />
             <span className="text-xs font-medium text-white/30 uppercase tracking-wider">Scan Stages</span>
             <span className="text-[10px] text-white/20 ml-auto font-mono">
-              Stage {Math.min(completedStageIds.size + 1, SCAN_STAGES.length)}/{SCAN_STAGES.length}
+              Stage {Math.min(completedStageIds.size + 1, stages.length)}/{stages.length}
             </span>
           </div>
           <div className="space-y-0">
-            {SCAN_STAGES.map((stage, i) => {
+            {stages.map((stage, i) => {
               const isDone = completedStageIds.has(stage.id)
               const isActive = stage.id === activeStageId && !isDone
               const isPending = !isDone && !isActive
-              const Icon = stage.icon
+              const Icon = ICON_MAP[stage.icon] || Activity
 
               return (
                 <motion.div
@@ -479,10 +480,6 @@ export function ScanProgressOverlay({
                       </div>
                     </motion.div>
                   )}
-
-                  {isDone && (
-                    <span className="ml-auto text-[10px] text-emerald-400/60 font-mono">Done</span>
-                  )}
                 </motion.div>
               )
             })}
@@ -490,93 +487,59 @@ export function ScanProgressOverlay({
         </div>
       )}
 
-      {/* ===== FOOTER ACTIONS ===== */}
-      <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
+      {/* ===== ACTIONS ===== */}
+      <div className="flex gap-2">
+        {hasFailed && onRetry && (
+          <Button variant="primary" size="sm" onClick={onRetry} className="flex-1">
+            Retry Scan
+          </Button>
+        )}
         {isComplete && (
-          <>
-            <Button variant="primary" size="md" onClick={handleAutoClose} glow className="flex-1">
-              <CheckCircle className="h-4 w-4" />
-              Close
-            </Button>
-            <Button variant="ghost" size="md" onClick={onClose}>
-              Dismiss
-            </Button>
-          </>
+          <Button variant="primary" size="sm" onClick={onComplete} className="flex-1">
+            View Results
+          </Button>
         )}
-        {hasFailed && (
-          <>
-            <Button variant="primary" size="md" onClick={onRetry} glow className="flex-1">
-              <AlertCircle className="h-4 w-4" />
-              Retry Scan
-            </Button>
-            <Button variant="ghost" size="md" onClick={onClose}>
-              Dismiss
-            </Button>
-          </>
-        )}
-        {!isComplete && !hasFailed && (
-          <div className="flex items-center gap-2 text-xs text-white/30">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Scanning repository...</span>
-          </div>
-        )}
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   )
 
-  return (
-    <AnimatePresence>
-      {isOpen && !slideIn && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-2xl"
-        >
+  if (slideIn) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
           <motion.div
-            initial={{ scale: 0.92, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.92, opacity: 0, y: 20 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0a0a10]/95 backdrop-blur-2xl shadow-2xl shadow-black/60"
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-[#0a0a14] border-l border-white/[0.06] shadow-2xl overflow-y-auto"
           >
-            {(isComplete || hasFailed) && (
-              <button
-                onClick={onClose}
-                className="absolute top-4 right-4 p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
             {content}
           </motion.div>
-        </motion.div>
-      )}
+        )}
+      </AnimatePresence>
+    )
+  }
 
-      {isOpen && slideIn && (
+  return (
+    <AnimatePresence>
+      {isOpen && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[60] bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
         >
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute top-0 right-0 bottom-0 w-full max-w-xl bg-[#0a0a10]/98 backdrop-blur-2xl border-l border-white/[0.08] shadow-2xl shadow-black/60 overflow-y-auto"
+            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="w-full max-w-lg rounded-2xl border border-white/[0.08] bg-[#0a0a14] shadow-2xl max-h-[85vh] overflow-y-auto"
           >
-            {(isComplete || hasFailed) && (
-              <button
-                onClick={onClose}
-                className="absolute top-4 right-4 p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors z-10"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
             {content}
           </motion.div>
         </motion.div>

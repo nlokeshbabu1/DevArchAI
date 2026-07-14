@@ -104,31 +104,28 @@ const PRICING_DATA = {
     name: 'Enterprise',
     description: 'For companies and teams',
     features: [
-      'Everything in Pro',
-      'GitHub PR auto-fix',
-      'CI/CD pipeline integration',
-      'Unlimited team members',
-      'Organization scanning',
-      'Compliance reporting',
-      'Custom security rules',
-      'Full API access (5000 req/hr)',
-      'Dedicated support',
-      'SLA guarantee',
+      'SSO / SAML authentication',
+      'Role-based access control (RBAC)',
+      'Audit logs & compliance',
+      'Private deployment options',
+      'Dedicated support engineer',
+      '99.9% uptime SLA',
       'Custom integrations',
-      'Training sessions',
+      'Priority support',
     ],
     limitations: [],
     price: {
-      USD: '$99',
-      INR: '₹7,999',
-      EUR: '€89',
-      GBP: '£79',
-      SGD: 'S$129',
-      AUD: 'A$149',
+      USD: 'Custom',
+      INR: 'Custom',
+      EUR: 'Custom',
+      GBP: 'Custom',
+      SGD: 'Custom',
+      AUD: 'Custom',
     },
     cta: 'Contact Sales',
     popular: false,
     highlight: false,
+    enterprise: true,
     tier: 'enterprise',
   },
 }
@@ -231,7 +228,7 @@ export function PricingPage() {
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            <span className="gradient-text">Choose Your Plan</span>
+            <span className="text-foreground">Choose Your Plan</span>
           </h1>
           <p className="text-lg text-muted-foreground">
             Select the perfect plan for your DevSecOps needs. All plans include a 14-day free trial.
@@ -263,7 +260,7 @@ export function PricingPage() {
 
         {/* Billing Period Toggle */}
         <motion.div
-          className="flex items-center justify-center gap-4 mb-12"
+          className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -296,7 +293,7 @@ export function PricingPage() {
         </motion.div>
 
         {/* Pricing Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 max-w-7xl mx-auto">
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 max-w-7xl mx-auto">
           {plans.map((plan, index) => (
             <motion.div
               key={plan.tier}
@@ -308,7 +305,8 @@ export function PricingPage() {
                 className={cn(
                   'p-6 h-full flex flex-col relative',
                   plan.highlight && 'border-primary/50 shadow-lg shadow-primary/10',
-                  plan.popular && 'ring-2 ring-primary'
+                  plan.popular && 'ring-2 ring-primary',
+                  (plan as any).enterprise && 'border-primary/30 shadow-lg shadow-primary/5'
                 )}
                 hover
               >
@@ -317,6 +315,14 @@ export function PricingPage() {
                     <span className="inline-flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground shadow-lg">
                       <Star className="h-3 w-3 fill-current" />
                       Most Popular
+                    </span>
+                  </div>
+                )}
+                {(plan as any).enterprise && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="inline-flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-primary to-indigo-600 text-white shadow-lg">
+                      <Building2 className="h-3 w-3" />
+                      Enterprise
                     </span>
                   </div>
                 )}
@@ -337,18 +343,20 @@ export function PricingPage() {
                 <div className="mb-6">
                   <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-bold text-foreground">
-                      {billingPeriod === 'yearly' && plan.price[currency] !== '$0'
-                        ? `${plan.price[currency].replace(/\d+/, (m) => String(Math.floor(parseInt(m.replace(/[^0-9]/g, '')) * 0.8)))}`
-                        : plan.price[currency]
+                      {plan.price[currency] === 'Custom'
+                        ? 'Custom'
+                        : billingPeriod === 'yearly' && plan.price[currency] !== '$0'
+                          ? `${plan.price[currency].replace(/\d+/, (m) => String(Math.floor(parseInt(m.replace(/[^0-9]/g, '')) * 0.8)))}`
+                          : plan.price[currency]
                       }
                     </span>
-                    {plan.price[currency] !== '$0' && plan.price[currency] !== '₹0' && (
+                    {plan.price[currency] !== '$0' && plan.price[currency] !== '₹0' && plan.price[currency] !== 'Custom' && (
                       <span className="text-muted-foreground">
                         /{billingPeriod === 'yearly' ? 'year' : 'month'}
                       </span>
                     )}
                   </div>
-                  {billingPeriod === 'yearly' && plan.price[currency] !== '$0' && (
+                  {billingPeriod === 'yearly' && plan.price[currency] !== '$0' && plan.price[currency] !== 'Custom' && (
                     <p className="text-xs text-green-400 mt-1">
                       Billed annually (save 20%)
                     </p>
@@ -398,7 +406,7 @@ export function PricingPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <Card className="p-8 text-center glow-primary" hover={false}>
+          <Card className="p-8 text-center" hover={false}>
             <div className="space-y-6">
               <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600">
                 <Users className="h-8 w-8 text-white" />

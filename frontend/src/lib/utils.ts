@@ -108,6 +108,30 @@ export function isValidPercentage(value: number | null | undefined): value is nu
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
 }
 
+// --- Clipboard ---
+
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* fall through to legacy method */ }
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 // --- Scanner family and source utilities ---
 
 export interface ScannerFamilyDef {
@@ -132,19 +156,19 @@ export const SCANNER_FAMILIES: ScannerFamilyDef[] = [
   },
   {
     key: "iac",
-    label: "Terraform / IaC",
+    label: "Infrastructure Security",
     scannerIds: ["checkov", "tfsec"],
     icon: "git-branch",
   },
   {
     key: "secrets",
-    label: "Secrets",
+    label: "Secret Detection",
     scannerIds: ["gitleaks"],
     icon: "lock",
   },
   {
     key: "sca",
-    label: "SCA",
+    label: "Dependency Security",
     scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"],
     icon: "shield",
   },
@@ -162,7 +186,7 @@ export const SCANNER_FAMILIES: ScannerFamilyDef[] = [
   },
   {
     key: "sast",
-    label: "SAST",
+    label: "Code Security",
     scannerIds: [],
     icon: "search",
   },
@@ -249,12 +273,12 @@ export function classifyFindingScanner(finding: any): string {
 export const SCANNER_DEFINITIONS = [
   { key: "container", label: "Container Scanner", techKeys: ["Docker", "Docker Compose"] },
   { key: "kubernetes", label: "Kubernetes Scanner", techKeys: ["Kubernetes", "Helm"] },
-  { key: "iac", label: "IaC Scanner", techKeys: ["Terraform", "Ansible", "CloudFormation"] },
+  { key: "iac", label: "Infrastructure Security Scanner", techKeys: ["Terraform", "Ansible", "CloudFormation"] },
   { key: "cicd", label: "CI/CD Scanner", techKeys: ["GitHub Actions", "GitLab CI", "Jenkins", "CircleCI", "Drone CI", "Azure DevOps", "Travis CI"] },
-  { key: "secrets", label: "Secret Scanner", techKeys: [] },
-  { key: "sast", label: "SAST Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
-  { key: "sca", label: "SCA Scanner", techKeys: [], defaultStatus: "disabled" as const },
-  { key: "dast", label: "DAST Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
+  { key: "secrets", label: "Secret Detection Scanner", techKeys: [] },
+  { key: "sast", label: "Code Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
+  { key: "sca", label: "Dependency Security Scanner", techKeys: [], defaultStatus: "disabled" as const },
+  { key: "dast", label: "Dynamic Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "api_security", label: "API Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "license", label: "License Compliance Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "malware", label: "Malware Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
@@ -289,7 +313,7 @@ export const TECHNOLOGY_COVERAGE: TechnologyDef[] = [
   { key: "kubernetes", label: "Kubernetes", scannerIds: ["kube_score", "trivy_config", "checkov"], detectionLabel: "K8s manifests found" },
   { key: "terraform", label: "Terraform", scannerIds: ["tfsec", "checkov"], detectionLabel: "Terraform configs found" },
   { key: "cicd", label: "CI/CD", scannerIds: ["gitleaks"], detectionLabel: "CI/CD pipelines detected" },
-  { key: "secrets", label: "Secrets", scannerIds: ["gitleaks"], detectionLabel: "Secrets scanning enabled" },
+  { key: "secrets", label: "Secret Detection", scannerIds: ["gitleaks"], detectionLabel: "Secrets scanning enabled" },
   { key: "dependencies", label: "Dependencies", scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"], detectionLabel: "Dependencies detected" },
 ]
 
