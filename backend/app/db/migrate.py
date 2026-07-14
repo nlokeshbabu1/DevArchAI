@@ -76,6 +76,18 @@ def stamp_if_needed() -> bool:
     has_version_table = "alembic_version" in existing_tables
     has_app_tables = bool(existing_tables & _APP_TABLES)
 
+    # Fresh database (no tables at all): create everything from models,
+    # then stamp at head.  This avoids the problem where migrations 002-006
+    # try to ALTER tables that were never created by an earlier migration.
+    if not has_version_table and not has_app_tables:
+        engine.dispose()
+        _bootstrap_fresh_database(url)
+        cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
+        cfg.set_main_option("sqlalchemy.url", url)
+        alembic.command.stamp(cfg, "head")
+        logger.info("Fresh database bootstrapped: all tables created, stamped at head")
+        return True
+
     # Verify schema completeness BEFORE disposing the engine — the inspector
     # needs a live connection to read column metadata.
     schema_ok = True
@@ -105,6 +117,25 @@ def stamp_if_needed() -> bool:
     alembic.command.stamp(cfg, "head")
     logger.info("Stamped existing database at head migration")
     return True
+
+
+def _bootstrap_fresh_database(url: str) -> None:
+    """Create all tables from SQLAlchemy models on a completely empty database."""
+    from sqlalchemy import create_engine as _create
+
+    import app.models  # noqa: F401 — ensure every model is registered on Base.metadata
+    from app.db.base import Base
+
+    sync_url = url
+    if sync_url.startswith("postgresql+asyncpg://"):
+        sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://")
+    elif sync_url.startswith("sqlite+aiosqlite://"):
+        sync_url = sync_url.replace("sqlite+aiosqlite://", "sqlite:///")
+
+    engine = _create(sync_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    logger.info("Created all tables from SQLAlchemy models")
 
 
 def run_migrations() -> None:
