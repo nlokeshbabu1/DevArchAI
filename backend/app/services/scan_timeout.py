@@ -27,11 +27,11 @@ async def detect_stuck_scans():
     If a scan has been in PROCESSING state for longer than SCAN_TIMEOUT_MINUTES,
     it is marked as FAILED with a timeout error message.
     """
-    from app.db.session import async_session_factory
+    from app.db.session import get_session_factory
 
     while True:
         try:
-            async with async_session_factory() as db:
+            async with get_session_factory()() as db:
                 cutoff = datetime.utcnow() - timedelta(minutes=SCAN_TIMEOUT_MINUTES)
 
                 # Find scans stuck in PROCESSING state beyond timeout
