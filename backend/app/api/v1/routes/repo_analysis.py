@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
-from app.core.security import get_current_user, get_optional_user
+from app.core.security import get_current_user
 from app.db.session import get_db
-from app.models.finding import Finding
 from app.models.repo_analysis import RepoAnalysis
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
@@ -25,7 +24,7 @@ from app.schemas.repo_analysis import (
     RepoAnalysisRequest,
     RepoAnalysisResponse,
 )
-from app.services.repo_analysis_service import RepoAnalysisService, get_analysis_service
+from app.services.repo_analysis_service import RepoAnalysisService
 from app.services.scan_service import ScanService
 from app.workers.tasks.scan_repository import SyncScanService
 
@@ -120,10 +119,8 @@ async def analyze_repository(
     
     Uses the SAME SyncScanService as guest scans for consistency.
     """
-    from app.workers.tasks.scan_repository import SyncScanService
-    from app.models.scan import Scan
     from uuid import uuid4
-    
+
     logger.info("Repository analysis requested", repo_url=request.repo_url, branch=request.branch)
 
     try:
@@ -139,14 +136,14 @@ async def analyze_repository(
         db.add(scan)
         await db.commit()
         await db.refresh(scan)
-        
+
         # Use SyncScanService (same as guest scans) for consistency
         from app.db.session import get_sync_session_factory
         sync_db = get_sync_session_factory()()
         try:
             scan_service = SyncScanService(db=sync_db, include_ai_explanations=True)
             sync_scan = sync_db.get(Scan, scan.id)
-            
+
             if sync_scan:
                 try:
                     updated_scan = scan_service.execute_scan(sync_scan)
@@ -156,11 +153,11 @@ async def analyze_repository(
                     if "Could not find remote branch" in error_msg or "not found in upstream" in error_msg:
                         fallback_branches = ["master", "develop", "dev", "main"]
                         original_branch = sync_scan.branch
-                        
+
                         for fallback in fallback_branches:
                             if fallback == original_branch:
                                 continue
-                            
+
                             try:
                                 logger.info(f"Trying fallback branch: {fallback}")
                                 sync_scan.branch = fallback
@@ -179,7 +176,7 @@ async def analyze_repository(
                             )
                     else:
                         raise
-                
+
                 # Update async session with results
                 scan.status = updated_scan.status
                 scan.progress = updated_scan.progress
@@ -187,12 +184,12 @@ async def analyze_repository(
                 scan.security_score = updated_scan.security_score
                 scan.completed_at = updated_scan.completed_at
                 await db.commit()
-                
+
                 # Get findings for this scan
                 from sqlalchemy import select
+
                 from app.models.finding import Finding
-                from app.services.feature_gating import FeatureGatingService
-                
+
                 findings_result = await db.execute(
                     select(Finding).where(Finding.scan_id == scan.id)
                 )

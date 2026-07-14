@@ -6,11 +6,10 @@ Tracks security-relevant events for compliance and forensics.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
-from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session_factory
@@ -35,15 +34,15 @@ class AuditLogger:
 
     @staticmethod
     async def log(
-        actor_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        actor_id: str | None = None,
+        org_id: str | None = None,
         action: str = "unknown",
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        db: Optional[AsyncSession] = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        db: AsyncSession | None = None,
     ) -> None:
         """Write an audit log entry asynchronously."""
         try:
@@ -58,7 +57,7 @@ class AuditLogger:
                 "details": json.dumps(details) if details else None,
                 "ip_address": ip_address,
                 "user_agent": user_agent,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }
 
             if db is not None:

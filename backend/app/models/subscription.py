@@ -6,15 +6,12 @@ Defines pricing tiers, features, and subscription management.
 
 import enum
 import uuid
-from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
     Enum as SQLEnum,
-    Float,
     ForeignKey,
     Integer,
     String,
@@ -86,14 +83,14 @@ class Subscription(Base):
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     organization_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # Plan details
     plan = Column(SQLEnum(PlanTier, name="plantype", create_type=False), default=PlanTier.FREE, nullable=False)
     status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus", create_type=False), default=SubscriptionStatus.ACTIVE, nullable=False)
-    
+
     # Billing
     # (amount stored in payments table, not here)
-    
+
     # Stripe integration
     stripe_customer_id = Column(String(255), unique=True, nullable=True, index=True)
     stripe_subscription_id = Column(String(255), nullable=True)
@@ -111,15 +108,15 @@ class Subscription(Base):
     # Trial
     trial_start = Column(DateTime(timezone=True), nullable=True)
     trial_end = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Billing periods
     current_period_start = Column(DateTime(timezone=True), nullable=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Cancellation
     cancel_at_period_end = Column(Boolean, default=False, nullable=False)
     cancelled_at = Column("canceled_at", DateTime(timezone=True), nullable=True)
-    
+
     # Usage tracking
     scans_this_period = Column(Integer, default=0, nullable=False)
     repositories_count = Column(Integer, default=0, nullable=False)
@@ -135,7 +132,7 @@ class Subscription(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     # Relationships
     organization = relationship("Organization", back_populates="subscriptions")
     plan_obj = relationship("Plan", back_populates="subscriptions",

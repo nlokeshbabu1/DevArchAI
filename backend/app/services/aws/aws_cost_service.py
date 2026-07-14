@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
@@ -48,8 +48,8 @@ class AWSCostService:
                         Namespace="AWS/EC2",
                         MetricName="CPUUtilization",
                         Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
-                        StartTime=datetime.now(timezone.utc) - timedelta(days=14),
-                        EndTime=datetime.now(timezone.utc),
+                        StartTime=datetime.now(UTC) - timedelta(days=14),
+                        EndTime=datetime.now(UTC),
                         Period=86400,
                         Statistics=["Average"],
                     )
@@ -90,7 +90,7 @@ class AWSCostService:
 
     async def _check_snapshots(self, session, region: str) -> list[dict]:
         ec2 = client(session, "ec2", region)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=180)
+        cutoff = datetime.now(UTC) - timedelta(days=180)
         try:
             response = await call_aws(ec2.describe_snapshots, OwnerIds=["self"])
             return [self._rec("old_snapshot", "Old EBS snapshot", f"Snapshot {item['SnapshotId']} is older than 180 days.", "ebs_snapshot", item["SnapshotId"], region, max(float(item.get("VolumeSize", 0)) * 0.05, 1.0)) for item in response.get("Snapshots", []) if item.get("StartTime") and item["StartTime"] < cutoff]
@@ -106,7 +106,7 @@ class AWSCostService:
             dbs = await call_aws(rds.describe_db_instances)
             for db in dbs.get("DBInstances", []):
                 db_id = db["DBInstanceIdentifier"]
-                metrics = await call_aws(cloudwatch.get_metric_statistics, Namespace="AWS/RDS", MetricName="CPUUtilization", Dimensions=[{"Name": "DBInstanceIdentifier", "Value": db_id}], StartTime=datetime.now(timezone.utc) - timedelta(days=14), EndTime=datetime.now(timezone.utc), Period=86400, Statistics=["Average"])
+                metrics = await call_aws(cloudwatch.get_metric_statistics, Namespace="AWS/RDS", MetricName="CPUUtilization", Dimensions=[{"Name": "DBInstanceIdentifier", "Value": db_id}], StartTime=datetime.now(UTC) - timedelta(days=14), EndTime=datetime.now(UTC), Period=86400, Statistics=["Average"])
                 datapoints = metrics.get("Datapoints", [])
                 avg_cpu = sum(point["Average"] for point in datapoints) / len(datapoints) if datapoints else 0
                 if avg_cpu < 10:
@@ -117,7 +117,7 @@ class AWSCostService:
 
     async def _cost_explorer_summary(self, session, region: str) -> list[dict]:
         ce = client(session, "ce", region)
-        end = datetime.now(timezone.utc).date()
+        end = datetime.now(UTC).date()
         start = end - timedelta(days=30)
         try:
             response = await call_aws(ce.get_cost_and_usage, TimePeriod={"Start": start.isoformat(), "End": end.isoformat()}, Granularity="MONTHLY", Metrics=["UnblendedCost"], GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}])

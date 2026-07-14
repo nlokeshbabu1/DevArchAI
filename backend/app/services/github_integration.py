@@ -1,9 +1,5 @@
 """GitHub integration for creating PRs with fixes."""
 
-import os
-import tempfile
-from pathlib import Path
-from typing import Optional
 
 import httpx
 import structlog
@@ -16,7 +12,7 @@ logger = structlog.get_logger(__name__)
 class GitHubIntegrationService:
     """Service for GitHub operations (clone, commit, create PR)."""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or settings.GITHUB_TOKEN
         self.base_url = "https://api.github.com"
         self.headers = {
@@ -31,17 +27,17 @@ class GitHubIntegrationService:
             parts = repo_url.rstrip("/").split("/")
             if len(parts) < 2:
                 return {"success": False, "error": "Invalid repository URL"}
-            
+
             owner = parts[-2]
             repo = parts[-1]
-            
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/repos/{owner}/{repo}",
                     headers=self.headers,
                     timeout=10.0,
                 )
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     return {
@@ -70,15 +66,15 @@ class GitHubIntegrationService:
                     headers=self.headers,
                     timeout=10.0,
                 )
-                
+
                 if ref_response.status_code != 200:
                     return {
                         "success": False,
                         "error": f"Failed to get base branch: {ref_response.status_code}",
                     }
-                
+
                 base_sha = ref_response.json()["object"]["sha"]
-                
+
                 # Create new branch
                 branch_response = await client.post(
                     f"{self.base_url}/repos/{owner}/{repo}/git/refs",
@@ -89,7 +85,7 @@ class GitHubIntegrationService:
                     },
                     timeout=10.0,
                 )
-                
+
                 if branch_response.status_code == 201:
                     return {
                         "success": True,
@@ -124,11 +120,11 @@ class GitHubIntegrationService:
                     params={"ref": branch_name},
                     timeout=10.0,
                 )
-                
+
                 sha = None
                 if file_response.status_code == 200:
                     sha = file_response.json()["sha"]
-                
+
                 # Commit the file
                 import base64
                 commit_response = await client.put(
@@ -142,7 +138,7 @@ class GitHubIntegrationService:
                     },
                     timeout=10.0,
                 )
-                
+
                 if commit_response.status_code in [200, 201]:
                     return {
                         "success": True,
@@ -181,7 +177,7 @@ class GitHubIntegrationService:
                     },
                     timeout=10.0,
                 )
-                
+
                 if pr_response.status_code == 201:
                     data = pr_response.json()
                     return {
@@ -205,7 +201,7 @@ class GitHubIntegrationService:
         file_path: str,
         fix_code: str,
         finding_title: str,
-        branch_name: Optional[str] = None,
+        branch_name: str | None = None,
     ) -> dict:
         """
         Apply fix and create PR in one flow.
@@ -225,11 +221,11 @@ class GitHubIntegrationService:
             repo_info = await self.get_repo_info(repo_url)
             if not repo_info["success"]:
                 return repo_info
-            
+
             owner = repo_info["owner"]
             repo = repo_info["repo"]
             default_branch = repo_info["default_branch"]
-            
+
             # Generate branch name
             if not branch_name:
                 import re
@@ -237,12 +233,12 @@ class GitHubIntegrationService:
                 safe_title = re.sub(r"[^a-zA-Z0-9]", "-", finding_title.lower())[:50]
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 branch_name = f"fix/{safe_title}-{timestamp}"
-            
+
             # Create branch
             branch_result = await self.create_branch(owner, repo, branch_name, default_branch)
             if not branch_result["success"]:
                 return branch_result
-            
+
             # Commit fix
             commit_message = f"Fix: {finding_title}\n\nAutomated fix applied by DevArchAI"
             commit_result = await self.commit_file(
@@ -250,7 +246,7 @@ class GitHubIntegrationService:
             )
             if not commit_result["success"]:
                 return commit_result
-            
+
             # Create PR
             pr_title = f"Fix: {finding_title}"
             pr_body = f"""## Automated Fix by DevArchAI
@@ -269,16 +265,16 @@ Please review the changes carefully before merging.
 
 ---
 *This PR was created automatically. Please review and test before merging.*"""
-            
+
             pr_result = await self.create_pull_request(
                 owner, repo, pr_title, pr_body, branch_name, default_branch
             )
-            
+
             if pr_result["success"]:
                 pr_result["branch_name"] = branch_name
-            
+
             return pr_result
-            
+
         except Exception as e:
             logger.error(f"Apply fix and create PR failed: {e}")
             return {"success": False, "error": str(e)}

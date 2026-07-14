@@ -61,7 +61,7 @@ export function CreatePRButton({ scanId, findingIds, onSuccess }: CreatePRButton
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <Card className="p-6 glow-primary" hover={false}>
+        <Card className="p-6" hover={false}>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-green-500/20">

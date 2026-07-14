@@ -4,7 +4,7 @@ import {
   TrendingUp, ArrowUp, ArrowDown
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, memo } from 'react'
 
 interface KpiCardProps {
   title: string
@@ -183,7 +183,7 @@ interface KpiRowProps {
   className?: string
 }
 
-export function KpiRow({ items, className }: KpiRowProps) {
+export const KpiRow = memo(function KpiRow({ items, className }: KpiRowProps) {
   return (
     <div className={cn(
       'grid gap-4 sm:grid-cols-2 lg:grid-cols-4',
@@ -194,4 +194,4 @@ export function KpiRow({ items, className }: KpiRowProps) {
       ))}
     </div>
   )
-}
+})

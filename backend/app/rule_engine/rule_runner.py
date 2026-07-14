@@ -1,6 +1,6 @@
 """Rule runner for executing rule evaluations."""
 
-from typing import Any, Optional
+from typing import Any
 
 from app.core.logging import get_logger
 from app.rule_engine.base import Category, RuleFinding, RuleRegistry, Severity
@@ -11,14 +11,14 @@ logger = get_logger(__name__)
 class RuleRunner:
     """Executes rule evaluations against parsed resources."""
 
-    def __init__(self, registry: Optional[RuleRegistry] = None):
+    def __init__(self, registry: RuleRegistry | None = None):
         self.registry = registry or RuleRegistry()
 
     def evaluate(
         self,
         resources: list[dict[str, Any]],
         file_path: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
     ) -> list[RuleFinding]:
         """
         Evaluate all applicable rules against resources.
@@ -109,9 +109,9 @@ class RuleRunner:
     def filter_findings(
         self,
         findings: list[RuleFinding],
-        min_severity: Optional[Severity] = None,
-        categories: Optional[list[Category]] = None,
-        file_type: Optional[str] = None,
+        min_severity: Severity | None = None,
+        categories: list[Category] | None = None,
+        file_type: str | None = None,
     ) -> list[RuleFinding]:
         """Filter findings by criteria."""
         filtered = findings

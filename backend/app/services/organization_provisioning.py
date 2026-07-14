@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,7 +54,7 @@ async def ensure_user_organization_membership(
     organization_name: str | None = None,
 ) -> OrganizationMember:
     """Ensure the user has a current organization and membership."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if getattr(user, "current_org_id", None):
         membership_result = await db.execute(

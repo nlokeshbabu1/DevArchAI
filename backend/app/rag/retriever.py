@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -32,7 +32,7 @@ class DocEntry:
     content: str
     tags: list[str] = field(default_factory=list)
     rule_ids: list[str] = field(default_factory=list)  # Direct rule associations
-    url: Optional[str] = None
+    url: str | None = None
     priority: int = 0  # Higher = more relevant
 
 
@@ -523,7 +523,7 @@ class RAGRetriever:
     Returns ranked results suitable for providing context to an LLM.
     """
 
-    def __init__(self, documents: Optional[list[DocEntry]] = None) -> None:
+    def __init__(self, documents: list[DocEntry] | None = None) -> None:
         """
         Initialise the retriever with a knowledge base.
 
@@ -624,7 +624,7 @@ class RAGRetriever:
             relevance_scores={did: scores[did] for did in top_ids},
         )
 
-    def get_document(self, doc_id: str) -> Optional[DocEntry]:
+    def get_document(self, doc_id: str) -> DocEntry | None:
         """Retrieve a specific document by its ID."""
         return self._doc_by_id.get(doc_id)
 
@@ -787,7 +787,7 @@ class RAGRetriever:
 # Module-level convenience function and singleton
 # ---------------------------------------------------------------------------
 
-_retriever: Optional[RAGRetriever] = None
+_retriever: RAGRetriever | None = None
 
 
 def get_retriever() -> RAGRetriever:

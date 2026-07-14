@@ -76,6 +76,9 @@ export function AwsConnectModal({ open, onClose }: AwsConnectModalProps) {
             exit={{ opacity: 0, scale: 0.95 }}
             className="bg-card border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Connect AWS"
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
@@ -88,7 +91,7 @@ export function AwsConnectModal({ open, onClose }: AwsConnectModalProps) {
                   <p className="text-sm text-muted-foreground">Enter your AWS account credentials</p>
                 </div>
               </div>
-              <button onClick={handleClose} disabled={state === 'connecting'} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/5 transition-colors disabled:opacity-50">
+              <button onClick={handleClose} disabled={state === 'connecting'} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/5 transition-colors disabled:opacity-50" aria-label="Close">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -152,6 +155,7 @@ export function AwsConnectModal({ open, onClose }: AwsConnectModalProps) {
                       type="button"
                       onClick={() => setShowExternalId(!showExternalId)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={showExternalId ? 'Hide external ID' : 'Show external ID'}
                     >
                       {showExternalId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>

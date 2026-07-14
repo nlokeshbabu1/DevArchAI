@@ -90,6 +90,7 @@ export function sanitizePath(filePath: string | null | undefined): string {
     .replace(/^\/app\/[^/]*\//, '')
     .replace(/^\/var\/[^/]+\//, '')
     .replace(/^\.\//, '')
+    .replace(/^[a-fA-F0-9]{8,}_/, '')
   return cleaned
 }
 
@@ -107,11 +108,110 @@ export function isValidPercentage(value: number | null | undefined): value is nu
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
 }
 
-// --- Scanner mapping utilities ---
-// Maps a finding to the correct scanner based on rule_id, file_path, and summary.
+// --- Clipboard ---
+
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* fall through to legacy method */ }
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+// --- Scanner family and source utilities ---
+
+export interface ScannerFamilyDef {
+  key: string
+  label: string
+  scannerIds: string[]
+  icon: string
+}
+
+export const SCANNER_FAMILIES: ScannerFamilyDef[] = [
+  {
+    key: "container",
+    label: "Container",
+    scannerIds: ["hadolint", "trivy_filesystem", "trivy_config", "checkov"],
+    icon: "cloud",
+  },
+  {
+    key: "kubernetes",
+    label: "Kubernetes",
+    scannerIds: ["kube_score", "trivy_config", "checkov"],
+    icon: "server",
+  },
+  {
+    key: "iac",
+    label: "Infrastructure Security",
+    scannerIds: ["checkov", "tfsec"],
+    icon: "git-branch",
+  },
+  {
+    key: "secrets",
+    label: "Secret Detection",
+    scannerIds: ["gitleaks"],
+    icon: "lock",
+  },
+  {
+    key: "sca",
+    label: "Dependency Security",
+    scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"],
+    icon: "shield",
+  },
+  {
+    key: "cicd",
+    label: "CI/CD",
+    scannerIds: ["gitleaks"],
+    icon: "globe",
+  },
+  {
+    key: "dockerfile",
+    label: "Dockerfile",
+    scannerIds: ["hadolint", "checkov"],
+    icon: "code",
+  },
+  {
+    key: "sast",
+    label: "Code Security",
+    scannerIds: [],
+    icon: "search",
+  },
+]
+
+export function getFamilyForScanner(scannerId: string): string {
+  for (const family of SCANNER_FAMILIES) {
+    if (family.scannerIds.includes(scannerId)) return family.key
+  }
+  if (scannerId.startsWith("trivy")) return "container"
+  return "sast"
+}
+
+export function getScannerFamilyLabel(key: string): string {
+  return SCANNER_FAMILIES.find(f => f.key === key)?.label ?? key
+}
+
+export function parseScannerSources(scannerName: string | null | undefined): string[] {
+  if (!scannerName) return ["DevArchAI"]
+  return scannerName.split(",").map(s => s.trim()).filter(Boolean)
+}
+
+// Maps a finding to the correct scanner based on backend metadata (scanner_name), falling back to heuristic.
 
 const CI_CD_FILES = [".github/", "workflow", "gitlab-ci", "jenkins", ".circleci", ".drone", "azure-pipelines"]
-const CI_CD_EXTENSIONS = [".github/workflows/", ".gitlab-ci.yml", "Jenkinsfile"]
 
 function classifyByRuleId(ruleId: string): string | null {
   const r = (ruleId || "").toLowerCase()
@@ -154,46 +254,35 @@ export function classifyFindingScanner(finding: any): string {
   const filePath = finding.file_path || ""
   const summary = finding.summary || finding.message || finding.rule_name || ""
 
-  return classifyByRuleId(ruleId)
-    ?? classifyByFilePath(filePath, summary)
-    ?? classifyBySummary(summary)
-    ?? "sast"
-}
+  const byRuleId = classifyByRuleId(ruleId)
+  if (byRuleId) return byRuleId
+  const byFilePath = classifyByFilePath(filePath, summary)
+  if (byFilePath) return byFilePath
+  const bySummary = classifyBySummary(summary)
+  if (bySummary) return bySummary
 
-export function mapCategoryToScanner(category: string): string {
-  const c = (category || "").toLowerCase()
-  if (c === "security") return "sast"
-  if (c === "scalability") return "sast"
-  if (c === "reliability") return "sast"
-  if (c === "cost") return "sast"
-  if (c === "observability") return "sast"
-  return c
+  const scannerName = finding.scanner_name
+  if (scannerName && typeof scannerName === "string" && scannerName.trim()) {
+    const firstSource = scannerName.split(",")[0].trim()
+    return getFamilyForScanner(firstSource.toLowerCase().replace(/\s+/g, "_"))
+  }
+
+  return "sast"
 }
 
 export const SCANNER_DEFINITIONS = [
   { key: "container", label: "Container Scanner", techKeys: ["Docker", "Docker Compose"] },
   { key: "kubernetes", label: "Kubernetes Scanner", techKeys: ["Kubernetes", "Helm"] },
-  { key: "iac", label: "IaC Scanner", techKeys: ["Terraform", "Ansible", "CloudFormation"] },
+  { key: "iac", label: "Infrastructure Security Scanner", techKeys: ["Terraform", "Ansible", "CloudFormation"] },
   { key: "cicd", label: "CI/CD Scanner", techKeys: ["GitHub Actions", "GitLab CI", "Jenkins", "CircleCI", "Drone CI", "Azure DevOps", "Travis CI"] },
-  { key: "secrets", label: "Secret Scanner", techKeys: [] },
-  { key: "sast", label: "SAST Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
-  { key: "sca", label: "SCA Scanner", techKeys: [], defaultStatus: "disabled" as const },
-  { key: "dast", label: "DAST Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
+  { key: "secrets", label: "Secret Detection Scanner", techKeys: [] },
+  { key: "sast", label: "Code Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
+  { key: "sca", label: "Dependency Security Scanner", techKeys: [], defaultStatus: "disabled" as const },
+  { key: "dast", label: "Dynamic Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "api_security", label: "API Security Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "license", label: "License Compliance Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
   { key: "malware", label: "Malware Scanner", techKeys: [], defaultStatus: "coming_soon" as const },
 ]
-
-export function getScannerStatus(scannerKey: string, detectedTechnologies: string[]): "active" | "coming_soon" | "disabled" {
-  const def = SCANNER_DEFINITIONS.find(s => s.key === scannerKey)
-  if (!def) return "disabled"
-
-  if (def.defaultStatus) return def.defaultStatus
-
-  if (scannerKey === "secrets") return "active"
-
-  return def.techKeys.some(t => detectedTechnologies.includes(t)) ? "active" : "disabled"
-}
 
 export function getRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "—"
@@ -209,4 +298,102 @@ export function getRelativeTime(dateStr: string | null | undefined): string {
   if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`
   if (diff < 2592000) return `${Math.floor(diff / 604800)} weeks ago`
   return `${Math.floor(diff / 2592000)} months ago`
+}
+
+export interface TechnologyDef {
+  key: string
+  label: string
+  scannerIds: string[]
+  detectionLabel: string
+}
+
+export const TECHNOLOGY_COVERAGE: TechnologyDef[] = [
+  { key: "container", label: "Container", scannerIds: ["hadolint", "trivy_filesystem", "trivy", "checkov"], detectionLabel: "Docker detected" },
+  { key: "dockerfile", label: "Dockerfile", scannerIds: ["hadolint", "checkov"], detectionLabel: "Dockerfile found" },
+  { key: "kubernetes", label: "Kubernetes", scannerIds: ["kube_score", "trivy_config", "checkov"], detectionLabel: "K8s manifests found" },
+  { key: "terraform", label: "Terraform", scannerIds: ["tfsec", "checkov"], detectionLabel: "Terraform configs found" },
+  { key: "cicd", label: "CI/CD", scannerIds: ["gitleaks"], detectionLabel: "CI/CD pipelines detected" },
+  { key: "secrets", label: "Secret Detection", scannerIds: ["gitleaks"], detectionLabel: "Secrets scanning enabled" },
+  { key: "dependencies", label: "Dependencies", scannerIds: ["npm_audit", "pip_audit", "govulncheck", "dependency_check"], detectionLabel: "Dependencies detected" },
+]
+
+export function getTechnologiesForScanner(scannerId: string): string[] {
+  return TECHNOLOGY_COVERAGE
+    .filter(t => t.scannerIds.includes(scannerId))
+    .map(t => t.key)
+}
+
+export const SCANNER_PURPOSE: Record<string, string> = {
+  trivy: "Container vulnerabilities",
+  trivy_filesystem: "Container & filesystem scanning",
+  trivy_config: "Misconfiguration scanning",
+  checkov: "IaC Security",
+  hadolint: "Docker Best Practices",
+  gitleaks: "Secrets Detection",
+  tfsec: "Terraform Security",
+  kube_score: "Kubernetes Best Practices",
+  npm_audit: "Node Dependency Security",
+  pip_audit: "Python Dependency Security",
+  govulncheck: "Go Dependency Security",
+  dependency_check: "Dependency Vulnerability Scanning",
+}
+
+export function getScannerPurpose(scannerId: string): string {
+  return SCANNER_PURPOSE[scannerId] || "Security scanning"
+}
+
+export const SCANNER_TECHNOLOGIES: Record<string, string[]> = {
+  trivy: ["Container", "OS Packages", "Language Packages", "Filesystem"],
+  trivy_filesystem: ["Container", "Filesystem"],
+  trivy_config: ["Kubernetes", "Terraform", "Docker", "Cloud"],
+  checkov: ["Terraform", "Kubernetes", "Docker", "CloudFormation", "ARM"],
+  hadolint: ["Dockerfile"],
+  gitleaks: ["Git", "CI/CD", "Config Files"],
+  tfsec: ["Terraform", "OpenTofu"],
+  kube_score: ["Kubernetes", "Helm"],
+  npm_audit: ["Node.js", "npm"],
+  pip_audit: ["Python", "pip"],
+  govulncheck: ["Go"],
+  dependency_check: ["Java", ".NET", "Python", "Node.js", "Ruby"],
+}
+
+export function getScannerTechnologies(scannerId: string): string[] {
+  return SCANNER_TECHNOLOGIES[scannerId] || []
+}
+
+// Scanners that improve coverage but are not required for basic operation
+const OPTIONAL_SCANNERS = new Set([
+  "gitleaks", "hadolint", "kube_score", "tfsec",
+  "govulncheck", "dependency_check", "pip_audit",
+])
+
+export function isScannerOptional(scannerId: string): boolean {
+  return OPTIONAL_SCANNERS.has(scannerId)
+}
+
+const CLASSIFICATION_TO_TECH: Record<string, string> = {
+  container: "container",
+  iac: "terraform",
+  kubernetes: "kubernetes",
+  cicd: "cicd",
+  secrets: "secrets",
+  sca: "dependencies",
+}
+
+export function classifyFindingTechnology(finding: any): string {
+  const classification = classifyFindingScanner(finding)
+  const scannerName = (finding.scanner_name || "").toLowerCase()
+  if (scannerName.includes("hadolint")) return "dockerfile"
+  return CLASSIFICATION_TO_TECH[classification] || "container"
+}
+
+export function getTechnologySeverityCounts(findings: any[], techKey: string): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const f of findings) {
+    if (classifyFindingTechnology(f) === techKey) {
+      const sev = (f.severity || "info").toLowerCase()
+      counts[sev] = (counts[sev] || 0) + 1
+    }
+  }
+  return counts
 }

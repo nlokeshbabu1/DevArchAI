@@ -1,5 +1,6 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
-import { Shield, AlertTriangle, CheckCircle, BarChart3, GitBranch, Lock } from 'lucide-react'
+import { Shield, AlertTriangle, BarChart3, GitBranch } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 interface DemoDashboardProps {
@@ -14,47 +15,54 @@ const demoStats = [
   { label: 'Avg. Security Score', value: '72/100', icon: BarChart3 },
 ]
 
+const StatCard = memo(function StatCard({
+  stat,
+  index,
+}: {
+  stat: typeof demoStats[0]
+  index: number
+}) {
+  const Icon = stat.icon
+
+  return (
+    <motion.div
+      className="p-6 rounded-2xl bg-card/30 border border-white/[0.08] backdrop-blur-sm"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+      </div>
+      <p className="text-3xl font-bold text-foreground">{stat.value}</p>
+      <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+    </motion.div>
+  )
+})
+
 export function DemoDashboard({ onViewDemo, onStartScan }: DemoDashboardProps) {
   return (
     <div className="space-y-12">
-      {/* Hero Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        {demoStats.map((stat, index) => {
-          const Icon = stat.icon
-          return (
-            <motion.div
-              key={stat.label}
-              className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 backdrop-blur-sm"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              whileHover={{ scale: 1.05, borderColor: 'rgba(124, 58, 237, 0.5)' }}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
-                  <Icon className="h-5 w-5 text-primary" />
-                </div>
-              </div>
-              <p className="text-3xl font-bold gradient-text">{stat.value}</p>
-              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
-            </motion.div>
-          )
-        })}
+        {demoStats.map((stat, index) => (
+          <StatCard key={stat.label} stat={stat} index={index} />
+        ))}
       </div>
 
-      {/* CTA Section */}
       <motion.div
-        className="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30 backdrop-blur-sm"
+        className="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-card/30 border border-primary/20 backdrop-blur-sm"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
+        transition={{ delay: 0.4, duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
       >
         <div className="space-y-6">
-          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30 mb-4">
-            <Shield className="h-12 w-12 text-white" />
+          <div className="inline-flex p-4 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
+            <Shield className="h-12 w-12 text-primary" />
           </div>
 
-          <h2 className="text-4xl md:text-5xl font-bold gradient-text">
+          <h2 className="text-4xl md:text-5xl font-bold text-foreground">
             Scan Your DevOps Stack for Security Risks
           </h2>
 
@@ -65,7 +73,7 @@ export function DemoDashboard({ onViewDemo, onStartScan }: DemoDashboardProps) {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <motion.button
               onClick={onStartScan}
-              className="px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-indigo-600 text-white font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 hover:scale-105"
+              className="px-8 py-4 rounded-xl bg-primary text-primary-foreground font-semibold shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -74,7 +82,7 @@ export function DemoDashboard({ onViewDemo, onStartScan }: DemoDashboardProps) {
 
             <motion.button
               onClick={onViewDemo}
-              className="px-8 py-4 rounded-xl bg-white/10 border border-white/20 text-white font-semibold hover:bg-white/20 transition-all duration-300"
+              className="px-8 py-4 rounded-xl bg-white/5 border border-white/10 text-foreground font-semibold hover:bg-white/10 transition-all duration-300"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -83,18 +91,24 @@ export function DemoDashboard({ onViewDemo, onStartScan }: DemoDashboardProps) {
           </div>
 
           <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-400" />
-              <span>No credit card required</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-400" />
-              <span>Free tier available</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Lock className="h-4 w-4 text-green-400" />
-              <span>Read-only access</span>
-            </div>
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              </span>
+              No credit card required
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              </span>
+              Free tier available
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              </span>
+              Read-only access
+            </span>
           </div>
         </div>
       </motion.div>

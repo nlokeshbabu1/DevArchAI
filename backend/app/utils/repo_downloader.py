@@ -5,7 +5,6 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from app.config import settings
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
@@ -23,13 +22,13 @@ class RepoInfo:
     full_name: str
     url: str
     branch: str
-    commit_hash: Optional[str] = None
+    commit_hash: str | None = None
 
 
 class RepoDownloader:
     """Utility for downloading GitHub repositories."""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or settings.GITHUB_TOKEN
         self.temp_dir = Path(settings.TEMP_DIR)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -37,8 +36,8 @@ class RepoDownloader:
     async def clone(
         self,
         repo_url: str,
-        branch: Optional[str] = None,
-        commit_hash: Optional[str] = None,
+        branch: str | None = None,
+        commit_hash: str | None = None,
     ) -> tuple[str, RepoInfo]:
         """
         Clone a GitHub repository to a temporary directory.
@@ -193,8 +192,8 @@ class RepoDownloader:
     def _parse_repo_url(
         self,
         repo_url: str,
-        branch: Optional[str],
-        commit_hash: Optional[str],
+        branch: str | None,
+        commit_hash: str | None,
     ) -> RepoInfo:
         """Parse repository information from URL."""
         # Handle various GitHub URL formats

@@ -1,19 +1,19 @@
-import { useState } from 'react'
+import { useState, memo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Shield, AlertTriangle, AlertCircle, Info, CheckCircle,
+  AlertTriangle, AlertCircle, Info,
   Server, Cloud, GitBranch, Zap, ChevronDown, ChevronUp,
-  Download, Lock, ArrowRight, Code
+  Lock, ArrowRight, Code
 } from 'lucide-react'
 import { Card, Button } from '../ui-animated'
 import { cn, sanitizePath } from '../../lib/utils'
-import demoData from '../../../public/data/demoScan.json'
+import demoData from '../../data/demoScan.json'
 
 interface DemoResultsProps {
   onUnlock: () => void
 }
 
-const severityIcons: Record<string, any> = {
+const severityIcons: Record<string, React.ElementType> = {
   critical: AlertCircle,
   high: AlertTriangle,
   medium: Info,
@@ -29,13 +29,133 @@ const severityColors: Record<string, string> = {
   info: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
 }
 
-const techIcons: Record<string, any> = {
+const techIcons: Record<string, React.ElementType> = {
   docker: Server,
   terraform: Cloud,
   kubernetes: GitBranch,
   github_actions: Zap,
   aws: Cloud,
 }
+
+const FindingCard = memo(function FindingCard({
+  finding,
+  index,
+  isExpanded,
+  onToggle,
+  onUnlock,
+}: {
+  finding: typeof demoData.findings[0]
+  index: number
+  isExpanded: boolean
+  onToggle: () => void
+  onUnlock: () => void
+}) {
+  const Icon = severityIcons[finding.severity]
+  const colorClass = severityColors[finding.severity]
+
+  return (
+    <motion.div
+      className="border border-white/[0.06] rounded-xl overflow-hidden bg-card/30"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+    >
+      <div
+        className="p-4 cursor-pointer hover:border-white/[0.12] transition-colors"
+        onClick={onToggle}
+      >
+        <div className="flex items-start gap-4">
+          <div className={cn('p-2 rounded-lg', colorClass)}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={cn('px-2 py-1 rounded-full text-xs font-medium border', colorClass)}>
+                {finding.severity.toUpperCase()}
+              </span>
+              <span className="text-xs font-mono text-muted-foreground">
+                {finding.rule_id}
+              </span>
+            </div>
+            <h4 className="font-semibold text-foreground mb-1">
+              {finding.rule_name}
+            </h4>
+            <p className="text-sm text-muted-foreground">
+              {finding.description}
+            </p>
+          </div>
+          <div className="flex items-center">
+            {isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+          className="px-4 pb-4 border-t border-white/[0.06]"
+        >
+          <div className="pt-4 space-y-4">
+            {finding.file_path && (
+              <div>
+                <h5 className="text-sm font-semibold text-foreground mb-2">Location</h5>
+                <code className="text-sm text-muted-foreground bg-white/[0.04] px-3 py-2 rounded-lg block border border-white/[0.06]">
+                  {sanitizePath(finding.file_path)}
+                  {finding.line_number && ` (Line ${finding.line_number})`}
+                </code>
+              </div>
+            )}
+
+            <div>
+              <h5 className="text-sm font-semibold text-foreground mb-2">Recommendation</h5>
+              <p className="text-sm text-muted-foreground">{finding.recommendation}</p>
+            </div>
+
+            {finding.fix_example && (
+              <div>
+                <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <Code className="h-4 w-4 text-primary" />
+                  Example Fix
+                </h5>
+                <div className="rounded-lg bg-black/30 border border-white/[0.06] overflow-hidden">
+                  <pre className="p-3 overflow-x-auto">
+                    <code className="text-sm text-green-400 font-mono">
+                      {finding.fix_example}
+                    </code>
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-4 border-t border-white/[0.06]">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onUnlock}
+                icon={<Lock className="h-4 w-4" />}
+              >
+                Login to Fix
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onUnlock}
+              >
+                View Documentation
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  )
+})
 
 export function DemoResults({ onUnlock }: DemoResultsProps) {
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null)
@@ -56,7 +176,6 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
     return 'F'
   }
 
-  // Show only top 3 findings for demo
   const demoFindings = data.findings.slice(0, 3)
   const lockedFindingsCount = data.findings.length - 3
 
@@ -67,8 +186,9 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
         className="text-center space-y-4"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
       >
-        <h2 className="text-4xl font-bold gradient-text">
+        <h2 className="text-4xl font-bold text-foreground">
           See What We Found
         </h2>
         <p className="text-lg text-muted-foreground">
@@ -77,7 +197,7 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
       </motion.div>
 
       {/* Score Card */}
-      <Card className="p-8 glow-primary" hover={false}>
+      <Card className="p-8" hover={false}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-2xl font-bold text-foreground">{data.repository_name}</h3>
@@ -96,18 +216,15 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
         </div>
 
         {/* Severity Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-6 border-t border-white/10">
-          {Object.entries(data.severity_counts).map(([severity, count]) => {
-            const Icon = severityIcons[severity]
-            return (
-              <div key={severity} className="text-center">
-                <div className={cn('text-3xl font-bold', severityColors[severity].split(' ')[1])}>
-                  {count}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1 capitalize">{severity}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-6 border-t border-white/[0.06]">
+          {Object.entries(data.severity_counts).map(([severity, count]) => (
+            <div key={severity} className="text-center">
+              <div className={cn('text-3xl font-bold', severityColors[severity].split(' ')[1])}>
+                {count}
               </div>
-            )
-          })}
+              <div className="text-xs text-muted-foreground mt-1 capitalize">{severity}</div>
+            </div>
+          ))}
         </div>
       </Card>
 
@@ -116,13 +233,14 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
         <h3 className="text-lg font-semibold mb-4 text-foreground">Detected Technologies</h3>
         <div className="flex flex-wrap gap-3">
           {data.detected_technologies.map((tech) => {
-            const Icon = techIcons[tech] || CheckCircle
+            const Icon = techIcons[tech] || AlertTriangle
             return (
               <motion.div
                 key={tech}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/30"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 border border-primary/20"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
               >
                 <Icon className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium text-primary capitalize">
@@ -147,122 +265,25 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
         </div>
 
         <div className="space-y-4">
-          {demoFindings.map((finding, index) => {
-            const Icon = severityIcons[finding.severity]
-            const isExpanded = expandedFinding === finding.rule_id
-
-            return (
-              <motion.div
-                key={finding.rule_id}
-                className="border border-white/10 rounded-xl overflow-hidden"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div
-                  className="p-4 cursor-pointer hover:bg-white/5 transition-colors"
-                  onClick={() => setExpandedFinding(isExpanded ? null : finding.rule_id)}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={cn('p-2 rounded-lg', severityColors[finding.severity])}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={cn('px-2 py-1 rounded-full text-xs font-medium border', severityColors[finding.severity])}>
-                          {finding.severity.toUpperCase()}
-                        </span>
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {finding.rule_id}
-                        </span>
-                      </div>
-                      <h4 className="font-semibold text-foreground mb-1">
-                        {finding.rule_name}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {finding.description}
-                      </p>
-                    </div>
-                    <div className="flex items-center">
-                      {isExpanded ? (
-                        <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    className="px-4 pb-4 border-t border-white/10"
-                  >
-                    <div className="pt-4 space-y-4">
-                      {finding.file_path && (
-                        <div>
-                          <h5 className="text-sm font-semibold text-foreground mb-2">Location</h5>
-                          <code className="text-sm text-muted-foreground bg-white/5 px-3 py-2 rounded-lg block">
-                            {sanitizePath(finding.file_path)}
-                            {finding.line_number && ` (Line ${finding.line_number})`}
-                          </code>
-                        </div>
-                      )}
-
-                      <div>
-                        <h5 className="text-sm font-semibold text-foreground mb-2">Recommendation</h5>
-                        <p className="text-sm text-muted-foreground">{finding.recommendation}</p>
-                      </div>
-
-                      {finding.fix_example && (
-                        <div>
-                          <h5 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                            <Code className="h-4 w-4 text-primary" />
-                            Example Fix
-                          </h5>
-                          <div className="rounded-lg bg-black/50 border border-white/10 overflow-hidden">
-                            <pre className="p-3 overflow-x-auto">
-                              <code className="text-sm text-green-400 font-mono">
-                                {finding.fix_example}
-                              </code>
-                            </pre>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2 pt-4 border-t border-white/10">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={onUnlock}
-                          icon={<Lock className="h-4 w-4" />}
-                        >
-                          Login to Fix
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={onUnlock}
-                        >
-                          View Documentation
-                        </Button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )
-          })}
+          {demoFindings.map((finding, index) => (
+            <FindingCard
+              key={finding.rule_id}
+              finding={finding}
+              index={index}
+              isExpanded={expandedFinding === finding.rule_id}
+              onToggle={() => setExpandedFinding(expandedFinding === finding.rule_id ? null : finding.rule_id)}
+              onUnlock={onUnlock}
+            />
+          ))}
         </div>
 
         {/* Locked Findings CTA */}
         {lockedFindingsCount > 0 && (
           <motion.div
-            className="mt-6 p-6 rounded-xl bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30 text-center"
+            className="mt-6 p-6 rounded-xl bg-primary/[0.04] border border-primary/15 text-center"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.3, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
           >
             <Lock className="h-8 w-8 text-primary mx-auto mb-3" />
             <h4 className="text-lg font-semibold text-foreground mb-2">
@@ -286,12 +307,11 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
 
       {/* Download CTA */}
       <motion.div
-        className="p-6 rounded-xl bg-white/5 border border-white/10 text-center"
+        className="p-6 rounded-xl bg-card/30 border border-white/[0.08] text-center"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
+        transition={{ delay: 0.4, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
       >
-        <Download className="h-8 w-8 text-primary mx-auto mb-3" />
         <h4 className="text-lg font-semibold text-foreground mb-2">
           Download Full Report
         </h4>

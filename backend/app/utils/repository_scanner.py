@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -23,7 +23,7 @@ class RepositoryScanResult:
     repo_path: str
     repo_url: str
     branch: str
-    commit_hash: Optional[str]
+    commit_hash: str | None
     dockerfiles: list[str] = field(default_factory=list)
     terraform_files: list[str] = field(default_factory=list)
     kubernetes_files: list[str] = field(default_factory=list)
@@ -53,7 +53,7 @@ class RepositoryScanResult:
 class RepositoryScanner:
     """Scanner for fetching and analyzing repository structure."""
 
-    def __init__(self, temp_dir: Optional[str] = None):
+    def __init__(self, temp_dir: str | None = None):
         self.temp_dir = temp_dir or settings.TEMP_DIR
         os.makedirs(self.temp_dir, exist_ok=True)
 
@@ -61,8 +61,8 @@ class RepositoryScanner:
         self,
         repo_url: str,
         branch: str = "main",
-        commit_hash: Optional[str] = None,
-        github_token: Optional[str] = None,
+        commit_hash: str | None = None,
+        github_token: str | None = None,
     ) -> tuple[str, RepositoryScanResult]:
         """
         Clone a GitHub repository to temporary storage.
@@ -77,11 +77,12 @@ class RepositoryScanner:
             Tuple of (repo_path, scan_result)
         """
         import uuid
+
         import httpx
 
         # Extract repo name
         repo_name = self._extract_repo_name(repo_url)
-        
+
         # Try to get default branch from GitHub API if branch is "main" or "master"
         effective_branch = branch
         if branch in ["main", "master"]:
@@ -91,7 +92,7 @@ class RepositoryScanner:
                 if len(url_parts) >= 2:
                     owner = url_parts[-2]
                     repo = url_parts[-1].replace(".git", "")
-                    
+
                     # Try to get default branch from GitHub API
                     with httpx.Client(timeout=5.0) as client:
                         api_url = f"https://api.github.com/repos/{owner}/{repo}"
@@ -104,7 +105,7 @@ class RepositoryScanner:
                                 effective_branch = default_branch
             except Exception as e:
                 logger.warning(f"Could not detect default branch from GitHub API: {e}")
-        
+
         # Create unique directory for this scan
         scan_id = str(uuid.uuid4())[:8]
         repo_path = os.path.join(self.temp_dir, f"{scan_id}_{repo_name}")
@@ -130,7 +131,7 @@ class RepositoryScanner:
             # Clone repository
             logger.info("Cloning repository", repo_url=repo_url, branch=effective_branch)
             clone_cmd = ["git", "clone"]
-            
+
             # Only use shallow clone for default branch
             if effective_branch and effective_branch not in ["main", "master"]:
                 clone_cmd.extend(["--branch", effective_branch])
@@ -147,7 +148,7 @@ class RepositoryScanner:
                     text=True,
                     timeout=120,
                 )
-            except subprocess.CalledProcessError as e:
+            except subprocess.CalledProcessError:
                 # If shallow clone failed, try without depth limit
                 if "--depth" in clone_cmd:
                     logger.warning("Shallow clone failed, trying full clone")
@@ -162,7 +163,7 @@ class RepositoryScanner:
                     )
                 else:
                     raise
-                
+
             # Update result with actual branch used
             result.branch = effective_branch
 
@@ -231,7 +232,7 @@ class RepositoryScanner:
         # Get last path component
         return repo_url.split("/")[-1]
 
-    def _get_commit_hash(self, repo_path: str) -> Optional[str]:
+    def _get_commit_hash(self, repo_path: str) -> str | None:
         """Get current commit hash."""
         try:
             result = subprocess.run(

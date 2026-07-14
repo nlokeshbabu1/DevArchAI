@@ -1,7 +1,7 @@
 """Webhook processing service with idempotency guarantee."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +52,7 @@ class WebhookIdempotencyGuard:
                 event_type=event_type,
                 payload=payload,
                 processed=True,
-                processed_at=datetime.now(timezone.utc),
+                processed_at=datetime.now(UTC),
             )
             db.add(event)
             await db.flush()

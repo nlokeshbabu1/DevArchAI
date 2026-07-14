@@ -1,7 +1,6 @@
 """Repository Analysis schemas."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,7 +9,7 @@ class RepoAnalysisRequest(BaseModel):
     """Request to analyze a GitHub repository."""
 
     repo_url: str = Field(..., description="GitHub repository URL")
-    branch: Optional[str] = Field(default="main", description="Branch to analyze")
+    branch: str | None = Field(default="main", description="Branch to analyze")
 
     class Config:
         json_schema_extra = {
@@ -47,7 +46,7 @@ class DevOpsStack(BaseModel):
     kustomize_files: list[str] = Field(default_factory=list)
 
     # CI/CD
-    cicd: Optional[str] = None
+    cicd: str | None = None
     cicd_files: list[str] = Field(default_factory=list)
 
     # Monitoring
@@ -84,14 +83,14 @@ class RepoAnalysisResponse(BaseModel):
     devops_stack: DevOpsStack
 
     # Scores
-    devops_score: Optional[float] = Field(None, description="Overall DevOps score (0-100)")
+    devops_score: float | None = Field(None, description="Overall DevOps score (0-100)")
 
     # Analysis metadata
     files_analyzed: int = 0
-    analysis_id: Optional[int] = None
+    analysis_id: int | None = None
 
     # Timestamps
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -103,12 +102,12 @@ class RepoAnalysisListItem(BaseModel):
     id: int
     repo_url: str
     repo_full_name: str
-    devops_score: Optional[float]
+    devops_score: float | None
     has_docker: bool
     has_terraform: bool
     has_kubernetes: bool
     has_cicd: bool
-    cicd_type: Optional[str]
+    cicd_type: str | None
     created_at: datetime
 
 

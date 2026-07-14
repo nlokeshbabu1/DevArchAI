@@ -6,7 +6,6 @@ Detects Terraform root modules and groups files by module directory.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
@@ -20,7 +19,7 @@ class TerraformModule:
     module_path: str  # Relative path to module directory
     tf_files: list[str] = field(default_factory=list)
     has_backend: bool = False
-    backend_type: Optional[str] = None
+    backend_type: str | None = None
     is_root_module: bool = True
 
     def to_dict(self) -> dict:

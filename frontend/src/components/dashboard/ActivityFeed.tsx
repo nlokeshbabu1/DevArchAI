@@ -4,7 +4,7 @@ import { FolderGit2, CheckCircle, ArrowRight, Clock, Search, AlertTriangle, Brai
 import { cn } from '../../lib/utils'
 import { Button } from '../ui-animated'
 import type { RecentScan } from '../../api/endpoints/dashboard'
-import { useState, useDeferredValue } from 'react'
+import { useState, useDeferredValue, memo } from 'react'
 
 interface ActivityFeedProps {
   scans: RecentScan[]
@@ -39,7 +39,7 @@ const getScoreColor = (score: number | null) => {
   return 'text-red-400'
 }
 
-export function ActivityFeed({ scans, searchQuery, onSearchChange, onClearSearch, isLoading }: ActivityFeedProps) {
+export const ActivityFeed = memo(function ActivityFeed({ scans, searchQuery, onSearchChange, onClearSearch, isLoading }: ActivityFeedProps) {
   const navigate = useNavigate()
   const [localSearch, setLocalSearch] = useState(searchQuery || '')
   const deferredSearch = useDeferredValue(localSearch.toLowerCase())
@@ -96,7 +96,7 @@ export function ActivityFeed({ scans, searchQuery, onSearchChange, onClearSearch
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
           <table className="w-full min-w-[650px]">
             <thead>
               <tr className="border-b border-white/5">
@@ -204,4 +204,4 @@ export function ActivityFeed({ scans, searchQuery, onSearchChange, onClearSearch
       </div>
     </motion.div>
   )
-}
+})

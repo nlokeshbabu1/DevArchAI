@@ -102,7 +102,7 @@ class TrivyScanner(BaseScanner):
                 repo_path=repo_path,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Trivy scan timed out", timeout=timeout_seconds)
         except Exception as e:
             logger.exception("Trivy scan failed", error=str(e))

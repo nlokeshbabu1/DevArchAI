@@ -4,8 +4,9 @@ Feature Gating Middleware
 Controls access to features based on subscription plan.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,6 @@ from app.models.user import User
 from app.services.pricing import (
     can_use_feature,
     get_plan_features,
-    has_unlimited_access,
     is_feature_blurred,
 )
 
@@ -24,10 +24,10 @@ from app.services.pricing import (
 async def get_user_subscription(
     current_user: User,
     db: AsyncSession = Depends(get_db),
-) -> Optional[Subscription]:
+) -> Subscription | None:
     """Get user's current subscription."""
     from sqlalchemy import select
-    
+
     result = await db.execute(
         select(Subscription).where(Subscription.user_id == current_user.id)
     )
@@ -64,7 +64,7 @@ def require_plan(minimum_plan: PlanTier):
             **kwargs,
         ):
             user_plan = await get_user_plan(current_user, db)
-            
+
             # Define plan hierarchy
             plan_hierarchy = {
                 PlanTier.FREE: 0,
@@ -72,7 +72,7 @@ def require_plan(minimum_plan: PlanTier):
                 PlanTier.PRO: 2,
                 PlanTier.ENTERPRISE: 3,
             }
-            
+
             if plan_hierarchy.get(user_plan, 0) < plan_hierarchy.get(minimum_plan, 0):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -84,9 +84,9 @@ def require_plan(minimum_plan: PlanTier):
                         "upgrade_url": "/billing",
                     },
                 )
-            
+
             return await func(current_user=current_user, db=db, *args, **kwargs)
-        
+
         return wrapper
     return decorator
 
@@ -110,24 +110,24 @@ def require_feature(feature: str):
             **kwargs,
         ):
             user_plan = await get_user_plan(current_user, db)
-            
+
             if not can_use_feature(user_plan, feature):
                 subscription = await get_user_subscription(current_user, db)
                 plan_name = subscription.plan.value if subscription else "free"
-                
+
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
                         "error": "FEATURE_NOT_AVAILABLE",
-                        "message": f"This feature is not available in your current plan",
+                        "message": "This feature is not available in your current plan",
                         "feature": feature,
                         "current_plan": plan_name,
                         "upgrade_url": "/billing",
                     },
                 )
-            
+
             return await func(current_user=current_user, db=db, *args, **kwargs)
-        
+
         return wrapper
     return decorator
 
@@ -149,21 +149,22 @@ def check_scan_limit(func: Callable) -> Callable:
         *args,
         **kwargs,
     ):
-        from sqlalchemy import select, func as sql_func
-        
+        from sqlalchemy import func as sql_func, select
+
         user_plan = await get_user_plan(current_user, db)
         max_scans = get_plan_features(user_plan).get("max_scans_per_month", 0)
-        
+
         # Unlimited scans
         if max_scans == -1:
             return await func(current_user=current_user, db=db, *args, **kwargs)
-        
+
         # Count scans this month
-        from app.models.scan import Scan
         from datetime import datetime, timedelta
-        
+
+        from app.models.scan import Scan
+
         first_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
+
         result = await db.execute(
             select(sql_func.count(Scan.id)).where(
                 Scan.user_id == current_user.id,
@@ -171,7 +172,7 @@ def check_scan_limit(func: Callable) -> Callable:
             )
         )
         scan_count = result.scalar() or 0
-        
+
         if scan_count >= max_scans:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -184,9 +185,9 @@ def check_scan_limit(func: Callable) -> Callable:
                     "upgrade_url": "/billing",
                 },
             )
-        
+
         return await func(current_user=current_user, db=db, *args, **kwargs)
-    
+
     return wrapper
 
 
@@ -207,25 +208,25 @@ def check_repository_limit(func: Callable) -> Callable:
         *args,
         **kwargs,
     ):
-        from sqlalchemy import select, func as sql_func
-        
+        from sqlalchemy import func as sql_func, select
+
         user_plan = await get_user_plan(current_user, db)
         max_repos = get_plan_features(user_plan).get("max_repositories", 0)
-        
+
         # Unlimited repositories
         if max_repos == -1:
             return await func(current_user=current_user, db=db, *args, **kwargs)
-        
+
         # Count repositories
         from app.models.repository import Repository
-        
+
         result = await db.execute(
             select(sql_func.count(Repository.id)).where(
                 Repository.user_id == current_user.id,
             )
         )
         repo_count = result.scalar() or 0
-        
+
         if repo_count >= max_repos:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -237,9 +238,9 @@ def check_repository_limit(func: Callable) -> Callable:
                     "upgrade_url": "/billing",
                 },
             )
-        
+
         return await func(current_user=current_user, db=db, *args, **kwargs)
-    
+
     return wrapper
 
 
@@ -267,7 +268,7 @@ def get_ai_suggestion_with_gating(
             "upgrade_message": "Upgrade to Plus to unlock AI remediation",
             "upgrade_plan": "plus",
         }
-    
+
     return {
         "content": ai_suggestion,
         "blurred_content": None,

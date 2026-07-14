@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { api } from '../lib/api'
-import { cn, sanitizePath } from '../lib/utils'
+import { cn, sanitizePath, copyToClipboard } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
 interface Finding {
@@ -137,7 +137,7 @@ function FullExampleSection({ fullExample, filePath }: { fullExample: string; fi
                   className="h-7 text-xs"
                   onClick={(e) => {
                     e.stopPropagation()
-                    navigator.clipboard.writeText(fullExample)
+                    copyToClipboard(fullExample)
                   }}
                 >
                   Copy Full File
@@ -478,7 +478,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
       </Card>
 
       {/* Score Card */}
-      <Card className="p-8 glow-primary" hover={false}>
+      <Card className="p-8" hover={false}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-foreground">{repoName}</h2>
@@ -801,7 +801,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                               className="h-7 text-xs"
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                navigator.clipboard.writeText(finding.fix_code || finding.fix_example!)
+                                                copyToClipboard(finding.fix_code || finding.fix_example!)
                                               }}
                                             >
                                               Copy
@@ -884,7 +884,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                   e.stopPropagation()
                                   const codeToCopy = finding.fix_code || finding.fix_example
                                   if (codeToCopy) {
-                                    navigator.clipboard.writeText(codeToCopy)
+                                    copyToClipboard(codeToCopy)
                                   }
                                 }}
                               >

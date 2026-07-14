@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -100,7 +100,7 @@ class AWSScanService:
                 ])
                 account.scan_status = "completed"
                 account.scan_progress = 100
-                account.last_scanned_at = datetime.now(timezone.utc)
+                account.last_scanned_at = datetime.now(UTC)
                 await db.commit()
                 logger.info("AWS cost analysis completed", aws_account_id=str(account.id), recommendations=len(cost_recommendations))
             except Exception as exc:

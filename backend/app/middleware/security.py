@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Any
 
 import structlog
 from fastapi import Request, Response
 from jose import JWTError, jwt
-from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
 

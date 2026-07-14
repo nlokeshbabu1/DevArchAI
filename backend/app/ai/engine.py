@@ -2,6 +2,7 @@
 AI Explanation Layer - LLM Integration
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -535,7 +536,8 @@ Write a 3-paragraph executive summary."""
     async def generate(self, prompt: str) -> str:
         """Generate raw text response - used by fix generator."""
         try:
-            response = self.client.chat.complete(
+            response = await asyncio.to_thread(
+                self.client.chat.complete,
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -699,9 +701,10 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
     async def generate(self, prompt: str) -> str:
         """Generate raw text response - used by fix generator."""
         try:
-            response = self.client.models.generate_content(
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=self.model,
-                contents=prompt
+                contents=prompt,
             )
             return response.text
         except Exception as e:

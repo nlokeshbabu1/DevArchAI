@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     GITLAB_CLIENT_SECRET: str | None = Field(default=None, env="GITLAB_CLIENT_SECRET")
     GITLAB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/gitlab/callback", env="GITLAB_REDIRECT_URI")
     GITLAB_SCOPE: str = Field(default="read_user api", env="GITLAB_SCOPE")
-    
+
     # GitHub App Configuration (for SaaS platform with repo access)
     GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")
     GITHUB_APP_PRIVATE_KEY: str | None = Field(default=None, env="GITHUB_APP_PRIVATE_KEY")

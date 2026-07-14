@@ -1,12 +1,12 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, memo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
   FileCode, Sparkles, ExternalLink, ArrowLeft, ArrowRight,
-  ScanSearch, Hash
+  ScanSearch, Hash, GitMerge, BadgeCheck,
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor, sanitizePath, getFileName, classifyFindingScanner } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath, getFileName, parseScannerSources, copyToClipboard } from "../../lib/utils"
 import { Badge } from "../ui"
 import { DiffViewer } from "../DiffViewer"
 import { Button } from "../ui-animated"
@@ -22,31 +22,36 @@ interface FindingsExplorerProps {
   onSearchQueryChange: (query: string) => void
   onExpandedFindingChange: (id: string | null) => void
   onFindingClick?: (id: string) => void
+  rawFindingsCount?: number
 }
 
-const SCANNER_LABELS: Record<string, string> = {
-  container: "Container",
-  kubernetes: "Kubernetes",
-  iac: "IaC",
-  cicd: "CI/CD",
-  secrets: "Secrets",
-  sast: "SAST",
-  sca: "SCA",
-  dast: "DAST",
-  api_security: "API Security",
-  license: "License",
-  malware: "Malware",
+const SOURCE_COLORS: Record<string, string> = {
+  DevArchAI: "bg-indigo-500/15 text-indigo-300 border-indigo-500/20",
+  Checkov: "bg-cyan-500/15 text-cyan-300 border-cyan-500/20",
+  Tfsec: "bg-emerald-500/15 text-emerald-300 border-emerald-500/20",
+  tfsec: "bg-emerald-500/15 text-emerald-300 border-emerald-500/20",
+  Trivy: "bg-rose-500/15 text-rose-300 border-rose-500/20",
+  Gitleaks: "bg-amber-500/15 text-amber-300 border-amber-500/20",
+  Hadolint: "bg-blue-500/15 text-blue-300 border-blue-500/20",
+  "npm audit": "bg-purple-500/15 text-purple-300 border-purple-500/20",
+  npm_audit: "bg-purple-500/15 text-purple-300 border-purple-500/20",
+  "pip audit": "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/20",
+  pip_audit: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/20",
+  govulncheck: "bg-orange-500/15 text-orange-300 border-orange-500/20",
+  "Dependency Check": "bg-yellow-500/15 text-yellow-300 border-yellow-500/20",
+  dependency_check: "bg-yellow-500/15 text-yellow-300 border-yellow-500/20",
+  "Kube Score": "bg-sky-500/15 text-sky-300 border-sky-500/20",
+  kube_score: "bg-sky-500/15 text-sky-300 border-sky-500/20",
 }
 
-function mapScanner(finding: any): string {
-  const key = classifyFindingScanner(finding)
-  return SCANNER_LABELS[key] || key || "—"
+function getSourceColor(source: string): string {
+  return SOURCE_COLORS[source] ?? "bg-white/10 text-white/50 border-white/10"
 }
 
 const columns = [
   { key: "severity", label: "Severity", width: "w-[80px]" },
   { key: "rule_id", label: "Rule ID", width: "w-[120px]" },
-  { key: "scanner", label: "Scanner", width: "w-[90px]" },
+  { key: "scanner", label: "Source", width: "w-[110px]" },
   { key: "category", label: "Category", width: "w-[90px]" },
   { key: "issue", label: "Issue", width: "flex-1 min-w-[160px]" },
   { key: "file", label: "File", width: "w-[130px]" },
@@ -54,10 +59,11 @@ const columns = [
   { key: "actions", label: "", width: "w-[60px]" },
 ]
 
-export function FindingsExplorer({
+export const FindingsExplorer = memo(function FindingsExplorer({
   findings, severityFilter, sortBy, searchQuery,
   expandedFinding, onSeverityFilterChange, onSortByChange,
-  onSearchQueryChange, onExpandedFindingChange, onFindingClick
+  onSearchQueryChange, onExpandedFindingChange, onFindingClick,
+  rawFindingsCount,
 }: FindingsExplorerProps) {
   const [page, setPage] = useState(1)
   const perPage = 15
@@ -77,7 +83,8 @@ export function FindingsExplorer({
         (f.rule_id?.toLowerCase().includes(q)) ||
         (f.rule_name?.toLowerCase().includes(q)) ||
         (f.file_path?.toLowerCase().includes(q)) ||
-        (f.category?.toLowerCase().includes(q))
+        (f.category?.toLowerCase().includes(q)) ||
+        (f.scanner_name?.toLowerCase().includes(q))
       )
     }
 
@@ -167,6 +174,21 @@ export function FindingsExplorer({
             </div>
           </div>
         </div>
+
+        {/* Raw vs Normalized bar */}
+        {rawFindingsCount != null && rawFindingsCount !== findings.length && (
+          <div className="mt-3 flex items-center gap-2 text-[10px] text-white/30 bg-white/[0.02] rounded-lg px-3 py-2 border border-white/5">
+            <GitMerge className="w-3 h-3 text-indigo-400/60" />
+            <span>
+              <span className="text-white/50 font-medium">{rawFindingsCount}</span> scanner findings deduplicated to{" "}
+              <span className="text-white/50 font-medium">{findings.length}</span> unique findings
+            </span>
+            <span className="text-white/10">·</span>
+            <span className="text-indigo-400/60">
+              {rawFindingsCount - findings.length} duplicates merged
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Enterprise table */}
@@ -196,8 +218,9 @@ export function FindingsExplorer({
                   const severityColor = getSeverityColor(finding.severity)
                   const isExpanded = expandedFinding === findingId
                   const confidence = finding.confidence ?? finding.confidence_score
-                  const scannerName = mapScanner(finding)
+                  const sources = parseScannerSources(finding.scanner_name)
                   const hasAutoFix = !!finding.fix_code
+                  const hasMergedSources = sources.length > 1
                   return (
                     <motion.tr
                       key={findingId}
@@ -222,10 +245,30 @@ export function FindingsExplorer({
                         <span className="text-xs text-white/40 font-mono">{finding.rule_id}</span>
                       </td>
                       <td className="px-3 py-3">
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-white/50">
-                          <ScanSearch className="w-2.5 h-2.5" />
-                          {scannerName}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {sources.map((source, si) => (
+                            <span
+                              key={si}
+                              className={cn(
+                                "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium border",
+                                getSourceColor(source),
+                                si > 0 && "relative"
+                              )}
+                            >
+                              {si === 0 && <ScanSearch className="w-2.5 h-2.5 shrink-0" />}
+                              {source}
+                            </span>
+                          ))}
+                          {hasMergedSources && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-indigo-500/10 text-indigo-400/70 border border-indigo-500/10 cursor-help"
+                              title={`Detected by ${sources.join(", ")}`}
+                            >
+                              <GitMerge className="w-2 h-2" />
+                              merged
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-xs text-white/50 capitalize">{finding.category || "—"}</td>
                       <td className="px-3 py-3">
@@ -307,7 +350,7 @@ export function FindingsExplorer({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => navigator.clipboard.writeText(finding.fix_code || "")}
+                      onClick={() => copyToClipboard(finding.fix_code || "")}
                     >
                       Copy Fix
                     </Button>
@@ -364,4 +407,4 @@ export function FindingsExplorer({
       )}
     </motion.div>
   )
-}
+})

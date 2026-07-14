@@ -242,6 +242,15 @@ class ReportService:
             "risk": self._string_or_none(getattr(finding, "risk", None)),
             "impact": self._string_or_none(getattr(finding, "impact", None)),
             "best_practices": self._parse_best_practices(getattr(finding, "best_practices", None)),
+            "scanner_name": getattr(finding, "scanner_name", None),
+            "scanner_rule_id": getattr(finding, "scanner_rule_id", None),
+            "package": getattr(finding, "package", None),
+            "installed_version": getattr(finding, "installed_version", None),
+            "fixed_version": getattr(finding, "fixed_version", None),
+            "cve": getattr(finding, "cve", None),
+            "cwe": getattr(finding, "cwe", None),
+            "references": getattr(finding, "references", None),
+            "evidence": getattr(finding, "evidence", None),
         }
 
     def _default_recommendations(self, findings: Sequence[Any]) -> list[str]:

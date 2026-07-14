@@ -5,9 +5,9 @@ Revises: 004
 Create Date: 2026-03-23
 
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '005'
@@ -21,10 +21,10 @@ def upgrade() -> None:
     # Add new columns for encrypted email
     op.add_column('users', sa.Column('email_encrypted', sa.String(512), nullable=True))
     op.add_column('users', sa.Column('email_hash', sa.String(255), nullable=True))
-    
+
     # Create index on email_hash for fast lookups
     op.create_index('ix_users_email_hash', 'users', ['email_hash'], unique=True)
-    
+
     # Note: Existing users will need to be migrated manually or via script
     # For new installations, these fields will be populated on user creation
 

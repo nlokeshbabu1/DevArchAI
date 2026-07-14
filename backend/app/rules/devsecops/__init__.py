@@ -5,10 +5,10 @@ Production-grade DevSecOps security scanning rules for DevArchAI.
 50 rules across Docker, Kubernetes, CI/CD, and Observability.
 """
 
-from app.rules.devsecops.docker_security import *  # noqa: F401, F403
-from app.rules.devsecops.kubernetes_security import *  # noqa: F401, F403
-from app.rules.devsecops.kubernetes_reliability import *  # noqa: F401, F403
 from app.rules.devsecops.cicd_security import *  # noqa: F401, F403
+from app.rules.devsecops.docker_security import *  # noqa: F401, F403
+from app.rules.devsecops.kubernetes_reliability import *  # noqa: F401, F403
+from app.rules.devsecops.kubernetes_security import *  # noqa: F401, F403
 from app.rules.devsecops.observability import *  # noqa: F401, F403
 
 __all__ = [

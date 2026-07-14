@@ -3,7 +3,7 @@ Repository Analysis Service
 Orchestrates GitHub repository analysis for DevOps stack detection.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -22,7 +22,7 @@ logger = structlog.get_logger(__name__)
 class RepoAnalysisService:
     """Service for analyzing GitHub repositories."""
 
-    def __init__(self, db: AsyncSession, github_token: Optional[str] = None):
+    def __init__(self, db: AsyncSession, github_token: str | None = None):
         self.db = db
         self.github_token = github_token
         self.validator = GitHubValidator()
@@ -225,7 +225,7 @@ class RepoAnalysisService:
 
         return analysis
 
-    async def get_analysis_by_id(self, analysis_id: int) -> Optional[RepoAnalysis]:
+    async def get_analysis_by_id(self, analysis_id: int) -> RepoAnalysis | None:
         """Get analysis by ID."""
         result = await self.db.execute(
             select(RepoAnalysis).where(RepoAnalysis.id == analysis_id)
@@ -337,6 +337,6 @@ class RepoAnalysisService:
 
 
 # Convenience function for creating service
-def get_analysis_service(db: AsyncSession, github_token: Optional[str] = None) -> RepoAnalysisService:
+def get_analysis_service(db: AsyncSession, github_token: str | None = None) -> RepoAnalysisService:
     """Get repository analysis service instance."""
     return RepoAnalysisService(db, github_token)

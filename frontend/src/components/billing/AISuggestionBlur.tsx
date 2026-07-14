@@ -184,7 +184,7 @@ export function UpgradePrompt({
   message,
 }: UpgradePromptProps) {
   return (
-    <Card className="p-6 glow-primary" hover={false}>
+    <Card className="p-6" hover={false}>
       <div className="text-center space-y-4">
         <div className="inline-flex p-3 rounded-xl bg-gradient-to-br from-primary to-indigo-600">
           <Lock className="h-6 w-6 text-white" />

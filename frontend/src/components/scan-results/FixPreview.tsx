@@ -46,6 +46,9 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fix preview"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
@@ -53,7 +56,7 @@ export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR 
             <Zap className="w-5 h-5 text-emerald-400" />
             <h3 className="text-sm font-semibold text-white/90">Fix Preview</h3>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors">
+          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors" aria-label="Close fix preview">
             <X className="w-5 h-5" />
           </button>
         </div>

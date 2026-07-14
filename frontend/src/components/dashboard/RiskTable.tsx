@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { FolderGit2, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react'
@@ -14,7 +15,7 @@ interface RiskTableProps {
   formatDate: (value?: string | null) => string
 }
 
-export function RiskTable({ repositories, isLoading, getScore, getCritical, getHigh, formatDate }: RiskTableProps) {
+export const RiskTable = memo(function RiskTable({ repositories, isLoading, getScore, getCritical, getHigh, formatDate }: RiskTableProps) {
   const navigate = useNavigate()
 
   const sorted = [...repositories]
@@ -168,4 +169,4 @@ export function RiskTable({ repositories, isLoading, getScore, getCritical, getH
       </div>
     </motion.div>
   )
-}
+})

@@ -5,7 +5,6 @@ GitHub Service - Repository cloning and management
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
@@ -18,7 +17,7 @@ logger = structlog.get_logger(__name__)
 class GitHubService:
     """Service for interacting with GitHub repositories."""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or settings.GITHUB_TOKEN
         self.temp_dir = Path(settings.TEMP_DIR)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -26,8 +25,8 @@ class GitHubService:
     async def clone_repository(
         self,
         repo_url: str,
-        branch: Optional[str] = None,
-        commit_hash: Optional[str] = None,
+        branch: str | None = None,
+        commit_hash: str | None = None,
     ) -> str:
         """
         Clone a GitHub repository to a temporary directory.

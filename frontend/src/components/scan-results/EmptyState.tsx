@@ -95,7 +95,7 @@ export function EmptyState({ score, repoName, filesAnalyzed, coveragePercent = 1
             {" "}Your configurations, dependencies, secrets, and infrastructure code have been checked.
           </p>
 
-          {["SAST", "SCA", "Secrets", "IaC"].map((item, i) => (
+          {["Code Security", "Dependency Security", "Secret Detection", "Infrastructure Security"].map((item, i) => (
             <motion.div
               key={item}
               initial={{ opacity: 0, scale: 0.8 }}

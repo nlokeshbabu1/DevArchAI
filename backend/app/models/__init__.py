@@ -1,6 +1,8 @@
 """Database models package."""
 
 from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
+from app.models.audit_log import AuditLog
+from app.models.aws import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory
 from app.models.finding import Category, Finding, Severity
 from app.models.github_installation import GitHubInstallation
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
@@ -22,11 +24,10 @@ from app.models.repo_analysis import RepoAnalysis
 from app.models.report import Report
 from app.models.repository import Repository
 from app.models.scan import AIScanStatus, Scan, ScanStatus
+from app.models.scanner_execution import ScannerExecutionRecord
 from app.models.settings import ApiKey, UserPreference, UserSession
 from app.models.subscription import Currency, PlanTier, Subscription
 from app.models.user import User, UserRole
-from app.models.audit_log import AuditLog
-from app.models.aws import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory
 
 __all__ = [
     "User",
@@ -39,6 +40,7 @@ __all__ = [
     "Scan",
     "AIScanStatus",
     "ScanStatus",
+    "ScannerExecutionRecord",
     "Finding",
     "Severity",
     "Category",

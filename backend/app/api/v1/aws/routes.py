@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -207,7 +207,7 @@ async def get_aws_overview(
     severity_counts = {severity: count for severity, count in finding_counts.all()}
     security_score = max(0, 100 - severity_counts.get("critical", 0) * 25 - severity_counts.get("high", 0) * 15 - severity_counts.get("medium", 0) * 7 - severity_counts.get("low", 0) * 3)
     cost_score = max(0, 100 - min(80, int(float(savings or 0) / 10)))
-    sync_time = account.last_scanned_at or account.updated_at or datetime.now(timezone.utc)
+    sync_time = account.last_scanned_at or account.updated_at or datetime.now(UTC)
     region_names = sorted({region for (region,) in regions.all() if region})
     return {
         "account": AWSAccountResponse.model_validate(account),

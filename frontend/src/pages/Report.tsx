@@ -499,7 +499,7 @@ export function Report() {
 
       {/* Score Overview */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="p-8 text-center glow-primary" hover={false}>
+        <Card className="p-8 text-center" hover={false}>
           <h3 className="text-sm font-medium text-muted-foreground mb-6">Overall Score</h3>
           <ScoreCircle score={finalScores.overall} size="xl" animated delay={200} />
         </Card>

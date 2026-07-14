@@ -1,7 +1,6 @@
 """Background worker for scan execution."""
 
 from collections.abc import Callable
-from typing import Optional
 
 from sqlalchemy import select
 
@@ -18,12 +17,12 @@ class ScanWorker:
 
     def __init__(self):
         self._running = False
-        self._current_scan_id: Optional[int] = None
+        self._current_scan_id: int | None = None
 
     async def start(
         self,
         scan_id: int,
-        progress_callback: Optional[Callable[[int, str], None]] = None,
+        progress_callback: Callable[[int, str], None] | None = None,
     ) -> None:
         """
         Start a scan in the background.
@@ -120,7 +119,7 @@ class ScanWorker:
         return self._running
 
     @property
-    def current_scan_id(self) -> Optional[int]:
+    def current_scan_id(self) -> int | None:
         """Get current scan ID."""
         return self._current_scan_id
 
@@ -153,7 +152,7 @@ async def cancel_scan_background(scan_id: int) -> bool:
     return False
 
 
-def get_scan_status(scan_id: int) -> Optional[str]:
+def get_scan_status(scan_id: int) -> str | None:
     """Get status of a background scan."""
     worker = _worker_pool.get(scan_id)
     if worker:

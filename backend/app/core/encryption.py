@@ -2,7 +2,6 @@
 
 import base64
 import logging
-import os
 from functools import lru_cache
 
 from cryptography.fernet import Fernet
@@ -25,7 +24,7 @@ class EncryptionService:
             key = base64.urlsafe_b64encode(
                 settings.SECRET_KEY.encode()[:32].ljust(32, b'\0')
             )
-        
+
         self.fernet = Fernet(key)
 
     def encrypt(self, plaintext: str) -> str:

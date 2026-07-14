@@ -143,19 +143,6 @@ export const repositoriesApi = {
   },
 
   /**
-   * Trigger a scan for a repository
-   * Uses the scans API directly (same as dashboard) for reliability
-   */
-  triggerScan: async (repoId: string, repoUrl: string, branch: string = 'main'): Promise<{ id: string; status: string }> => {
-    const response = await apiClient.post('/scans', {
-      repository_id: repoId,
-      repository_url: repoUrl,
-      branch: branch,
-    });
-    return response.data;
-  },
-
-  /**
    * List importable GitHub repositories for the current OAuth user
    */
   listGitHubRepositories: async (): Promise<GitHubRepositoryListResponse> => {

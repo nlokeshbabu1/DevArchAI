@@ -6,12 +6,13 @@ Create Date: 2026-06-26
 
 """
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '018'
-down_revision = '017'
+down_revision = '017_enterprise_auth_phase2'
 branch_labels = None
 depends_on = None
 

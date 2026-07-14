@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   Plus,
   Github,
@@ -13,8 +13,6 @@ import {
   ExternalLink,
   Play,
   Clock,
-  ShieldCheck,
-  X,
 } from 'lucide-react'
 import { Button, Card } from '../../components/ui-animated'
 import { Badge } from '../../components/ui'
@@ -28,10 +26,10 @@ import { scansApi } from '../../api/endpoints/scans'
 import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
-import { ScanProgress } from '../../components/ScanProgress'
+import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
+import { EmptyState } from '@/components/ui/empty-state'
 
 type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
-type ScanFileType = 'docker' | 'k8s' | 'terraform' | 'cicd' | 'helm' | 'monitoring'
 
 interface DisplayRepository extends Repository {
   displayStatus: DisplayStatus
@@ -82,29 +80,6 @@ interface ImportableRepoItem {
   forks_count: number
   updated_at: string
 }
-
-function getFileTypeFromPath(path: string): ScanFileType {
-  const lowerPath = path.toLowerCase()
-
-  if (lowerPath.includes('dockerfile') || lowerPath.includes('docker')) {
-    return 'docker'
-  }
-  if (lowerPath.includes('k8s') || lowerPath.includes('kubernetes') || lowerPath.includes('deployment') || lowerPath.includes('service')) {
-    return 'k8s'
-  }
-  if (lowerPath.includes('.tf') || lowerPath.includes('terraform')) {
-    return 'terraform'
-  }
-  if (lowerPath.includes('chart') || lowerPath.includes('helm')) {
-    return 'helm'
-  }
-  if (lowerPath.includes('prometheus') || lowerPath.includes('grafana') || lowerPath.includes('monitor')) {
-    return 'monitoring'
-  }
-
-  return 'cicd'
-}
-
 function getStatusLabel(status: DisplayStatus | 'all') {
   if (status === 'all') {
     return 'All'
@@ -395,7 +370,7 @@ export function RepositoriesPage() {
 
             setActiveScan(null)
             setActiveScanStatus(null)
-            navigate(`/scans/${activeScan.scanId}`)
+            navigate(`/repositories/${activeScan.repoId}/results`, { replace: true })
           }, 900)
 
           return
@@ -459,7 +434,7 @@ export function RepositoriesPage() {
   }
 
   const handleViewResults = (repoId: string) => {
-    navigate(`/scans?repo=${repoId}`)
+    navigate(`/repositories/${repoId}/results`)
   }
 
   const handleDelete = async (repoId: string) => {
@@ -524,13 +499,6 @@ export function RepositoriesPage() {
   }
 
   const isAdding = addRepositoryMutation.isPending
-  const activeScanStepIndex = activeScanStatus?.steps?.findIndex((step) => step.name === activeScanStatus.current_step) ?? -1
-  const activeScanCurrentStep = activeScanStepIndex >= 0 ? activeScanStepIndex + 1 : (activeScanStatus?.status === 'completed' ? (activeScanStatus?.steps?.length || 1) : 1)
-  const activeScanDetectedFiles = (activeScanStatus?.files_list || []).map((path) => ({
-    path,
-    type: getFileTypeFromPath(path),
-    status: activeScanStatus?.status === 'completed' ? 'completed' as const : 'scanning' as const,
-  }))
 
   return (
     <>
@@ -641,63 +609,53 @@ export function RepositoriesPage() {
             </div>
           ) : filteredRepos.length === 0 ? (
               displayRepos.length === 0 ? (
-              <Card className="col-span-full p-12 text-center" hover={false}>
-                {user?.provider === 'password'
-                  ? <GitBranch className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                  : activeProvider === 'github'
-                  ? <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                  : <Gitlab className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <EmptyState
+                className="col-span-full"
+                icon={
+                  user?.provider === 'password'
+                    ? <GitBranch className="h-12 w-12 text-muted-foreground" />
+                    : activeProvider === 'github'
+                    ? <Github className="h-12 w-12 text-muted-foreground" />
+                    : <Gitlab className="h-12 w-12 text-muted-foreground" />
                 }
-                <h3 className="mb-2 text-lg font-semibold text-foreground">
-                  {user?.provider === 'password'
-                    ? 'No repositories yet'
-                    : activeProvider === 'github' && githubConnected
-                    ? 'No repositories found'
-                    : 'No repositories yet'}
-                </h3>
-                <p className="mb-6 text-muted-foreground">
-                  {user?.provider === 'password'
-                    ? 'Add a repository manually to start scanning.'
-                    : activeProvider === 'github' && githubConnected
-                    ? 'Your GitHub repositories will appear here. Add one to get started.'
-                    : activeProvider === 'gitlab' && gitlabConnected
-                    ? 'Your GitLab projects will appear here. Add one to get started.'
-                    : 'Connect a provider or add a repository manually to start scanning'}
-                </p>
-                <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                  {user?.provider !== 'password' && (
+                title="No repositories connected"
+                description="Import your first repository to begin continuous security analysis."
+                action={
+                  <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                    {user?.provider !== 'password' && (
+                      <Button
+                        variant="secondary"
+                        icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
+                        onClick={() => setShowImportModal(true)}
+                      >
+                        Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                      </Button>
+                    )}
                     <Button
-                      variant="secondary"
-                      icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
-                      onClick={() => setShowImportModal(true)}
+                      variant="primary"
+                      icon={<Plus className="h-4 w-4" />}
+                      onClick={() => setShowAddModal(true)}
                     >
-                      Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                      Add Repository
                     </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    icon={<Plus className="h-4 w-4" />}
-                    onClick={() => setShowAddModal(true)}
-                  >
-                    Add Repository
-                  </Button>
-                </div>
-              </Card>
+                  </div>
+                }
+              />
             ) : (
-              <Card className="col-span-full p-12 text-center" hover={false}>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">
-                  No repositories match this filter
-                </h3>
-                <p className="mb-4 text-muted-foreground">
-                  Try selecting a different status filter
-                </p>
-                <Button
-                  variant="secondary"
-                  onClick={() => setStatusFilter('all')}
-                >
-                  Show All
-                </Button>
-              </Card>
+              <EmptyState
+                className="col-span-full"
+                icon={<GitBranch className="h-12 w-12 text-muted-foreground" />}
+                title="No repositories match this filter"
+                description="Try selecting a different status filter."
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    Show All
+                  </Button>
+                }
+              />
             )
           ) : (
             filteredRepos.map((repo, index) => {
@@ -925,95 +883,28 @@ export function RepositoriesPage() {
         />
       </div>
 
-      <AnimatePresence>
-        {activeScan && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="w-full max-w-4xl"
-              initial={{ opacity: 0, scale: 0.98, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: 20 }}
-            >
-              <Card className="overflow-hidden p-0" hover={false}>
-                <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-2xl font-bold text-foreground">Repository Scan Progress</h2>
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium',
-                          activeScanStatus?.status === 'completed'
-                            ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                            : activeScanStatus?.status === 'failed'
-                            ? 'border-red-500/30 bg-red-500/10 text-red-400'
-                            : 'border-blue-500/30 bg-blue-500/10 text-blue-400',
-                        )}
-                      >
-                        {activeScanStatus?.status === 'completed' ? <CheckCircle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
-                        {activeScanStatus?.status === 'completed'
-                          ? 'Ready'
-                          : activeScanStatus?.status === 'failed'
-                          ? 'Failed'
-                          : 'Live Scan'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {activeScan.repoName} • Branch: {activeScan.branch}
-                    </p>
-                  </div>
-
-                  {activeScanStatus && ['completed', 'failed'].includes(activeScanStatus.status) && (
-                    <button
-                      type="button"
-                      onClick={closeProgressModal}
-                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="p-6">
-                  {activeScanError ? (
-                    <div className="space-y-4 text-center">
-                      <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-semibold text-foreground">Scan Failed</h3>
-                        <p className="text-sm text-muted-foreground">{activeScanError}</p>
-                      </div>
-                      <div className="flex justify-center gap-3">
-                        <Button variant="secondary" onClick={closeProgressModal}>
-                          Close
-                        </Button>
-                        <Button variant="ghost" onClick={() => navigate('/scans')}>
-                          View Scans
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <ScanProgress
-                      progress={activeScanStatus?.progress || 0}
-                      currentStep={activeScanCurrentStep}
-                      isComplete={activeScanStatus?.status === 'completed'}
-                      detectedFiles={activeScanDetectedFiles}
-                      detectedTechnologies={activeScanStatus?.detected_stack || []}
-                      steps={(activeScanStatus?.steps || []).map((step) => step.name)}
-                      backendLogs={activeScanStatus?.logs || []}
-                      filesScanned={activeScanDetectedFiles?.length || 0}
-                      findingsDetected={0}
-                    />
-                  )}
-                </div>
-              </Card>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ScanProgressOverlay
+        slideIn
+        isOpen={!!activeScan}
+        onClose={closeProgressModal}
+        repositoryName={activeScan?.repoName || ''}
+        branch={activeScan?.branch || ''}
+        progressData={{
+          progress: activeScanStatus?.progress || 0,
+          currentStep: activeScanStatus?.current_step,
+          error: activeScanError ?? undefined,
+        }}
+        isComplete={activeScanStatus?.status === 'completed'}
+        hasFailed={activeScanStatus?.status === 'failed' || !!activeScanError}
+        onComplete={() => {
+          if (activeScan) {
+            setActiveScan(null)
+            setActiveScanStatus(null)
+            navigate(`/repositories/${activeScan.repoId}/results`, { replace: true })
+          }
+        }}
+        onRetry={closeProgressModal}
+      />
     </>
   )
 }

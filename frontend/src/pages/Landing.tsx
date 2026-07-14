@@ -1,564 +1,451 @@
+import { useCallback, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, useInView } from 'framer-motion'
 import {
-  Shield, Zap, Check, ArrowRight, AlertTriangle,
-  Star, Terminal, Sparkles
+  ArrowRight, Check, Shield, GitBranch, Search, Brain,
+  Sparkles, GitPullRequest, FileText, Zap
 } from 'lucide-react'
 import { Button } from '../components/ui-animated'
-import { DetectedTechStack } from '../components/landing/DetectedTechStack'
+import { MagneticButton } from '../components/landing/MagneticButton'
+import { Navbar } from '../components/landing/Navbar'
+import { HeroVideo } from '../components/landing/HeroVideo'
+import { TrustedBy } from '../components/landing/TrustedBy'
+import { StatsSection } from '../components/landing/StatsSection'
+import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
+import { WhyDevArchAI } from '../components/landing/WhyDevArchAI'
 import { TrustSection } from '../components/landing/TrustSection'
 import { PricingSection } from '../components/landing/PricingSection'
-import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
-import { ProblemSection } from '../components/landing/ProblemSection'
-import { PlatformCapabilities } from '../components/landing/PlatformCapabilities'
-import { AIAssistantSection } from '../components/landing/AIAssistantSection'
-import { ScanWorkflow } from '../components/landing/ScanWorkflow'
-import { ReportingSection } from '../components/landing/ReportingSection'
-import { DashboardPreview } from '../components/landing/DashboardPreview'
-import { RoadmapSection } from '../components/landing/RoadmapSection'
-import demoData from '../../public/data/demoScan.json'
+import { FAQ } from '../components/landing/FAQ'
+import { BackgroundGrid } from '../components/landing/BackgroundGrid'
 
-const testimonials = [
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] },
+  }),
+}
+
+const storySteps = [
   {
-    name: 'Sarah Chen',
-    role: 'DevOps Lead at TechCorp',
-    content: 'DevArchAI caught critical security issues in our Terraform configs before they reached production. Saved us from a potential breach.',
-    avatar: 'SC',
-    rating: 5,
+    icon: GitBranch,
+    title: 'Connect Your Repository',
+    description: 'Point to any GitHub, GitLab, or Bitbucket repository. No complex setup — just a URL.',
+    color: 'text-blue-400',
+    bg: 'bg-blue-500/10',
   },
   {
-    name: 'Marcus Rodriguez',
-    role: 'SRE at StartupXYZ',
-    content: 'The AI recommendations are incredibly accurate. It\'s like having a senior DevOps engineer review every line of infrastructure code.',
-    avatar: 'MR',
-    rating: 5,
+    icon: Search,
+    title: 'Technology Detection',
+    description: 'Our engine automatically identifies Docker, Kubernetes, Terraform, CI/CD, and cloud configurations.',
+    color: 'text-purple-400',
+    bg: 'bg-purple-500/10',
   },
   {
-    name: 'Emily Watson',
-    role: 'Security Engineer at Enterprise Inc',
-    content: 'Finally, a tool that understands both security AND DevOps. The comprehensive reports make compliance audits so much easier.',
-    avatar: 'EW',
-    rating: 5,
+    icon: Shield,
+    title: 'AI Security Scan',
+    description: '500+ security rules scan for vulnerabilities, secrets, misconfigurations, and compliance gaps.',
+    color: 'text-orange-400',
+    bg: 'bg-orange-500/10',
+  },
+  {
+    icon: Brain,
+    title: 'AI Fix Recommendations',
+    description: 'Every finding includes production-ready code fixes with best practices and documentation.',
+    color: 'text-green-400',
+    bg: 'bg-green-500/10',
+  },
+  {
+    icon: GitPullRequest,
+    title: 'Pull Request Creation',
+    description: 'Automated PRs with inline fix suggestions, ready to merge into your codebase.',
+    color: 'text-cyan-400',
+    bg: 'bg-cyan-500/10',
+  },
+  {
+    icon: FileText,
+    title: 'Compliance Reports',
+    description: 'Download PDF, Excel, or JSON reports for SOC 2, HIPAA, and PCI-DSS compliance.',
+    color: 'text-primary',
+    bg: 'bg-primary/10',
   },
 ]
+
+function StoryStep({
+  step, index, isLast,
+}: {
+  step: typeof storySteps[0]; index: number; isLast: boolean
+}) {
+  const Icon = step.icon
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: '-60px' })
+
+  return (
+    <motion.div
+      ref={ref}
+      className="relative flex gap-6 pb-8"
+      initial={{ opacity: 0, x: -20 }}
+      animate={inView ? { opacity: 1, x: 0 } : {}}
+      transition={{ delay: index * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {/* Connector line */}
+      {!isLast && (
+        <div className="absolute left-6 top-14 bottom-0 w-px bg-gradient-to-b from-white/10 to-transparent" />
+      )}
+
+      {/* Step number */}
+      <div className="relative flex-shrink-0">
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-white/[0.06] ${step.bg}`}>
+          <Icon className={`h-5 w-5 ${step.color}`} />
+        </div>
+        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#0B1020] border-2 border-primary/40 flex items-center justify-center">
+          <span className="text-[8px] font-bold text-primary">{index + 1}</span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 pt-1">
+        <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1] transition-colors duration-300">
+          <h3 className="text-base font-semibold text-white mb-1">{step.title}</h3>
+          <p className="text-sm text-slate-400 leading-relaxed">{step.description}</p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function SectionDivider() {
+  return (
+    <div className="relative py-1">
+      <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+      <div className="absolute inset-0 h-px bg-gradient-to-r from-transparent via-primary/[0.03] to-transparent blur-sm" />
+    </div>
+  )
+}
 
 export function Landing() {
   const navigate = useNavigate()
 
-  const handleStartScan = () => {
-    navigate('/login')
-  }
+  const handleStartScan = useCallback(() => {
+    navigate('/register')
+  }, [navigate])
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-white/10">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <motion.div
-              className="flex items-center gap-3"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-            >
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30 border border-white/20">
-                <Shield className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-bold gradient-text">DevArchAI</span>
-            </motion.div>
-            <nav className="hidden md:flex items-center gap-1">
-              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Features</button>
-              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Solutions</button>
-              <button onClick={() => navigate('/docs')} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Documentation</button>
-              <button onClick={() => navigate('/pricing')} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Pricing</button>
-              <button className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-white/5">Blog</button>
-            </nav>
-            <motion.div
-              className="flex items-center gap-4"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/login')}
-                className="hidden sm:flex"
-              >
-                Login
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/register')}
-                glow
-              >
-                Get Started
-              </Button>
-            </motion.div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#0B1020] overflow-x-hidden">
+      <Navbar />
 
-      {/* ===== SECTION 1 - HERO ===== */}
-      <section className="relative py-20 lg:py-32 overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <motion.div
-            className="absolute -top-40 -right-40 w-96 h-96 bg-primary/20 rounded-full blur-3xl"
-            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-            transition={{ duration: 5, repeat: Infinity }}
-          />
-          <motion.div
-            className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"
-            animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
-            transition={{ duration: 5, repeat: Infinity }}
-          />
-        </div>
+      {/* ===== HERO ===== */}
+      <section className="relative pt-36 pb-16 lg:pt-44 lg:pb-20 overflow-hidden">
+        <BackgroundGrid />
 
-        <div className="container mx-auto px-4 relative">
-          <div className="max-w-5xl mx-auto text-center space-y-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 mb-6">
-                <Shield className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-primary">DevOps Security Scanner</span>
-              </div>
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight">
-                <span className="gradient-text">Detect DevOps Security Risks</span>
-                <br />
-                <span className="text-foreground">Before Production</span>
-              </h1>
-            </motion.div>
+        {/* Hero ambient glows */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/[0.04] rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
 
-            <motion.p
-              className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              Scan repositories, Docker, Kubernetes, Terraform, GitHub Actions, Jenkins, GitLab CI, and cloud infrastructure in minutes.
-              <br />
-              <span className="text-foreground/80">Find vulnerabilities, secrets, misconfigurations, compliance issues, and deployment risks before they reach production.</span>
-            </motion.p>
-
-            <motion.div
-              className="flex flex-col sm:flex-row gap-4 justify-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={handleStartScan}
-                className="px-8 py-6 text-lg"
-                glow
-              >
-                Start Free Scan
-                <ArrowRight className="h-5 w-5 ml-2" />
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={() => {
-                  document.getElementById('demo-preview')?.scrollIntoView({ behavior: 'smooth' })
-                }}
-                className="px-8 py-6 text-lg"
-              >
-                View Demo
-              </Button>
-            </motion.div>
-
-            <motion.div
-              className="flex flex-wrap justify-center gap-6 text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-            >
-              {[
-                { icon: Shield, text: 'No Agent Required' },
-                { icon: Zap, text: 'Scan in Minutes' },
-                { icon: Sparkles, text: 'AI-Powered Fixes' },
-                { icon: Check, text: 'Production Ready' },
-              ].map((item) => {
-                const Icon = item.icon
-                return (
-                  <div key={item.text} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                    <Icon className="h-4 w-4 text-primary" />
-                    <span className="text-muted-foreground">{item.text}</span>
-                  </div>
-                )
-              })}
-            </motion.div>
-
-            <motion.div
-              className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.7 }}
-            >
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-400" />
-                <span>No credit card required</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-400" />
-                <span>Free tier available</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-400" />
-                <span>Instant results</span>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="py-8 border-y border-white/5 bg-white/[0.02]">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            {[
-              { label: 'Repositories Analyzed', value: '10,000+' },
-              { label: 'Security Rules', value: '500+' },
-              { label: 'Technologies Supported', value: '40+' },
-              { label: 'Avg. Scan Time', value: '< 30s' },
-            ].map((stat, index) => (
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center max-w-7xl mx-auto">
+            {/* Left: Content */}
+            <div className="max-w-xl">
+              {/* Badge */}
               <motion.div
-                key={stat.label}
-                className="text-center"
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                custom={0}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                className="mb-6"
               >
-                <p className="text-2xl md:text-3xl font-bold gradient-text">{stat.value}</p>
-                <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== SECTION 2 - TECHNOLOGY MARQUEE ===== */}
-      <TechnologyMarquee />
-
-      {/* ===== SECTION 3 - PROBLEM WE SOLVE ===== */}
-      <ProblemSection />
-
-      {/* ===== SECTION 4 - PLATFORM CAPABILITIES ===== */}
-      <PlatformCapabilities />
-
-      {/* ===== SECTION 5 - AI SECURITY ASSISTANT ===== */}
-      <AIAssistantSection />
-
-      {/* Demo Preview Card */}
-      <section id="demo-preview" className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12 space-y-4">
-            <motion.h2
-              className="text-4xl font-bold gradient-text"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-            >
-              See What We Find
-            </motion.h2>
-            <motion.p
-              className="text-lg text-muted-foreground max-w-2xl mx-auto"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.2 }}
-            >
-              Real scan results from production infrastructure
-            </motion.p>
-          </div>
-
-          <motion.div
-            className="max-w-4xl mx-auto"
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.3 }}
-          >
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-sm overflow-hidden">
-              <div className="p-6 border-b border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
-                      <Terminal className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground">terraform-infrastructure</h3>
-                      <p className="text-sm text-muted-foreground">github.com/example/terraform-infra</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-green-400">72</div>
-                    <div className="text-xs text-muted-foreground">Security Score</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border-b border-white/10">
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-400">3</div>
-                    <div className="text-xs text-muted-foreground">Critical</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-400">8</div>
-                    <div className="text-xs text-muted-foreground">High</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-400">12</div>
-                    <div className="text-xs text-muted-foreground">Medium</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-400">15</div>
-                    <div className="text-xs text-muted-foreground">Low</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <AlertTriangle className="h-5 w-5 text-orange-400" />
-                  <h4 className="font-semibold text-foreground">Sample Findings</h4>
-                </div>
-
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
-                  <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded bg-red-500/20">
-                      <AlertTriangle className="h-4 w-4 text-red-400" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">CRITICAL</span>
-                        <span className="text-xs font-mono text-muted-foreground">TF-STATE-004</span>
-                      </div>
-                      <h5 className="font-medium text-foreground mb-1">Backend State Encryption Required</h5>
-                      <p className="text-sm text-muted-foreground">Terraform state file is not encrypted. State files may contain sensitive data.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                  <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded bg-orange-500/20">
-                      <AlertTriangle className="h-4 w-4 text-orange-400" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">HIGH</span>
-                        <span className="text-xs font-mono text-muted-foreground">DKR-SEC-001</span>
-                      </div>
-                      <h5 className="font-medium text-foreground mb-1">Run Docker Container as Non-Root User</h5>
-                      <p className="text-sm text-muted-foreground">Docker container is running as root user, which poses security risks.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                  <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded bg-yellow-500/20">
-                      <AlertTriangle className="h-4 w-4 text-yellow-400" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">MEDIUM</span>
-                        <span className="text-xs font-mono text-muted-foreground">K8S-SEC-001</span>
-                      </div>
-                      <h5 className="font-medium text-foreground mb-1">Kubernetes Pod Security Context Missing</h5>
-                      <p className="text-sm text-muted-foreground">Pod does not define security context, allowing privileged containers.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 bg-gradient-to-r from-primary/10 to-indigo-600/10 border-t border-white/10">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <p className="text-sm text-muted-foreground">
-                    See all {demoData.findings_count} findings with AI-powered fix recommendations
-                  </p>
-                  <Button variant="primary" size="md" onClick={handleStartScan} glow>
-                    Start Your Free Scan
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ===== SECTION 6 - SCAN WORKFLOW ===== */}
-      <ScanWorkflow />
-
-      {/* ===== SECTION 7 - REPORTING ===== */}
-      <ReportingSection />
-
-      {/* ===== SECTION 8 - DASHBOARD PREVIEW ===== */}
-      <DashboardPreview />
-
-      {/* Testimonials */}
-      <section className="py-20 lg:py-32 bg-white/5">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16 space-y-4">
-            <h2 className="text-4xl font-bold gradient-text">
-              Loved by DevOps Teams
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              See what security engineers and DevOps teams are saying
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {testimonials.map((testimonial, index) => (
-              <motion.div
-                key={testimonial.name}
-                className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  ))}
-                </div>
-                <p className="text-muted-foreground mb-6 leading-relaxed">
-                  "{testimonial.content}"
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-indigo-600/20 border-2 border-primary/30 flex items-center justify-center text-sm font-semibold text-primary">
-                    {testimonial.avatar}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">{testimonial.name}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.role}</p>
-                  </div>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03]">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+                  </span>
+                  <span className="text-xs font-medium text-slate-400">DevOps Security Scanner</span>
                 </div>
               </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* ===== SECTION 9 - FUTURE ROADMAP ===== */}
-      <RoadmapSection />
-
-      {/* Detected Technologies Section */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <DetectedTechStack />
-        </div>
-      </section>
-
-      {/* Trust Section */}
-      <section className="py-20 lg:py-32 bg-white/5">
-        <div className="container mx-auto px-4">
-          <TrustSection />
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section className="py-20 lg:py-32">
-        <div className="container mx-auto px-4">
-          <PricingSection />
-        </div>
-      </section>
-
-      {/* ===== SECTION 10 - FINAL CTA ===== */}
-      <section className="py-20 lg:py-32 bg-white/5">
-        <div className="container mx-auto px-4">
-          <motion.div
-            className="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-gradient-to-br from-primary/20 to-indigo-600/20 border border-primary/30 backdrop-blur-sm"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <div className="space-y-6">
-              <motion.div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30"
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
+              {/* Headline */}
+              <motion.h1
+                custom={1}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                className="display-xl text-white mb-5"
               >
-                <Shield className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-primary">Start Securing Your Pipeline</span>
-              </motion.div>
+                Secure your DevOps stack before production
+              </motion.h1>
 
-              <h2 className="text-4xl md:text-5xl font-bold gradient-text">
-                Secure Your DevOps Pipeline Before Production
-              </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                Detect vulnerabilities, secrets, infrastructure risks, and CI/CD issues before deployment.
-                Start scanning in under 30 seconds.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => navigate('/login')}
-                  className="px-8 py-6 text-lg"
-                  glow
+              {/* Description */}
+              <motion.p
+                custom={2}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                className="text-base sm:text-lg text-slate-400 leading-relaxed mb-8 max-w-[520px]"
+              >
+                Scan repositories, Docker, Kubernetes, Terraform, and CI/CD pipelines.
+                Get AI-powered fix recommendations in under 30 seconds.
+              </motion.p>
+
+              {/* CTAs */}
+              <motion.div
+                custom={3}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                className="flex flex-col gap-3 mb-8"
+              >
+                <MagneticButton
+                  className="inline-flex w-full sm:w-auto"
+                  onClick={handleStartScan}
                 >
-                  Start Free Scan
-                  <ArrowRight className="h-5 w-5 ml-2" />
-                </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="btn-premium px-7 py-3 text-base w-full sm:w-auto"
+                  >
+                    Start Free Scan
+                    <ArrowRight className="h-4 w-4 ml-1.5" />
+                  </Button>
+                </MagneticButton>
                 <Button
                   variant="secondary"
                   size="lg"
-                  onClick={() => {
-                    document.getElementById('demo-preview')?.scrollIntoView({ behavior: 'smooth' })
-                  }}
-                  className="px-8 py-6 text-lg"
+                  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="btn-secondary-premium px-7 py-3 text-base w-full sm:w-auto"
                 >
-                  View Demo
+                  See How It Works
                 </Button>
+              </motion.div>
+
+              {/* Trust indicators */}
+              <motion.div
+                custom={4}
+                variants={fadeUp}
+                initial="hidden"
+                animate="visible"
+                className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400"
+              >
+                {['No credit card required', 'Free tier available', 'Instant results'].map((item) => (
+                  <div key={item} className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-green-400/80" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </motion.div>
+            </div>
+
+            {/* Right: Product showcase — premium glass panel */}
+            <motion.div
+              custom={2}
+              variants={fadeUp}
+              initial="hidden"
+              animate="visible"
+              className="relative w-full max-w-lg lg:max-w-none mx-auto"
+            >
+              {/* Ambient glow behind panel */}
+              <div className="absolute -inset-12 bg-primary/[0.04] rounded-3xl blur-[80px] pointer-events-none" />
+
+              {/* Glass panel */}
+              <div className="relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_0_60px_-12px_rgba(99,102,241,0.08)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_0_80px_-8px_rgba(99,102,241,0.12)]">
+                {/* Top reflection */}
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent rounded-t-2xl" />
+                {/* Left reflection */}
+                <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent rounded-l-2xl" />
+
+                <HeroVideo />
               </div>
-              <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-400" />
-                  No credit card required
-                </span>
-                <span className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-400" />
-                  Free tier available
-                </span>
-                <span className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-400" />
-                  Instant results
-                </span>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== TRUSTED BY ===== */}
+      <TrustedBy />
+
+      <SectionDivider />
+
+      {/* ===== STATS ===== */}
+      <StatsSection />
+
+      <SectionDivider />
+
+      {/* ===== TECHNOLOGY MARQUEE ===== */}
+      <TechnologyMarquee />
+
+      <SectionDivider />
+
+      {/* ===== HOW IT WORKS - Product Story ===== */}
+      <section id="how-it-works" className="py-16 lg:py-24">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+            {/* Left: Header */}
+            <div className="lg:sticky lg:top-24">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <p className="text-sm font-medium text-primary mb-3">How It Works</p>
+                <h2 className="display-lg text-white mb-4">
+                  From repository to production readiness
+                </h2>
+                <p className="text-base text-slate-400 max-w-lg leading-relaxed">
+                  A single scan triggers a comprehensive analysis pipeline. Every step is automated.
+                  You get actionable results in under 30 seconds.
+                </p>
+              </motion.div>
+            </div>
+
+            {/* Right: Story steps */}
+            <div className="relative">
+              {storySteps.map((step, index) => (
+                <StoryStep
+                  key={step.title}
+                  step={step}
+                  index={index}
+                  isLast={index === storySteps.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ===== WHY DEVARCHAI ===== */}
+      <WhyDevArchAI />
+
+      <SectionDivider />
+
+      {/* ===== TRUST SECTION ===== */}
+      <TrustSection />
+
+      <SectionDivider />
+
+      {/* ===== PRICING ===== */}
+      <section id="pricing">
+        <PricingSection />
+      </section>
+
+      <SectionDivider />
+
+      {/* ===== FAQ ===== */}
+      <FAQ />
+
+      <SectionDivider />
+
+      {/* ===== FINAL CTA ===== */}
+      <section className="py-20 lg:py-28">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            className="max-w-3xl mx-auto text-center"
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-80px' }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="space-y-5">
+              <h2 className="display-lg text-white">
+                Secure your pipeline today
+              </h2>
+              <p className="text-base text-slate-400 max-w-xl mx-auto leading-relaxed">
+                Detect vulnerabilities, secrets, infrastructure risks, and CI/CD issues before deployment.
+                Start scanning in under 30 seconds.
+              </p>
+              <div className="flex flex-col gap-3 justify-center pt-2">
+                <MagneticButton
+                  className="inline-flex w-full sm:w-auto"
+                  onClick={() => navigate('/register')}
+                >
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="btn-premium px-7 py-3 text-base w-full sm:w-auto"
+                  >
+                    Start Free Scan
+                    <ArrowRight className="h-4 w-4 ml-1.5" />
+                  </Button>
+                </MagneticButton>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="btn-secondary-premium px-7 py-3 text-base w-full sm:w-auto"
+                >
+                  See How It Works
+                </Button>
               </div>
             </div>
           </motion.div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600">
-                <Shield className="h-5 w-5 text-white" />
+      {/* ===== FOOTER ===== */}
+      <footer
+        className="border-t border-white/[0.06] py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]"
+        role="contentinfo"
+      >
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+            {/* Brand */}
+            <div className="col-span-2 md:col-span-1">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <span className="text-sm font-semibold text-white">DevArchAI</span>
               </div>
-              <span className="font-bold gradient-text">DevArchAI</span>
+              <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
+                AI-powered DevOps security scanning for infrastructure-as-code.
+              </p>
             </div>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">Security</a>
-              <a href="#" className="hover:text-foreground transition-colors">Contact</a>
+
+            {/* Product */}
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-3">Product</h4>
+              <ul className="space-y-1 text-sm text-slate-400">
+                <li><a href="#features" className="block py-1.5 hover:text-white transition-colors">Features</a></li>
+                <li><a href="#pricing" className="block py-1.5 hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#how-it-works" className="block py-1.5 hover:text-white transition-colors">How It Works</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Changelog</a></li>
+              </ul>
             </div>
-            <p className="text-sm text-muted-foreground">
-              © 2024 DevArchAI. All rights reserved.
+
+            {/* Resources */}
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-3">Resources</h4>
+              <ul className="space-y-1 text-sm text-slate-400">
+                <li><a href="/docs" className="block py-1.5 hover:text-white transition-colors">Documentation</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">API Reference</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Blog</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Security</a></li>
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-3">Company</h4>
+              <ul className="space-y-1 text-sm text-slate-400">
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">About</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Privacy</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Terms</a></li>
+                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Contact</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-slate-400">
+              &copy; {new Date().getFullYear()} DevArchAI. All rights reserved.
             </p>
+            <div className="flex items-center gap-4 text-xs text-slate-400">
+              <a href="#" className="hover:text-white transition-colors py-1">Privacy Policy</a>
+              <a href="#" className="hover:text-white transition-colors py-1">Terms of Service</a>
+              <a href="#" className="hover:text-white transition-colors py-1">Cookie Policy</a>
+            </div>
           </div>
         </div>
       </footer>

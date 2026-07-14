@@ -5,7 +5,7 @@ import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap
 import { Button, Card } from '../components/ui'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
-import { ScanProgress } from './ScanProgress'
+
 
 interface DevOpsStack {
   docker: boolean
@@ -174,7 +174,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
     <div className="space-y-6">
       {/* Scan Progress Modal */}
       {showProgress && (
-        <Card className="p-8 glow-primary animate-scale-in" hover={false}>
+        <Card className="p-8 animate-scale-in" hover={false}>
           <div className="space-y-6">
             {/* Header */}
             <div className="text-center space-y-2">
@@ -388,7 +388,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
       {result && result.findings && (
         <div className="space-y-6 animate-fade-in">
           {/* Score Card */}
-          <Card className="p-8 glow-primary" hover={false}>
+          <Card className="p-8" hover={false}>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">{result.repo_name || result.repo || 'Repository'}</h2>

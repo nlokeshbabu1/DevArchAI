@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,25 +37,35 @@ class FindingResponse(BaseModel):
     category: Category
     description: str
     recommendation: str
-    summary: Optional[str] = None
-    risk: Optional[str] = None
-    impact: Optional[str] = None
-    fix_example: Optional[str] = None
-    fix_code: Optional[str] = None
-    full_example: Optional[str] = None
-    best_practices: Optional[list[str]] = None
-    file_path: Optional[str]
-    line_number: Optional[int]
-    resource_name: Optional[str]
-    ai_explanation: Optional[str]
-    impact_analysis: Optional[str]
-    ai_generated: Optional[bool] = False
-    documentation_url: Optional[str] = None
-    confidence: Optional[float] = None
+    summary: str | None = None
+    risk: str | None = None
+    impact: str | None = None
+    fix_example: str | None = None
+    fix_code: str | None = None
+    full_example: str | None = None
+    best_practices: list[str] | None = None
+    file_path: str | None
+    line_number: int | None
+    resource_name: str | None
+    ai_explanation: str | None
+    impact_analysis: str | None
+    ai_generated: bool | None = False
+    documentation_url: str | None = None
+    confidence: float | None = None
     confidence_score: float
     is_resolved: bool
-    resolved_at: Optional[datetime]
+    resolved_at: datetime | None
     created_at: datetime
+    # Scanner metadata fields (backward-compatible)
+    scanner_name: str | None = None
+    scanner_rule_id: str | None = None
+    package: str | None = None
+    installed_version: str | None = None
+    fixed_version: str | None = None
+    cve: str | None = None
+    cwe: str | None = None
+    references: list[str] | None = None
+    evidence: str | None = None
 
     class Config:
         from_attributes = True
@@ -75,8 +84,8 @@ class FindingListResponse(BaseModel):
 class FindingUpdate(BaseModel):
     """Finding update request."""
 
-    is_resolved: Optional[bool] = None
-    resolution_note: Optional[str] = Field(None, max_length=1000)
+    is_resolved: bool | None = None
+    resolution_note: str | None = Field(None, max_length=1000)
 
 
 class EnrichedFinding(BaseModel):
@@ -87,21 +96,21 @@ class EnrichedFinding(BaseModel):
     severity: Severity
     category: Category
     description: str
-    summary: Optional[str] = None
+    summary: str | None = None
     risk: str
     impact: str
     file: str
-    line: Optional[int] = None
-    resource: Optional[str] = None
+    line: int | None = None
+    resource: str | None = None
     recommendation: str
-    fix_example: Optional[str] = None
-    fix_code: Optional[str] = None
-    full_example: Optional[str] = None
-    best_practices: Optional[str] = None
-    ai_explanation: Optional[str] = None
-    ai_generated: Optional[bool] = False
-    documentation_url: Optional[str] = None
-    confidence: Optional[float] = None
+    fix_example: str | None = None
+    fix_code: str | None = None
+    full_example: str | None = None
+    best_practices: str | None = None
+    ai_explanation: str | None = None
+    ai_generated: bool | None = False
+    documentation_url: str | None = None
+    confidence: float | None = None
 
     class Config:
         from_attributes = True

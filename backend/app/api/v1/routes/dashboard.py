@@ -1,14 +1,13 @@
 """Dashboard routes - Implements missing endpoints."""
 
-import structlog
 from datetime import datetime, timedelta
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, distinct
+import structlog
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user, get_optional_user
+from app.core.security import get_optional_user
 from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.scan import Scan, ScanStatus
@@ -21,7 +20,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 @router.get("/summary")
 async def get_dashboard_summary(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -51,10 +50,10 @@ async def get_dashboard_summary(
             "ai_suggestions": 0,
             "average_score": 0,
         }
-    
+
     # Get all findings for user's scans
     scan_ids = [str(scan.id) for scan in scans]
-    
+
     if scan_ids:
         findings_result = await db.execute(
             select(Finding).where(Finding.scan_id.in_(scan_ids))
@@ -62,7 +61,7 @@ async def get_dashboard_summary(
         findings = findings_result.scalars().all()
     else:
         findings = []
-    
+
     # Calculate stats
     unique_repos = set(scan.repository_url for scan in scans)
     critical_count = sum(1 for f in findings if f.severity.value == 'critical')
@@ -86,13 +85,13 @@ async def get_dashboard_summary(
 @router.get("/recent-scans")
 async def get_recent_scans(
     limit: int = Query(default=5, ge=1, le=20),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get recent scans for dashboard."""
     if not current_user:
         return []
-    
+
     result = await db.execute(
         select(Scan)
         .where(Scan.user_id == current_user.id)
@@ -100,7 +99,7 @@ async def get_recent_scans(
         .limit(limit)
     )
     scans = result.scalars().all()
-    
+
     return [
         {
             "id": str(scan.id),
@@ -120,17 +119,17 @@ async def get_recent_scans(
 @router.get("/trends")
 async def get_score_trends(
     period: str = Query(default="30d", regex="^(7d|30d|90d)$"),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get score trends over time."""
     if not current_user:
         return []
-    
+
     # Calculate date range
     days = int(period.replace("d", ""))
     start_date = datetime.utcnow() - timedelta(days=days)
-    
+
     result = await db.execute(
         select(Scan)
         .where(
@@ -141,7 +140,7 @@ async def get_score_trends(
         .order_by(Scan.created_at)
     )
     scans = result.scalars().all()
-    
+
     # Group by date and calculate averages
     trends = {}
     for scan in scans:
@@ -157,7 +156,7 @@ async def get_score_trends(
                 "overall": 0,
                 "count": 0,
             }
-        
+
         trends[date_str]["security"] += scan.security_score or 0
         trends[date_str]["scalability"] += scan.scalability_score or 0
         trends[date_str]["reliability"] += scan.reliability_score or 0
@@ -165,7 +164,7 @@ async def get_score_trends(
         trends[date_str]["observability"] += scan.observability_score or 0
         trends[date_str]["overall"] += scan.overall_score or 0
         trends[date_str]["count"] += 1
-    
+
     # Calculate averages
     result_list = []
     for trend in trends.values():
@@ -180,25 +179,25 @@ async def get_score_trends(
                 "observability": round(trend["observability"] / count, 2),
                 "overall": round(trend["overall"] / count, 2),
             })
-    
+
     return result_list
 
 
 @router.get("/metrics")
 async def get_dashboard_metrics(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get key metrics for dashboard."""
     if not current_user:
         return {}
-    
+
     # Get scans
     result = await db.execute(
         select(Scan).where(Scan.user_id == current_user.id)
     )
     scans = result.scalars().all()
-    
+
     # Get findings
     scan_ids = [str(scan.id) for scan in scans]
     if scan_ids:
@@ -208,7 +207,7 @@ async def get_dashboard_metrics(
         findings = findings_result.scalars().all()
     else:
         findings = []
-    
+
     # Calculate metrics
     severity_counts = {
         "critical": 0,
@@ -217,17 +216,17 @@ async def get_dashboard_metrics(
         "low": 0,
         "info": 0,
     }
-    
+
     category_counts = {}
-    
+
     for finding in findings:
         severity = finding.severity.value
         if severity in severity_counts:
             severity_counts[severity] += 1
-        
+
         category = finding.category.value
         category_counts[category] = category_counts.get(category, 0) + 1
-    
+
     # Scan status counts
     status_counts = {
         "completed": 0,
@@ -235,12 +234,12 @@ async def get_dashboard_metrics(
         "failed": 0,
         "pending": 0,
     }
-    
+
     for scan in scans:
         status = scan.status.value
         if status in status_counts:
             status_counts[status] += 1
-    
+
     return {
         "severity_counts": severity_counts,
         "category_counts": category_counts,
@@ -255,15 +254,15 @@ async def get_dashboard_metrics(
 
 @router.get("/alerts")
 async def get_dashboard_alerts(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get active alerts for dashboard."""
     if not current_user:
         return []
-    
+
     alerts = []
-    
+
     # Get recent failed scans
     result = await db.execute(
         select(Scan)
@@ -275,7 +274,7 @@ async def get_dashboard_alerts(
         .limit(5)
     )
     failed_scans = result.scalars().all()
-    
+
     for scan in failed_scans:
         alerts.append({
             "id": f"scan_failed_{scan.id}",
@@ -286,12 +285,12 @@ async def get_dashboard_alerts(
             "created_at": scan.created_at.isoformat(),
             "scan_id": str(scan.id),
         })
-    
+
     # Get scans with critical findings
     scan_ids = [str(scan.id) for scan in scans] if (scans := (await db.execute(
         select(Scan).where(Scan.user_id == current_user.id, Scan.status == ScanStatus.COMPLETED)
     )).scalars().all()) else []
-    
+
     if scan_ids:
         critical_findings = await db.execute(
             select(Finding, Finding.scan_id)
@@ -301,7 +300,7 @@ async def get_dashboard_alerts(
             )
             .limit(5)
         )
-        
+
         for finding, scan_id in critical_findings.all():
             alerts.append({
                 "id": f"critical_finding_{finding.id}",
@@ -313,5 +312,5 @@ async def get_dashboard_alerts(
                 "scan_id": str(scan_id),
                 "finding_id": str(finding.id),
             })
-    
+
     return alerts

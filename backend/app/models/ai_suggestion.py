@@ -2,7 +2,6 @@
 
 import enum
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
@@ -53,21 +52,21 @@ class AISuggestion(Base):
     # Basic info
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    
+
     # Classification
     severity = Column(String(50), nullable=False, index=True)  # critical, high, medium, low, info
     confidence = Column(Float, default=0.9, nullable=False)  # 0.0 to 1.0
     category = Column(String(50), nullable=False, index=True)  # security, reliability, cost, etc.
     fix_type = Column(SQLEnum(FixType), nullable=False, default=FixType.GENERAL)
-    
+
     # Location
     file_path = Column(String(500), nullable=False)
     line_number = Column(Integer, nullable=True)
-    
+
     # Fix code
     fix_code = Column(Text, nullable=True)  # The actual code fix
     auto_fix_available = Column(Boolean, default=False, nullable=False)
-    
+
     # Status tracking
     status = Column(SQLEnum(SuggestionStatus), default=SuggestionStatus.OPEN, nullable=False, index=True)
     applied_at = Column(DateTime(timezone=True), nullable=True)
