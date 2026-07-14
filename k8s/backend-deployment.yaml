@@ -1,0 +1,169 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devarchai-backend
+  namespace: devarchai
+  labels:
+    app.kubernetes.io/name: devarchai-backend
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: devarchai-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: devarchai-backend
+        app.kubernetes.io/component: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: run-migrations
+          image: devarchai-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python3
+            - -c
+            - |
+              from app.db.migrate import run_migrations, current_revision, pending_migrations
+              print("Running migrations...")
+              run_migrations()
+              rev = current_revision()
+              pending = pending_migrations()
+              print(f"Current revision: {rev}")
+              if pending:
+                  print(f"ERROR: {len(pending)} pending migration(s) remaining")
+                  exit(1)
+              print("Migrations complete")
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: database-url
+            - name: ENVIRONMENT
+              value: production
+            - name: LLM_PROVIDER
+              value: mock
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+      containers:
+        - name: backend
+          image: devarchai-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: redis-url
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: secret-key
+            - name: ENVIRONMENT
+              value: production
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8000"
+            - name: UVICORN_WORKERS
+              value: "2"
+            - name: LLM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: llm-provider
+                  optional: true
+            - name: LOG_LEVEL
+              value: INFO
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: openai-api-key
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: devarchai-secrets
+                  key: github-token
+                  optional: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devarchai-backend
+  namespace: devarchai
+  labels:
+    app.kubernetes.io/name: devarchai-backend
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: devarchai-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

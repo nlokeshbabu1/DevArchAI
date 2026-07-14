@@ -29,12 +29,33 @@ def _sync_url() -> str:
 
 def check_db_connection() -> bool:
     """Verify the database is reachable with a simple query."""
+    from sqlalchemy import text
+
+    engine = None
     try:
         engine = create_engine(_sync_url())
         with engine.connect() as conn:
-            conn.execute(conn.default_schema_name or "SELECT 1")
-        engine.dispose()
+            conn.execute(text("SELECT 1"))
         return True
+    except Exception:
+        return False
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
+def _schema_is_at_head(inspector) -> bool:
+    """Verify the database schema actually matches the head migration.
+
+    Checks for key columns added by recent migrations to avoid incorrectly
+    stamping a database that was created with create_all() before later
+    migrations were added.
+    """
+    try:
+        scans_columns = {col["name"] for col in inspector.get_columns("scans")}
+        # Migration 021 adds current_stage — the latest schema change.
+        # If this column exists, assume the schema is at head.
+        return "current_stage" in scans_columns
     except Exception:
         return False
 
@@ -55,6 +76,12 @@ def stamp_if_needed() -> bool:
     has_version_table = "alembic_version" in existing_tables
     has_app_tables = bool(existing_tables & _APP_TABLES)
 
+    # Verify schema completeness BEFORE disposing the engine — the inspector
+    # needs a live connection to read column metadata.
+    schema_ok = True
+    if has_app_tables and not has_version_table:
+        schema_ok = _schema_is_at_head(inspector)
+
     engine.dispose()
 
     if has_version_table:
@@ -63,7 +90,16 @@ def stamp_if_needed() -> bool:
     if not has_app_tables:
         return False
 
-    # Database has app tables but no alembic_version — stamp at head
+    if not schema_ok:
+        logger.error(
+            "Database has app tables but no alembic_version table, and the "
+            "schema is missing columns from recent migrations. "
+            "Cannot automatically determine the correct Alembic revision. "
+            "Please add the missing columns manually and then run: "
+            "alembic stamp head"
+        )
+        return False
+
     cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
     cfg.set_main_option("sqlalchemy.url", url)
     alembic.command.stamp(cfg, "head")

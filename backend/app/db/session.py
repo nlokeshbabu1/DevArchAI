@@ -61,19 +61,21 @@ def get_session_factory():
 
 def get_sync_session_factory():
     """Get or create synchronous session factory for Celery tasks."""
-    global _sync_session_factory
+    global _sync_session_factory, _sync_engine
     if _sync_session_factory is None:
         # Convert async URL to sync URL
         sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2").replace("+aiomysql", "+pymysql")
 
-        sync_engine = create_engine(
+        _sync_engine = create_engine(
             sync_url,
+            pool_size=settings.DB_POOL_SIZE,
+            max_overflow=settings.DB_MAX_OVERFLOW,
             pool_pre_ping=True,
             echo=settings.DEBUG,
         )
 
         _sync_session_factory = sessionmaker(
-            bind=sync_engine,
+            bind=_sync_engine,
             class_=Session,
             expire_on_commit=False,
             autocommit=False,
