@@ -1,0 +1,105 @@
+name: Migration Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/app/db/migrations/**"
+      - "backend/app/models/**"
+      - "backend/alembic.ini"
+      - ".github/workflows/migration-check.yml"
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  validate-migrations:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: devarchai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run alembic upgrade head
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/devarchai_test
+          ENVIRONMENT: development
+          LLM_PROVIDER: mock
+        run: |
+          python3 -c "
+          from app.db.migrate import run_migrations, current_revision
+          run_migrations()
+          rev = current_revision()
+          print(f'Database migrated to revision: {rev}')
+          "
+
+      - name: Check for pending migrations
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/devarchai_test
+          ENVIRONMENT: development
+          LLM_PROVIDER: mock
+        run: |
+          python3 -c "
+          from app.db.migrate import pending_migrations, current_revision
+          rev = current_revision()
+          pending = pending_migrations()
+          print(f'Current revision: {rev}')
+          if pending:
+              print(f'ERROR: {len(pending)} pending migration(s): {pending}')
+              exit(1)
+          print('No pending migrations — schema is up to date')
+          "
+
+      - name: Validate migration is reversible
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/devarchai_test
+          ENVIRONMENT: development
+          LLM_PROVIDER: mock
+        run: |
+          python3 -c "
+          import alembic.command
+          import alembic.config
+          from app.db.migrate import _sync_url
+
+          url = _sync_url()
+          cfg = alembic.config.Config('alembic.ini')
+          cfg.set_main_option('sqlalchemy.url', url)
+
+          # Downgrade one step
+          alembic.command.downgrade(cfg, '-1')
+          print('Downgrade one step succeeded')
+
+          # Re-upgrade to head
+          alembic.command.upgrade(cfg, 'head')
+          print('Re-upgrade to head succeeded')
+          "
