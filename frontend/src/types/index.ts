@@ -69,6 +69,7 @@ export interface Finding {
   cwe?: string
   references?: string[]
   evidence?: string
+  resource_name?: string
   // Legacy fields (fallback only)
   fix_example?: string
   ai_explanation?: string

@@ -704,11 +704,27 @@ async def get_scan_results(
     if files_analyzed == 0:
         files_analyzed = len({f.file_path for f in findings if f.file_path})
 
+    # Compute scanners_used and total_rules_executed
+    scanner_execs = scan.scanner_executions or []
+    scanners_used = len([
+        se for se in scanner_execs
+        if se.status in ("COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS")
+    ])
+    total_rules_executed = sum(se.rules_executed or 0 for se in scanner_execs)
+
+    # Derive repository name from URL
+    repo_parts = scan.repository_url.rstrip("/").split("/")
+    repository_name = "/".join(repo_parts[-2:]) if len(repo_parts) >= 2 else repo_parts[-1]
+
     return {
         "scan_id": str(scan.id),
+        "id": str(scan.id),
         "repository_url": scan.repository_url,
+        "repository_name": repository_name,
         "branch": scan.branch,
+        "commit_hash": scan.commit_hash,
         "status": "completed",
+        "ai_status": scan.ai_status or "completed",
         "overall_score": scan.overall_score,
         "security_score": scan.security_score,
         "scalability_score": scan.scalability_score,
@@ -719,6 +735,8 @@ async def get_scan_results(
         "severity_counts": severity_counts,
         "files_analyzed": files_analyzed,
         "detected_technologies": detected_technologies,  # Extracted from findings
+        "scanners_used": scanners_used,
+        "rules_executed": total_rules_executed,
         "scanner_executions": [
             {
                 "scanner_name": se.scanner_name,

@@ -14,6 +14,7 @@ import { X } from "lucide-react"
 import { cn, getFileName, copyToClipboard } from "../../lib/utils"
 
 interface ScanResultData {
+  id?: string
   ai_status?: "pending" | "processing" | "completed" | "failed"
   status?: string
   scan_id?: string
@@ -36,6 +37,8 @@ interface ScanResultData {
   scanner_executions?: any[]
   ai_suggestions_count?: number
   findings_count?: number
+  scanners_used?: number
+  rules_executed?: number
 }
 
 interface ScanResultsDashboardProps {
@@ -83,14 +86,12 @@ export function ScanResultsDashboard({
     return result.scanner_executions.reduce((sum: number, e: any) => sum + (e.findings_count || 0), 0)
   }, [result.scanner_executions])
 
-  const scannersCount = result.scanner_executions?.length
+  const scannersCount = result.scanners_used ?? result.scanner_executions?.length
 
   const filesScanned = useMemo(() => {
-    const backend = result.files_analyzed
+    if (result.files_analyzed != null && result.files_analyzed > 0) return result.files_analyzed
     const uniqueFiles = new Set(findings.map(f => f.file_path).filter(Boolean))
-    const derived = uniqueFiles.size
-    if ((backend === 0 || backend == null) && derived > 0) return derived
-    return Math.max(backend ?? 0, derived)
+    return uniqueFiles.size
   }, [result.files_analyzed, findings])
 
   const affectedFiles = useMemo(() => {
@@ -98,8 +99,9 @@ export function ScanResultsDashboard({
   }, [findings])
 
   const rulesExecuted = useMemo(() => {
+    if (result.rules_executed != null && result.rules_executed > 0) return result.rules_executed
     return new Set(findings.map(f => f.rule_id).filter(Boolean)).size
-  }, [findings])
+  }, [result.rules_executed, findings])
 
   const directoriesScanned = useMemo(() => {
     if (result.directories_scanned != null) return result.directories_scanned
@@ -114,6 +116,7 @@ export function ScanResultsDashboard({
   }, [result.directories_scanned, findings])
 
   const technologiesCount = result.detected_technologies?.length ?? 0
+  const scannersUsed = result.scanners_used ?? scannersCount ?? 0
 
   const coverageScores = result.category_scores?.reduce((acc, cat) => {
     acc[cat.category] = cat.score
@@ -198,6 +201,7 @@ export function ScanResultsDashboard({
               directoriesScanned={directoriesScanned}
               rulesExecuted={rulesExecuted}
               technologiesCount={technologiesCount}
+              scannersUsed={scannersUsed}
               scanDuration={result.analysis_duration_seconds}
               linesAnalyzed={result.lines_analyzed}
               repoSize={result.repository_size}
@@ -207,6 +211,7 @@ export function ScanResultsDashboard({
             <DetectionCoverage
               scannerExecutions={result.scanner_executions}
               findings={findings}
+              detectedTechnologies={result.detected_technologies}
             />
 
             {/* ===== SECTION 3: Security Findings (PRIMARY) ===== */}

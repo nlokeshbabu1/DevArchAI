@@ -42,6 +42,8 @@ interface ScanResult {
   analysis_duration_seconds?: number
   commit_hash?: string
   started_at?: string
+  scanners_used?: number
+  rules_executed?: number
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const
@@ -513,9 +515,7 @@ export function ScanProgressPage() {
     }
 
     if (result) {
-      const sevCounts = result.findings?.reduce((acc: any, f: any) => {
-        acc[f.severity || 'info'] = (acc[f.severity || 'info'] || 0) + 1; return acc
-      }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 }) || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+      const sevCounts = result.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
 
       const topFixes = (result.findings || []).filter((f: any) => f.severity === 'critical' || f.severity === 'high').slice(0, 5)
       const isAiPending = result.ai_status === 'pending' || result.ai_status === 'processing'
@@ -628,7 +628,7 @@ export function ScanProgressPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
             <ScanResultsDashboard
               result={result as any} repoName={repoName} findings={result.findings || []}
-              severityCounts={sevCounts as Record<string, number>} priorityFixes={topFixes}
+              severityCounts={sevCounts as unknown as Record<string, number>} priorityFixes={topFixes}
               isAiReady={isAiReady} isAiPending={isAiPending} aiSummary={result.findings?.[0]?.summary || null}
               severityFilter={severityFilter} sortBy={sortBy} expandedFinding={expandedFinding} searchQuery={searchQuery}
               onSeverityFilterChange={setSeverityFilter} onSortByChange={setSortBy}

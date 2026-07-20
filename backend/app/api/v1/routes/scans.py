@@ -217,13 +217,29 @@ async def get_scan(
         if stack.get("has_drone") or stack.get("drone_files"):
             detected_tech_names.append("Drone CI")
 
-    return _serialize_scan(
+    # Compute scanners_used and total_rules_executed from scanner_executions
+    scanner_execs = scan.scanner_executions or []
+    scanners_used = len([
+        se for se in scanner_execs
+        if se.status in ("COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS")
+    ])
+    total_rules_executed = sum(se.rules_executed or 0 for se in scanner_execs)
+
+    # Derive repository name from URL
+    repo_parts = scan.repository_url.rstrip("/").split("/")
+    repository_name = "/".join(repo_parts[-2:]) if len(repo_parts) >= 2 else repo_parts[-1]
+
+    serialized = _serialize_scan(
         scan,
         findings_count=findings_count,
         files_analyzed=files_analyzed,
         detected_technologies=detected_tech_names,
-        scanner_executions=scan.scanner_executions or [],
+        scanner_executions=scanner_execs,
     )
+    serialized["repository_name"] = repository_name
+    serialized["scanners_used"] = scanners_used
+    serialized["rules_executed"] = total_rules_executed
+    return serialized
 
 
 @router.get("/{scan_id}/progress", response_model=ScanProgressResponse)
@@ -407,7 +423,20 @@ async def get_scan_findings(
             "full_example": finding.full_example,
             "best_practices": json.loads(finding.best_practices) if finding.best_practices else [],
             "confidence_score": finding.confidence_score,
+            "confidence": finding.confidence or finding.confidence_score or 0.8,
             "documentation_url": finding.documentation_url,
+            "scanner_name": finding.scanner_name,
+            "scanner_rule_id": finding.scanner_rule_id,
+            "package": finding.package,
+            "installed_version": finding.installed_version,
+            "fixed_version": finding.fixed_version,
+            "cve": finding.cve,
+            "cwe": finding.cwe,
+            "references": json.loads(finding.references)
+            if isinstance(finding.references, str)
+            else (finding.references or []),
+            "evidence": finding.evidence,
+            "resource_name": finding.resource_name,
             "created_at": finding.created_at.isoformat(),
             # Generate diff fields for Code Diff Viewer with clean paths
             "before_code": finding.ai_explanation or finding.description,
