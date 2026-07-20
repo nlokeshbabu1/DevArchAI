@@ -510,6 +510,58 @@ async def get_scan_status(
     }
 
 
+def _finding_matches_tech(finding: Any, tech: str) -> bool:
+    """Check if a finding belongs to a specific technology."""
+    fp = (finding.file_path or "").lower()
+    sn = (finding.scanner_name or "").lower()
+    cat = (finding.category.value if hasattr(finding.category, "value") else str(finding.category)).lower()
+    tech_patterns = {
+        "docker": ["dockerfile", "docker"],
+        "terraform": [".tf", "terraform"],
+        "kubernetes": ["kubernetes", "k8s", "deployment"],
+        "github_actions": [".github/workflows"],
+        "gitlab_ci": [".gitlab-ci"],
+        "jenkins": ["jenkinsfile", "jenkins"],
+        "helm": ["chart.yaml", "helm", "values.yaml"],
+        "ansible": ["ansible", "playbook"],
+        "circleci": [".circleci"],
+        "azure_devops": ["azure-pipelines"],
+        "docker_compose": ["docker-compose", "compose.yml"],
+    }
+    patterns = tech_patterns.get(tech, [])
+    for p in patterns:
+        if p in fp:
+            return True
+    if tech == "docker" and "hadolint" in sn:
+        return True
+    if tech == "terraform" and ("tfsec" in sn or "checkov" in sn) and cat == "scalability":
+        return True
+    return False
+
+
+def _detect_finding_technology(finding: Any) -> str:
+    """Detect the technology for a finding."""
+    fp = (finding.file_path or "").lower()
+    sn = (finding.scanner_name or "").lower()
+    if "dockerfile" in fp or "hadolint" in sn:
+        return "docker"
+    if fp.endswith(".tf") or "terraform" in fp:
+        return "terraform"
+    if "kubernetes" in fp or "k8s" in fp or "kube_score" in sn:
+        return "kubernetes"
+    if ".github/workflows" in fp:
+        return "github_actions"
+    if "jenkins" in fp or "jenkinsfile" in fp:
+        return "jenkins"
+    if "helm" in fp or "chart.yaml" in fp:
+        return "helm"
+    if "gitleaks" in sn:
+        return "secrets"
+    if "npm_audit" in sn or "pip_audit" in sn or "govulncheck" in sn:
+        return "dependencies"
+    return "code"
+
+
 @router.get("/results/{scan_id}", response_model=dict[str, Any])
 async def get_scan_results(
     scan_id: str,
@@ -716,6 +768,78 @@ async def get_scan_results(
     repo_parts = scan.repository_url.rstrip("/").split("/")
     repository_name = "/".join(repo_parts[-2:]) if len(repo_parts) >= 2 else repo_parts[-1]
 
+    # Compute directories_scanned from findings
+    directories_scanned = len({
+        "/".join(f.file_path.split("/")[:-1])
+        for f in findings if f.file_path and "/" in f.file_path
+    })
+
+    # Derive repository_size from repository relationship (if available)
+    repository_size = None
+    if scan.repository and hasattr(scan.repository, "size") and scan.repository.size:
+        size_kb = scan.repository.size
+        if size_kb >= 1048576:
+            repository_size = f"{size_kb / 1048576:.1f} GB"
+        elif size_kb >= 1024:
+            repository_size = f"{size_kb / 1024:.1f} MB"
+        else:
+            repository_size = f"{size_kb} KB"
+
+    # Build per-technology file counts from detected_stack + findings
+    technology_details = []
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        tech_file_map = {
+            "docker": stack.get("docker_files", []),
+            "terraform": stack.get("terraform_files", []),
+            "kubernetes": stack.get("kubernetes_files", []),
+            "github_actions": stack.get("github_actions_files", []),
+            "gitlab_ci": stack.get("gitlab_ci_files", []),
+            "jenkins": stack.get("jenkins_files", []),
+            "helm": stack.get("helm_files", []),
+            "ansible": stack.get("ansible_files", []),
+            "circleci": stack.get("circleci_files", []),
+            "azure_devops": stack.get("azure_devops_files", []),
+            "docker_compose": stack.get("docker_compose_files", []),
+        }
+        for tech, files in tech_file_map.items():
+            if files or tech in detected_technologies:
+                # Count findings for this technology
+                tech_findings = [f for f in findings if _finding_matches_tech(f, tech)]
+                tech_sev = {}
+                for tf in tech_findings:
+                    sev = tf.severity.value if hasattr(tf.severity, "value") else str(tf.severity)
+                    tech_sev[sev] = tech_sev.get(sev, 0) + 1
+                technology_details.append({
+                    "technology": tech,
+                    "files_count": len(files),
+                    "findings_count": len(tech_findings),
+                    "severity_counts": tech_sev,
+                    "status": "DETECTED" if files else ("HAS_FINDINGS" if tech_findings else "CLEAN"),
+                })
+
+    # Build risk_distribution (just counts, no duplication with technology_details)
+    risk_distribution = {
+        "critical": severity_counts.get("CRITICAL", 0) or severity_counts.get("critical", 0),
+        "high": severity_counts.get("HIGH", 0) or severity_counts.get("high", 0),
+        "medium": severity_counts.get("MEDIUM", 0) or severity_counts.get("medium", 0),
+        "low": severity_counts.get("LOW", 0) or severity_counts.get("low", 0),
+        "info": severity_counts.get("INFO", 0) or severity_counts.get("info", 0),
+    }
+
+    # Build top_files (files sorted by findings count, deduplicated)
+    file_findings_map: dict[str, dict] = {}
+    for f in findings:
+        fp = f.file_path or ""
+        if not fp:
+            continue
+        if fp not in file_findings_map:
+            file_findings_map[fp] = {"file_path": fp, "findings_count": 0, "severities": {}}
+        file_findings_map[fp]["findings_count"] += 1
+        sev = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
+        file_findings_map[fp]["severities"][sev] = file_findings_map[fp]["severities"].get(sev, 0) + 1
+    top_files = sorted(file_findings_map.values(), key=lambda x: x["findings_count"], reverse=True)[:15]
+
     return {
         "scan_id": str(scan.id),
         "id": str(scan.id),
@@ -733,8 +857,13 @@ async def get_scan_results(
         "observability_score": scan.observability_score,
         "findings_count": len(findings),
         "severity_counts": severity_counts,
+        "risk_distribution": risk_distribution,
         "files_analyzed": files_analyzed,
-        "detected_technologies": detected_technologies,  # Extracted from findings
+        "directories_scanned": directories_scanned,
+        "repository_size": repository_size,
+        "detected_technologies": detected_technologies,
+        "technology_details": technology_details,
+        "top_files": top_files,
         "scanners_used": scanners_used,
         "rules_executed": total_rules_executed,
         "scanner_executions": [
@@ -768,24 +897,20 @@ async def get_scan_results(
                 "file_path": f.file_path,
                 "line_number": f.line_number,
                 "ai_explanation": f.ai_explanation,
-                # AI Fix Generator fields (production-grade)
                 "summary": f.summary,
                 "risk": f.risk,
                 "impact": f.impact,
                 "fix_code": f.fix_code,
                 "fix_example": f.fix_example,
                 "full_example": f.full_example,
-                # Parse best_practices if it's a JSON string
                 "best_practices": json.loads(f.best_practices)
                 if isinstance(f.best_practices, str)
                 else (f.best_practices or []),
-                # Use confidence_score (frontend expects this field name)
                 "confidence_score": f.confidence_score or f.confidence or 0.8,
                 "confidence": f.confidence
                 or f.confidence_score
-                or 0.8,  # Also include for backwards compatibility
+                or 0.8,
                 "documentation_url": f.documentation_url,
-                # Scanner metadata fields (backward-compatible)
                 "scanner_name": f.scanner_name,
                 "scanner_rule_id": f.scanner_rule_id,
                 "package": f.package,
@@ -797,6 +922,7 @@ async def get_scan_results(
                 if isinstance(f.references, str)
                 else (f.references or []),
                 "evidence": f.evidence,
+                "technology": _detect_finding_technology(f),
             }
             for f in findings
         ],

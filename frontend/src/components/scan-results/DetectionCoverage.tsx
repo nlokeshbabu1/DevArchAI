@@ -15,6 +15,7 @@ interface DetectionCoverageProps {
   scannerExecutions?: ScannerExecution[]
   findings?: any[]
   detectedTechnologies?: string[]
+  technologyDetails?: { technology: string; files_count: number; findings_count: number; severity_counts: Record<string, number>; status: string }[]
 }
 
 const CARD_STATUS: Record<string, { label: string; icon: typeof Shield; color: string; border: string }> = {
@@ -159,7 +160,7 @@ function renderSeverityBadge(sev: string, count: number): React.ReactNode {
   )
 }
 
-export function DetectionCoverage({ scannerExecutions = [], findings = [], detectedTechnologies = [] }: DetectionCoverageProps) {
+export function DetectionCoverage({ scannerExecutions = [], findings = [], detectedTechnologies = [], technologyDetails = [] }: DetectionCoverageProps) {
   const [expandedTech, setExpandedTech] = useState<string | null>(null)
 
   const techCards = useMemo(() => {
@@ -188,6 +189,12 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
       techSet.add("dependencies")
     }
 
+    // Build a map of backend-provided technology details
+    const techDetailsMap = new Map<string, typeof technologyDetails[number]>()
+    for (const td of technologyDetails) {
+      techDetailsMap.set(td.technology.toLowerCase().replace(/[\s-]+/g, "_"), td)
+    }
+
     return Array.from(techSet).map(techKey => {
       const techInfo = TECH_REGISTRY.find(t => t.key === techKey)
       const label = techInfo?.label ?? techKey.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
@@ -201,9 +208,18 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
         e.scanner_name.toLowerCase().includes(techKey.replace(/_/g, ""))
       )
 
-      // Find findings for this technology
+      // Get backend-computed details if available
+      const backendDetails = techDetailsMap.get(techKey)
+      const filesCount = backendDetails?.files_count ?? 0
+
+      // Find findings for this technology (use backend tech if available, else fallback to client-side)
       const typedFindings = findings as Record<string, unknown>[]
-      const techFindings = typedFindings.filter(f => matchFindingToTech(f, techKey))
+      const techFindings = backendDetails
+        ? typedFindings.filter(f => {
+            const fTech = ((f.technology as string) ?? "").toLowerCase()
+            return fTech === techKey || fTech === techKey.replace(/_/g, "")
+          })
+        : typedFindings.filter(f => matchFindingToTech(f, techKey))
 
       // Build scanner info
       const scanners = memberExecs.map(exec => ({
@@ -218,26 +234,38 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
         ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS"].includes(s.status)
       ).length
 
-      // Severity counts from findings
-      const sevCounts: Record<string, number> = {}
-      for (const f of techFindings) {
-        const sev = ((f.severity as string) ?? "info").toLowerCase()
-        sevCounts[sev] = (sevCounts[sev] ?? 0) + 1
+      // Severity counts: prefer backend, fallback to client-side
+      const sevCounts: Record<string, number> = backendDetails?.severity_counts ?? {}
+      if (!backendDetails || Object.keys(sevCounts).length === 0) {
+        for (const f of techFindings) {
+          const sev = ((f.severity as string) ?? "info").toLowerCase()
+          sevCounts[sev] = (sevCounts[sev] ?? 0) + 1
+        }
       }
 
-      // Determine status
+      // Determine status: prefer backend, fallback to client-side
       let scannerStatus: string
-      if (techFindings.length > 0) scannerStatus = "DETECTED"
-      else if (memberExecs.some(e => e.status === "RUNNING")) scannerStatus = "RUNNING"
-      else if (memberExecs.some(e => e.status === "FAILED")) scannerStatus = "FAILED"
-      else if (memberExecs.some(e => (e.status === "UNAVAILABLE" || e.status === "DISABLED") && !activeScannerCount)) scannerStatus = "UNAVAILABLE"
-      else if (memberExecs.some(e => e.status === "SKIPPED_NOT_APPLICABLE") && !activeScannerCount) scannerStatus = "NOT_APPLICABLE"
-      else scannerStatus = "CLEAN"
+      if (backendDetails?.status) {
+        scannerStatus = backendDetails.status
+      } else if (techFindings.length > 0) {
+        scannerStatus = "DETECTED"
+      } else if (memberExecs.some(e => e.status === "RUNNING")) {
+        scannerStatus = "RUNNING"
+      } else if (memberExecs.some(e => e.status === "FAILED")) {
+        scannerStatus = "FAILED"
+      } else if (memberExecs.some(e => (e.status === "UNAVAILABLE" || e.status === "DISABLED") && !activeScannerCount)) {
+        scannerStatus = "UNAVAILABLE"
+      } else if (memberExecs.some(e => e.status === "SKIPPED_NOT_APPLICABLE") && !activeScannerCount) {
+        scannerStatus = "NOT_APPLICABLE"
+      } else {
+        scannerStatus = "CLEAN"
+      }
 
       return {
         key: techKey,
         label,
         icon,
+        filesCount,
         techFindings,
         sevCounts,
         scannerCount: scanners.length,
@@ -246,10 +274,10 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
         scanners,
       }
     }).filter(card =>
-      // Only show cards that have scanner executions or findings
-      card.scannerCount > 0 || card.techFindings.length > 0
+      // Only show cards that have scanner executions, findings, or backend details
+      card.scannerCount > 0 || card.techFindings.length > 0 || card.filesCount > 0
     )
-  }, [scannerExecutions, findings, detectedTechnologies])
+  }, [scannerExecutions, findings, detectedTechnologies, technologyDetails])
 
   const totalTechFindings = techCards.reduce((s, c) => s + c.techFindings.length, 0)
 
@@ -364,7 +392,11 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
                 )}
 
                 <div className="flex items-center gap-3 text-[10px]">
-                  {card.techFindings.length > 0 ? (
+                  {card.filesCount > 0 ? (
+                    <span className="font-mono font-bold text-indigo-400/80">
+                      {card.filesCount} file{card.filesCount !== 1 ? "s" : ""}
+                    </span>
+                  ) : card.techFindings.length > 0 ? (
                     <span className="font-mono font-bold text-orange-400/80">
                       {card.techFindings.length} finding{card.techFindings.length !== 1 ? "s" : ""}
                     </span>

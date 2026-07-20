@@ -1,7 +1,7 @@
 import { motion } from "framer-motion"
 import {
   FileText, FolderTree, Shield, Code2, Clock,
-  LineChart, HardDrive, Activity, Cpu
+  HardDrive, Activity, Cpu
 } from "lucide-react"
 import { cn, formatDuration } from "../../lib/utils"
 
@@ -12,7 +12,6 @@ interface ScanCoverageSummaryProps {
   technologiesCount: number
   scannersUsed?: number
   scanDuration?: number
-  linesAnalyzed?: number
   repoSize?: string
 }
 
@@ -32,11 +31,11 @@ export function ScanCoverageSummary({
 }: ScanCoverageSummaryProps) {
   const items = [
     { value: filesScanned.toLocaleString(), display: metrics[0] },
-    { value: directoriesScanned != null ? directoriesScanned.toLocaleString() : "—", display: metrics[1] },
+    { value: directoriesScanned !== undefined && directoriesScanned !== null ? directoriesScanned.toLocaleString() : "—", display: metrics[1] },
     { value: rulesExecuted.toLocaleString(), display: metrics[2] },
     { value: technologiesCount.toString(), display: metrics[3] },
-    { value: scannersUsed != null ? scannersUsed.toString() : "—", display: metrics[4] },
-    { value: scanDuration != null ? formatDuration(scanDuration) : "—", display: metrics[5] },
+    { value: scannersUsed !== undefined && scannersUsed !== null ? scannersUsed.toString() : "—", display: metrics[4] },
+    { value: scanDuration !== undefined && scanDuration !== null ? formatDuration(scanDuration) : "—", display: metrics[5] },
     { value: repoSize || "—", display: metrics[6] },
   ]
 

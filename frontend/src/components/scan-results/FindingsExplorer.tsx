@@ -50,13 +50,15 @@ function getSourceColor(source: string): string {
 
 const columns = [
   { key: "severity", label: "Severity", width: "w-[80px]" },
-  { key: "rule_id", label: "Rule ID", width: "w-[120px]" },
-  { key: "scanner", label: "Source", width: "w-[110px]" },
-  { key: "category", label: "Category", width: "w-[90px]" },
+  { key: "rule_id", label: "Rule ID", width: "w-[100px]" },
+  { key: "scanner", label: "Source", width: "w-[100px]" },
+  { key: "technology", label: "Technology", width: "w-[90px]" },
   { key: "issue", label: "Issue", width: "flex-1 min-w-[160px]" },
-  { key: "file", label: "File", width: "w-[130px]" },
-  { key: "confidence", label: "Conf.", width: "w-[60px]" },
-  { key: "actions", label: "", width: "w-[60px]" },
+  { key: "file", label: "File", width: "w-[120px]" },
+  { key: "line", label: "Line", width: "w-[50px]" },
+  { key: "confidence", label: "Conf.", width: "w-[50px]" },
+  { key: "status", label: "Status", width: "w-[70px]" },
+  { key: "actions", label: "", width: "w-[50px]" },
 ]
 
 export const FindingsExplorer = memo(function FindingsExplorer({
@@ -270,7 +272,9 @@ export const FindingsExplorer = memo(function FindingsExplorer({
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-xs text-white/50 capitalize">{finding.category || "—"}</td>
+                      <td className="px-3 py-3">
+                        <span className="text-[10px] text-white/40 capitalize">{finding.technology || finding.category || "—"}</span>
+                      </td>
                       <td className="px-3 py-3">
                         <button
                           onClick={() => onFindingClick?.(findingId)}
@@ -279,8 +283,11 @@ export const FindingsExplorer = memo(function FindingsExplorer({
                           {finding.summary || finding.message || finding.rule_name || finding.rule_id}
                         </button>
                       </td>
-                      <td className="px-3 py-3 text-xs text-white/40 font-mono truncate max-w-[130px]" title={sanitizePath(finding.file_path) || ''}>
+                      <td className="px-3 py-3 text-xs text-white/40 font-mono truncate max-w-[120px]" title={sanitizePath(finding.file_path) || ''}>
                         {getFileName(finding.file_path)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-[10px] text-white/30 font-mono">{finding.line_number ?? "—"}</span>
                       </td>
                       <td className="px-3 py-3">
                         {confidence != null ? (
@@ -297,12 +304,14 @@ export const FindingsExplorer = memo(function FindingsExplorer({
                         )}
                       </td>
                       <td className="px-3 py-3">
+                        {hasAutoFix ? (
+                          <span className="text-[9px] text-emerald-400/60 font-medium">Fixable</span>
+                        ) : (
+                          <span className="text-[9px] text-white/20">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-1">
-                          {hasAutoFix && (
-                            <span title="Auto-fix available" className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-500/10">
-                              <Sparkles className="w-3 h-3 text-emerald-400" />
-                            </span>
-                          )}
                           <button
                             onClick={() => onExpandedFindingChange(isExpanded ? null : findingId)}
                             className="text-white/20 hover:text-white/40 transition-colors"

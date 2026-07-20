@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { SecurityHero } from "./SecurityHero"
-import { ExecutiveSummary } from "./ExecutiveSummary"
+import { RiskDistribution } from "./RiskDistribution"
+import { TopAffectedFiles } from "./TopAffectedFiles"
 import { FixTheseFirst } from "./PriorityRisks"
 import { FindingsExplorer } from "./FindingsExplorer"
 import { DetectionCoverage } from "./DetectionCoverage"
@@ -11,7 +12,7 @@ import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
 import { Diagnostics } from "./Diagnostics"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
-import { cn, getFileName, copyToClipboard } from "../../lib/utils"
+import { getFileName, copyToClipboard } from "../../lib/utils"
 
 interface ScanResultData {
   id?: string
@@ -22,7 +23,6 @@ interface ScanResultData {
   security_score?: number
   files_analyzed?: number
   directories_scanned?: number
-  lines_analyzed?: number
   repository_size?: string
   branch?: string
   repository_url?: string
@@ -30,8 +30,11 @@ interface ScanResultData {
   completed_at?: string
   analysis_duration_seconds?: number
   detected_technologies?: string[]
+  technology_details?: { technology: string; files_count: number; findings_count: number; severity_counts: Record<string, number>; status: string }[]
+  top_files?: { file_path: string; findings_count: number; severities: Record<string, number> }[]
   findings?: any[]
   severity_counts?: Record<string, number>
+  risk_distribution?: { critical: number; high: number; medium: number; low: number; info: number }
   category_scores?: { category: string; score: number; findings_count?: number; files_scanned?: number }[]
   commit_hash?: string
   scanner_executions?: any[]
@@ -69,12 +72,11 @@ interface ScanResultsDashboardProps {
 }
 
 export function ScanResultsDashboard({
-  result, repoName, findings, severityCounts, priorityFixes,
-  isAiReady, isAiPending, aiSummary,
+  result, repoName, findings, priorityFixes,
+  isAiReady, isAiPending,
   severityFilter, sortBy, expandedFinding, searchQuery,
   onSeverityFilterChange, onSortByChange, onExpandedFindingChange,
-  onSearchQueryChange, onRescan, onDownload, onShare, onFindFix,
-  onGenerateFix, onCreatePR, onBatchCreatePR, hideHeaderActions = false,
+  onSearchQueryChange, onRescan, onCreatePR,
 }: ScanResultsDashboardProps) {
   const [drawerFindingId, setDrawerFindingId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
@@ -103,20 +105,19 @@ export function ScanResultsDashboard({
     return new Set(findings.map(f => f.rule_id).filter(Boolean)).size
   }, [result.rules_executed, findings])
 
-  const directoriesScanned = useMemo(() => {
-    if (result.directories_scanned != null) return result.directories_scanned
-    const dirs = new Set(findings.map(f => {
-      const p = f.file_path
-      if (!p) return null
-      const parts = p.split("/")
-      if (parts.length > 1) return parts.slice(0, -1).join("/")
-      return "/"
-    }).filter(Boolean))
-    return dirs.size > 0 ? dirs.size : undefined
-  }, [result.directories_scanned, findings])
-
+  const directoriesScanned = result.directories_scanned
   const technologiesCount = result.detected_technologies?.length ?? 0
   const scannersUsed = result.scanners_used ?? scannersCount ?? 0
+  const riskDistribution = useMemo(() => {
+    if (result.risk_distribution) return result.risk_distribution
+    const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+    for (const f of findings) {
+      const sev = (f.severity ?? "").toLowerCase()
+      if (sev in counts) counts[sev as keyof typeof counts]++
+    }
+    return counts
+  }, [result.risk_distribution, findings])
+  const topFiles = result.top_files || []
 
   const coverageScores = result.category_scores?.reduce((acc, cat) => {
     acc[cat.category] = cat.score
@@ -164,11 +165,10 @@ export function ScanResultsDashboard({
   }
 
   const handleCreatePR = (finding: any) => onCreatePR(finding.id ?? finding.rule_id)
-  const handleCategoryClick = (cat: string) => setCategoryFilter(cat || null)
 
   return (
-    <div className="min-h-screen bg-[#0a0a10]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6 space-y-4">
+    <div className="w-full">
+      <div className="py-4 lg:py-6 space-y-4">
 
         {/* ===== SECTION 1: Repository Summary ===== */}
         <SecurityHero
@@ -203,7 +203,6 @@ export function ScanResultsDashboard({
               technologiesCount={technologiesCount}
               scannersUsed={scannersUsed}
               scanDuration={result.analysis_duration_seconds}
-              linesAnalyzed={result.lines_analyzed}
               repoSize={result.repository_size}
             />
 
@@ -212,36 +211,36 @@ export function ScanResultsDashboard({
               scannerExecutions={result.scanner_executions}
               findings={findings}
               detectedTechnologies={result.detected_technologies}
+              technologyDetails={result.technology_details}
             />
 
-            {/* ===== SECTION 3: Security Findings (PRIMARY) ===== */}
+            {/* ===== SECTION 3: Risk Distribution + Top Affected Files ===== */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-1">
+                <RiskDistribution
+                  riskDistribution={riskDistribution}
+                  totalFindings={findings.length}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <TopAffectedFiles topFiles={topFiles} />
+              </div>
+              <div className="lg:col-span-1">
+                <FixTheseFirst
+                  findings={priorityFixes}
+                  currentScore={score}
+                  onSelect={handleOpenDrawer}
+                  selectedId={drawerFindingId}
+                />
+              </div>
+            </div>
+
+            {/* ===== SECTION 4: Security Findings ===== */}
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-5 rounded-full bg-indigo-500" />
                 <h2 className="text-base font-bold text-white/80">Security Findings</h2>
                 <span className="text-xs text-white/30">{findings.length} issue{findings.length !== 1 ? "s" : ""}</span>
-              </div>
-
-              {/* AI Recommendations + Priority Risks */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
-                  <ExecutiveSummary
-                    severityCounts={severityCounts}
-                    categoryScores={result.category_scores ?? []}
-                    onCategoryClick={handleCategoryClick}
-                    activeCategory={categoryFilter}
-                    findings={findings}
-                    detectedTechnologies={result.detected_technologies}
-                  />
-                </div>
-                <div className="lg:col-span-1">
-                  <FixTheseFirst
-                    findings={priorityFixes}
-                    currentScore={score}
-                    onSelect={handleOpenDrawer}
-                    selectedId={drawerFindingId}
-                  />
-                </div>
               </div>
 
               {/* Findings Table */}
