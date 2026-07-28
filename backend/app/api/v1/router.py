@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     gitlab,
     gitlab_auth,
     health,
+    integrations,
     public_scans,
     pull_requests,
     repo_analysis,
@@ -26,6 +27,7 @@ from app.api.v1.routes import (
     unified_scan,
 )
 from app.api.v1.routes.repository_results import router as repository_results_router
+from app.cloud.routes import router as cloud_router
 
 api_router = APIRouter()
 
@@ -40,6 +42,7 @@ api_router.include_router(github_webhook.router)
 api_router.include_router(gitlab.router)
 api_router.include_router(gitlab_auth.router)
 api_router.include_router(health.router)
+api_router.include_router(integrations.router)
 api_router.include_router(pull_requests.router)
 api_router.include_router(scans.router)
 api_router.include_router(repositories.router)
@@ -51,5 +54,6 @@ api_router.include_router(unified_scan.router)
 api_router.include_router(repository_results_router)
 api_router.include_router(aws_router)
 api_router.include_router(aws_findings_router)
+api_router.include_router(cloud_router)
 
 __all__ = ["api_router"]

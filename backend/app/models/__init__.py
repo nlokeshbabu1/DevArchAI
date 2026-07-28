@@ -3,6 +3,16 @@
 from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
 from app.models.audit_log import AuditLog
 from app.models.aws import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory
+from app.models.cloud import (
+    CloudComplianceResult,
+    CloudConnection,
+    CloudCostRecommendation,
+    CloudFinding,
+    CloudProvider,
+    CloudResource,
+    CloudScanSession,
+    ConnectionStatus,
+)
 from app.models.finding import Category, Finding, Severity
 from app.models.github_installation import GitHubInstallation
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
@@ -73,4 +83,12 @@ __all__ = [
     "AWSInventory",
     "AWSFinding",
     "AWSCostRecommendation",
+    "CloudProvider",
+    "ConnectionStatus",
+    "CloudConnection",
+    "CloudScanSession",
+    "CloudResource",
+    "CloudFinding",
+    "CloudCostRecommendation",
+    "CloudComplianceResult",
 ]

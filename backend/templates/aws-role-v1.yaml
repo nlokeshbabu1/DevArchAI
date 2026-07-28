@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  DevArchAI Cloud Security Platform — Read-Only Access Role.
+  This stack creates an IAM role that allows DevArchAI to securely
+  scan your AWS account for security, cost, and compliance insights.
+  No long-lived credentials are stored. You can remove this stack at any time.
+
+Resources:
+  DevarchaiReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: {{ROLE_NAME}}
+      Description: >
+        Read-only role for DevArchAI cloud security scanning.
+        Created by DevArchAI CloudFormation stack.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: {{SCANNER_ROLE_ARN}}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "sts:ExternalId": {{EXTERNAL_ID}}
+
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref "AWS::AccountId"
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+        - arn:aws:iam::aws:policy/SecurityAudit
+
+      Policies:
+        - PolicyName: DevarchaiCostExplorer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ce:GetCostAndUsage
+                  - ce:GetCostForecast
+                  - ce:GetDimensionValues
+                  - ce:GetReservationCoverage
+                  - ce:GetReservationPurchaseRecommendation
+                  - ce:GetReservationUtilization
+                  - ce:GetUsageForecast
+                  - ce:ListCostCategoryDefinitions
+                Resource: "*"
+
+        - PolicyName: DevarchaiCloudWatch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                Resource: "*"
+
+        - PolicyName: DevarchaiOrganizations
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - organizations:ListAccounts
+                  - organizations:ListAccountsForParent
+                  - organizations:ListOrganizationalUnitsForParent
+                  - organizations:ListRoots
+                  - organizations:DescribeOrganization
+                Resource: "*"
+
+        - PolicyName: DevarchaiSupport
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - support:DescribeTrustedAdvisorChecks
+                  - support:DescribeTrustedAdvisorCheckResult
+                  - support:DescribeTrustedAdvisorCheckSummaries
+                Resource: "*"
+
+      Tags:
+        - Key: ManagedBy
+          Value: DevArchAI
+        - Key: Purpose
+          Value: CloudSecurityScanning
+        - Key: AccountId
+          Value: "{{ACCOUNT_ID}}"
+        - Key: StackId
+          Value: !Ref "AWS::StackId"
+
+Outputs:
+  RoleArn:
+    Description: ARN of the DevArchAI IAM Role
+    Value: !GetAtt DevarchaiReadOnlyRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  RoleName:
+    Description: Name of the DevArchAI IAM Role
+    Value: {{ROLE_NAME}}
+
+  StackName:
+    Description: Name of this CloudFormation stack
+    Value: !Ref "AWS::StackName"
