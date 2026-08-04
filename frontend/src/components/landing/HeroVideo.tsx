@@ -1,27 +1,26 @@
 import { useState, useEffect, useRef, useMemo, memo, type ReactNode } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
-  GitBranch, Terminal, Shield, Brain, FileText,
+  GitBranch, Shield, Brain, FileText,
   CheckCircle2, AlertTriangle, Box, Hexagon, Layers,
-  ArrowRight, Zap, Search, Workflow,
+  ArrowRight, Zap, Search, KeyRound,
 } from 'lucide-react'
 
 // ─── Timing ───────────────────────────────────────────────
-const LOOP = 11_200
+const LOOP = 10_000
 const ENTER = 300
 const EXIT = 250
 const STAGES = [
-  { start: 0,    dur: 1200, label: 'Import',   icon: GitBranch  },
-  { start: 1200, dur: 800,  label: 'Clone',    icon: Terminal   },
-  { start: 2000, dur: 1200, label: 'Detect',   icon: Search     },
-  { start: 3200, dur: 1000, label: 'Docker',   icon: Box        },
-  { start: 4200, dur: 1000, label: 'K8s',      icon: Hexagon    },
-  { start: 5200, dur: 1000, label: 'Terraform', icon: Layers    },
-  { start: 6200, dur: 1000, label: 'CI/CD',    icon: Workflow   },
-  { start: 7200, dur: 1800, label: 'AI',       icon: Brain      },
-  { start: 9000, dur: 1800, label: 'Report',   icon: FileText   },
+  { start: 0,    dur: 1000, label: 'Import',    icon: GitBranch  },
+  { start: 1000, dur: 1000, label: 'Detect',    icon: Search     },
+  { start: 2000, dur: 1000, label: 'Docker',    icon: Box        },
+  { start: 3000, dur: 1000, label: 'K8s',       icon: Hexagon    },
+  { start: 4000, dur: 1000, label: 'Terraform', icon: Layers     },
+  { start: 5000, dur: 1100, label: 'Secrets',   icon: KeyRound   },
+  { start: 6100, dur: 1700, label: 'AI',        icon: Brain      },
+  { start: 7800, dur: 1900, label: 'Report',    icon: FileText   },
 ] as const
-const TIMELINE = ['Import', 'Detect', 'Docker', 'K8s', 'TF', 'CI/CD', 'AI', 'Report'] as const
+const TIMELINE = ['Import', 'Detect', 'Docker', 'K8s', 'TF', 'Secrets', 'AI', 'Report'] as const
 
 // ─── Easing ───────────────────────────────────────────────
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
@@ -60,13 +59,11 @@ function stageOpacity(t: number, s: typeof STAGES[number]) {
   return Math.min(fadeIn, fadeOut)
 }
 
-// Map 9 animation stages → 8 timeline steps (Clone maps to Import)
-const STAGE_TO_TIMELINE = [0, 0, 1, 2, 3, 4, 5, 6, 7] as const
-
+// Stage index maps 1:1 to the timeline (8 stages → 8 steps)
 function activeIdx(t: number) {
   for (let i = STAGES.length - 1; i >= 0; i--) {
     if (t >= STAGES[i].start) {
-      return STAGE_TO_TIMELINE[i]
+      return i
     }
   }
   return 0
@@ -239,59 +236,32 @@ function ImportStage() {
   )
 }
 
-// ─── Stage 2: Clone ───────────────────────────────────────
-function CloneStage() {
-  const [progress, setProgress] = useState(0)
-
-  useEffect(() => {
-    let raf: number
-    const start = performance.now()
-    const animate = (now: number) => {
-      const elapsed = now - start
-      const p = Math.min(1, elapsed / 1400)
-      setProgress(easeOutQuart(p))
-      if (p < 1) {
-        raf = requestAnimationFrame(animate)
-      }
-    }
-    raf = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
+// ─── Stage 2: Secrets Scan ───────────────────────────────
+function SecretsScanStage() {
   return (
-    <GlassCard className="w-full max-w-sm overflow-hidden">
+    <GlassCard className="w-full max-w-sm overflow-hidden" glow>
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
-        <Terminal className="w-3 h-3 text-green-400" />
-        <span className="text-[10px] font-medium text-slate-300">Cloning Repository</span>
+        <KeyRound className="w-3 h-3 text-red-400" />
+        <span className="text-[10px] font-medium text-slate-300">Secrets Scan</span>
       </div>
-      <div className="p-3 space-y-3">
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 font-medium">Files</span>
-            <span className="text-[10px] text-slate-500 tabular-nums">{Math.round(progress * 847)}/847</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-green-500/60 to-green-400/80"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/[0.08] border border-red-500/20">
+          <KeyRound className="w-3 h-3 text-red-400" />
+          <span className="text-[10px] font-medium text-red-300">Leaked credentials detected</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-1.5">
           {[
-            { label: 'Size', value: '2.4 MB' },
-            { label: 'Objects', value: '1,247' },
-            { label: 'Time', value: '1.8s' },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p className="text-[10px] text-slate-500">{stat.label}</p>
-              <p className="text-xs font-semibold text-white tabular-nums">{stat.value}</p>
-            </div>
+            { label: 'AWS Access Key detection', color: 'bg-red-400/70' },
+            { label: 'GitHub Personal Token', color: 'bg-orange-400/70' },
+            { label: 'SSH private key exposure', color: 'bg-amber-400/70' },
+            { label: 'Database connection strings', color: 'bg-blue-400/70' },
+          ].map((item, i) => (
+            <ProgressBar key={item.label} label={item.label} progress={0.9} color={item.color} delay={i * 0.08} />
           ))}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-green-400/80">
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="font-medium">Clone complete</span>
+        <div className="flex items-center gap-1.5 text-[10px] text-red-400/80">
+          <AlertTriangle className="w-3 h-3" />
+          <span className="font-medium">5 secrets exposed</span>
         </div>
       </div>
     </GlassCard>
@@ -318,9 +288,9 @@ function DetectStage() {
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
           <defs>
             <linearGradient id="conn-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="hsl(239 84% 67% / 0)" />
-              <stop offset="50%" stopColor="hsl(239 84% 67% / 0.2)" />
-              <stop offset="100%" stopColor="hsl(239 84% 67% / 0)" />
+              <stop offset="0%" stopColor="hsl(252 100% 68% / 0)" />
+              <stop offset="50%" stopColor="hsl(252 100% 68% / 0.2)" />
+              <stop offset="100%" stopColor="hsl(252 100% 68% / 0)" />
             </linearGradient>
           </defs>
           {/* Horizontal connector */}
@@ -465,38 +435,6 @@ function TerraformScanStage() {
   )
 }
 
-// ─── Stage 7: GitHub Actions Scan ──────────────────────────
-function GitHubActionsScanStage() {
-  return (
-    <GlassCard className="w-full max-w-sm overflow-hidden" glow>
-      <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
-        <Workflow className="w-3 h-3 text-slate-300" />
-        <span className="text-[10px] font-medium text-slate-300">GitHub Actions Scan</span>
-      </div>
-      <div className="p-3 space-y-2.5">
-        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-slate-500/[0.08] border border-slate-500/20">
-          <Workflow className="w-3 h-3 text-slate-300" />
-          <span className="text-[10px] font-medium text-slate-300">ci.yml</span>
-        </div>
-        <div className="space-y-1.5">
-          {[
-            { label: 'Secrets exposure in logs', color: 'bg-red-400/70' },
-            { label: 'Unpinned action versions', color: 'bg-amber-400/70' },
-            { label: 'Excessive permissions', color: 'bg-orange-400/70' },
-            { label: 'Missing workflow triggers', color: 'bg-blue-400/70' },
-          ].map((item, i) => (
-            <ProgressBar key={item.label} label={item.label} progress={0.88} color={item.color} delay={i * 0.08} />
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-300/80">
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="font-medium">4 findings</span>
-        </div>
-      </div>
-    </GlassCard>
-  )
-}
-
 // ─── Stage 8: AI Analysis ─────────────────────────────────
 function AIStage() {
   return (
@@ -629,14 +567,13 @@ export function HeroVideo() {
 
   const stages = useMemo(() => [
     { el: <ImportStage />, ...STAGES[0] },
-    { el: <CloneStage />, ...STAGES[1] },
-    { el: <DetectStage />, ...STAGES[2] },
-    { el: <DockerScanStage />, ...STAGES[3] },
-    { el: <KubernetesScanStage />, ...STAGES[4] },
-    { el: <TerraformScanStage />, ...STAGES[5] },
-    { el: <GitHubActionsScanStage />, ...STAGES[6] },
-    { el: <AIStage />, ...STAGES[7] },
-    { el: <ReportStage />, ...STAGES[8] },
+    { el: <DetectStage />, ...STAGES[1] },
+    { el: <DockerScanStage />, ...STAGES[2] },
+    { el: <KubernetesScanStage />, ...STAGES[3] },
+    { el: <TerraformScanStage />, ...STAGES[4] },
+    { el: <SecretsScanStage />, ...STAGES[5] },
+    { el: <AIStage />, ...STAGES[6] },
+    { el: <ReportStage />, ...STAGES[7] },
   ], [])
 
   if (prefersReducedMotion) {
@@ -686,9 +623,9 @@ export function HeroVideo() {
             className="absolute inset-0 pointer-events-none"
             animate={{
               background: [
-                'radial-gradient(ellipse at 20% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
-                'radial-gradient(ellipse at 80% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
-                'radial-gradient(ellipse at 20% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 20% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 80% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 20% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
               ],
             }}
             transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}

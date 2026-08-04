@@ -49,6 +49,7 @@ const TechChip = memo(function TechChip({ tech, index }: { tech: TechItem; index
         'bg-white/[0.03] border border-white/[0.06]',
         'cursor-default select-none',
         'transition-all duration-300',
+        'animate-glow-breathe',
         isHovered && 'border-primary/30 bg-primary/[0.05]'
       )}
       initial={{ opacity: 0, y: 12 }}
@@ -59,34 +60,36 @@ const TechChip = memo(function TechChip({ tech, index }: { tech: TechItem; index
       onMouseLeave={() => setIsHovered(false)}
       whileHover={prefersReducedMotion ? undefined : { y: -3, scale: 1.02 }}
     >
-      {/* Icon with animated glow on hover */}
-      <div className={cn(
-        'relative p-1.5 rounded-lg border border-white/[0.06]',
-        'transition-all duration-300',
-        isHovered ? 'bg-primary/15 border-primary/30' : 'bg-white/[0.04]'
-      )}>
-        <Icon className={cn(
-          'h-4 w-4 transition-colors duration-300',
-          isHovered ? 'text-primary' : 'text-white/60'
-        )} />
-        {/* Glow effect on hover */}
-        {isHovered && !prefersReducedMotion && (
-          <motion.div
-            className="absolute inset-0 rounded-lg bg-primary/20 blur-md"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          />
-        )}
-      </div>
+      <div className="flex items-center gap-2.5 animate-float-subtle">
+        {/* Icon with animated glow on hover */}
+        <div className={cn(
+          'relative p-1.5 rounded-lg border border-white/[0.06]',
+          'transition-all duration-300',
+          isHovered ? 'bg-primary/15 border-primary/30' : 'bg-white/[0.04]'
+        )}>
+          <Icon className={cn(
+            'h-4 w-4 transition-colors duration-300',
+            isHovered ? 'text-primary' : 'text-white/60'
+          )} />
+          {/* Glow effect on hover */}
+          {isHovered && !prefersReducedMotion && (
+            <motion.div
+              className="absolute inset-0 rounded-lg bg-primary/20 blur-md"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+          )}
+        </div>
 
-      {/* Name */}
-      <span className={cn(
-        'text-sm font-medium whitespace-nowrap transition-colors duration-300',
-        isHovered ? 'text-white' : 'text-white/70'
-      )}>
-        {tech.name}
-      </span>
+        {/* Name */}
+        <span className={cn(
+          'text-sm font-medium whitespace-nowrap transition-colors duration-300',
+          isHovered ? 'text-white' : 'text-white/70'
+        )}>
+          {tech.name}
+        </span>
+      </div>
 
       {/* Scanning pulse line on hover */}
       {isHovered && !prefersReducedMotion && (
@@ -98,7 +101,7 @@ const TechChip = memo(function TechChip({ tech, index }: { tech: TechItem; index
           <div
             className="absolute inset-0 animate-scan-pulse"
             style={{
-              background: 'linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.08), transparent)',
+              background: 'linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.08), transparent)',
               backgroundSize: '200% 100%',
             }}
           />

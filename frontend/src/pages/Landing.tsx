@@ -181,23 +181,27 @@ export function Landing() {
         <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden">
           <FloatingTechCards />
 
-          {/* Hero ambient glows */}
-          <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-primary/[0.04] rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-blue-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
-
-          {/* Left-to-right reading gradient behind headline */}
+          {/* Hero ambient glows — depth layers */}
+          <div className="absolute top-[12%] left-1/2 -translate-x-1/2 w-[44rem] h-80 bg-primary/[0.09] rounded-full blur-[130px] pointer-events-none" />
+          <div className="absolute bottom-[14%] right-[10%] w-[30rem] h-72 bg-blue-500/[0.07] rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute top-[24%] left-[6%] w-80 h-80 bg-primary/[0.04] rounded-full blur-[110px] pointer-events-none" />
+          {/* Very soft volumetric light */}
           <div
-            className="absolute inset-y-0 left-0 w-full lg:w-[55%] pointer-events-none"
+            className="absolute top-[-12%] left-[28%] w-48 h-[140%] pointer-events-none"
+            style={{ background: 'linear-gradient(to bottom, rgba(124, 92, 255, 0.05), transparent 70%)', transform: 'rotate(16deg)' }}
+          />
+
+          {/* Centered radial glow behind headline for contrast */}
+          <div
+            className="absolute inset-0 pointer-events-none"
             style={{
-              background: 'linear-gradient(90deg, rgba(3, 0, 15, 0.55) 0%, rgba(3, 0, 15, 0.35) 40%, transparent 100%)',
+              background: 'radial-gradient(ellipse 60% 50% at 50% 40%, rgba(3, 0, 15, 0.5) 0%, rgba(3, 0, 15, 0.25) 55%, transparent 100%)',
             }}
           />
 
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-20 lg:py-0">
-            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center max-w-7xl mx-auto">
-              {/* Left: Content */}
-              <div className="max-w-xl">
-                <motion.div
+            <div className="max-w-3xl mx-auto text-center">
+              <motion.div
                   custom={0}
                   variants={fadeUp}
                   initial="hidden"
@@ -230,7 +234,7 @@ export function Landing() {
                   variants={fadeUp}
                   initial="hidden"
                   animate="visible"
-                  className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-[600px]"
+                  className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-[600px] mx-auto"
                 >
                   Scan repositories, Docker, Kubernetes, Terraform, and CI/CD pipelines.
                   Get AI-powered fix recommendations in under 30 seconds.
@@ -241,7 +245,7 @@ export function Landing() {
                   variants={fadeUp}
                   initial="hidden"
                   animate="visible"
-                  className="flex flex-row flex-wrap gap-3 mb-10"
+                  className="flex flex-row flex-wrap gap-3 mb-10 justify-center"
                 >
                   <MagneticButton onClick={handleStartScan}>
                     <Button
@@ -269,7 +273,7 @@ export function Landing() {
                   variants={fadeUp}
                   initial="hidden"
                   animate="visible"
-                  className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400"
+                  className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400 justify-center"
                 >
                   {['No credit card required', 'Free tier available', 'Instant results'].map((item) => (
                     <div key={item} className="flex items-center gap-2">
@@ -278,24 +282,26 @@ export function Landing() {
                     </div>
                   ))}
                 </motion.div>
-              </div>
 
-              {/* Right: Product showcase */}
-              <motion.div
-                custom={2}
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                className="relative w-full max-w-[650px] mx-auto lg:ml-auto"
-              >
-                <div className="absolute -inset-12 bg-primary/[0.04] rounded-3xl blur-[80px] pointer-events-none" />
-                <div className="absolute -inset-8 bg-[#0a0f1e]/60 rounded-3xl blur-xl pointer-events-none" />
-                <div className="relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_0_60px_-12px_rgba(99,102,241,0.08)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_0_80px_-8px_rgba(99,102,241,0.12)]">
-                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent rounded-t-2xl" />
-                  <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent rounded-l-2xl" />
-                  <HeroVideo />
-                </div>
-              </motion.div>
+                {/* Product showcase below the centered content */}
+                <motion.div
+                  custom={2}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="relative w-full max-w-[650px] mx-auto mt-14 lg:mt-16"
+                >
+                  <div className="absolute -inset-14 bg-primary/[0.06] rounded-3xl blur-[90px] pointer-events-none" />
+                  <div className="absolute -inset-8 bg-[#0a0f1e]/50 rounded-3xl blur-xl pointer-events-none" />
+                  {/* Soft 2px vertical float */}
+                  <div className="animate-float-subtle">
+                    <div className="glass-reflection relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6),0_0_80px_-16px_rgba(124,92,255,0.18)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.65),0_0_100px_-12px_rgba(124,92,255,0.25)]">
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.12] to-transparent rounded-t-2xl" />
+                      <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.08] to-transparent rounded-l-2xl" />
+                      <HeroVideo />
+                    </div>
+                  </div>
+                </motion.div>
             </div>
           </div>
 
@@ -314,6 +320,17 @@ export function Landing() {
               <ChevronDown className="h-4 w-4 text-slate-500" />
             </motion.div>
           </motion.div>
+
+          {/* Smooth blend into the next section — radial glow + blur fade */}
+          <div className="absolute bottom-0 left-0 right-0 h-48 lg:h-60 pointer-events-none z-[5]" aria-hidden="true">
+            <div
+              className="absolute inset-0"
+              style={{
+                background: 'radial-gradient(ellipse 75% 65% at 50% 100%, rgba(124, 92, 255, 0.08) 0%, rgba(5, 8, 22, 0.35) 55%, rgba(5, 8, 22, 0.9) 100%)',
+              }}
+            />
+            <div className="absolute inset-0 backdrop-blur-[3px]" />
+          </div>
         </section>
 
         {/* ===== LIVE PRODUCT DEMO ===== */}

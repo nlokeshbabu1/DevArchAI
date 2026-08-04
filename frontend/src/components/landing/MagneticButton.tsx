@@ -63,7 +63,7 @@ export function MagneticButton({
           className="absolute inset-0 rounded-[inherit] pointer-events-none"
           style={{
             opacity: glowOpacity,
-            background: 'radial-gradient(circle at 50% 50%, hsl(239 84% 67% / 0.15), transparent 70%)',
+            background: 'radial-gradient(circle at 50% 50%, hsl(252 100% 68% / 0.18), transparent 70%)',
           }}
         />
       )}

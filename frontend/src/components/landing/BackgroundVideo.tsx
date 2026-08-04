@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, memo } from 'react'
+import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
 import { useReducedMotion } from 'framer-motion'
 import bgVideo from '@/assets/videos/Background_SaaS.mp4'
 
@@ -42,16 +42,16 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
       style={{ zIndex: 0 }}
       aria-hidden="true"
     >
-      {/* Video element — ambient opacity, GPU accelerated */}
+      {/* Video element — ambient opacity, GPU accelerated, focal point centered */}
       {showVideo && (
         <video
           ref={videoRef}
           className="absolute inset-0 w-full h-full"
           style={{
             objectFit: 'cover',
-            opacity: 0.22,
+            opacity: 0.48,
             willChange: 'transform',
-            transform: 'translateZ(0)',
+            transform: 'translateZ(0) translateX(-5%) scale(1.1)',
           }}
           autoPlay
           muted
@@ -65,33 +65,101 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
         </video>
       )}
 
-      {/* Layer 1: Heavy blur + dim filter over video */}
+      {/* Layer 1: Soft blur + gentle dim filter over video */}
       <div
         className="absolute inset-0"
         style={{
-          backdropFilter: 'blur(10px) brightness(18%) contrast(75%) saturate(70%)',
-          WebkitBackdropFilter: 'blur(10px) brightness(18%) contrast(75%) saturate(70%)',
+          backdropFilter: 'blur(8px) brightness(32%) contrast(82%) saturate(92%)',
+          WebkitBackdropFilter: 'blur(8px) brightness(32%) contrast(82%) saturate(92%)',
         }}
       />
 
-      {/* Layer 2: Radial spotlight — bright center, dark edges */}
+      {/* Layer 2: Radial spotlight — soft center light, gentle dark edges */}
       <div
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse 55% 50% at 35% 45%, rgba(15, 20, 40, 0.2) 0%, transparent 70%),
-            radial-gradient(ellipse 80% 70% at 50% 50%, rgba(8, 10, 24, 0.5) 0%, rgba(3, 0, 15, 0.92) 100%)
+            radial-gradient(ellipse 55% 50% at 50% 45%, rgba(18, 24, 48, 0.22) 0%, transparent 70%),
+            radial-gradient(ellipse 80% 70% at 50% 50%, rgba(6, 8, 20, 0.45) 0%, rgba(5, 7, 18, 0.6) 100%)
           `,
         }}
       />
 
-      {/* Layer 3: Soft vignette — tight around viewport edges */}
+      {/* Layer 3: Soft vignette — subtle, tight around viewport edges */}
       <div
         className="absolute inset-0"
         style={{
-          background: 'radial-gradient(ellipse 65% 50% at 50% 50%, transparent 0%, rgba(2, 0, 12, 0.7) 100%)',
+          background: 'radial-gradient(ellipse 65% 50% at 50% 50%, transparent 0%, rgba(2, 0, 12, 0.45) 100%)',
         }}
       />
+
+      {/* Layer 3.5: Aurora blobs — screen-blended ambient light */}
+      <div
+        className="absolute inset-0 overflow-hidden"
+        style={{ maskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)' }}
+      >
+        <div
+          className="aurora-blob animate-aurora-a"
+          style={{
+            width: '55vw',
+            height: '55vw',
+            left: '-8%',
+            top: '-12%',
+            background: 'radial-gradient(circle at 35% 35%, rgba(124, 92, 255, 0.32), transparent 70%)',
+          }}
+        />
+        <div
+          className="aurora-blob animate-aurora-b"
+          style={{
+            width: '48vw',
+            height: '48vw',
+            right: '-10%',
+            top: '22%',
+            background: 'radial-gradient(circle at 60% 40%, rgba(79, 141, 255, 0.28), transparent 70%)',
+          }}
+        />
+        <div
+          className="aurora-blob animate-aurora-c"
+          style={{
+            width: '40vw',
+            height: '40vw',
+            left: '18%',
+            bottom: '-18%',
+            background: 'radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.18), transparent 70%)',
+          }}
+        />
+      </div>
+
+      {/* Layer 3.6: Floating particles — neural-network ambience */}
+      {!prefersReducedMotion && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[
+            { left: '8%', size: 3, dur: 16, delay: 0, drift: 14, glow: 6 },
+            { left: '16%', size: 2, dur: 21, delay: 2.5, drift: -10, glow: 5 },
+            { left: '27%', size: 4, dur: 19, delay: 5, drift: 18, glow: 8 },
+            { left: '38%', size: 2, dur: 24, delay: 1.2, drift: -14, glow: 5 },
+            { left: '49%', size: 3, dur: 17, delay: 7, drift: 10, glow: 6 },
+            { left: '58%', size: 2, dur: 22, delay: 3.8, drift: -8, glow: 4 },
+            { left: '67%', size: 3, dur: 18, delay: 0.6, drift: 12, glow: 7 },
+            { left: '76%', size: 2, dur: 25, delay: 6.2, drift: -12, glow: 5 },
+            { left: '84%', size: 3, dur: 20, delay: 4.4, drift: 16, glow: 6 },
+            { left: '92%', size: 2, dur: 23, delay: 8.5, drift: -6, glow: 4 },
+          ].map((p, i) => (
+            <div
+              key={i}
+              className="particle-dot"
+              style={{
+                left: p.left,
+                '--size': `${p.size}px`,
+                '--dur': `${p.dur}s`,
+                '--delay': `${p.delay}s`,
+                '--drift-x': `${p.drift}px`,
+                '--glow': `${p.glow}px`,
+              } as CSSProperties}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Layer 4: Very subtle animated noise texture */}
       <div
@@ -108,7 +176,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
       <div
         className="absolute inset-x-0 bottom-0 h-[35%]"
         style={{
-          background: 'linear-gradient(to top, rgba(2, 0, 12, 0.8) 0%, transparent 100%)',
+          background: 'linear-gradient(to top, rgba(2, 0, 12, 0.6) 0%, transparent 100%)',
         }}
       />
 
@@ -116,7 +184,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
       <div
         className="absolute inset-x-0 top-0 h-[12%]"
         style={{
-          background: 'linear-gradient(to bottom, rgba(2, 0, 12, 0.5) 0%, transparent 100%)',
+          background: 'linear-gradient(to bottom, rgba(2, 0, 12, 0.45) 0%, transparent 100%)',
         }}
       />
     </div>
