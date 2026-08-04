@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -45,6 +45,8 @@ class WSMessageType:
     FINDING_ADDED = "finding_added"
     # AI generation progress
     AI_PROGRESS = "ai_progress"
+    # AI generation completed
+    AI_COMPLETED = "ai_completed"
     # Stage transition (richer than progress_update)
     STAGE_TRANSITION = "stage_transition"
 
@@ -391,6 +393,22 @@ class ScanProgressWebSocketManager:
         ws_message = _make_message(WSMessageType.AI_PROGRESS, data)
         return await self._broadcast(scan_id, ws_message)
 
+    async def broadcast_ai_completed(
+        self,
+        scan_id: str,
+        status: str = "completed",
+        suggestions_count: int = 0,
+    ) -> int:
+        """Broadcast that AI suggestion generation has finished."""
+        data = {
+            "scan_id": scan_id,
+            "status": status,
+            "suggestions_count": suggestions_count,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
     async def broadcast_stage_transition(
         self,
         scan_id: str,
@@ -543,7 +561,7 @@ async def _authenticate_websocket(
                 await websocket.close(code=4003, reason="Access denied: invalid session")
                 return False
             # Check expiry
-            if anon_scan.expires_at and anon_scan.expires_at < datetime.utcnow():
+            if anon_scan.expires_at and anon_scan.expires_at < datetime.now(UTC):
                 await websocket.close(code=4003, reason="Session expired")
                 return False
         finally:

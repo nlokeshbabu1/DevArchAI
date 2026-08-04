@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  RotateCcw, AlertCircle, ChevronRight, LayoutDashboard,
+  RotateCcw, AlertCircle,
   Loader2, CheckCircle2, Clock, GitBranch, GitCommit,
   XCircle, Download, GitPullRequest, Share2,
   Shield, FileText, Cpu, Brain, FileCode, Activity,
@@ -29,19 +29,26 @@ interface ScanResult {
   security_score: number
   overall_score?: number
   severity_counts: SeverityCounts
+  risk_distribution?: { critical: number; high: number; medium: number; low: number; info: number }
   findings: any[]
   total_findings?: number
   files_analyzed: number
+  directories_scanned?: number
+  repository_size?: string
   branch: string
   completed_at: string
   detected_stack?: Record<string, string[]>
   detected_technologies?: string[]
+  technology_details?: { technology: string; files_count: number; findings_count: number; severity_counts: Record<string, number>; status: string }[]
+  top_files?: { file_path: string; findings_count: number; severities: Record<string, number> }[]
   status?: string
   scanner_executions?: any[]
   ai_suggestions_count?: number
   analysis_duration_seconds?: number
   commit_hash?: string
   started_at?: string
+  scanners_used?: number
+  rules_executed?: number
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const
@@ -320,6 +327,13 @@ export function ScanProgressPage() {
     queryFn: async () => { if (!id) throw new Error('No scan ID'); return (await scansApi.getScanResults(id)) as ScanResult },
     enabled: isValidScanId && !!scanState?.is_terminal && scanState.status === 'completed',
     retry: 3, staleTime: 5 * 60 * 1000,
+    refetchInterval: (query) => {
+      const data = query.state.data as ScanResult | undefined
+      if (data?.ai_status === 'pending' || data?.ai_status === 'processing') {
+        return 4000
+      }
+      return false
+    },
   })
 
   const repoName = result?.repository_name ||
@@ -333,11 +347,20 @@ export function ScanProgressPage() {
 
   const handleScanComplete = useCallback(() => {}, [])
   const handleScanFailed = useCallback(() => {}, [])
+  const handleAIComplete = useCallback(() => {
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+    }
+  }, [queryClient, id])
+
+  const aiStatus = result?.ai_status || null
+  const aiStillPending = aiStatus === 'pending' || aiStatus === 'processing'
 
   const { scanState: wsState } = useScanWebSocket({
     scanId: isValidScanId ? id! : null,
-    enabled: isValidScanId && !isTerminal,
+    enabled: isValidScanId && (!isTerminal || aiStillPending),
     onComplete: handleScanComplete, onFailed: handleScanFailed,
+    onAIComplete: handleAIComplete,
   })
 
   // --- All state from WebSocket, never computed on frontend ---
@@ -458,10 +481,10 @@ export function ScanProgressPage() {
 
   if (stateLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#07070d]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Spinner />
-          <p className="text-white/60 text-sm font-[Sora]">Connecting to scan...</p>
+          <p className="text-muted-foreground text-sm">Connecting to scan...</p>
         </div>
       </div>
     )
@@ -469,11 +492,11 @@ export function ScanProgressPage() {
 
   if (stateError || (!isValidScanId && id)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#07070d]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="p-8 max-w-md text-center" hover={false}>
           <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2 font-[Sora]">Scan Not Found</h2>
-          <p className="text-white/60 mb-4 text-sm font-[Sora]">The scan could not be found or you don't have access.</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">Scan Not Found</h2>
+          <p className="text-muted-foreground mb-4 text-sm">The scan could not be found or you don't have access.</p>
           <div className="flex gap-2 justify-center">
             <Button variant="secondary" onClick={() => navigate('/scan')}><RotateCcw className="h-4 w-4 mr-1.5" />New Scan</Button>
             <Button variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>
@@ -485,11 +508,11 @@ export function ScanProgressPage() {
 
   if (wsFailed || (isTerminal && isFailed)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#07070d]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="p-8 max-w-md text-center" hover={false}>
           <XCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2 font-[Sora]">Scan Failed</h2>
-          <p className="text-white/60 mb-4 text-sm font-[Sora]">{wsState?.errorMessage || scanState?.error_message || 'The scan encountered an error.'}</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">Scan Failed</h2>
+          <p className="text-muted-foreground mb-4 text-sm">{wsState?.errorMessage || scanState?.error_message || 'The scan encountered an error.'}</p>
           <div className="flex gap-2 justify-center">
             <Button variant="secondary" onClick={() => navigate('/scan')}><RotateCcw className="h-4 w-4 mr-1.5" />New Scan</Button>
             <Button variant="ghost" onClick={() => navigate('/dashboard')}>Dashboard</Button>
@@ -503,19 +526,17 @@ export function ScanProgressPage() {
   if (wsComplete || (isTerminal && isComplete)) {
     if (resultsLoading) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-[#07070d]">
+        <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-4">
             <Spinner color="green" />
-            <p className="text-white/60 text-sm font-[Sora]">Loading results...</p>
+            <p className="text-muted-foreground text-sm">Loading results...</p>
           </div>
         </div>
       )
     }
 
     if (result) {
-      const sevCounts = result.findings?.reduce((acc: any, f: any) => {
-        acc[f.severity || 'info'] = (acc[f.severity || 'info'] || 0) + 1; return acc
-      }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 }) || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+      const sevCounts = result.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
 
       const topFixes = (result.findings || []).filter((f: any) => f.severity === 'critical' || f.severity === 'high').slice(0, 5)
       const isAiPending = result.ai_status === 'pending' || result.ai_status === 'processing'
@@ -526,40 +547,33 @@ export function ScanProgressPage() {
       const scoreColor = result.security_score >= 80 ? '#22c55e' : result.security_score >= 50 ? '#eab308' : '#ef4444'
 
       return (
-        <div className="min-h-screen bg-[#07070d] font-[Sora]">
+        <>
           <Toast msg={toastMsg} />
 
-          {/* Sticky header */}
-          <div className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#07070d]/90 backdrop-blur-2xl">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-              <div className="flex items-center justify-between">
-                <nav className="flex items-center gap-2 text-xs">
-                  <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors">
-                    <LayoutDashboard className="w-3.5 h-3.5" />Dashboard
-                  </button>
-                  <ChevronRight className="w-3 h-3 text-white/20" />
-                  <button onClick={() => navigate('/scans')} className="text-white/40 hover:text-white/80 transition-colors">Scans</button>
-                  <ChevronRight className="w-3 h-3 text-white/20" />
-                  <span className="text-white/60 truncate max-w-[160px]">{repoName}</span>
-                </nav>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => { void handleRescan() }}>
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Rescan
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => { void handleCreateGlobalPR() }}
-                    disabled={prState.step !== null || !hasFixableFindings}
-                    title={!hasFixableFindings ? 'No automatic fixes available.' : undefined}>
-                    {prState.step ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />}
-                    {prState.step === 'generating' ? 'Generating fixes...' : prState.step === 'branch' ? 'Creating branch...' : prState.step === 'creating_pr' ? 'Creating PR...' : 'Create Fix PR'}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => { void handleDownload('pdf') }} disabled={isDownloading}>
-                    <Download className="h-3.5 w-3.5 mr-1.5" />Export
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleShare}>
-                    <Share2 className="h-3.5 w-3.5 mr-1.5" />Share
-                  </Button>
-                </div>
-              </div>
+          {/* Page header with actions — flows naturally in Layout */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">{repoName}</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Scan results &middot; {branch} &middot; {finalDuration}s duration
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={() => { void handleRescan() }}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Rescan
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { void handleCreateGlobalPR() }}
+                disabled={prState.step !== null || !hasFixableFindings}
+                title={!hasFixableFindings ? 'No automatic fixes available.' : undefined}>
+                {prState.step ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />}
+                {prState.step === 'generating' ? 'Generating fixes...' : prState.step === 'branch' ? 'Creating branch...' : prState.step === 'creating_pr' ? 'Creating PR...' : 'Create Fix PR'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { void handleDownload('pdf') }} disabled={isDownloading}>
+                <Download className="h-3.5 w-3.5 mr-1.5" />Export
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleShare}>
+                <Share2 className="h-3.5 w-3.5 mr-1.5" />Share
+              </Button>
             </div>
           </div>
 
@@ -567,7 +581,6 @@ export function ScanProgressPage() {
           <motion.div
             initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: EASE }}
-            className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6"
           >
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6 mb-6">
               <div className="flex items-start gap-4">
@@ -580,8 +593,8 @@ export function ScanProgressPage() {
                   <CheckCircle2 className="h-6 w-6 text-emerald-400" />
                 </motion.div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold text-white mb-1">Scan Complete</h2>
-                  <p className="text-sm text-white/50">Repository infrastructure analyzed — {finalDuration}s duration, {result.files_analyzed} files scanned</p>
+                  <h2 className="text-lg font-bold text-foreground mb-1">Scan Complete</h2>
+                  <p className="text-sm text-muted-foreground">Repository infrastructure analyzed &mdash; {finalDuration}s duration, {result.files_analyzed} files scanned</p>
                   <div className="flex items-center gap-4 mt-3 flex-wrap">
                     {result.security_score > 0 && (
                       <div className="flex items-center gap-2">
@@ -593,11 +606,11 @@ export function ScanProgressPage() {
                               style={{ strokeDashoffset: 125.66 * (1 - result.security_score / 100) }}
                             />
                           </svg>
-                          <span className={cn('absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white', MONO)}>
+                          <span className={cn('absolute inset-0 flex items-center justify-center text-[10px] font-bold text-foreground', MONO)}>
                             {result.security_score}
                           </span>
                         </div>
-                        <span className="text-xs text-white/50">Security Score</span>
+                        <span className="text-xs text-muted-foreground">Security Score</span>
                       </div>
                     )}
                     {(['critical', 'high', 'medium', 'low', 'info'] as const).map(s =>
@@ -612,43 +625,33 @@ export function ScanProgressPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={() => void handleDownload('pdf')}>
-                    <Download className="h-3.5 w-3.5 mr-1.5" />PDF
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => void handleCreateGlobalPR()} disabled={!hasFixableFindings}>
-                    <GitPullRequest className="h-3.5 w-3.5 mr-1.5" />Fix PR
-                  </Button>
-                </div>
               </div>
             </div>
           </motion.div>
 
-          {/* Full results dashboard — stays on this page */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-            <ScanResultsDashboard
-              result={result as any} repoName={repoName} findings={result.findings || []}
-              severityCounts={sevCounts as Record<string, number>} priorityFixes={topFixes}
-              isAiReady={isAiReady} isAiPending={isAiPending} aiSummary={result.findings?.[0]?.summary || null}
-              severityFilter={severityFilter} sortBy={sortBy} expandedFinding={expandedFinding} searchQuery={searchQuery}
-              onSeverityFilterChange={setSeverityFilter} onSortByChange={setSortBy}
-              onExpandedFindingChange={setExpandedFinding} onSearchQueryChange={setSearchQuery}
-              onRescan={handleRescan} onDownload={(fmt) => { void handleDownload(fmt as any) }}
-              onShare={handleShare} onFindFix={(fid: string) => setExpandedFinding(fid)}
-              onGenerateFix={(fid: string) => setExpandedFinding(fid)} onCreatePR={handleCreateGlobalPR}
-              hideHeaderActions
-            />
-          </div>
-        </div>
+          {/* Full results dashboard */}
+          <ScanResultsDashboard
+            result={result as any} repoName={repoName} findings={result.findings || []}
+            severityCounts={sevCounts as unknown as Record<string, number>} priorityFixes={topFixes}
+            isAiReady={isAiReady} isAiPending={isAiPending} aiSummary={result.findings?.[0]?.summary || null}
+            severityFilter={severityFilter} sortBy={sortBy} expandedFinding={expandedFinding} searchQuery={searchQuery}
+            onSeverityFilterChange={setSeverityFilter} onSortByChange={setSortBy}
+            onExpandedFindingChange={setExpandedFinding} onSearchQueryChange={setSearchQuery}
+            onRescan={handleRescan} onDownload={(fmt) => { void handleDownload(fmt as any) }}
+            onShare={handleShare} onFindFix={(fid: string) => setExpandedFinding(fid)}
+            onGenerateFix={(fid: string) => setExpandedFinding(fid)} onCreatePR={handleCreateGlobalPR}
+            hideHeaderActions
+          />
+        </>
       )
     }
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#07070d] font-[Sora]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="p-8 max-w-md text-center" hover={false}>
           <AlertCircle className="h-12 w-12 text-amber-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">No Results Available</h2>
-          <p className="text-white/60 mb-4 text-sm">The scan completed but results could not be loaded.</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">No Results Available</h2>
+          <p className="text-muted-foreground mb-4 text-sm">The scan completed but results could not be loaded.</p>
           <Button variant="secondary" onClick={() => navigate('/scan')}>Start New Scan</Button>
         </Card>
       </div>
@@ -657,39 +660,32 @@ export function ScanProgressPage() {
 
   // --- IN PROGRESS: Event-driven live pipeline ---
   return (
-    <div className="min-h-screen bg-[#07070d] font-[Sora]">
+    <>
       <Toast msg={toastMsg} />
 
-      {/* Sticky header */}
-      <div className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#07070d]/90 backdrop-blur-2xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center justify-between">
-            <nav className="flex items-center gap-2 text-xs">
-              <button onClick={() => navigate('/dashboard')} className="flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors">
-                <LayoutDashboard className="w-3.5 h-3.5" />Dashboard
-              </button>
-              <ChevronRight className="w-3 h-3 text-white/20" />
-              <span className="text-white/60">Scan in Progress</span>
-              <ChevronRight className="w-3 h-3 text-white/20" />
-              <span className="text-white/80 truncate max-w-[200px]">{repoName}</span>
-            </nav>
-            <div className="flex items-center gap-3">
-              {totalRules > 0 && (
-                <span className={cn('text-xs text-white/40', MONO)}>Rule {executedRules}/{totalRules}</span>
-              )}
-              <div className="flex items-center gap-1.5 text-xs text-white/50">
-                <Clock className="w-3.5 h-3.5" />
-                <span className={cn(MONO, 'tabular-nums')}>{fmt(elapsed)}</span>
-              </div>
-              <Button variant="ghost" size="sm" disabled>
-                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Rescan
-              </Button>
-            </div>
+      {/* Page header — flows naturally in Layout */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">{repoName}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Scan in progress &middot; {branch}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {totalRules > 0 && (
+            <span className={cn('text-xs text-muted-foreground', MONO)}>Rule {executedRules}/{totalRules}</span>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="w-3.5 h-3.5" />
+            <span className={cn(MONO, 'tabular-nums')}>{fmt(elapsed)}</span>
           </div>
+          <Button variant="ghost" size="sm" disabled>
+            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Rescan
+          </Button>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
 
         {/* Repo info bar */}
         <motion.div
@@ -932,7 +928,7 @@ export function ScanProgressPage() {
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -5,26 +5,27 @@ Provides real-time progress tracking with step-by-step updates.
 """
 
 import json
-import re
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.core.security import get_optional_user
+from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db, get_sync_session_factory
 from app.models.anonymous_scan import AnonymousScan
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
 from app.services.scan_progress_store import get_scan_progress_store
+from app.services.technology_classifier import classify_technology
 from app.workers.tasks.scan_repository import SyncScanService
 
 logger = structlog.get_logger(__name__)
@@ -36,34 +37,28 @@ class UnifiedScanRequest(BaseModel):
     """Request model for unified scan endpoint."""
 
     repository_id: str | None = Field(default=None, max_length=64)
-    repository_url: str = Field(..., min_length=10, max_length=500)
-    branch: str = Field(default="main", max_length=100)
+    repository_url: str = Field(
+        ...,
+        min_length=10,
+        max_length=500,
+    )
+    branch: str = Field(
+        default="main",
+        max_length=100,
+    )
     include_ai_explanations: bool = True
 
     @field_validator("repository_url")
     @classmethod
     def validate_repository_url(cls, v: str) -> str:
         """Validate repository URL format."""
-        v = v.strip()
-        # Must be a valid HTTPS URL
-        if not v.startswith("https://"):
-            raise ValueError("Repository URL must use HTTPS (https://)")
-        # Only allow known git hosting providers
-        allowed_hosts = ["github.com", "gitlab.com", "bitbucket.org"]
-        url_pattern = r"^https://(www\.)?([a-zA-Z0-9.-]+)\.([a-zA-Z]{2,})/.*\.git$"
-        if not re.match(url_pattern, v) and not any(host in v for host in allowed_hosts):
-            raise ValueError(
-                "Repository URL must be from a supported provider (GitHub, GitLab, Bitbucket)"
-            )
-        return v
+        return validate_repository_url(v)
 
     @field_validator("branch")
     @classmethod
     def validate_branch(cls, v: str) -> str:
         """Validate branch name format."""
-        if not re.match(r"^[a-zA-Z0-9_./-]+$", v):
-            raise ValueError("Branch name contains invalid characters")
-        return v
+        return validate_branch(v)
 
 
 def _run_scan_in_background(
@@ -392,6 +387,7 @@ async def get_scan_status(
     """
     from app.services.scan_progress_store import get_scan_progress_store
 
+    parse_uuid(scan_id, "scan_id")
     store = get_scan_progress_store()
     progress = await store.get_progress(scan_id)
 
@@ -510,6 +506,25 @@ async def get_scan_status(
     }
 
 
+def _finding_matches_tech(finding: Any, tech: str) -> bool:
+    """Check if a finding belongs to a specific technology.
+
+    Uses the canonical technology classifier so each finding can match at
+    most one technology (a Helm chart file is never also a Kubernetes file).
+    """
+    return classify_technology(finding.file_path, finding.scanner_name) == tech
+
+
+def _detect_finding_technology(finding: Any) -> str:
+    """Detect the canonical technology for a finding.
+
+    Every finding is assigned EXACTLY one technology based on its file path
+    (priority: Helm > Docker > GitHub Actions > Terraform > Kubernetes), so a
+    finding can never appear on more than one Technology Coverage card.
+    """
+    return classify_technology(finding.file_path, finding.scanner_name)
+
+
 @router.get("/results/{scan_id}", response_model=dict[str, Any])
 async def get_scan_results(
     scan_id: str,
@@ -525,6 +540,7 @@ async def get_scan_results(
     - AI suggestions
     - Detected technology stack
     """
+    parse_uuid(scan_id, "scan_id")
     # Get scan (eagerly load scanner_executions to avoid lazy-load in async context)
     result = await db.execute(
         select(Scan).options(selectinload(Scan.scanner_executions)).where(Scan.id == scan_id)
@@ -567,91 +583,23 @@ async def get_scan_results(
     )
     suggestions = suggestions_result.scalars().all()
 
-    # Get detected technologies from findings file paths
-    # (Progress store data expires, so we extract from permanent findings data)
+    # Get detected technologies from findings file paths.
+    # (Progress store data expires, so we extract from permanent findings data.)
+    # Each finding contributes EXACTLY ONE canonical technology so a Helm chart
+    # under a kubernetes/ directory is not falsely reported as Kubernetes.
     detected_technologies = []
-    tech_files = {}
 
     for f in findings:
         if not f.file_path:
             continue
 
-        path_lower = f.file_path.lower()
-
-        # Docker
-        if "dockerfile" in path_lower or "docker" in path_lower:
-            if "docker" not in detected_technologies:
-                detected_technologies.append("docker")
-            tech_files["docker"] = tech_files.get("docker", 0) + 1
-
-        # Terraform
-        if ".tf" in path_lower or "terraform" in path_lower:
-            if "terraform" not in detected_technologies:
-                detected_technologies.append("terraform")
-            tech_files["terraform"] = tech_files.get("terraform", 0) + 1
-
-        # Kubernetes
-        if (
-            "kubernetes" in path_lower
-            or "k8s" in path_lower
-            or (".yaml" in path_lower and "deployment" in path_lower)
-        ):
-            if "kubernetes" not in detected_technologies:
-                detected_technologies.append("kubernetes")
-            tech_files["kubernetes"] = tech_files.get("kubernetes", 0) + 1
-
-        # GitHub Actions
-        if ".github/workflows" in path_lower:
-            if "github_actions" not in detected_technologies:
-                detected_technologies.append("github_actions")
-            tech_files["github_actions"] = tech_files.get("github_actions", 0) + 1
-
-        # AWS
-        if (
-            "aws" in path_lower
-            or "ec2" in path_lower
-            or "s3" in path_lower
-            or "lambda" in path_lower
-        ):
-            if "aws" not in detected_technologies:
-                detected_technologies.append("aws")
-            tech_files["aws"] = tech_files.get("aws", 0) + 1
-
-        # Azure
-        if "azure" in path_lower or "aks" in path_lower:
-            if "azure" not in detected_technologies:
-                detected_technologies.append("azure")
-            tech_files["azure"] = tech_files.get("azure", 0) + 1
-
-        # GCP
-        if "gcp" in path_lower or "gke" in path_lower or "google" in path_lower:
-            if "gcp" not in detected_technologies:
-                detected_technologies.append("gcp")
-            tech_files["gcp"] = tech_files.get("gcp", 0) + 1
-
-        # Helm
-        if "helm" in path_lower or "chart.yaml" in path_lower:
-            if "helm" not in detected_technologies:
-                detected_technologies.append("helm")
-            tech_files["helm"] = tech_files.get("helm", 0) + 1
-
-        # Jenkins
-        if "jenkins" in path_lower or "jenkinsfile" in path_lower:
-            if "jenkins" not in detected_technologies:
-                detected_technologies.append("jenkins")
-            tech_files["jenkins"] = tech_files.get("jenkins", 0) + 1
-
-        # Prometheus
-        if "prometheus" in path_lower:
-            if "prometheus" not in detected_technologies:
-                detected_technologies.append("prometheus")
-            tech_files["prometheus"] = tech_files.get("prometheus", 0) + 1
-
-        # Grafana
-        if "grafana" in path_lower:
-            if "grafana" not in detected_technologies:
-                detected_technologies.append("grafana")
-            tech_files["grafana"] = tech_files.get("grafana", 0) + 1
+        tech = classify_technology(f.file_path, f.scanner_name)
+        if tech in ("code", "secrets", "dependencies"):
+            # No technology card exists for these; they are not file-type
+            # technologies and must not trigger a coverage card.
+            continue
+        if tech not in detected_technologies:
+            detected_technologies.append(tech)
 
     # PHASE 2: Also add technologies from detected_stack (even if no findings for them)
     if scan.detected_stack:
@@ -704,11 +652,117 @@ async def get_scan_results(
     if files_analyzed == 0:
         files_analyzed = len({f.file_path for f in findings if f.file_path})
 
+    # Compute scanners_used and total_rules_executed
+    scanner_execs = scan.scanner_executions or []
+    scanners_used = len([
+        se for se in scanner_execs
+        if se.status in ("COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS")
+    ])
+    total_rules_executed = sum(se.rules_executed or 0 for se in scanner_execs)
+
+    # Derive repository name from URL
+    repo_parts = scan.repository_url.rstrip("/").split("/")
+    repository_name = "/".join(repo_parts[-2:]) if len(repo_parts) >= 2 else repo_parts[-1]
+
+    # Compute directories_scanned from findings
+    directories_scanned = len({
+        "/".join(f.file_path.split("/")[:-1])
+        for f in findings if f.file_path and "/" in f.file_path
+    })
+
+    # Derive repository_size from repository relationship (if available)
+    repository_size = None
+    if scan.repository and hasattr(scan.repository, "size") and scan.repository.size:
+        size_kb = scan.repository.size
+        if size_kb >= 1048576:
+            repository_size = f"{size_kb / 1048576:.1f} GB"
+        elif size_kb >= 1024:
+            repository_size = f"{size_kb / 1024:.1f} MB"
+        else:
+            repository_size = f"{size_kb} KB"
+
+    # Build per-technology file counts from detected_stack + findings.
+    # Every file is assigned to its canonical technology (each file belongs
+    # to exactly one card) and findings are counted the same way, so the sum
+    # of findings across all cards equals the total findings on the page.
+    technology_details = []
+    if scan.detected_stack:
+        stack = scan.detected_stack
+        tech_file_map = {
+            "docker": stack.get("docker_files", []),
+            "terraform": stack.get("terraform_files", []),
+            "kubernetes": stack.get("kubernetes_files", []),
+            "github_actions": stack.get("github_actions_files", []),
+            "gitlab_ci": stack.get("gitlab_ci_files", []),
+            "jenkins": stack.get("jenkins_files", []),
+            "helm": stack.get("helm_files", []),
+            "ansible": stack.get("ansible_files", []),
+            "circleci": stack.get("circleci_files", []),
+            "azure_devops": stack.get("azure_devops_files", []),
+            "docker_compose": stack.get("docker_compose_files", []),
+        }
+
+        # Canonical per-file ownership across all detected stack files. The
+        # raw detected_stack lists overlap (a Helm chart under a kubernetes/
+        # directory appears in both), so ownership is re-derived here.
+        canonical_file_counts: dict[str, int] = {}
+        for files in tech_file_map.values():
+            for fp in files:
+                tech = classify_technology(fp)
+                canonical_file_counts[tech] = canonical_file_counts.get(tech, 0) + 1
+
+        # Report an entry for every detected technology so the frontend always
+        # partitions findings by the canonical `technology` field (never by
+        # fuzzy substring matching that could double-count a finding).
+        techs_to_report = set(detected_technologies) | set(tech_file_map.keys())
+        for tech in sorted(techs_to_report):
+            tech_findings = [f for f in findings if _finding_matches_tech(f, tech)]
+            tech_sev: dict[str, int] = {}
+            for tf in tech_findings:
+                sev = tf.severity.value if hasattr(tf.severity, "value") else str(tf.severity)
+                tech_sev[sev] = tech_sev.get(sev, 0) + 1
+            tech_files_count = canonical_file_counts.get(tech, 0)
+            technology_details.append({
+                "technology": tech,
+                "files_count": tech_files_count,
+                "findings_count": len(tech_findings),
+                "severity_counts": tech_sev,
+                "status": "DETECTED"
+                if tech_files_count
+                else ("HAS_FINDINGS" if tech_findings else "CLEAN"),
+            })
+
+    # Build risk_distribution (just counts, no duplication with technology_details)
+    risk_distribution = {
+        "critical": severity_counts.get("CRITICAL", 0) or severity_counts.get("critical", 0),
+        "high": severity_counts.get("HIGH", 0) or severity_counts.get("high", 0),
+        "medium": severity_counts.get("MEDIUM", 0) or severity_counts.get("medium", 0),
+        "low": severity_counts.get("LOW", 0) or severity_counts.get("low", 0),
+        "info": severity_counts.get("INFO", 0) or severity_counts.get("info", 0),
+    }
+
+    # Build top_files (files sorted by findings count, deduplicated)
+    file_findings_map: dict[str, dict] = {}
+    for f in findings:
+        fp = f.file_path or ""
+        if not fp:
+            continue
+        if fp not in file_findings_map:
+            file_findings_map[fp] = {"file_path": fp, "findings_count": 0, "severities": {}}
+        file_findings_map[fp]["findings_count"] += 1
+        sev = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
+        file_findings_map[fp]["severities"][sev] = file_findings_map[fp]["severities"].get(sev, 0) + 1
+    top_files = sorted(file_findings_map.values(), key=lambda x: x["findings_count"], reverse=True)[:15]
+
     return {
         "scan_id": str(scan.id),
+        "id": str(scan.id),
         "repository_url": scan.repository_url,
+        "repository_name": repository_name,
         "branch": scan.branch,
+        "commit_hash": scan.commit_hash,
         "status": "completed",
+        "ai_status": scan.ai_status or "completed",
         "overall_score": scan.overall_score,
         "security_score": scan.security_score,
         "scalability_score": scan.scalability_score,
@@ -717,8 +771,15 @@ async def get_scan_results(
         "observability_score": scan.observability_score,
         "findings_count": len(findings),
         "severity_counts": severity_counts,
+        "risk_distribution": risk_distribution,
         "files_analyzed": files_analyzed,
-        "detected_technologies": detected_technologies,  # Extracted from findings
+        "directories_scanned": directories_scanned,
+        "repository_size": repository_size,
+        "detected_technologies": detected_technologies,
+        "technology_details": technology_details,
+        "top_files": top_files,
+        "scanners_used": scanners_used,
+        "rules_executed": total_rules_executed,
         "scanner_executions": [
             {
                 "scanner_name": se.scanner_name,
@@ -750,24 +811,20 @@ async def get_scan_results(
                 "file_path": f.file_path,
                 "line_number": f.line_number,
                 "ai_explanation": f.ai_explanation,
-                # AI Fix Generator fields (production-grade)
                 "summary": f.summary,
                 "risk": f.risk,
                 "impact": f.impact,
                 "fix_code": f.fix_code,
                 "fix_example": f.fix_example,
                 "full_example": f.full_example,
-                # Parse best_practices if it's a JSON string
                 "best_practices": json.loads(f.best_practices)
                 if isinstance(f.best_practices, str)
                 else (f.best_practices or []),
-                # Use confidence_score (frontend expects this field name)
                 "confidence_score": f.confidence_score or f.confidence or 0.8,
                 "confidence": f.confidence
                 or f.confidence_score
-                or 0.8,  # Also include for backwards compatibility
+                or 0.8,
                 "documentation_url": f.documentation_url,
-                # Scanner metadata fields (backward-compatible)
                 "scanner_name": f.scanner_name,
                 "scanner_rule_id": f.scanner_rule_id,
                 "package": f.package,
@@ -779,6 +836,7 @@ async def get_scan_results(
                 if isinstance(f.references, str)
                 else (f.references or []),
                 "evidence": f.evidence,
+                "technology": _detect_finding_technology(f),
             }
             for f in findings
         ],
@@ -808,6 +866,7 @@ async def get_scan_state(
     - progress percentage
     - Whether the scan is in a terminal state
     """
+    parse_uuid(scan_id, "scan_id")
     # Get scan from DB (single source of truth)
     result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = result.scalar_one_or_none()

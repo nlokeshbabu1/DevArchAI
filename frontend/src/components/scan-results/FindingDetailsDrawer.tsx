@@ -6,10 +6,10 @@ import {
   TrendingUp, Clock, Target,
   FileCode, BookOpen, ExternalLink, MessageSquare,
   HelpCircle, GitBranch, BadgeCheck, ScanSearch,
-  Zap, Search, GitMerge
+  Zap, Search, GitMerge, Bug, Package2
 } from "lucide-react"
 import { Finding } from "../../types"
-import { cn, getSeverityColor, sanitizePath, copyToClipboard } from "../../lib/utils"
+import { cn, getSeverityColor, sanitizePath, copyToClipboard, parseScannerSources } from "../../lib/utils"
 import { Button } from "../ui-animated"
 import { DiffViewer } from "../DiffViewer"
 
@@ -164,17 +164,49 @@ export function FindingDetailsDrawer({
                         <div className="text-xs font-medium text-white/70 capitalize truncate">{finding.category}</div>
                       </div>
                       <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
-                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Sources</div>
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Scanner</div>
                         <div className="text-xs font-medium text-white/70 truncate">
                           {finding.scanner_name || "DevArchAI"}
                         </div>
                       </div>
                       <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
-                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">File Path</div>
+                        <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">File</div>
                         <div className="text-xs font-medium text-white/70 font-mono truncate" title={repoPath}>
-                          {repoPath || "\u2014"}
+                          {repoPath || "—"}
                         </div>
                       </div>
+                      {finding.line_number && (
+                        <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                          <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Line</div>
+                          <div className="text-xs font-medium text-white/70 font-mono">{finding.line_number}</div>
+                        </div>
+                      )}
+                      {finding.cve && (
+                        <div className="rounded-lg border border-red-500/10 bg-red-500/5 p-2.5">
+                          <div className="text-[10px] text-red-300/50 uppercase tracking-wider mb-1">CVE</div>
+                          <div className="text-xs font-medium text-red-300 font-mono truncate">{finding.cve}</div>
+                        </div>
+                      )}
+                      {finding.cwe && (
+                        <div className="rounded-lg border border-orange-500/10 bg-orange-500/5 p-2.5">
+                          <div className="text-[10px] text-orange-300/50 uppercase tracking-wider mb-1">CWE</div>
+                          <div className="text-xs font-medium text-orange-300 font-mono truncate">{finding.cwe}</div>
+                        </div>
+                      )}
+                      {finding.package && (
+                        <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                          <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Package</div>
+                          <div className="text-xs font-medium text-white/70 truncate">
+                            {finding.package}
+                            {finding.installed_version && ` ${finding.installed_version}`}
+                          </div>
+                          {finding.fixed_version && (
+                            <div className="text-[9px] text-emerald-400/60 mt-0.5">
+                              Fix: {finding.fixed_version}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
                         <div className="text-[10px] text-white/30 uppercase tracking-wider mb-1">Est. Fix Time</div>
                         <div className="text-xs font-medium text-white/70">{estimateFixTime(finding)}</div>
@@ -313,19 +345,37 @@ export function FindingDetailsDrawer({
                   )}
 
                   {/* 9. References */}
-                  {finding.documentation_url && (
-                    <div className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                      <BookOpen className="w-4 h-4 text-white/30" />
-                      <span className="text-xs text-white/50 flex-1">References</span>
-                      <a
-                        href={finding.documentation_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                      >
-                        View Documentation
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                  {(finding.documentation_url || (finding.references && finding.references.length > 0)) && (
+                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <BookOpen className="w-4 h-4 text-white/30" />
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">References</h4>
+                      </div>
+                      <div className="space-y-2">
+                        {finding.documentation_url && (
+                          <a
+                            href={finding.documentation_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            Official Documentation
+                          </a>
+                        )}
+                        {finding.references && finding.references.filter((ref): ref is string => !!ref).map((ref, idx) => (
+                          <a
+                            key={idx}
+                            href={ref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-xs text-white/50 hover:text-indigo-400 transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{ref}</span>
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -338,7 +388,7 @@ export function FindingDetailsDrawer({
                     <div className="relative">
                       {(() => {
                         const stages = [
-                          { icon: ScanSearch, label: "Scanner Detection", description: `Identified by ${finding.scanner_name || "DevArchAI"}`, active: true },
+                          { icon: ScanSearch, label: "Scanner Detection", description: `Identified by ${finding.scanner_name || "DevArchAI"}${finding.scanner_rule_id ? ` (rule: ${finding.scanner_rule_id})` : ""}`, active: true },
                           { icon: GitMerge, label: "Finding Normalization", description: "Standardized into common format across scanners", active: true },
                           { icon: Search, label: "AI Analysis", description: "Deep security context analysis", active: !!finding.ai_explanation },
                           { icon: Zap, label: "Risk Scoring", description: `${finding.severity.toUpperCase()} severity — ${computeRiskReduction(finding)}% risk reduction if fixed`, active: true },

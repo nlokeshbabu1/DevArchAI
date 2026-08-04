@@ -9,6 +9,10 @@ from typing import Any
 
 import structlog
 
+from app.ai_engine.llm_client import (
+    GPT4AllProvider as _GPT4AllProviderBase,
+    OllamaProvider as _OllamaProviderBase,
+)
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -547,6 +551,22 @@ Write a 3-paragraph executive summary."""
             raise
 
 
+class OllamaProvider(_OllamaProviderBase, BaseLLMProvider):
+    """Ollama local LLM provider (self-hosted via ``ollama serve``).
+
+    Reuses the shared implementation from ``app.ai_engine.llm_client`` while
+    satisfying this module's ``BaseLLMProvider`` interface.
+    """
+
+
+class GPT4AllProvider(_GPT4AllProviderBase, BaseLLMProvider):
+    """GPT4All local LLM provider.
+
+    Reuses the shared implementation from ``app.ai_engine.llm_client`` while
+    satisfying this module's ``BaseLLMProvider`` interface.
+    """
+
+
 class MockLLMProvider(BaseLLMProvider):
     """Mock LLM provider for testing/development."""
 
@@ -750,6 +770,12 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.MISTRAL_API_KEY,
             model=mistral_model,
         )
+    if provider == "ollama":
+        logger.info("Using Ollama local LLM provider (configured)")
+        return OllamaProvider()
+    if provider == "gpt4all":
+        logger.info("Using GPT4All local LLM provider (configured)")
+        return GPT4AllProvider()
 
     # Fallback chain: try available providers in order
     if settings.OPENAI_API_KEY:

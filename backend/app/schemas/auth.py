@@ -105,13 +105,3 @@ class APIKeyResponse(BaseModel):
     api_key: str
     api_key_prefix: str
     created_at: datetime
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "api_key": "dk_abcd_1234567890abcdef",
-                "api_key_prefix": "dk_abcd",
-                "created_at": "2024-01-01T00:00:00Z",
-            }
-        }
-    )

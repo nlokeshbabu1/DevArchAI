@@ -1,7 +1,7 @@
 import { motion } from "framer-motion"
 import {
   FileText, FolderTree, Shield, Code2, Clock,
-  LineChart, HardDrive, Activity
+  HardDrive, Activity, Cpu
 } from "lucide-react"
 import { cn, formatDuration } from "../../lib/utils"
 
@@ -10,32 +10,32 @@ interface ScanCoverageSummaryProps {
   directoriesScanned?: number
   rulesExecuted: number
   technologiesCount: number
+  scannersUsed?: number
   scanDuration?: number
-  linesAnalyzed?: number
   repoSize?: string
 }
 
 const metrics = [
   { key: "files", icon: FileText, label: "Files Scanned", color: "text-indigo-400", bg: "bg-indigo-500/10" },
-  { key: "directories", icon: FolderTree, label: "Directories Scanned", color: "text-cyan-400", bg: "bg-cyan-500/10" },
+  { key: "directories", icon: FolderTree, label: "Directories", color: "text-cyan-400", bg: "bg-cyan-500/10" },
   { key: "rules", icon: Shield, label: "Rules Executed", color: "text-emerald-400", bg: "bg-emerald-500/10" },
   { key: "technologies", icon: Code2, label: "Technologies", color: "text-purple-400", bg: "bg-purple-500/10" },
-  { key: "duration", icon: Clock, label: "Scan Duration", color: "text-amber-400", bg: "bg-amber-500/10" },
-  { key: "lines", icon: LineChart, label: "Lines Analyzed", color: "text-rose-400", bg: "bg-rose-500/10" },
+  { key: "scanners", icon: Cpu, label: "Scanners Used", color: "text-amber-400", bg: "bg-amber-500/10" },
+  { key: "duration", icon: Clock, label: "Scan Duration", color: "text-rose-400", bg: "bg-rose-500/10" },
   { key: "size", icon: HardDrive, label: "Repository Size", color: "text-blue-400", bg: "bg-blue-500/10" },
 ]
 
 export function ScanCoverageSummary({
   filesScanned, directoriesScanned, rulesExecuted,
-  technologiesCount, scanDuration, linesAnalyzed, repoSize
+  technologiesCount, scannersUsed, scanDuration, repoSize
 }: ScanCoverageSummaryProps) {
   const items = [
     { value: filesScanned.toLocaleString(), display: metrics[0] },
-    { value: directoriesScanned != null ? directoriesScanned.toLocaleString() : "—", display: metrics[1] },
+    { value: directoriesScanned !== undefined && directoriesScanned !== null ? directoriesScanned.toLocaleString() : "—", display: metrics[1] },
     { value: rulesExecuted.toLocaleString(), display: metrics[2] },
     { value: technologiesCount.toString(), display: metrics[3] },
-    { value: scanDuration != null ? formatDuration(scanDuration) : "—", display: metrics[4] },
-    { value: linesAnalyzed != null ? linesAnalyzed.toLocaleString() : "—", display: metrics[5] },
+    { value: scannersUsed !== undefined && scannersUsed !== null ? scannersUsed.toString() : "—", display: metrics[4] },
+    { value: scanDuration !== undefined && scanDuration !== null ? formatDuration(scanDuration) : "—", display: metrics[5] },
     { value: repoSize || "—", display: metrics[6] },
   ]
 

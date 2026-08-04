@@ -123,7 +123,13 @@ async def gitlab_callback(
 ):
     """GitLab OAuth callback endpoint."""
     try:
-        data = await request.json()
+        try:
+            data = await request.json()
+        except Exception as exc:  # invalid/empty JSON body
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request body must be valid JSON",
+            ) from exc
         code = data.get("code")
         state = data.get("state")
 
@@ -290,11 +296,11 @@ async def gitlab_callback(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception("GitLab OAuth callback failed", error=str(e))
+    except Exception:
+        logger.exception("GitLab OAuth callback failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"GitLab OAuth failed: {str(e)}",
+            detail="GitLab OAuth failed. Please try again.",
         )
 
 

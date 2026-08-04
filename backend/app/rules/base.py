@@ -47,6 +47,20 @@ class RuleFinding:
         risk: str | None = None,
         impact: str | None = None,
         fix_example: str | None = None,
+        summary: str | None = None,
+        fix_code: str | None = None,
+        full_example: str | None = None,
+        best_practices: list[str] | None = None,
+        ai_generated: bool = False,
+        scanner_name: str | None = None,
+        scanner_rule_id: str | None = None,
+        package: str | None = None,
+        installed_version: str | None = None,
+        fixed_version: str | None = None,
+        cve: str | None = None,
+        cwe: str | None = None,
+        references: list[str] | None = None,
+        evidence: str | None = None,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -68,6 +82,22 @@ class RuleFinding:
         self.risk = risk
         self.impact = impact
         self.fix_example = fix_example
+        # Fields populated by the findings enricher
+        self.summary = summary
+        self.fix_code = fix_code
+        self.full_example = full_example
+        self.best_practices = best_practices or []
+        self.ai_generated = ai_generated
+        # Scanner metadata fields (for external scanner integration)
+        self.scanner_name = scanner_name
+        self.scanner_rule_id = scanner_rule_id
+        self.package = package
+        self.installed_version = installed_version
+        self.fixed_version = fixed_version
+        self.cve = cve
+        self.cwe = cwe
+        self.references = references or []
+        self.evidence = evidence
 
     def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
@@ -89,6 +119,20 @@ class RuleFinding:
             "risk": self.risk,
             "impact": self.impact,
             "fix_example": self.fix_example,
+            "summary": self.summary,
+            "fix_code": self.fix_code,
+            "full_example": self.full_example,
+            "best_practices": self.best_practices,
+            "ai_generated": self.ai_generated,
+            "scanner_name": self.scanner_name,
+            "scanner_rule_id": self.scanner_rule_id,
+            "package": self.package,
+            "installed_version": self.installed_version,
+            "fixed_version": self.fixed_version,
+            "cve": self.cve,
+            "cwe": self.cwe,
+            "references": self.references,
+            "evidence": self.evidence,
         }
 
     def __repr__(self) -> str:

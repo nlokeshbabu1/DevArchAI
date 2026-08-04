@@ -16,7 +16,7 @@ export function MagneticButton({
   onClick,
   strength = 0.3,
 }: MagneticButtonProps) {
-  const ref = useRef<HTMLButtonElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
   const y = useMotionValue(0)
   const prefersReducedMotion = useReducedMotion()
@@ -32,7 +32,7 @@ export function MagneticButton({
     }
   )
 
-  const handleMouseMove = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+  const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (prefersReducedMotion || !ref.current) return
     const rect = ref.current.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
@@ -47,10 +47,9 @@ export function MagneticButton({
   }, [x, y])
 
   return (
-    <motion.button
+    <motion.div
       ref={ref}
-      type="button"
-      className={`relative focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 ${className}`}
+      className={`relative focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 cursor-pointer ${className}`}
       style={prefersReducedMotion ? undefined : { x: springX, y: springY }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -64,11 +63,11 @@ export function MagneticButton({
           className="absolute inset-0 rounded-[inherit] pointer-events-none"
           style={{
             opacity: glowOpacity,
-            background: 'radial-gradient(circle at 50% 50%, hsl(239 84% 67% / 0.15), transparent 70%)',
+            background: 'radial-gradient(circle at 50% 50%, hsl(252 100% 68% / 0.18), transparent 70%)',
           }}
         />
       )}
       <span className="relative z-10 flex items-center justify-center">{children}</span>
-    </motion.button>
+    </motion.div>
   )
 }

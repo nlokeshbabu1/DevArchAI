@@ -12,6 +12,33 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _serialize_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert pydantic validation errors into JSON-serializable dictionaries.
+
+    ``ctx`` may contain non-serializable exception objects (e.g. the original
+    ValueError raised by a field_validator), which would otherwise break the
+    response handler and surface as an unhandled 500. The raw ``input`` value
+    is deliberately dropped to avoid echoing attacker-controlled payloads in
+    error responses (reflection/XSS vector and a known ZAP SQLi false positive).
+    """
+    serialized: list[dict[str, Any]] = []
+    for err in errors:
+        clean = {key: _sanitize_error_value(value) for key, value in err.items() if key != "input"}
+        serialized.append(clean)
+    return serialized
+
+
+def _sanitize_error_value(value: Any) -> Any:
+    """Recursively replace non-JSON-serializable values with strings."""
+    if isinstance(value, Exception):
+        return f"{type(value).__name__}: {value}"
+    if isinstance(value, dict):
+        return {str(k): _sanitize_error_value(v) for k, v in value.items()}
+    if isinstance(value, tuple | list):
+        return [_sanitize_error_value(item) for item in value]
+    return value
+
+
 class DevArchAIException(Exception):
     """Base exception for DevArchAI."""
 
@@ -176,9 +203,10 @@ def setup_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Handle request validation errors."""
+        errors = _serialize_validation_errors(exc.errors())
         logger.warning(
             "Validation error",
-            errors=exc.errors(),
+            errors=errors,
             path=request.url.path,
             method=request.method,
         )
@@ -188,7 +216,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Request validation failed",
-                    "details": exc.errors(),
+                    "details": errors,
                 }
             },
         )

@@ -30,9 +30,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        if settings.ENVIRONMENT != "production":
-            return await call_next(request)
-
         client_ip = request.client.host if request.client else "unknown"
         route_path = request.url.path
         window_key = f"{client_ip}:{route_path}"
@@ -80,11 +77,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "font-src 'self' data:; "
-            "connect-src 'self' https://api.github.com"
+            "connect-src 'self' https://api.github.com; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
         )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
@@ -109,12 +109,37 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
         "/docs", "/redoc", "/openapi.json",
     }
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if settings.ENVIRONMENT != "production":
-            return await call_next(request)
+    # WebSocket paths that require authentication
+    WS_AUTH_PATHS = {"/ws/cloud/", "/ws/scan/"}
 
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
-        if any(path.startswith(skip) for skip in self.SKIP_PATHS) or path.startswith("/ws/"):
+
+        # WebSocket auth validation
+        if any(path.startswith(ws_path) for ws_path in self.WS_AUTH_PATHS):
+            token = request.headers.get("Authorization", "").replace("Bearer ", "")
+            query_token = request.query_params.get("token", "")
+            token = token or query_token
+            if not token:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": {"code": "WS_AUTH_REQUIRED", "message": "WebSocket authentication required"}},
+                )
+            try:
+                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+                jti = payload.get("jti")
+                if jti:
+                    from app.services.token_blacklist import is_blacklisted
+                    if await is_blacklisted(jti):
+                        return JSONResponse(status_code=401, content={"error": {"code": "TOKEN_BLACKLISTED"}})
+            except JWTError:
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": {"code": "INVALID_TOKEN", "message": "Invalid WebSocket token"}},
+                )
+
+        if any(path.startswith(skip) for skip in self.SKIP_PATHS):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")

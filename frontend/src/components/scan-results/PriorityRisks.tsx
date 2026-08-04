@@ -1,6 +1,5 @@
-import { useState } from "react"
 import { motion } from "framer-motion"
-import { Shield, FileCode, Sparkles } from "lucide-react"
+import { Shield, FileCode, Sparkles, Clock } from "lucide-react"
 import { Finding } from "../../types"
 import { cn, getSeverityColor, getFileName, sanitizePath } from "../../lib/utils"
 
@@ -11,8 +10,23 @@ interface FixTheseFirstProps {
   selectedId?: string | null
 }
 
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
+
+function estimateFixTime(finding: Finding): string {
+  if (finding.fix_code) return "~2 min"
+  if (finding.severity === "critical") return "~15 min"
+  if (finding.severity === "high") return "~10 min"
+  if (finding.severity === "medium") return "~5 min"
+  return "~2 min"
+}
+
 export function FixTheseFirst({ findings, onSelect, selectedId }: FixTheseFirstProps) {
-  const displayFindings = findings.slice(0, 5)
+  const sorted = [...findings].sort((a, b) => {
+    const aSev = (SEVERITY_ORDER[a.severity as keyof typeof SEVERITY_ORDER] ?? 5)
+    const bSev = (SEVERITY_ORDER[b.severity as keyof typeof SEVERITY_ORDER] ?? 5)
+    return aSev - bSev
+  })
+  const displayFindings = sorted.slice(0, 5)
 
   if (displayFindings.length === 0) {
     return (
@@ -46,6 +60,7 @@ export function FixTheseFirst({ findings, onSelect, selectedId }: FixTheseFirstP
           const findingId = finding.id ?? finding.rule_id
           const severityColor = getSeverityColor(finding.severity)
           const isSelected = selectedId === findingId
+          const fixTime = estimateFixTime(finding)
           return (
             <motion.div
               key={findingId}
@@ -69,7 +84,6 @@ export function FixTheseFirst({ findings, onSelect, selectedId }: FixTheseFirstP
                     {finding.severity}
                   </span>
                   <span className="text-[10px] text-white/30 font-mono truncate">{finding.rule_id}</span>
-                  <span className="text-[10px] text-white/30 capitalize">{finding.category}</span>
                 </div>
                 <p className="text-sm text-white/80 leading-snug">
                   {finding.summary || finding.message || finding.rule_name}
@@ -78,6 +92,10 @@ export function FixTheseFirst({ findings, onSelect, selectedId }: FixTheseFirstP
                   <span className="flex items-center gap-1 font-mono" title={sanitizePath(finding.file_path) || ''}>
                     <FileCode className="w-3 h-3" />
                     {getFileName(finding.file_path)}
+                  </span>
+                  <span className="flex items-center gap-1 text-white/20">
+                    <Clock className="w-3 h-3" />
+                    {fixTime}
                   </span>
                   {finding.fix_code && (
                     <span className="flex items-center gap-1 text-emerald-400/60">

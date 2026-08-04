@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -195,13 +195,21 @@ async def get_report(
 @router.get("/{scan_id}/download", response_model=ReportDownloadResponse)
 async def download_report(
     scan_id: str,
+    request: Request,
     format: str = Query(default="pdf"),
-    session_token: str | None = Query(default=None),
     current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a short-lived presigned URL for a stored PDF or Excel report."""
+    """Return a short-lived presigned URL for a stored PDF or Excel report.
+
+    Anonymous users must authenticate with the session token via the
+    ``X-Session-Token`` header (never in the URL).
+    """
     scan_uuid = _parse_uuid(scan_id, "scan_id")
+
+    session_token = request.headers.get("X-Session-Token")
+    if not session_token:
+        session_token = request.headers.get("session-token")
 
     try:
         normalized_format = normalize_report_format(format)

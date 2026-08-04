@@ -91,8 +91,27 @@ class Settings(BaseSettings):
     AWS_SESSION_TOKEN: str | None = Field(default=None, env="AWS_SESSION_TOKEN")
     S3_BUCKET_NAME: str = Field(default="devarchai-reports", env="S3_BUCKET_NAME")
 
+    # CloudFormation Template Management
+    AWS_CONNECT_BUCKET: str = Field(default="devarchai-assets", env="AWS_CONNECT_BUCKET")
+    AWS_CONNECT_PREFIX: str = Field(default="cloudformation", env="AWS_CONNECT_PREFIX")
+    CLOUDFORMATION_TEMPLATE_VERSION: str = Field(default="v1", env="CLOUDFORMATION_TEMPLATE_VERSION")
+
+    # DevArchAI Platform Account (constant — not customer-configurable)
+    DEVARCHAI_ACCOUNT_ID: str = "961014542927"
+    DEVARCHAI_SCANNER_ARN: str = Field(
+        default="arn:aws:iam::961014542927:user/bedrock",
+        description=(
+            "ARN of the IAM entity the backend runs as. "
+            "In production: arn:aws:iam::ACCOUNT:role/DevArchAIScanner (ECS/EKS task role). "
+            "In dev: arn:aws:iam::ACCOUNT:user/bedrock (IAM user). "
+            "The CloudFormation template trusts this ARN directly."
+        ),
+    )
+
     # LLM Configuration
-    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mistral", "mock"] = Field(default="mock", env="LLM_PROVIDER")
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mistral", "ollama", "gpt4all", "mock"] = Field(
+        default="mock", env="LLM_PROVIDER"
+    )
     OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
     ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     GEMINI_API_KEY: str | None = Field(default=None, env="GEMINI_API_KEY")
@@ -100,6 +119,40 @@ class Settings(BaseSettings):
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")
+
+    # AI suggestion generation (background flow)
+    AI_CALL_TIMEOUT_SECONDS: int = Field(default=300, env="AI_CALL_TIMEOUT_SECONDS")
+    AI_SUGGESTION_BATCH_SIZE: int = Field(default=5, env="AI_SUGGESTION_BATCH_SIZE")
+    AI_SUGGESTION_MAX_FILE_CHARS: int = Field(default=500, env="AI_SUGGESTION_MAX_FILE_CHARS")
+
+    # Ollama (local LLM provider)
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
+    OLLAMA_MODEL: str = Field(default="llama3.2", env="OLLAMA_MODEL")
+    OLLAMA_TIMEOUT_SECONDS: int = Field(default=120, env="OLLAMA_TIMEOUT_SECONDS")
+    OLLAMA_MAX_RETRIES: int = Field(default=2, env="OLLAMA_MAX_RETRIES")
+    OLLAMA_STREAM: bool = Field(default=False, env="OLLAMA_STREAM")
+
+    # GPT4All (local LLM provider)
+    GPT4ALL_MODEL: str = Field(default="Meta-Llama-3-8B-Instruct.Q4_0.gguf", env="GPT4ALL_MODEL")
+    GPT4ALL_MODEL_PATH: str | None = Field(default=None, env="GPT4ALL_MODEL_PATH")
+    GPT4ALL_THREADS: int | None = Field(default=None, env="GPT4ALL_THREADS")
+    GPT4ALL_MAX_TOKENS: int = Field(default=1500, env="GPT4ALL_MAX_TOKENS")
+
+    # Knowledge Retrieval
+    KNOWLEDGE_CACHE_TTL_SECONDS: int = Field(default=3600, env="KNOWLEDGE_CACHE_TTL_SECONDS")
+    KNOWLEDGE_MAX_RESULTS_PER_PROVIDER: int = Field(default=5, env="KNOWLEDGE_MAX_RESULTS_PER_PROVIDER")
+    KNOWLEDGE_ENABLED_PROVIDERS: str = Field(
+        default="aws_docs,aws_pricing,aws_security,internal_rules,aws_service_quotas,aws_trusted_advisor,aws_cost_explorer",
+        env="KNOWLEDGE_ENABLED_PROVIDERS",
+    )
+    KNOWLEDGE_LIVE_DOCS_ENABLED: bool = Field(default=False, env="KNOWLEDGE_LIVE_DOCS_ENABLED")
+
+    # AI Recommendations
+    AI_RECOMMENDATIONS_ENABLED: bool = Field(default=True, env="AI_RECOMMENDATIONS_ENABLED")
+    AI_RECOMMENDATIONS_MAX_PER_SCAN: int = Field(default=50, env="AI_RECOMMENDATIONS_MAX_PER_SCAN")
+    AI_RECOMMENDATIONS_FALLBACK_ON_LLM_FAILURE: bool = Field(
+        default=True, env="AI_RECOMMENDATIONS_FALLBACK_ON_LLM_FAILURE",
+    )
 
     # GitHub
     GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
@@ -113,6 +166,9 @@ class Settings(BaseSettings):
     GITLAB_CLIENT_SECRET: str | None = Field(default=None, env="GITLAB_CLIENT_SECRET")
     GITLAB_REDIRECT_URI: str = Field(default="http://localhost:5174/auth/gitlab/callback", env="GITLAB_REDIRECT_URI")
     GITLAB_SCOPE: str = Field(default="read_user api", env="GITLAB_SCOPE")
+
+    # Jira Integration
+    JIRA_API_TIMEOUT: float = Field(default=15.0, env="JIRA_API_TIMEOUT")
 
     # GitHub App Configuration (for SaaS platform with repo access)
     GITHUB_APP_ID: str | None = Field(default=None, env="GITHUB_APP_ID")

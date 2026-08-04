@@ -122,10 +122,16 @@ def decode_token(token: str | None) -> dict[str, Any] | None:
     if token is None:
         return None
     try:
+        # Verify algorithm to prevent algorithm confusion attacks
+        unverified_header = jwt.get_unverified_header(token)
+        if unverified_header.get("alg") != "HS256":
+            logger.warning("JWT algorithm mismatch", alg=unverified_header.get("alg"))
+            return None
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
+            options={"require": ["exp", "iat", "jti", "sub"]},
         )
         if payload.get("jti") is None:
             logger.warning("Missing JWT JTI", payload_keys=list(payload.keys()))

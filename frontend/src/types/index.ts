@@ -69,6 +69,9 @@ export interface Finding {
   cwe?: string
   references?: string[]
   evidence?: string
+  resource_name?: string
+  // Technology classification (from backend)
+  technology?: string
   // Legacy fields (fallback only)
   fix_example?: string
   ai_explanation?: string
@@ -230,6 +233,7 @@ export type ScanEventType =
   | 'stack_detected'
   | 'log_message'
   | 'ai_progress'
+  | 'ai_completed'
   | 'stage_transition'
   | 'connection_ack'
   | 'unknown'

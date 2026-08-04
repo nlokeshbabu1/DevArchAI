@@ -1,7 +1,9 @@
 """GitHub App webhook endpoint."""
 
+import json
+
 import structlog
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,9 +31,16 @@ async def github_app_webhook(request: Request, db: AsyncSession = Depends(get_db
         result = await handler.handle_webhook(request)
         return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
-    except Exception as e:
-        logger.error("GitHub App webhook processing failed", error=str(e))
+    except HTTPException:
+        raise
+    except json.JSONDecodeError:
         return JSONResponse(
-            content={"error": "Webhook processing failed", "detail": str(e)},
+            content={"error": "Invalid JSON payload"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception:
+        logger.exception("GitHub App webhook processing failed")
+        return JSONResponse(
+            content={"error": "Webhook processing failed"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

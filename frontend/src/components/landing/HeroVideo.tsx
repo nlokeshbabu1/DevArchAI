@@ -1,24 +1,26 @@
 import { useState, useEffect, useRef, useMemo, memo, type ReactNode } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
-  GitBranch, Terminal, Shield, Brain, FileText,
+  GitBranch, Shield, Brain, FileText,
   CheckCircle2, AlertTriangle, Box, Hexagon, Layers,
-  ArrowRight, Zap, Search,
+  ArrowRight, Zap, Search, KeyRound,
 } from 'lucide-react'
 
 // ─── Timing ───────────────────────────────────────────────
-const LOOP = 12_000
+const LOOP = 10_000
 const ENTER = 300
 const EXIT = 250
 const STAGES = [
-  { start: 0,    dur: 1600, label: 'Import',  icon: GitBranch  },
-  { start: 1600, dur: 1200, label: 'Clone',   icon: Terminal   },
-  { start: 2800, dur: 2000, label: 'Detect',  icon: Search     },
-  { start: 4800, dur: 3000, label: 'Scan',    icon: Shield     },
-  { start: 7800, dur: 2400, label: 'AI',      icon: Brain      },
-  { start: 10200,dur: 1800, label: 'Report',  icon: FileText   },
+  { start: 0,    dur: 1000, label: 'Import',    icon: GitBranch  },
+  { start: 1000, dur: 1000, label: 'Detect',    icon: Search     },
+  { start: 2000, dur: 1000, label: 'Docker',    icon: Box        },
+  { start: 3000, dur: 1000, label: 'K8s',       icon: Hexagon    },
+  { start: 4000, dur: 1000, label: 'Terraform', icon: Layers     },
+  { start: 5000, dur: 1100, label: 'Secrets',   icon: KeyRound   },
+  { start: 6100, dur: 1700, label: 'AI',        icon: Brain      },
+  { start: 7800, dur: 1900, label: 'Report',    icon: FileText   },
 ] as const
-const TIMELINE = ['Import', 'Detect', 'Scan', 'AI', 'Report'] as const
+const TIMELINE = ['Import', 'Detect', 'Docker', 'K8s', 'TF', 'Secrets', 'AI', 'Report'] as const
 
 // ─── Easing ───────────────────────────────────────────────
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
@@ -57,13 +59,11 @@ function stageOpacity(t: number, s: typeof STAGES[number]) {
   return Math.min(fadeIn, fadeOut)
 }
 
-// Map 6 animation stages → 5 timeline steps (Clone maps to Import)
-const STAGE_TO_TIMELINE = [0, 0, 1, 2, 3, 4] as const
-
+// Stage index maps 1:1 to the timeline (8 stages → 8 steps)
 function activeIdx(t: number) {
   for (let i = STAGES.length - 1; i >= 0; i--) {
     if (t >= STAGES[i].start) {
-      return STAGE_TO_TIMELINE[i]
+      return i
     }
   }
   return 0
@@ -236,59 +236,32 @@ function ImportStage() {
   )
 }
 
-// ─── Stage 2: Clone ───────────────────────────────────────
-function CloneStage() {
-  const [progress, setProgress] = useState(0)
-
-  useEffect(() => {
-    let raf: number
-    const start = performance.now()
-    const animate = (now: number) => {
-      const elapsed = now - start
-      const p = Math.min(1, elapsed / 1400)
-      setProgress(easeOutQuart(p))
-      if (p < 1) {
-        raf = requestAnimationFrame(animate)
-      }
-    }
-    raf = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
+// ─── Stage 2: Secrets Scan ───────────────────────────────
+function SecretsScanStage() {
   return (
-    <GlassCard className="w-full max-w-sm overflow-hidden">
+    <GlassCard className="w-full max-w-sm overflow-hidden" glow>
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
-        <Terminal className="w-3 h-3 text-green-400" />
-        <span className="text-[10px] font-medium text-slate-300">Cloning Repository</span>
+        <KeyRound className="w-3 h-3 text-red-400" />
+        <span className="text-[10px] font-medium text-slate-300">Secrets Scan</span>
       </div>
-      <div className="p-3 space-y-3">
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 font-medium">Files</span>
-            <span className="text-[10px] text-slate-500 tabular-nums">{Math.round(progress * 847)}/847</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-green-500/60 to-green-400/80"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/[0.08] border border-red-500/20">
+          <KeyRound className="w-3 h-3 text-red-400" />
+          <span className="text-[10px] font-medium text-red-300">Leaked credentials detected</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-1.5">
           {[
-            { label: 'Size', value: '2.4 MB' },
-            { label: 'Objects', value: '1,247' },
-            { label: 'Time', value: '1.8s' },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p className="text-[10px] text-slate-500">{stat.label}</p>
-              <p className="text-xs font-semibold text-white tabular-nums">{stat.value}</p>
-            </div>
+            { label: 'AWS Access Key detection', color: 'bg-red-400/70' },
+            { label: 'GitHub Personal Token', color: 'bg-orange-400/70' },
+            { label: 'SSH private key exposure', color: 'bg-amber-400/70' },
+            { label: 'Database connection strings', color: 'bg-blue-400/70' },
+          ].map((item, i) => (
+            <ProgressBar key={item.label} label={item.label} progress={0.9} color={item.color} delay={i * 0.08} />
           ))}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-green-400/80">
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="font-medium">Clone complete</span>
+        <div className="flex items-center gap-1.5 text-[10px] text-red-400/80">
+          <AlertTriangle className="w-3 h-3" />
+          <span className="font-medium">5 secrets exposed</span>
         </div>
       </div>
     </GlassCard>
@@ -315,9 +288,9 @@ function DetectStage() {
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
           <defs>
             <linearGradient id="conn-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="hsl(239 84% 67% / 0)" />
-              <stop offset="50%" stopColor="hsl(239 84% 67% / 0.2)" />
-              <stop offset="100%" stopColor="hsl(239 84% 67% / 0)" />
+              <stop offset="0%" stopColor="hsl(252 100% 68% / 0)" />
+              <stop offset="50%" stopColor="hsl(252 100% 68% / 0.2)" />
+              <stop offset="100%" stopColor="hsl(252 100% 68% / 0)" />
             </linearGradient>
           </defs>
           {/* Horizontal connector */}
@@ -366,61 +339,103 @@ function DetectStage() {
   )
 }
 
-// ─── Stage 4: Scan ────────────────────────────────────────
-const SCAN_ITEMS = [
-  { label: 'Security Analysis', color: 'bg-red-400/70', delay: 0 },
-  { label: 'Performance Analysis', color: 'bg-amber-400/70', delay: 0.08 },
-  { label: 'Reliability Analysis', color: 'bg-blue-400/70', delay: 0.16 },
-  { label: 'Cost Analysis', color: 'bg-green-400/70', delay: 0.24 },
-  { label: 'Observability Analysis', color: 'bg-purple-400/70', delay: 0.32 },
-]
-
-function ScanStage() {
-  const [t, setT] = useState(0)
-
-  useEffect(() => {
-    let raf: number
-    const start = performance.now()
-    const animate = (now: number) => {
-      setT(Math.min(1, (now - start) / 2600))
-      raf = requestAnimationFrame(animate)
-    }
-    raf = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
+// ─── Stage 4: Docker Scan ──────────────────────────────────
+function DockerScanStage() {
   return (
     <GlassCard className="w-full max-w-sm overflow-hidden" glow>
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
-        <Shield className="w-3 h-3 text-red-400" />
-        <span className="text-[10px] font-medium text-slate-300">Security Scan</span>
-        <div className="ml-auto flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-          <span className="text-[9px] text-red-400/80 font-medium tabular-nums">{Math.round(t * 100)}%</span>
-        </div>
+        <Box className="w-3 h-3 text-blue-400" />
+        <span className="text-[10px] font-medium text-slate-300">Docker Security Scan</span>
       </div>
-      <div className="p-3 space-y-2.5 relative">
-        {/* Scan beam */}
-        <motion.div
-          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent pointer-events-none"
-          animate={{ top: ['10%', '90%', '10%'] }}
-          transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
-        />
-        {SCAN_ITEMS.map((item) => (
-          <ProgressBar
-            key={item.label}
-            label={item.label}
-            progress={t}
-            color={item.color}
-            delay={item.delay}
-          />
-        ))}
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-blue-500/[0.08] border border-blue-500/20">
+          <Box className="w-3 h-3 text-blue-400" />
+          <span className="text-[10px] font-medium text-blue-300">Dockerfile</span>
+        </div>
+        <div className="space-y-1.5">
+          {[
+            { label: 'Base image vulnerabilities', color: 'bg-red-400/70' },
+            { label: 'Root user detection', color: 'bg-amber-400/70' },
+            { label: 'Secret exposure', color: 'bg-orange-400/70' },
+            { label: 'Layer optimization', color: 'bg-green-400/70' },
+          ].map((item, i) => (
+            <ProgressBar key={item.label} label={item.label} progress={0.85} color={item.color} delay={i * 0.08} />
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-blue-400/80">
+          <CheckCircle2 className="w-3 h-3" />
+          <span className="font-medium">4 findings</span>
+        </div>
       </div>
     </GlassCard>
   )
 }
 
-// ─── Stage 5: AI Analysis ─────────────────────────────────
+// ─── Stage 5: Kubernetes Scan ───────────────────────────────
+function KubernetesScanStage() {
+  return (
+    <GlassCard className="w-full max-w-sm overflow-hidden" glow>
+      <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
+        <Hexagon className="w-3 h-3 text-cyan-400" />
+        <span className="text-[10px] font-medium text-slate-300">Kubernetes Security Scan</span>
+      </div>
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-cyan-500/[0.08] border border-cyan-500/20">
+          <Hexagon className="w-3 h-3 text-cyan-400" />
+          <span className="text-[10px] font-medium text-cyan-300">deployment.yaml</span>
+        </div>
+        <div className="space-y-1.5">
+          {[
+            { label: 'Pod security policies', color: 'bg-red-400/70' },
+            { label: 'Privileged container check', color: 'bg-amber-400/70' },
+            { label: 'Resource limits', color: 'bg-blue-400/70' },
+            { label: 'Network policies', color: 'bg-purple-400/70' },
+          ].map((item, i) => (
+            <ProgressBar key={item.label} label={item.label} progress={0.78} color={item.color} delay={i * 0.08} />
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-cyan-400/80">
+          <CheckCircle2 className="w-3 h-3" />
+          <span className="font-medium">3 findings</span>
+        </div>
+      </div>
+    </GlassCard>
+  )
+}
+
+// ─── Stage 6: Terraform Scan ────────────────────────────────
+function TerraformScanStage() {
+  return (
+    <GlassCard className="w-full max-w-sm overflow-hidden" glow>
+      <div className="px-3 py-2 border-b border-white/[0.06] flex items-center gap-2">
+        <Layers className="w-3 h-3 text-purple-400" />
+        <span className="text-[10px] font-medium text-slate-300">Terraform Security Scan</span>
+      </div>
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/[0.08] border border-purple-500/20">
+          <Layers className="w-3 h-3 text-purple-400" />
+          <span className="text-[10px] font-medium text-purple-300">main.tf</span>
+        </div>
+        <div className="space-y-1.5">
+          {[
+            { label: 'Public S3 bucket detection', color: 'bg-red-400/70' },
+            { label: 'Unencrypted storage', color: 'bg-orange-400/70' },
+            { label: 'Overly permissive IAM', color: 'bg-amber-400/70' },
+            { label: 'Missing logging', color: 'bg-green-400/70' },
+          ].map((item, i) => (
+            <ProgressBar key={item.label} label={item.label} progress={0.92} color={item.color} delay={i * 0.08} />
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-purple-400/80">
+          <CheckCircle2 className="w-3 h-3" />
+          <span className="font-medium">5 findings</span>
+        </div>
+      </div>
+    </GlassCard>
+  )
+}
+
+// ─── Stage 8: AI Analysis ─────────────────────────────────
 function AIStage() {
   return (
     <GlassCard className="w-full max-w-sm overflow-hidden" glow>
@@ -552,11 +567,13 @@ export function HeroVideo() {
 
   const stages = useMemo(() => [
     { el: <ImportStage />, ...STAGES[0] },
-    { el: <CloneStage />, ...STAGES[1] },
-    { el: <DetectStage />, ...STAGES[2] },
-    { el: <ScanStage />, ...STAGES[3] },
-    { el: <AIStage />, ...STAGES[4] },
-    { el: <ReportStage />, ...STAGES[5] },
+    { el: <DetectStage />, ...STAGES[1] },
+    { el: <DockerScanStage />, ...STAGES[2] },
+    { el: <KubernetesScanStage />, ...STAGES[3] },
+    { el: <TerraformScanStage />, ...STAGES[4] },
+    { el: <SecretsScanStage />, ...STAGES[5] },
+    { el: <AIStage />, ...STAGES[6] },
+    { el: <ReportStage />, ...STAGES[7] },
   ], [])
 
   if (prefersReducedMotion) {
@@ -606,9 +623,9 @@ export function HeroVideo() {
             className="absolute inset-0 pointer-events-none"
             animate={{
               background: [
-                'radial-gradient(ellipse at 20% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
-                'radial-gradient(ellipse at 80% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
-                'radial-gradient(ellipse at 20% 50%, hsl(239 84% 67% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 20% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 80% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
+                'radial-gradient(ellipse at 20% 50%, hsl(252 100% 68% / 0.02) 0%, transparent 60%)',
               ],
             }}
             transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}

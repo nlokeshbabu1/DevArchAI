@@ -264,7 +264,8 @@ export function useRepositoryScan(options: UseRepositoryScanOptions) {
     debugLog('AI complete handler called')
     setState(prev => ({ ...prev, isAiPending: false }))
     await queryClient.invalidateQueries({ queryKey: ['repository-results'] })
-    await queryClient.invalidateQueries({ queryKey: ['scan-result'] })
+    await queryClient.invalidateQueries({ queryKey: ['scan-results'] })
+    await queryClient.invalidateQueries({ queryKey: ['scans'] })
   }, [queryClient])
 
   const handleLog = useCallback((message: string) => {

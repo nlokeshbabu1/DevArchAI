@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_optional_user
+from app.core.validators import parse_uuid
 from app.db.session import get_db
 from app.models.ai_suggestion import AISuggestion, SuggestionStatus
 from app.models.finding import Finding
@@ -30,12 +31,39 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/suggestions", tags=["AI Suggestions"])
 
 
+def suggestion_to_response(s: AISuggestion) -> AISuggestionResponse:
+    """Convert an AISuggestion record to the response format."""
+    return AISuggestionResponse(
+        id=str(s.id),
+        finding_id=str(s.finding_id),
+        scan_id=str(s.scan_id),
+        title=s.title or "",
+        description=s.description or "",
+        severity=s.severity.value if hasattr(s.severity, 'value') else str(s.severity),
+        confidence=s.confidence or 0.9,
+        category=s.category.value if hasattr(s.category, 'value') else str(s.category),
+        fix_type=s.fix_type.value if hasattr(s.fix_type, 'value') else str(s.fix_type),
+        file_path=s.file_path or "",
+        line_number=s.line_number,
+        fix_code=s.fix_code,
+        auto_fix_available=s.auto_fix_available or False,
+        metadata=s.metadata if isinstance(s.metadata, dict) else None,
+        status=s.status.value if hasattr(s.status, 'value') else str(s.status),
+        applied_at=s.applied_at,
+        pr_url=s.pr_url,
+        pr_number=s.pr_number,
+        created_at=s.created_at or datetime.utcnow(),
+        updated_at=s.updated_at or datetime.utcnow(),
+    )
+
+
 async def _verify_suggestion_ownership(
     suggestion_id: str,
     current_user: User,
     db: AsyncSession,
 ) -> AISuggestion:
     """Verify the current user owns the scan associated with this suggestion."""
+    parse_uuid(suggestion_id, "suggestion_id")
     result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
     suggestion = result.scalar_one_or_none()
 
@@ -121,30 +149,6 @@ async def list_all_suggestions(
             ))
 
     # Convert AISuggestion records to response format (handle UUID -> string conversion)
-    def suggestion_to_response(s):
-        return AISuggestionResponse(
-            id=str(s.id),
-            finding_id=str(s.finding_id),
-            scan_id=str(s.scan_id),
-            title=s.title or "",
-            description=s.description or "",
-            severity=s.severity.value if hasattr(s.severity, 'value') else str(s.severity),
-            confidence=s.confidence or 0.9,
-            category=s.category.value if hasattr(s.category, 'value') else str(s.category),
-            fix_type=s.fix_type.value if hasattr(s.fix_type, 'value') else str(s.fix_type),
-            file_path=s.file_path or "",
-            line_number=s.line_number,
-            fix_code=s.fix_code,
-            auto_fix_available=s.auto_fix_available or False,
-            metadata=s.metadata if isinstance(s.metadata, dict) else None,
-            status=s.status.value if hasattr(s.status, 'value') else str(s.status),
-            applied_at=s.applied_at,
-            pr_url=s.pr_url,
-            pr_number=s.pr_number,
-            created_at=s.created_at or datetime.utcnow(),
-            updated_at=s.updated_at or datetime.utcnow(),
-        )
-
     all_suggestions = [suggestion_to_response(s) for s in suggestions] + finding_suggestions
 
     return AISuggestionListResponse(
@@ -163,6 +167,7 @@ async def list_suggestions(
 ):
     """List AI suggestions for a scan."""
     # Verify scan exists and user has access
+    parse_uuid(scan_id, "scan_id")
     scan_result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = scan_result.scalar_one_or_none()
 
@@ -364,6 +369,7 @@ async def generate_suggestion(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    parse_uuid(finding_id, "finding_id")
     # Get finding with ownership verification
     result = await db.execute(select(Finding).where(Finding.id == finding_id))
     finding = result.scalar_one_or_none()

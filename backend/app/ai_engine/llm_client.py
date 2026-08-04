@@ -835,6 +835,191 @@ Write a 3-paragraph executive summary."""
             return [f.get("recommendation") for f in findings[:5]]
 
 
+class OllamaProvider(BaseLLMProvider):
+    """Ollama local LLM provider (self-hosted via ``ollama serve``).
+
+    Talks to the Ollama HTTP API with a health check, per-request timeouts,
+    automatic retries with backoff, optional streaming and structured logging.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str | None = None,
+        timeout_seconds: int | None = None,
+        max_retries: int | None = None,
+        stream: bool | None = None,
+    ):
+        from app.ai_engine.local_llm import OllamaClient
+
+        self._llm_client = OllamaClient(
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            stream=stream,
+        )
+        self.model = self._llm_client.model
+        self.base_url = self._llm_client.base_url
+
+    async def generate(self, prompt: str, max_tokens: int | None = None) -> str:
+        """Generate a raw completion for ``prompt`` via the Ollama API."""
+        return await self._llm_client.generate(prompt, max_tokens=max_tokens)
+
+    async def health_check(self) -> bool:
+        """Return True when the configured Ollama server is reachable."""
+        return await self._llm_client.health_check()
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate a detailed explanation for a finding."""
+        prompt = _local_explanation_prompt(finding_description, context)
+        try:
+            response = await self.generate(prompt, max_tokens=1000)
+            data = _extract_json_object(response)
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", finding_description),
+                impact_analysis=data.get("impact_analysis", "This issue may affect system reliability, security, or cost."),
+                remediation_steps=data.get("remediation_steps", ["Review the recommendation", "Consult documentation", "Test changes in staging"]),
+                confidence=0.85,
+            )
+        except Exception as e:
+            logger.warning("Ollama explanation generation failed", error=str(e))
+            return _local_fallback_explanation(context)
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate an executive summary."""
+        prompt = _local_summary_prompt(findings, scores)
+        try:
+            return await self.generate(prompt, max_tokens=800)
+        except Exception as e:
+            logger.warning("Ollama executive summary failed", error=str(e))
+            return _local_fallback_summary(scores)
+
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
+        """Generate a risk analysis for the findings."""
+        prompt = _local_risk_prompt(findings)
+        try:
+            return await self.generate(prompt, max_tokens=1000)
+        except Exception as e:
+            logger.warning("Ollama risk analysis failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate prioritized recommendations."""
+        prompt = _local_recommendations_prompt(findings)
+        try:
+            response = await self.generate(prompt, max_tokens=500)
+            return _parse_bulleted_response(response)[:5]
+        except Exception as e:
+            logger.warning("Ollama recommendations failed", error=str(e))
+            return _local_fallback_recommendations(findings)
+
+    async def close(self) -> None:
+        """Release the underlying HTTP client."""
+        await self._llm_client.aclose()
+
+
+class GPT4AllProvider(BaseLLMProvider):
+    """GPT4All local LLM provider.
+
+    Uses the ``gpt4all`` Python bindings with lazy model loading, a process-wide
+    singleton model, thread-safe inference and explicit cleanup.
+    """
+
+    def __init__(
+        self,
+        model: str | None = None,
+        model_path: str | None = None,
+        threads: int | None = None,
+        max_tokens: int | None = None,
+    ):
+        from app.ai_engine.local_llm import GPT4AllModel
+
+        self._llm_client = GPT4AllModel(
+            model=model,
+            model_path=model_path,
+            threads=threads,
+            max_tokens=max_tokens,
+        )
+        self.model = self._llm_client.model_name
+
+    async def generate(self, prompt: str, max_tokens: int | None = None) -> str:
+        """Generate a raw completion for ``prompt`` (inference in a thread)."""
+        return await self._llm_client.agenerate(prompt, max_tokens=max_tokens)
+
+    async def generate_explanation(
+        self,
+        finding_description: str,
+        context: dict[str, Any],
+    ) -> AIExplanation:
+        """Generate a detailed explanation for a finding."""
+        prompt = _local_explanation_prompt(finding_description, context)
+        try:
+            response = await self.generate(prompt, max_tokens=1000)
+            data = _extract_json_object(response)
+            return AIExplanation(
+                finding_id=context.get("rule_id", ""),
+                explanation=data.get("explanation", finding_description),
+                impact_analysis=data.get("impact_analysis", "This issue may affect system reliability, security, or cost."),
+                remediation_steps=data.get("remediation_steps", ["Review the recommendation", "Consult documentation", "Test changes in staging"]),
+                confidence=0.8,
+            )
+        except Exception as e:
+            logger.warning("GPT4All explanation generation failed", error=str(e))
+            return _local_fallback_explanation(context)
+
+    async def generate_executive_summary(
+        self,
+        findings: list[dict[str, Any]],
+        scores: dict[str, float],
+    ) -> str:
+        """Generate an executive summary."""
+        prompt = _local_summary_prompt(findings, scores)
+        try:
+            return await self.generate(prompt, max_tokens=800)
+        except Exception as e:
+            logger.warning("GPT4All executive summary failed", error=str(e))
+            return _local_fallback_summary(scores)
+
+    async def generate_risk_analysis(self, findings: list[dict[str, Any]]) -> str:
+        """Generate a risk analysis for the findings."""
+        prompt = _local_risk_prompt(findings)
+        try:
+            return await self.generate(prompt, max_tokens=1000)
+        except Exception as e:
+            logger.warning("GPT4All risk analysis failed", error=str(e))
+            return "Risk analysis unavailable."
+
+    async def generate_prioritized_recommendations(
+        self,
+        findings: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate prioritized recommendations."""
+        prompt = _local_recommendations_prompt(findings)
+        try:
+            response = await self.generate(prompt, max_tokens=500)
+            return _parse_bulleted_response(response)[:5]
+        except Exception as e:
+            logger.warning("GPT4All recommendations failed", error=str(e))
+            return _local_fallback_recommendations(findings)
+
+    async def close(self) -> None:
+        """Release the cached GPT4All model from memory."""
+        self._llm_client.close()
+
+
 class MockLLMProvider(BaseLLMProvider):
     """Mock LLM provider for testing/development."""
 
@@ -901,6 +1086,12 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.MISTRAL_API_KEY,
             model=mistral_model,
         )
+    elif provider == "ollama":
+        logger.info("Using Ollama local LLM provider")
+        return OllamaProvider()
+    elif provider == "gpt4all":
+        logger.info("Using GPT4All local LLM provider")
+        return GPT4AllProvider()
     else:
         # Fallback chain: try available providers in order
         if settings.OPENAI_API_KEY:
@@ -922,3 +1113,129 @@ def get_llm_provider() -> BaseLLMProvider:
         else:
             logger.warning("No LLM API keys configured, using Mock provider")
             return MockLLMProvider()
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for local LLM providers (Ollama / GPT4All)
+# ---------------------------------------------------------------------------
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    """Best-effort extraction of a JSON object from an LLM response."""
+    import json
+
+    stripped = (text or "").strip()
+    if stripped.startswith("```"):
+        parts = stripped.split("```")
+        if len(parts) >= 2:
+            stripped = parts[1]
+        if stripped.startswith("json"):
+            stripped = stripped[4:]
+        stripped = stripped.strip()
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end < start:
+        return {}
+    try:
+        parsed = json.loads(stripped[start : end + 1])
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _parse_bulleted_response(text: str) -> list[str]:
+    """Parse a numbered or bulleted list out of an LLM response."""
+    items: list[str] = []
+    for line in (text or "").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line[0].isdigit() or line.startswith(("-", "*")):
+            items.append(line.lstrip("0123456789.-* ").strip())
+    return items
+
+
+def _local_explanation_prompt(finding_description: str, context: dict[str, Any]) -> str:
+    return (
+        "You are a DevOps expert analyzing infrastructure issues.\n\n"
+        f"Finding: {finding_description}\n"
+        f"Context: {context}\n\n"
+        "Provide a detailed explanation including:\n"
+        "1. What this issue means in practical terms\n"
+        "2. The potential impact on security, reliability, or cost\n"
+        "3. Specific steps to remediate this issue\n\n"
+        "Format your response as JSON with keys: explanation, impact_analysis, remediation_steps"
+    )
+
+
+def _local_summary_prompt(findings: list[dict[str, Any]], scores: dict[str, float]) -> str:
+    critical = [f for f in findings if f.get("severity") == "critical"][:10]
+    high = [f for f in findings if f.get("severity") == "high"][:10]
+    return (
+        "You are a DevOps consultant providing an executive summary.\n\n"
+        f"Overall Scores:\n{scores}\n\n"
+        f"Critical Findings:\n{chr(10).join('- ' + str(f.get('rule_name')) + ': ' + str(f.get('description')) for f in critical) or 'None'}\n\n"
+        f"High Severity Findings:\n{chr(10).join('- ' + str(f.get('rule_name')) + ': ' + str(f.get('description')) for f in high) or 'None'}\n\n"
+        "Write a concise executive summary (3-4 paragraphs) covering:\n"
+        "1. Overall production readiness assessment\n"
+        "2. Key risk areas\n"
+        "3. Priority recommendations"
+    )
+
+
+def _local_risk_prompt(findings: list[dict[str, Any]]) -> str:
+    formatted = "\n".join(
+        f"[{str(f.get('severity', 'unknown')).upper()}] {f.get('rule_name')}: {f.get('description')}"
+        for f in findings[:20]
+    )
+    return (
+        "Analyze the following infrastructure findings and provide a risk assessment:\n\n"
+        f"{formatted}\n\n"
+        "Provide risk analysis covering:\n"
+        "1. Immediate risks (require urgent attention)\n"
+        "2. Medium-term risks (should be addressed in next sprint)\n"
+        "3. Long-term considerations (technical debt)"
+    )
+
+
+def _local_recommendations_prompt(findings: list[dict[str, Any]]) -> str:
+    formatted = "\n".join(
+        f"[{str(f.get('severity', 'unknown')).upper()}] {f.get('rule_name')}: {f.get('description')}"
+        for f in findings[:20]
+    )
+    return (
+        "Based on these findings, provide the top 5 prioritized recommendations:\n\n"
+        f"{formatted}\n\n"
+        "List recommendations in order of priority (most critical first)."
+    )
+
+
+def _local_fallback_explanation(context: dict[str, Any]) -> AIExplanation:
+    return AIExplanation(
+        finding_id=context.get("rule_id", ""),
+        explanation=context.get("description", "No detailed explanation available."),
+        impact_analysis="This issue may affect system reliability, security, or cost.",
+        remediation_steps=["Review the recommendation", "Consult documentation", "Test changes in staging"],
+        confidence=0.5,
+    )
+
+
+def _local_fallback_summary(scores: dict[str, float]) -> str:
+    overall = sum(scores.values()) / len(scores) if scores else 0
+    return f"""Production Readiness Assessment
+
+Overall Score: {overall:.1f}/100
+
+Category Scores:
+{chr(10).join(f'- {k}: {v:.1f}' for k, v in scores.items())}
+
+Please review individual findings for specific recommendations."""
+
+
+def _local_fallback_recommendations(findings: list[dict[str, Any]]) -> list[str]:
+    critical = [f for f in findings if f.get("severity") == "critical"]
+    high = [f for f in findings if f.get("severity") == "high"]
+    recommendations = [f"CRITICAL: {f.get('recommendation')}" for f in critical[:3]]
+    recommendations += [f"HIGH: {f.get('recommendation')}" for f in high[:2]]
+    return recommendations

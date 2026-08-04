@@ -249,10 +249,10 @@ export function Button({
   ...props
 }: ButtonProps) {
   const variantConfig = {
-    primary: 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 hover:scale-[1.02]',
-    secondary: 'bg-white/5 text-foreground border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-[1.02]',
-    ghost: 'hover:bg-white/5 hover:text-foreground',
-    destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lg shadow-destructive/30 hover:scale-[1.02]',
+    primary: 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98]',
+    secondary: 'bg-white/5 text-foreground border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-[1.02] active:scale-[0.98]',
+    ghost: 'hover:bg-white/5 hover:text-foreground active:scale-[0.98]',
+    destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lg shadow-destructive/30 hover:scale-[1.02] active:scale-[0.98]',
   }
 
   const sizeConfig = {
@@ -265,7 +265,8 @@ export function Button({
     <button
       className={cn(
         'group relative inline-flex items-center justify-center gap-2 font-medium',
-        'transition-all duration-300',
+        'transition-all duration-300 ease-out',
+        'will-change-transform',
         'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
         variantConfig[variant],

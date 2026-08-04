@@ -28,6 +28,15 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting DevArchAI backend", version=settings.VERSION, environment=settings.ENVIRONMENT)
 
+    # Validate AWS identity (fails with sys.exit(1) if running as root)
+    try:
+        from app.cloud.aws.sts import validate_startup_identity
+        validate_startup_identity()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        logger.warning(f"AWS identity check failed (non-fatal): {exc}")
+
     # Initialize database
     await init_db()
     logger.info("Database initialized")
@@ -35,6 +44,21 @@ async def lifespan(app: FastAPI):
     # Store engine reference for health checks
     from app.db.session import get_engine
     app.state.db_engine = get_engine()
+
+    # Initialize Knowledge System (providers, cache, metrics)
+    try:
+        from app.knowledge.registration import initialize_knowledge_system
+        knowledge_registry = await initialize_knowledge_system()
+        app.state.knowledge_registry = knowledge_registry
+        logger.info("Knowledge system initialized successfully")
+
+        # Start periodic cache cleanup task
+        from app.knowledge.cache import get_knowledge_cache
+        cache = get_knowledge_cache()
+        cache.start_cleanup_task(interval_seconds=300)
+        logger.info("Knowledge cache cleanup task started")
+    except Exception as e:
+        logger.warning(f"Knowledge system initialization failed (non-fatal): {e}")
 
     # PHASE 2C: Initialize Redis cache (NEW - Production Grade)
     try:
@@ -68,6 +92,21 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down DevArchAI backend")
+
+    # Cleanup knowledge cache refresh tasks
+    if hasattr(app.state, 'knowledge_registry'):
+        try:
+            from app.knowledge.cache import get_knowledge_cache
+            cache = get_knowledge_cache()
+            # Stop cleanup task
+            cache.stop_cleanup_task()
+            # Cancel any pending refresh tasks
+            for task in cache._refresh_tasks.values():
+                if not task.done():
+                    task.cancel()
+            logger.info("Knowledge cache cleanup complete")
+        except Exception as e:
+            logger.warning(f"Knowledge cache cleanup failed: {e}")
 
     # Close Redis connection
     if hasattr(app.state, 'cache'):
@@ -161,6 +200,30 @@ def create_app() -> FastAPI:
             await scan_progress_websocket(websocket, scan_id)
 
         logger.info("WebSocket endpoint registered at /ws/scan/{scan_id}")
+    except Exception as e:
+        logger.warning(f"WebSocket endpoint registration failed: {e}")
+
+    # PHASE 2B: Add Cloud WebSocket endpoint (NEW - Production Grade)
+    try:
+        from fastapi import WebSocket as _WS
+
+        from app.cloud.websocket_manager import cloud_ws_manager
+
+        @app.websocket("/ws/cloud/{connection_id}")
+        async def websocket_cloud_progress(websocket: _WS, connection_id: str):
+            """WebSocket endpoint for real-time cloud scan progress updates."""
+            connected = await cloud_ws_manager.connect(connection_id, websocket)
+            if not connected:
+                return
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    if data == "ping":
+                        await websocket.send_text('{"type":"pong","data":{}}')
+            except Exception:
+                await cloud_ws_manager.disconnect(connection_id, websocket)
+
+        logger.info("WebSocket endpoint registered at /ws/cloud/{connection_id}")
     except Exception as e:
         logger.warning(f"WebSocket endpoint registration failed: {e}")
 

@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.validators import validate_repository_url
 
 
 class InstallationCreate(BaseModel):
@@ -18,6 +20,11 @@ class InstallationCreate(BaseModel):
         description="GitHub App installation ID",
         example=12345678,
     )
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url_field(cls, value: str) -> str:
+        return validate_repository_url(value)
 
 
 class InstallationResponse(BaseModel):
@@ -52,6 +59,11 @@ class InstallationValidateRequest(BaseModel):
         description="GitHub App installation ID to validate",
         example=12345678,
     )
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url_field(cls, value: str) -> str:
+        return validate_repository_url(value)
 
 
 class InstallationValidateResponse(BaseModel):
