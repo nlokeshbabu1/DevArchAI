@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.validators import validate_branch, validate_repository_url
 
 
 class RepoAnalysisRequest(BaseModel):
@@ -10,6 +12,18 @@ class RepoAnalysisRequest(BaseModel):
 
     repo_url: str = Field(..., description="GitHub repository URL")
     branch: str | None = Field(default="main", description="Branch to analyze")
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, value: str) -> str:
+        return validate_repository_url(value)
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return validate_branch(value)
 
     class Config:
         json_schema_extra = {

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.validators import validate_branch, validate_repository_url
+
 
 class ScanStatus(str, Enum):
     """Scan status enumeration."""
@@ -34,6 +36,18 @@ class ScanCreate(BaseModel):
     branch: str | None = Field(default="main", description="Branch to analyze")
     commit_hash: str | None = Field(None, description="Specific commit to analyze")
     include_ai_explanations: bool = Field(default=True, description="Include AI explanations")
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url(cls, v: str) -> str:
+        return validate_repository_url(v)
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return validate_branch(v)
 
     class Config:
         json_schema_extra = {

@@ -89,15 +89,21 @@ class AISuggestionGenerationService:
         self,
         llm_provider: Any | None = None,
         repo_scanner: RepositoryScanner | None = None,
-        batch_size: int = MAX_FINDINGS_PER_BATCH,
-        max_file_chars: int = MAX_FILE_CONTEXT_CHARS,
-        call_timeout_seconds: int = AI_CALL_TIMEOUT_SECONDS,
+        batch_size: int | None = None,
+        max_file_chars: int | None = None,
+        call_timeout_seconds: int | None = None,
     ) -> None:
         self.llm_provider = llm_provider
         self.repo_scanner = repo_scanner or RepositoryScanner()
-        self.batch_size = batch_size
-        self.max_file_chars = max_file_chars
-        self.call_timeout_seconds = call_timeout_seconds
+        self.batch_size = batch_size or int(
+            getattr(settings, "AI_SUGGESTION_BATCH_SIZE", None) or MAX_FINDINGS_PER_BATCH
+        )
+        self.max_file_chars = max_file_chars or int(
+            getattr(settings, "AI_SUGGESTION_MAX_FILE_CHARS", None) or MAX_FILE_CONTEXT_CHARS
+        )
+        self.call_timeout_seconds = call_timeout_seconds or int(
+            getattr(settings, "AI_CALL_TIMEOUT_SECONDS", None) or AI_CALL_TIMEOUT_SECONDS
+        )
         self.progress_store = None
         self.scan_progress_manager = None
 
@@ -221,7 +227,6 @@ class AISuggestionGenerationService:
             # Broadcast AI completion
             try:
                 from app.websockets.scan_progress import (
-                    _make_message,
                     scan_progress_manager,
                 )
                 loop = asyncio.new_event_loop()
@@ -233,12 +238,12 @@ class AISuggestionGenerationService:
                     self.progress_store.add_log(str(scan_uuid), "AI suggestions generated successfully")
                 )
                 # Send AI completion event
-                msg = _make_message(
-                    "ai_complete",
-                    {"scan_id": str(scan_uuid), "suggestions_count": suggestions_upserted},
-                )
                 loop.run_until_complete(
-                    scan_progress_manager._broadcast(str(scan_uuid), msg)
+                    scan_progress_manager.broadcast_ai_completed(
+                        str(scan_uuid),
+                        status="completed",
+                        suggestions_count=suggestions_upserted,
+                    )
                 )
                 loop.close()
             except Exception:

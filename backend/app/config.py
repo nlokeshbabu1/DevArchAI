@@ -109,7 +109,9 @@ class Settings(BaseSettings):
     )
 
     # LLM Configuration
-    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mistral", "mock"] = Field(default="mock", env="LLM_PROVIDER")
+    LLM_PROVIDER: Literal["openai", "anthropic", "gemini", "mistral", "ollama", "gpt4all", "mock"] = Field(
+        default="mock", env="LLM_PROVIDER"
+    )
     OPENAI_API_KEY: str | None = Field(default=None, env="OPENAI_API_KEY")
     ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     GEMINI_API_KEY: str | None = Field(default=None, env="GEMINI_API_KEY")
@@ -117,6 +119,24 @@ class Settings(BaseSettings):
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")
+
+    # AI suggestion generation (background flow)
+    AI_CALL_TIMEOUT_SECONDS: int = Field(default=300, env="AI_CALL_TIMEOUT_SECONDS")
+    AI_SUGGESTION_BATCH_SIZE: int = Field(default=5, env="AI_SUGGESTION_BATCH_SIZE")
+    AI_SUGGESTION_MAX_FILE_CHARS: int = Field(default=500, env="AI_SUGGESTION_MAX_FILE_CHARS")
+
+    # Ollama (local LLM provider)
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
+    OLLAMA_MODEL: str = Field(default="llama3.2", env="OLLAMA_MODEL")
+    OLLAMA_TIMEOUT_SECONDS: int = Field(default=120, env="OLLAMA_TIMEOUT_SECONDS")
+    OLLAMA_MAX_RETRIES: int = Field(default=2, env="OLLAMA_MAX_RETRIES")
+    OLLAMA_STREAM: bool = Field(default=False, env="OLLAMA_STREAM")
+
+    # GPT4All (local LLM provider)
+    GPT4ALL_MODEL: str = Field(default="Meta-Llama-3-8B-Instruct.Q4_0.gguf", env="GPT4ALL_MODEL")
+    GPT4ALL_MODEL_PATH: str | None = Field(default=None, env="GPT4ALL_MODEL_PATH")
+    GPT4ALL_THREADS: int | None = Field(default=None, env="GPT4ALL_THREADS")
+    GPT4ALL_MAX_TOKENS: int = Field(default=1500, env="GPT4ALL_MAX_TOKENS")
 
     # Knowledge Retrieval
     KNOWLEDGE_CACHE_TTL_SECONDS: int = Field(default=3600, env="KNOWLEDGE_CACHE_TTL_SECONDS")

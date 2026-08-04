@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.validators import validate_external_https_url
 
 # ── Wizard ─────────────────────────────────────────────────
 
@@ -247,6 +249,11 @@ class CreateJiraTicketRequest(BaseModel):
     summary: str = Field(..., max_length=200)
     description: str = Field(..., max_length=10000)
     issue_type: str = Field(default="Task")
+
+    @field_validator("jira_url")
+    @classmethod
+    def validate_jira_url(cls, value: str) -> str:
+        return validate_external_https_url(value, field_name="jira_url")
 
 
 class JiraTicketResponse(BaseModel):

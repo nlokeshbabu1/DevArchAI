@@ -115,7 +115,15 @@ async def list_scans(
 
     # Filter by status if provided
     if status_filter:
-        query = query.where(Scan.status == status_filter)
+        if status_filter.upper() not in ScanStatus.__members__:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid status_filter: {status_filter}. "
+                    f"Valid values: {', '.join(ScanStatus.__members__)}"
+                ),
+            )
+        query = query.where(Scan.status == ScanStatus[status_filter.upper()])
 
     # Filter by user if authenticated
     if current_user:

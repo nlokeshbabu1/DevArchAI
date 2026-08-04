@@ -12,11 +12,13 @@ from uuid import uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.security import get_current_user, get_optional_user
+from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db
 from app.models.anonymous_scan import AnonymousScan
 from app.models.scan import Scan, ScanStatus
@@ -32,6 +34,16 @@ class PublicScanRequest(BaseModel):
     """Request model for public scan endpoint."""
     repository_url: str
     branch: str = "main"
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url(cls, v: str) -> str:
+        return validate_repository_url(v)
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, v: str) -> str:
+        return validate_branch(v)
 
 
 @router.post("/scan", response_model=dict)
@@ -282,6 +294,7 @@ async def get_scan_status(
     """
     from app.services.scan_progress_store import get_scan_progress_store
 
+    parse_uuid(scan_id, "scan_id")
     store = get_scan_progress_store()
     progress = await store.get_progress(scan_id)
 

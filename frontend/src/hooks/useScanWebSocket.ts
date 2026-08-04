@@ -25,6 +25,7 @@ interface UseScanWebSocketOptions {
   onComplete?: (data: Record<string, any>) => void
   onFailed?: (data: Record<string, any>) => void
   onStageChange?: (stage: ScanStage) => void
+  onAIComplete?: (data: Record<string, any>) => void
 }
 
 const BASE_DELAY_MS = 1000
@@ -40,6 +41,7 @@ export function useScanWebSocket({
   onComplete,
   onFailed,
   onStageChange,
+  onAIComplete,
 }: UseScanWebSocketOptions) {
   const [lifecycleState, setLifecycleState] = useState<ScanLifecycleState>('idle')
   const [scanState, setScanState] = useState<ScanProgressSnapshot | null>(null)
@@ -57,6 +59,7 @@ export function useScanWebSocket({
   const onCompleteRef = useRef(onComplete)
   const onFailedRef = useRef(onFailed)
   const onStageChangeRef = useRef(onStageChange)
+  const onAICompleteRef = useRef(onAIComplete)
   const eventCounterRef = useRef(0)
 
   useEffect(() => { enabledRef.current = enabled }, [enabled])
@@ -65,6 +68,7 @@ export function useScanWebSocket({
   useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
   useEffect(() => { onFailedRef.current = onFailed }, [onFailed])
   useEffect(() => { onStageChangeRef.current = onStageChange }, [onStageChange])
+  useEffect(() => { onAICompleteRef.current = onAIComplete }, [onAIComplete])
 
   const cleanup = useCallback(() => {
     if (heartbeatRef.current) {
@@ -199,6 +203,7 @@ export function useScanWebSocket({
             stack_detected: 'stack_detected',
             log_message: 'log_message',
             ai_progress: 'ai_progress',
+            ai_completed: 'ai_completed',
             stage_transition: 'stage_transition',
             connection_ack: 'connection_ack',
           }
@@ -390,6 +395,28 @@ export function useScanWebSocket({
               progress: data.progress ?? 0,
               message: data.message || `AI: ${data.phase || 'processing'}`,
             })
+            break
+          }
+
+          case 'ai_completed': {
+            const completed: AIGenerationProgress = {
+              phase: data.phase || 'completed',
+              message: data.message || 'AI analysis complete',
+              progress: 100,
+              findings_processed: data.findings_processed ?? 0,
+              findings_total: data.findings_total ?? 0,
+              timestamp: data.timestamp || new Date().toISOString(),
+            }
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return { ...base, aiProgress: completed }
+            })
+            pushEvent(type, {
+              stage: 'ai_generation',
+              progress: 100,
+              message: data.message || 'AI analysis complete',
+            })
+            onAICompleteRef.current?.(data || {})
             break
           }
 

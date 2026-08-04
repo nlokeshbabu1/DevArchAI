@@ -90,7 +90,7 @@ export function RepositoryResultsPage() {
   // WebSocket for real-time updates during scan
   useScanWebSocket({
     scanId: scanState.scanId,
-    enabled: scanState.isScanning,
+    enabled: scanState.isScanning || isAiPending,
     onComplete: (data) => {
       void handleScanComplete(data)
     },
@@ -99,6 +99,9 @@ export function RepositoryResultsPage() {
     },
     onStageChange: (stage) => {
       handleProgressUpdate({ currentStage: stage })
+    },
+    onAIComplete: () => {
+      void handleAIComplete()
     },
   })
 

@@ -20,6 +20,7 @@ from app.cloud.websocket_manager import cloud_ws_manager
 from app.config import settings
 from app.core.encryption import get_encryption_service
 from app.core.security import get_current_user
+from app.core.validators import parse_uuid
 from app.db.session import get_db
 from app.models.ai_recommendation import AIRecommendation
 from app.models.cloud import (
@@ -66,9 +67,10 @@ async def _owned_connection(
     user: User,
     db: AsyncSession,
 ) -> CloudConnection:
+    conn_uuid = parse_uuid(connection_id, "connection_id")
     result = await db.execute(
         select(CloudConnection).where(
-            CloudConnection.id == connection_id,
+            CloudConnection.id == conn_uuid,
             CloudConnection.user_id == user.id,
         )
     )
@@ -937,6 +939,8 @@ async def create_jira_ticket_for_recommendation(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JiraTicketResponse:
+    parse_uuid(connection_id, "connection_id")
+    parse_uuid(recommendation_id, "recommendation_id")
     await _owned_connection(connection_id, user, db)
     result = await db.execute(
         select(AIRecommendation).where(

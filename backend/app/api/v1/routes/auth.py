@@ -448,7 +448,13 @@ async def github_callback(
     """
     try:
         # Get authorization code from request
-        data = await request.json()
+        try:
+            data = await request.json()
+        except Exception as exc:  # invalid/empty JSON body
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request body must be valid JSON",
+            ) from exc
         code = data.get("code")
 
         if not code:
@@ -639,11 +645,11 @@ async def github_callback(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception("GitHub OAuth callback failed", error=str(e))
+    except Exception:
+        logger.exception("GitHub OAuth callback failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"GitHub OAuth failed: {str(e)}",
+            detail="GitHub OAuth failed. Please try again.",
         )
 
 

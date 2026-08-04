@@ -327,6 +327,13 @@ export function ScanProgressPage() {
     queryFn: async () => { if (!id) throw new Error('No scan ID'); return (await scansApi.getScanResults(id)) as ScanResult },
     enabled: isValidScanId && !!scanState?.is_terminal && scanState.status === 'completed',
     retry: 3, staleTime: 5 * 60 * 1000,
+    refetchInterval: (query) => {
+      const data = query.state.data as ScanResult | undefined
+      if (data?.ai_status === 'pending' || data?.ai_status === 'processing') {
+        return 4000
+      }
+      return false
+    },
   })
 
   const repoName = result?.repository_name ||
@@ -340,11 +347,20 @@ export function ScanProgressPage() {
 
   const handleScanComplete = useCallback(() => {}, [])
   const handleScanFailed = useCallback(() => {}, [])
+  const handleAIComplete = useCallback(() => {
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+    }
+  }, [queryClient, id])
+
+  const aiStatus = result?.ai_status || null
+  const aiStillPending = aiStatus === 'pending' || aiStatus === 'processing'
 
   const { scanState: wsState } = useScanWebSocket({
     scanId: isValidScanId ? id! : null,
-    enabled: isValidScanId && !isTerminal,
+    enabled: isValidScanId && (!isTerminal || aiStillPending),
     onComplete: handleScanComplete, onFailed: handleScanFailed,
+    onAIComplete: handleAIComplete,
   })
 
   // --- All state from WebSocket, never computed on frontend ---

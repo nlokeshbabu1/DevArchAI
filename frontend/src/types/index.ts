@@ -233,6 +233,7 @@ export type ScanEventType =
   | 'stack_detected'
   | 'log_message'
   | 'ai_progress'
+  | 'ai_completed'
   | 'stage_transition'
   | 'connection_ack'
   | 'unknown'

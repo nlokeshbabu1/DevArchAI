@@ -1,23 +1,71 @@
-import { useCallback, memo, useRef } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, useInView } from 'framer-motion'
+import { motion, useInView, useMotionValue, useSpring } from 'framer-motion'
 import {
   ArrowRight, Check, Shield, GitBranch, Search, Brain,
-  Sparkles, GitPullRequest, FileText, Zap
+  GitPullRequest, FileText, Play, ChevronDown
 } from 'lucide-react'
 import { Button } from '../components/ui-animated'
 import { MagneticButton } from '../components/landing/MagneticButton'
 import { Navbar } from '../components/landing/Navbar'
 import { HeroVideo } from '../components/landing/HeroVideo'
-import { TrustedBy } from '../components/landing/TrustedBy'
-import { StatsSection } from '../components/landing/StatsSection'
+import { FloatingTechCards } from '../components/landing/FloatingTechCards'
 import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
 import { WhyDevArchAI } from '../components/landing/WhyDevArchAI'
-import { TrustSection } from '../components/landing/TrustSection'
 import { PricingSection } from '../components/landing/PricingSection'
-import { FAQ } from '../components/landing/FAQ'
-import { BackgroundGrid } from '../components/landing/BackgroundGrid'
+import { BackgroundVideo } from '../components/landing/BackgroundVideo'
 
+/* ─── Mouse Glow ───────────────────────────────────────────── */
+function MouseGlow() {
+  const [visible, setVisible] = useState(false)
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const springX = useSpring(x, { stiffness: 150, damping: 25 })
+  const springY = useSpring(y, { stiffness: 150, damping: 25 })
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      if (!visible) setVisible(true)
+      x.set(e.clientX)
+      y.set(e.clientY)
+    }
+    const handleLeave = () => setVisible(false)
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseleave', handleLeave)
+    return () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseleave', handleLeave)
+    }
+  }, [visible, x, y])
+
+  return (
+    <motion.div
+      className="fixed pointer-events-none z-[9999] mix-blend-screen hidden lg:block"
+      style={{
+        x: springX,
+        y: springY,
+        translateX: '-50%',
+        translateY: '-50%',
+        width: 600,
+        height: 600,
+        opacity: visible ? 1 : 0,
+        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.04) 0%, rgba(139, 92, 246, 0.02) 30%, transparent 70%)',
+      }}
+      aria-hidden="true"
+    />
+  )
+}
+
+/* ─── Section Divider ─────────────────────────────────────── */
+function SectionDivider() {
+  return (
+    <div className="relative">
+      <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+    </div>
+  )
+}
+
+/* ─── Fade Up Variants ────────────────────────────────────── */
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
@@ -27,6 +75,7 @@ const fadeUp = {
   }),
 }
 
+/* ─── Story Steps ─────────────────────────────────────────── */
 const storySteps = [
   {
     icon: GitBranch,
@@ -84,17 +133,14 @@ function StoryStep({
   return (
     <motion.div
       ref={ref}
-      className="relative flex gap-6 pb-8"
+      className="relative flex gap-6 pb-6"
       initial={{ opacity: 0, x: -20 }}
       animate={inView ? { opacity: 1, x: 0 } : {}}
       transition={{ delay: index * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
     >
-      {/* Connector line */}
       {!isLast && (
         <div className="absolute left-6 top-14 bottom-0 w-px bg-gradient-to-b from-white/10 to-transparent" />
       )}
-
-      {/* Step number */}
       <div className="relative flex-shrink-0">
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-white/[0.06] ${step.bg}`}>
           <Icon className={`h-5 w-5 ${step.color}`} />
@@ -103,8 +149,6 @@ function StoryStep({
           <span className="text-[8px] font-bold text-primary">{index + 1}</span>
         </div>
       </div>
-
-      {/* Content */}
       <div className="flex-1 pt-1">
         <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1] transition-colors duration-300">
           <h3 className="text-base font-semibold text-white mb-1">{step.title}</h3>
@@ -115,15 +159,7 @@ function StoryStep({
   )
 }
 
-function SectionDivider() {
-  return (
-    <div className="relative py-1">
-      <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-      <div className="absolute inset-0 h-px bg-gradient-to-r from-transparent via-primary/[0.03] to-transparent blur-sm" />
-    </div>
-  )
-}
-
+/* ─── Main Landing ────────────────────────────────────────── */
 export function Landing() {
   const navigate = useNavigate()
 
@@ -132,323 +168,349 @@ export function Landing() {
   }, [navigate])
 
   return (
-    <div className="min-h-screen bg-[#0B1020] overflow-x-hidden">
-      <Navbar />
+    <div className="min-h-screen overflow-x-hidden">
+      {/* Fixed video background — renders behind everything */}
+      <BackgroundVideo />
 
-      {/* ===== HERO ===== */}
-      <section className="relative pt-36 pb-16 lg:pt-44 lg:pb-20 overflow-hidden">
-        <BackgroundGrid />
+      {/* Content layer — scrolls over the fixed video */}
+      <div className="relative" style={{ zIndex: 1 }}>
+        <MouseGlow />
+        <Navbar />
 
-        {/* Hero ambient glows */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/[0.04] rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
+        {/* ===== HERO ===== */}
+        <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden">
+          <FloatingTechCards />
 
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center max-w-7xl mx-auto">
-            {/* Left: Content */}
-            <div className="max-w-xl">
-              {/* Badge */}
+          {/* Hero ambient glows */}
+          <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-primary/[0.04] rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-blue-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
+
+          {/* Left-to-right reading gradient behind headline */}
+          <div
+            className="absolute inset-y-0 left-0 w-full lg:w-[55%] pointer-events-none"
+            style={{
+              background: 'linear-gradient(90deg, rgba(3, 0, 15, 0.55) 0%, rgba(3, 0, 15, 0.35) 40%, transparent 100%)',
+            }}
+          />
+
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-20 lg:py-0">
+            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center max-w-7xl mx-auto">
+              {/* Left: Content */}
+              <div className="max-w-xl">
+                <motion.div
+                  custom={0}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="mb-6"
+                >
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+                    </span>
+                    <span className="text-xs font-medium text-slate-400">DevOps Security Scanner</span>
+                  </div>
+                </motion.div>
+
+                <motion.h1
+                  custom={1}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="display-xl text-white mb-6"
+                >
+                  Secure your{' '}
+                  <span className="gradient-text">DevOps stack</span>{' '}
+                  before production
+                </motion.h1>
+
+                <motion.p
+                  custom={2}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-[600px]"
+                >
+                  Scan repositories, Docker, Kubernetes, Terraform, and CI/CD pipelines.
+                  Get AI-powered fix recommendations in under 30 seconds.
+                </motion.p>
+
+                <motion.div
+                  custom={3}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="flex flex-row flex-wrap gap-3 mb-10"
+                >
+                  <MagneticButton onClick={handleStartScan}>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="btn-premium h-[50px] px-7 text-sm font-semibold"
+                    >
+                      Start Free Scan
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </MagneticButton>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={() => document.getElementById('live-demo')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="btn-secondary-premium h-[50px] px-7 text-sm font-semibold"
+                  >
+                    <Play className="h-3.5 w-3.5 mr-1.5" />
+                    Watch Demo
+                  </Button>
+                </motion.div>
+
+                <motion.div
+                  custom={4}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="visible"
+                  className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400"
+                >
+                  {['No credit card required', 'Free tier available', 'Instant results'].map((item) => (
+                    <div key={item} className="flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-green-400/80" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </motion.div>
+              </div>
+
+              {/* Right: Product showcase */}
               <motion.div
-                custom={0}
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                className="mb-6"
-              >
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03]">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
-                  </span>
-                  <span className="text-xs font-medium text-slate-400">DevOps Security Scanner</span>
-                </div>
-              </motion.div>
-
-              {/* Headline */}
-              <motion.h1
-                custom={1}
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                className="display-xl text-white mb-5"
-              >
-                Secure your DevOps stack before production
-              </motion.h1>
-
-              {/* Description */}
-              <motion.p
                 custom={2}
                 variants={fadeUp}
                 initial="hidden"
                 animate="visible"
-                className="text-base sm:text-lg text-slate-400 leading-relaxed mb-8 max-w-[520px]"
+                className="relative w-full max-w-[650px] mx-auto lg:ml-auto"
               >
-                Scan repositories, Docker, Kubernetes, Terraform, and CI/CD pipelines.
-                Get AI-powered fix recommendations in under 30 seconds.
-              </motion.p>
-
-              {/* CTAs */}
-              <motion.div
-                custom={3}
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                className="flex flex-col gap-3 mb-8"
-              >
-                <MagneticButton
-                  className="inline-flex w-full sm:w-auto"
-                  onClick={handleStartScan}
-                >
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="btn-premium px-7 py-3 text-base w-full sm:w-auto"
-                  >
-                    Start Free Scan
-                    <ArrowRight className="h-4 w-4 ml-1.5" />
-                  </Button>
-                </MagneticButton>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="btn-secondary-premium px-7 py-3 text-base w-full sm:w-auto"
-                >
-                  See How It Works
-                </Button>
-              </motion.div>
-
-              {/* Trust indicators */}
-              <motion.div
-                custom={4}
-                variants={fadeUp}
-                initial="hidden"
-                animate="visible"
-                className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400"
-              >
-                {['No credit card required', 'Free tier available', 'Instant results'].map((item) => (
-                  <div key={item} className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-green-400/80" />
-                    <span>{item}</span>
-                  </div>
-                ))}
+                <div className="absolute -inset-12 bg-primary/[0.04] rounded-3xl blur-[80px] pointer-events-none" />
+                <div className="absolute -inset-8 bg-[#0a0f1e]/60 rounded-3xl blur-xl pointer-events-none" />
+                <div className="relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_0_60px_-12px_rgba(99,102,241,0.08)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_0_80px_-8px_rgba(99,102,241,0.12)]">
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent rounded-t-2xl" />
+                  <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent rounded-l-2xl" />
+                  <HeroVideo />
+                </div>
               </motion.div>
             </div>
+          </div>
 
-            {/* Right: Product showcase — premium glass panel */}
+          {/* Scroll indicator */}
+          <motion.div
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.5, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">Scroll to explore</span>
             <motion.div
-              custom={2}
-              variants={fadeUp}
-              initial="hidden"
-              animate="visible"
-              className="relative w-full max-w-lg lg:max-w-none mx-auto"
+              animate={{ y: [0, 6, 0] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
             >
-              {/* Ambient glow behind panel */}
-              <div className="absolute -inset-12 bg-primary/[0.04] rounded-3xl blur-[80px] pointer-events-none" />
+              <ChevronDown className="h-4 w-4 text-slate-500" />
+            </motion.div>
+          </motion.div>
+        </section>
 
-              {/* Glass panel */}
-              <div className="relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_0_60px_-12px_rgba(99,102,241,0.08)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_0_80px_-8px_rgba(99,102,241,0.12)]">
-                {/* Top reflection */}
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent rounded-t-2xl" />
-                {/* Left reflection */}
-                <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent rounded-l-2xl" />
+        {/* ===== LIVE PRODUCT DEMO ===== */}
+        <section id="live-demo" className="py-12 lg:py-16">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              className="text-center mb-10 space-y-3"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/[0.06] border border-primary/20 mb-4 backdrop-blur-sm">
+                <Play className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-primary/90">See It In Action</span>
+              </div>
+              <h2 className="display-lg text-white">
+                Live Product Demo
+              </h2>
+              <p className="text-base text-slate-400 max-w-2xl mx-auto">
+                Watch DevArchAI scan a real repository — from import through Docker, Kubernetes, Terraform, and CI/CD analysis to AI-powered report generation
+              </p>
+            </motion.div>
 
+            <motion.div
+              className="max-w-4xl mx-auto"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md overflow-hidden shadow-[0_0_80px_-16px_rgba(99,102,241,0.1)]">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
                 <HeroVideo />
               </div>
             </motion.div>
           </div>
+        </section>
+        <SectionDivider />
+
+        {/* ===== TECHNOLOGY MARQUEE ===== */}
+        <TechnologyMarquee />
+        <SectionDivider />
+
+        {/* ===== FEATURES (Why DevArchAI) ===== */}
+        <div id="features">
+          <WhyDevArchAI />
         </div>
-      </section>
+        <SectionDivider />
 
-      {/* ===== TRUSTED BY ===== */}
-      <TrustedBy />
+        {/* ===== ARCHITECTURE (How It Works) ===== */}
+        <section id="how-it-works" className="py-12 lg:py-16">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+              <div className="lg:sticky lg:top-24">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <p className="text-sm font-medium text-primary mb-3">Architecture</p>
+                  <h2 className="display-lg text-white mb-4">
+                    From repository to production readiness
+                  </h2>
+                  <p className="text-base text-slate-400 max-w-lg leading-relaxed">
+                    A single scan triggers a comprehensive analysis pipeline. Every step is automated.
+                    You get actionable results in under 30 seconds.
+                  </p>
+                </motion.div>
+              </div>
+              <div className="relative">
+                {storySteps.map((step, index) => (
+                  <StoryStep
+                    key={step.title}
+                    step={step}
+                    index={index}
+                    isLast={index === storySteps.length - 1}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+        <SectionDivider />
 
-      <SectionDivider />
+        {/* ===== PRICING ===== */}
+        <section id="pricing">
+          <PricingSection />
+        </section>
+        <SectionDivider />
 
-      {/* ===== STATS ===== */}
-      <StatsSection />
-
-      <SectionDivider />
-
-      {/* ===== TECHNOLOGY MARQUEE ===== */}
-      <TechnologyMarquee />
-
-      <SectionDivider />
-
-      {/* ===== HOW IT WORKS - Product Story ===== */}
-      <section id="how-it-works" className="py-16 lg:py-24">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
-            {/* Left: Header */}
-            <div className="lg:sticky lg:top-24">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <p className="text-sm font-medium text-primary mb-3">How It Works</p>
-                <h2 className="display-lg text-white mb-4">
-                  From repository to production readiness
+        {/* ===== FINAL CTA ===== */}
+        <section className="py-16 lg:py-24 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/[0.02] to-transparent pointer-events-none" />
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <motion.div
+              className="max-w-3xl mx-auto text-center"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="space-y-5">
+                <h2 className="display-lg text-white">
+                  Secure your pipeline{' '}
+                  <span className="gradient-text">today</span>
                 </h2>
-                <p className="text-base text-slate-400 max-w-lg leading-relaxed">
-                  A single scan triggers a comprehensive analysis pipeline. Every step is automated.
-                  You get actionable results in under 30 seconds.
+                <p className="text-base text-slate-400 max-w-xl mx-auto leading-relaxed">
+                  Detect vulnerabilities, secrets, infrastructure risks, and CI/CD issues before deployment.
+                  Start scanning in under 30 seconds.
                 </p>
-              </motion.div>
-            </div>
-
-            {/* Right: Story steps */}
-            <div className="relative">
-              {storySteps.map((step, index) => (
-                <StoryStep
-                  key={step.title}
-                  step={step}
-                  index={index}
-                  isLast={index === storySteps.length - 1}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      {/* ===== WHY DEVARCHAI ===== */}
-      <WhyDevArchAI />
-
-      <SectionDivider />
-
-      {/* ===== TRUST SECTION ===== */}
-      <TrustSection />
-
-      <SectionDivider />
-
-      {/* ===== PRICING ===== */}
-      <section id="pricing">
-        <PricingSection />
-      </section>
-
-      <SectionDivider />
-
-      {/* ===== FAQ ===== */}
-      <FAQ />
-
-      <SectionDivider />
-
-      {/* ===== FINAL CTA ===== */}
-      <section className="py-20 lg:py-28">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div
-            className="max-w-3xl mx-auto text-center"
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div className="space-y-5">
-              <h2 className="display-lg text-white">
-                Secure your pipeline today
-              </h2>
-              <p className="text-base text-slate-400 max-w-xl mx-auto leading-relaxed">
-                Detect vulnerabilities, secrets, infrastructure risks, and CI/CD issues before deployment.
-                Start scanning in under 30 seconds.
-              </p>
-              <div className="flex flex-col gap-3 justify-center pt-2">
-                <MagneticButton
-                  className="inline-flex w-full sm:w-auto"
-                  onClick={() => navigate('/register')}
-                >
+                <div className="flex flex-row flex-wrap gap-3 justify-center pt-2">
+                  <MagneticButton onClick={() => navigate('/register')}>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="btn-premium h-[50px] px-7 text-sm font-semibold"
+                    >
+                      Start Free Scan
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </MagneticButton>
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="lg"
-                    className="btn-premium px-7 py-3 text-base w-full sm:w-auto"
+                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="btn-secondary-premium h-[50px] px-7 text-sm font-semibold"
                   >
-                    Start Free Scan
-                    <ArrowRight className="h-4 w-4 ml-1.5" />
+                    <Play className="h-3.5 w-3.5 mr-1.5" />
+                    See How It Works
                   </Button>
-                </MagneticButton>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="btn-secondary-premium px-7 py-3 text-base w-full sm:w-auto"
-                >
-                  See How It Works
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ===== FOOTER ===== */}
-      <footer
-        className="border-t border-white/[0.06] py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]"
-        role="contentinfo"
-      >
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
-            {/* Brand */}
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
-                  <Shield className="h-3.5 w-3.5 text-primary" />
                 </div>
-                <span className="text-sm font-semibold text-white">DevArchAI</span>
               </div>
-              <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
-                AI-powered DevOps security scanning for infrastructure-as-code.
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ===== FOOTER ===== */}
+        <footer
+          className="border-t border-white/[0.06] py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]"
+          role="contentinfo"
+        >
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+              <div className="col-span-2 md:col-span-1">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
+                    <Shield className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <span className="text-sm font-semibold text-white">DevArchAI</span>
+                </div>
+                <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
+                  AI-powered DevOps security scanning for infrastructure-as-code.
+                </p>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Product</h4>
+                <ul className="space-y-1 text-sm text-slate-400">
+                  <li><a href="#features" className="block py-1.5 hover:text-white transition-colors">Features</a></li>
+                  <li><a href="#pricing" className="block py-1.5 hover:text-white transition-colors">Pricing</a></li>
+                  <li><a href="#how-it-works" className="block py-1.5 hover:text-white transition-colors">Architecture</a></li>
+                  <li><a href="#live-demo" className="block py-1.5 hover:text-white transition-colors">Demo</a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Resources</h4>
+                <ul className="space-y-1 text-sm text-slate-400">
+                  <li><a href="/docs" className="block py-1.5 hover:text-white transition-colors">Documentation</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">API Reference</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Blog</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Security</a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Company</h4>
+                <ul className="space-y-1 text-sm text-slate-400">
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">About</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Privacy</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Terms</a></li>
+                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Contact</a></li>
+                </ul>
+              </div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-xs text-slate-400">
+                &copy; {new Date().getFullYear()} DevArchAI. All rights reserved.
               </p>
-            </div>
-
-            {/* Product */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Product</h4>
-              <ul className="space-y-1 text-sm text-slate-400">
-                <li><a href="#features" className="block py-1.5 hover:text-white transition-colors">Features</a></li>
-                <li><a href="#pricing" className="block py-1.5 hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="#how-it-works" className="block py-1.5 hover:text-white transition-colors">How It Works</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Changelog</a></li>
-              </ul>
-            </div>
-
-            {/* Resources */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Resources</h4>
-              <ul className="space-y-1 text-sm text-slate-400">
-                <li><a href="/docs" className="block py-1.5 hover:text-white transition-colors">Documentation</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">API Reference</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Blog</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Security</a></li>
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Company</h4>
-              <ul className="space-y-1 text-sm text-slate-400">
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">About</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Privacy</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Terms</a></li>
-                <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Contact</a></li>
-              </ul>
+              <div className="flex items-center gap-4 text-xs text-slate-400">
+                <a href="#" className="hover:text-white transition-colors py-1">Privacy Policy</a>
+                <a href="#" className="hover:text-white transition-colors py-1">Terms of Service</a>
+                <a href="#" className="hover:text-white transition-colors py-1">Cookie Policy</a>
+              </div>
             </div>
           </div>
-
-          <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-slate-400">
-              &copy; {new Date().getFullYear()} DevArchAI. All rights reserved.
-            </p>
-            <div className="flex items-center gap-4 text-xs text-slate-400">
-              <a href="#" className="hover:text-white transition-colors py-1">Privacy Policy</a>
-              <a href="#" className="hover:text-white transition-colors py-1">Terms of Service</a>
-              <a href="#" className="hover:text-white transition-colors py-1">Cookie Policy</a>
-            </div>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   )
 }
