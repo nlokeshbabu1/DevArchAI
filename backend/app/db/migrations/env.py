@@ -5,9 +5,12 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 import app.models  # noqa: F401
+import app.models.ai_recommendation  # noqa: F401
 import app.models.ai_suggestion  # noqa: F401
+import app.models.anonymous_scan  # noqa: F401
 import app.models.audit_log  # noqa: F401
 import app.models.aws  # noqa: F401
+import app.models.cloud_recommendation  # noqa: F401
 import app.models.finding  # noqa: F401
 import app.models.github_installation  # noqa: F401
 import app.models.organization  # noqa: F401

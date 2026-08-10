@@ -95,4 +95,4 @@ class CloudAIRecommendation(Base):
     last_scan_id = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    connection = relationship("CloudConnection", back_populates="ai_recommendations")
+    connection = relationship("CloudConnection")

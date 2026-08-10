@@ -1,6 +1,8 @@
 """Database models package."""
 
+from app.models.ai_recommendation import AIRecommendation
 from app.models.ai_suggestion import AISuggestion, FixType, SuggestionStatus
+from app.models.anonymous_scan import AnonymousScan
 from app.models.audit_log import AuditLog
 from app.models.aws import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory
 from app.models.cloud import (
@@ -13,6 +15,7 @@ from app.models.cloud import (
     CloudScanSession,
     ConnectionStatus,
 )
+from app.models.cloud_recommendation import CloudAIRecommendation
 from app.models.finding import Category, Finding, Severity
 from app.models.github_installation import GitHubInstallation
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
@@ -54,6 +57,9 @@ __all__ = [
     "Finding",
     "Severity",
     "Category",
+    "AnonymousScan",
+    "AIRecommendation",
+    "CloudAIRecommendation",
     "GitHubInstallation",
     "Report",
     "RepoAnalysis",

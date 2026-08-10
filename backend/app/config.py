@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = Field(default=10, env="DB_POOL_SIZE")
     DB_MAX_OVERFLOW: int = Field(default=20, env="DB_MAX_OVERFLOW")
 
+    # Database initialization
+    DB_MIGRATE_ON_STARTUP: bool = Field(default=True, env="DB_MIGRATE_ON_STARTUP")
+    DB_MIGRATION_LOCK_TIMEOUT: int = Field(default=60, env="DB_MIGRATION_LOCK_TIMEOUT")
+
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
 
