@@ -13,6 +13,8 @@
 .env.*
 !.env.example
 !.env.template
+# Local API key store (backend/app/core/api_key_store.py)
+backend/data/
 .env.local
 .env.*.local
 .env.development

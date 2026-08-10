@@ -155,7 +155,7 @@ class TestDatabaseInitialization:
     def test_initialization_is_idempotent(self, initialized):
         """Running initialization twice is a no-op."""
         initialize_database()
-        assert current_revision() == "031"
+        assert current_revision() == "032"
         assert _tables(initialized) == _tables(initialized)
 
     def test_orphan_database_is_restamped(self, initialized):
@@ -167,7 +167,7 @@ class TestDatabaseInitialization:
         engine.dispose()
 
         initialize_database()
-        assert current_revision() == "031"
+        assert current_revision() == "032"
         assert "alembic_version" in _tables(initialized)
 
     def test_newer_database_is_refused(self, initialized):
@@ -201,13 +201,19 @@ class TestDatabaseInitialization:
                 "ALTER TABLE cloud_ai_recommendations DROP COLUMN cloudformation_fix"
             )
             conn.exec_driver_sql("DROP TABLE ai_recommendations")
+            conn.exec_driver_sql("DROP TABLE mcp_context")
+            conn.exec_driver_sql("DROP TABLE rag_chunks")
+            conn.exec_driver_sql("DROP TABLE knowledge_documents")
             conn.commit()
         engine.dispose()
 
         initialize_database()
-        assert current_revision() == "031"
+        assert current_revision() == "032"
         assert "ai_recommendations" in _tables(initialized)
         assert "cloudformation_fix" in _columns(initialized, "cloud_ai_recommendations")
+        assert "knowledge_documents" in _tables(initialized)
+        assert "rag_chunks" in _tables(initialized)
+        assert "mcp_context" in _tables(initialized)
 
     def test_migration_lock_contention(self, initialized):
         """A concurrent instance holding the lock blocks then fails clearly."""
@@ -243,7 +249,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="031")
+        report = verify_schema(initialized, database_revision="032")
         assert not report.ok
         type_errors = [i for i in report.errors if i.kind == "type_mismatch"]
         assert any(i.table == "users" and i.column == "is_active" for i in type_errors)
@@ -256,7 +262,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="031")
+        report = verify_schema(initialized, database_revision="032")
         assert not report.ok
         assert any(i.kind == "missing_table" and i.table == "findings" for i in report.errors)
 
@@ -268,7 +274,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="031")
+        report = verify_schema(initialized, database_revision="032")
         assert not report.ok
         assert any(i.kind == "primary_key_mismatch" and i.table == "users" for i in report.errors)
 

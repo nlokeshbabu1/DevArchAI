@@ -22,7 +22,7 @@ from app.parsers.kubernetes import KubernetesParser
 from app.parsers.terraform import TerraformParser
 from app.rule_engine.base import RuleFinding, RuleRegistry
 from app.scoring.engine import ScoringEngine
-from app.services.ai_suggestion_service import schedule_ai_suggestions_generation
+from app.services.ai_recommendation_service import enqueue_ai_analysis_for_scan
 from app.services.findings_deduplicator import FindingsDeduplicator
 from app.services.findings_enricher import FindingsEnricher
 from app.services.report_service import ReportService
@@ -300,7 +300,7 @@ class ScanService:
             self._update_progress(progress_callback, 100, "Scan complete")
 
             if scan.ai_status == "pending":
-                schedule_ai_suggestions_generation(scan.id)
+                enqueue_ai_analysis_for_scan(scan.id)
 
             logger.info(
                 "Scan completed successfully",

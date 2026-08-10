@@ -18,6 +18,7 @@ from app.models.cloud import (
 from app.models.cloud_recommendation import CloudAIRecommendation
 from app.models.finding import Category, Finding, Severity
 from app.models.github_installation import GitHubInstallation
+from app.models.knowledge import KnowledgeDocument, McpContext, RagChunk
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.payment import (
     Coupon,
@@ -34,6 +35,7 @@ from app.models.payment import (
 )
 from app.models.pull_request import PRStatus, PullRequest
 from app.models.repo_analysis import RepoAnalysis
+from app.models.scan_ai_recommendation import ScanAIRecommendation
 from app.models.report import Report
 from app.models.repository import Repository
 from app.models.scan import AIScanStatus, Scan, ScanStatus
@@ -62,6 +64,9 @@ __all__ = [
     "CloudAIRecommendation",
     "GitHubInstallation",
     "Report",
+    "KnowledgeDocument",
+    "RagChunk",
+    "McpContext",
     "RepoAnalysis",
     "PullRequest",
     "PRStatus",

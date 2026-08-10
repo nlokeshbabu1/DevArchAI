@@ -60,6 +60,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Knowledge system initialization failed (non-fatal): {e}")
 
+    # PHASE 1: Initialize RAG knowledge layer (seed from technology inventory)
+    try:
+        if settings.RAG_ENABLED:
+            from app.rag.service import get_rag_service
+            from app.services.metrics import set_knowledge_version
+
+            rag = get_rag_service()
+            set_knowledge_version(rag.knowledge_version)
+            if settings.RAG_SEED_ON_STARTUP:
+                seeded = await rag.seed_from_inventory()
+                logger.info("RAG knowledge layer ready", knowledge_version=rag.knowledge_version, seeded=seeded)
+            else:
+                logger.info("RAG knowledge layer ready (seeding skipped)", knowledge_version=rag.knowledge_version)
+        else:
+            logger.info("RAG knowledge layer disabled (RAG_ENABLED=false)")
+    except Exception as e:
+        logger.warning(f"RAG knowledge layer initialization failed (non-fatal): {e}")
+
     # PHASE 2C: Initialize Redis cache (NEW - Production Grade)
     try:
         from app.cache import get_cache

@@ -184,12 +184,32 @@ async def get_current_user_from_api_key(
     api_key: str,
     db: AsyncSession,
 ) -> User | None:
-    """Get current user from API key."""
-    # Extract prefix for faster lookup
+    """Get current user from API key.
+
+    Supports both the Settings-page ``sk-`` keys (in-memory store) and the
+    legacy ``dk_`` keys stored on the user row.
+    """
+    if api_key.startswith("sk-"):
+        from app.core.api_key_store import lookup_user_id_by_key
+
+        uid = lookup_user_id_by_key(api_key)
+        if not uid:
+            return None
+        result = await db.execute(
+            select(User).where(User.id == UUID(uid), User.is_active.is_(True))
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None
+        user.last_login_at = datetime.now(UTC)
+        return user
+
+    # Legacy dk_ keys stored on the user row. The stored prefix is everything
+    # up to the last underscore (e.g. ``dk_abcd`` for ``dk_abcd_secret``).
     if "_" not in api_key:
         return None
 
-    prefix = api_key.split("_")[0]
+    prefix = api_key.rsplit("_", 1)[0]
     if not prefix.startswith("dk_"):
         return None
 

@@ -43,9 +43,9 @@ services:
     depends_on:
       - backend
 
-  # PostgreSQL Database
+  # PostgreSQL Database (pgvector-enabled image for the RAG knowledge layer)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15-alpine
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

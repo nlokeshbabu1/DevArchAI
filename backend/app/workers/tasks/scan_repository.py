@@ -27,7 +27,7 @@ from app.scanners.deduplicator import deduplicate_across_scanners
 from app.scanners.helm_scanner import HelmScanner
 from app.scanners.registry import ScannerRegistry
 from app.scoring.engine import ScoringEngine
-from app.services.ai_suggestion_service import schedule_ai_suggestions_generation
+from app.services.ai_recommendation_service import enqueue_ai_analysis_for_scan
 from app.services.report_service import ReportService
 from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
@@ -884,7 +884,7 @@ class SyncScanService:
             self._update_progress(progress_callback, 100, "Scan complete")
 
             if scan.ai_status == "pending":
-                schedule_ai_suggestions_generation(scan.id)
+                enqueue_ai_analysis_for_scan(scan.id)
 
             # PHASE 6: Record scan metrics (NEW - Observability)
             detected = self.detected_stack.get_detected_technologies() if self.detected_stack else []

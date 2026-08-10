@@ -13,6 +13,7 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.workers.tasks.scan_repository",
+        "app.workers.tasks.ai_recommendations",
     ],
 )
 

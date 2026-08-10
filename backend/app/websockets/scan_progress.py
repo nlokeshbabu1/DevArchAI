@@ -47,6 +47,11 @@ class WSMessageType:
     AI_PROGRESS = "ai_progress"
     # AI generation completed
     AI_COMPLETED = "ai_completed"
+    # AI recommendation pipeline events (async, scan-independent)
+    AI_ANALYSIS_STARTED = "ai.analysis.started"
+    AI_FINDING_COMPLETED = "ai.finding.completed"
+    AI_ANALYSIS_COMPLETED = "ai.analysis.completed"
+    AI_ANALYSIS_FAILED = "ai.analysis.failed"
     # Stage transition (richer than progress_update)
     STAGE_TRANSITION = "stage_transition"
 
@@ -409,6 +414,69 @@ class ScanProgressWebSocketManager:
         ws_message = _make_message(WSMessageType.AI_COMPLETED, data)
         return await self._broadcast(scan_id, ws_message)
 
+    async def broadcast_ai_analysis_started(
+        self,
+        scan_id: str,
+        findings_total: int = 0,
+        findings_processed: int = 0,
+    ) -> int:
+        """Broadcast that the async AI recommendation pipeline has started."""
+        data = {
+            "scan_id": scan_id,
+            "status": "processing",
+            "findings_processed": findings_processed,
+            "findings_total": findings_total,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_ANALYSIS_STARTED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_finding_completed(
+        self,
+        scan_id: str,
+        findings_processed: int,
+        findings_total: int,
+    ) -> int:
+        """Broadcast that one recommendation (finding group) was completed."""
+        data = {
+            "scan_id": scan_id,
+            "findings_processed": findings_processed,
+            "findings_total": findings_total,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_FINDING_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_analysis_completed(
+        self,
+        scan_id: str,
+        stats: dict[str, Any] | None = None,
+    ) -> int:
+        """Broadcast that the AI recommendation pipeline finished."""
+        data = {
+            "scan_id": scan_id,
+            "status": "completed",
+            "stats": stats or {},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_ANALYSIS_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_analysis_failed(
+        self,
+        scan_id: str,
+        error: str,
+    ) -> int:
+        """Broadcast that the AI recommendation pipeline failed."""
+        data = {
+            "scan_id": scan_id,
+            "status": "failed",
+            "error": error[:1000],
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_ANALYSIS_FAILED, data)
+        return await self._broadcast(scan_id, ws_message)
+
     async def broadcast_stage_transition(
         self,
         scan_id: str,
@@ -428,10 +496,6 @@ class ScanProgressWebSocketManager:
         }
         message = _make_message(WSMessageType.STAGE_TRANSITION, data)
         return await self._broadcast(scan_id, message)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     async def _broadcast(self, scan_id: str, message: str) -> int:
         """

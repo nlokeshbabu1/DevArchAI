@@ -152,6 +152,7 @@ class AISuggestionGenerationService:
         repo_path: str | None = None
         file_snippets: dict[str, str] = {}
         ai_capable = self._supports_prompt_generation()
+        llm_used = False
 
         try:
             if ai_capable:
@@ -181,9 +182,10 @@ class AISuggestionGenerationService:
                 pass
 
             for batch_idx, batch in enumerate(batches):
-                batch_results = asyncio.run(
+                batch_results, batch_llm_used = asyncio.run(
                     self._generate_batch_results(batch, file_snippets, ai_capable)
                 )
+                llm_used = llm_used or batch_llm_used
                 findings_updated += self._apply_batch_results(db, batch, batch_results)
                 db.commit()
 
@@ -249,13 +251,21 @@ class AISuggestionGenerationService:
             except Exception:
                 pass
 
+            if ai_capable and not llm_used:
+                logger.warning(
+                    "AI suggestion generation failed for all batches; "
+                    "suggestions are fallback-based",
+                    scan_id=str(scan_uuid),
+                    findings_processed=len(findings),
+                )
+
             logger.info(
                 "AI suggestion generation complete",
                 scan_id=str(scan_uuid),
                 findings_processed=len(findings),
                 findings_updated=findings_updated,
                 suggestions_upserted=suggestions_upserted,
-                used_llm=ai_capable,
+                used_llm=llm_used,
             )
 
             return AISuggestionGenerationResult(
@@ -280,18 +290,25 @@ class AISuggestionGenerationService:
         findings: Sequence[Finding],
         file_snippets: dict[str, str],
         ai_capable: bool,
-    ) -> list[dict[str, Any]]:
-        """Generate AI payload for one findings batch."""
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Generate AI payload for one findings batch.
+
+        Returns a ``(results, llm_used)`` tuple where ``llm_used`` is True only
+        when the configured LLM provider actually produced a response for this
+        batch (i.e. no exception/timeout triggered the fallback path).
+        """
         if not ai_capable:
-            return [self._build_fallback_result(finding) for finding in findings]
+            return [self._build_fallback_result(finding) for finding in findings], False
 
         prompt = self._build_batch_prompt(findings, file_snippets)
 
+        llm_used = False
         try:
             raw_response = await asyncio.wait_for(
                 self._call_llm(prompt),
                 timeout=self.call_timeout_seconds,
             )
+            llm_used = True
             parsed = self._parse_batch_response(raw_response)
         except Exception as exc:
             error_msg = str(exc) or type(exc).__name__
@@ -315,7 +332,7 @@ class AISuggestionGenerationService:
             result.setdefault("ai_generated", bool(results_by_id.get(str(finding.id))))
             merged_results.append(result)
 
-        return merged_results
+        return merged_results, llm_used
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the configured LLM provider and normalize sync/async providers."""
@@ -338,7 +355,22 @@ class AISuggestionGenerationService:
         provider = self._get_llm_provider()
         if provider.__class__.__name__ == "MockLLMProvider":
             return False
-        return callable(getattr(provider, "generate", None))
+        if not callable(getattr(provider, "generate", None)):
+            return False
+        # Local-model providers depend on an optional package; verify it is
+        # importable so "capable" is truthful instead of assuming generate()
+        # will succeed.
+        provider_name = provider.__class__.__name__
+        if provider_name == "GPT4AllProvider":
+            try:
+                from gpt4all import GPT4All  # noqa: F401 - optional dependency probe
+                return True
+            except ImportError:
+                logger.warning(
+                    "GPT4All provider configured but 'gpt4all' package is not installed"
+                )
+                return False
+        return True
 
     def _build_batch_prompt(
         self,

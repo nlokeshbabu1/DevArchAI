@@ -151,12 +151,84 @@ class Settings(BaseSettings):
     )
     KNOWLEDGE_LIVE_DOCS_ENABLED: bool = Field(default=False, env="KNOWLEDGE_LIVE_DOCS_ENABLED")
 
+    # ─── RAG (Retrieval-Augmented Generation) ───────────────────────────────
+    RAG_ENABLED: bool = Field(default=True, env="RAG_ENABLED")
+    RAG_INVENTORY_PATH: str = Field(
+        default=str(Path(__file__).resolve().parent / "rag" / "data" / "technology_inventory.yaml"),
+        env="RAG_INVENTORY_PATH",
+        description="Path to the technology inventory YAML (seed knowledge artifact).",
+    )
+    RAG_VERSION: str = Field(default="1.0.0", env="RAG_VERSION")
+    RAG_CACHE_TTL_SECONDS: int = Field(default=3600, env="RAG_CACHE_TTL_SECONDS")
+    RAG_MAX_RESULTS: int = Field(default=5, env="RAG_MAX_RESULTS")
+    RAG_CHUNK_SIZE: int = Field(default=1200, env="RAG_CHUNK_SIZE")
+    RAG_CHUNK_OVERLAP: int = Field(default=150, env="RAG_CHUNK_OVERLAP")
+    RAG_SEED_ON_STARTUP: bool = Field(default=True, env="RAG_SEED_ON_STARTUP")
+
+    # Embeddings
+    EMBEDDING_PROVIDER: Literal["auto", "openai", "local"] = Field(
+        default="auto", env="EMBEDDING_PROVIDER",
+        description="auto=OpenAI if OPENAI_API_KEY present, else local. Override with 'openai' or 'local'.",
+    )
+    EMBEDDING_DIMENSION: int = Field(
+        default=384, env="EMBEDDING_DIMENSION",
+        description=(
+            "Must match the active embedding model. Default matches "
+            "all-MiniLM-L6-v2 (local). OpenAI text-embedding-3-small = 1536. "
+            "This also fixes the pgvector rag_chunks.embedding column dimension, "
+            "so changing it on an existing DB requires recreating that column."
+        ),
+    )
+    EMBEDDING_LOCAL_MODEL: str = Field(default="all-MiniLM-L6-v2", env="EMBEDDING_LOCAL_MODEL")
+    EMBEDDING_OPENAI_MODEL: str = Field(default="text-embedding-3-small", env="EMBEDDING_OPENAI_MODEL")
+    EMBEDDING_BATCH_SIZE: int = Field(default=32, env="EMBEDDING_BATCH_SIZE")
+    EMBEDDING_TIMEOUT_SECONDS: int = Field(default=30, env="EMBEDDING_TIMEOUT_SECONDS")
+    EMBEDDING_ALLOW_KEYWORD_FALLBACK: bool = Field(
+        default=True, env="EMBEDDING_ALLOW_KEYWORD_FALLBACK",
+        description="If embeddings are unavailable, retrieval falls back to keyword matching instead of failing.",
+    )
+
+    # ─── MCP / Live Context (external knowledge gateway) ────────────────────
+    MCP_ENABLED: bool = Field(default=True, env="MCP_ENABLED")
+    MCP_REQUEST_TIMEOUT_SECONDS: float = Field(default=10.0, env="MCP_REQUEST_TIMEOUT_SECONDS")
+    MCP_MAX_RETRIES: int = Field(default=2, env="MCP_MAX_RETRIES")
+    MCP_RETRY_BACKOFF_SECONDS: float = Field(default=0.5, env="MCP_RETRY_BACKOFF_SECONDS")
+    MCP_CIRCUIT_BREAKER_THRESHOLD: int = Field(default=5, env="MCP_CIRCUIT_BREAKER_THRESHOLD")
+    MCP_CIRCUIT_BREAKER_COOLDOWN_SECONDS: float = Field(
+        default=30.0, env="MCP_CIRCUIT_BREAKER_COOLDOWN_SECONDS",
+    )
+    MCP_CACHE_TTL_SECONDS: int = Field(default=900, env="MCP_CACHE_TTL_SECONDS")
+    MCP_LIVE_AWS_ENABLED: bool = Field(default=True, env="MCP_LIVE_AWS_ENABLED")
+    MCP_LIVE_AZURE_ENABLED: bool = Field(default=True, env="MCP_LIVE_AZURE_ENABLED")
+    MCP_DOCS_ENABLED: bool = Field(default=True, env="MCP_DOCS_ENABLED")
+
     # AI Recommendations
     AI_RECOMMENDATIONS_ENABLED: bool = Field(default=True, env="AI_RECOMMENDATIONS_ENABLED")
     AI_RECOMMENDATIONS_MAX_PER_SCAN: int = Field(default=50, env="AI_RECOMMENDATIONS_MAX_PER_SCAN")
     AI_RECOMMENDATIONS_FALLBACK_ON_LLM_FAILURE: bool = Field(
         default=True, env="AI_RECOMMENDATIONS_FALLBACK_ON_LLM_FAILURE",
     )
+    # AI recommendation pipeline (async, scan-independent, cache-first).
+    # Deterministic, versioned cache key components. Bump a version to
+    # invalidate every cached recommendation that depended on it.
+    AI_RECOMMENDATION_CACHE_TTL_SECONDS: int = Field(
+        default=7 * 24 * 3600, env="AI_RECOMMENDATION_CACHE_TTL_SECONDS",
+        description="TTL for LLM/rule-knowledge derived recommendations (long-lived).",
+    )
+    AI_RECOMMENDATION_LIVE_TTL_SECONDS: int = Field(
+        default=15 * 60, env="AI_RECOMMENDATION_LIVE_TTL_SECONDS",
+        description="TTL for recommendations that consumed live (MCP) context (shorter).",
+    )
+    AI_RECOMMENDATION_PROMPT_VERSION: str = Field(default="1.0.0", env="AI_RECOMMENDATION_PROMPT_VERSION")
+    AI_RECOMMENDATION_MODEL_VERSION: str = Field(default="", env="AI_RECOMMENDATION_MODEL_VERSION")
+    AI_RECOMMENDATION_LLM_TIMEOUT_SECONDS: int = Field(
+        default=120, env="AI_RECOMMENDATION_LLM_TIMEOUT_SECONDS",
+    )
+    AI_RECOMMENDATIONS_INCLUDE_FILE_CONTEXT: bool = Field(
+        default=True, env="AI_RECOMMENDATIONS_INCLUDE_FILE_CONTEXT",
+        description="Include a bounded snippet of the affected file in LLM prompts (secrets redacted).",
+    )
+    MCP_CONTEXT_VERSION: str = Field(default="1.0.0", env="MCP_CONTEXT_VERSION")
 
     # GitHub
     GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")

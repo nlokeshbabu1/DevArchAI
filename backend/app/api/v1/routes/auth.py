@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.api_key_store import user_has_api_keys
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -85,7 +86,7 @@ def user_to_response(user: User) -> dict:
         "is_verified": user.is_verified,
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
-        "has_api_key": bool(user.api_key),
+        "has_api_key": bool(user.api_key) or user_has_api_keys(str(user.id)),
         "plan": user.subscription_plan if hasattr(user, 'subscription_plan') else "free",
         "has_github": bool(user.github_id or user.github_access_token),
         "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token),

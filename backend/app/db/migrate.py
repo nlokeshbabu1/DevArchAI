@@ -71,6 +71,8 @@ _MIGRATION_MARKERS: list[tuple[str, str, str | None]] = [
     ("029", "cloud_findings", "last_scan_id"),
     ("030", "cloud_ai_recommendations", "cloudformation_fix"),
     ("031", "ai_recommendations", None),
+    ("032", "knowledge_documents", None),
+    ("033", "scan_ai_recommendations", None),
 ]
 
 
@@ -198,6 +200,13 @@ def estimate_revision(url: str) -> str | None:
     Checks schema markers (tables/columns introduced by each migration) and
     returns the highest revision whose markers are present.  Returns ``None``
     if no markers match.
+
+    Markers are validated for continuity: a marker only counts if the marker
+    for the preceding revision is also present.  This prevents a partial
+    upgrade from being misidentified — e.g. an orphan database that reached a
+    later additive table while earlier revisions' tables/columns were dropped
+    must be estimated at the highest contiguous revision so the pending
+    migrations can repair it.
     """
     engine = create_engine(url)
     try:
@@ -218,9 +227,13 @@ def estimate_revision(url: str) -> str | None:
             return column in column_cache[table]
 
         estimated: str | None = None
+        previous_present = True
         for revision, table, column in _MIGRATION_MARKERS:
-            if has_marker(table, column):
+            if previous_present and has_marker(table, column):
                 estimated = revision
+                previous_present = True
+            else:
+                previous_present = False
         return estimated
     finally:
         engine.dispose()
@@ -233,6 +246,12 @@ def _bootstrap_fresh_database(url: str) -> None:
 
     engine = create_engine(url)
     try:
+        # The RAG knowledge layer stores embeddings as pgvector. Ensure the
+        # extension exists before create_all (no-op on non-Postgres backends).
+        if _is_postgres(url):
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.commit()
         Base.metadata.create_all(engine)
     finally:
         engine.dispose()

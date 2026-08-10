@@ -38,7 +38,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
 
   return (
     <div
-      className="fixed inset-0 w-full h-full overflow-hidden"
+      className="absolute inset-0 w-full h-full overflow-hidden"
       style={{ zIndex: 0 }}
       aria-hidden="true"
     >
@@ -172,7 +172,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
         }}
       />
 
-      {/* Bottom gradient for footer readability */}
+      {/* Bottom gradient for hero content readability */}
       <div
         className="absolute inset-x-0 bottom-0 h-[35%]"
         style={{

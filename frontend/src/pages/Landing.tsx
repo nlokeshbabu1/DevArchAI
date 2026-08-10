@@ -169,16 +169,16 @@ export function Landing() {
 
   return (
     <div className="min-h-screen overflow-x-hidden">
-      {/* Fixed video background — renders behind everything */}
-      <BackgroundVideo />
-
-      {/* Content layer — scrolls over the fixed video */}
+      {/* Content layer — sections carry their own backgrounds */}
       <div className="relative" style={{ zIndex: 1 }}>
         <MouseGlow />
         <Navbar />
 
         {/* ===== HERO ===== */}
         <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden">
+          {/* Animated background video — scoped to the Hero only, clipped at section bottom */}
+          <BackgroundVideo />
+
           <FloatingTechCards />
 
           {/* Hero ambient glows — depth layers */}
@@ -334,8 +334,31 @@ export function Landing() {
         </section>
 
         {/* ===== LIVE PRODUCT DEMO ===== */}
-        <section id="live-demo" className="py-12 lg:py-16">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <section id="live-demo" className="relative py-12 lg:py-16 overflow-hidden">
+          {/* Premium static background — no animated video */}
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+            {/* Base dark gradient */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#040716] via-[#070b1e] to-[#050816]" />
+            {/* Subtle radial spotlight */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: 'radial-gradient(ellipse 60% 45% at 50% -5%, rgba(124, 92, 255, 0.08) 0%, transparent 60%)',
+              }}
+            />
+            {/* Static grid — fades out with distance from the top */}
+            <div
+              className="absolute inset-0 opacity-[0.5]"
+              style={{
+                backgroundImage:
+                  'linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px)',
+                backgroundSize: '56px 56px',
+                maskImage: 'radial-gradient(ellipse 70% 55% at 50% 0%, black 15%, transparent 75%)',
+                WebkitMaskImage: 'radial-gradient(ellipse 70% 55% at 50% 0%, black 15%, transparent 75%)',
+              }}
+            />
+          </div>
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <motion.div
               className="text-center mb-10 space-y-3"
               initial={{ opacity: 0, y: 20 }}

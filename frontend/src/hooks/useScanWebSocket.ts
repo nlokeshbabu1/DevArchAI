@@ -204,6 +204,10 @@ export function useScanWebSocket({
             log_message: 'log_message',
             ai_progress: 'ai_progress',
             ai_completed: 'ai_completed',
+            'ai.analysis.started': 'ai_analysis_started',
+            'ai.finding.completed': 'ai_finding_completed',
+            'ai.analysis.completed': 'ai_analysis_completed',
+            'ai.analysis.failed': 'ai_analysis_failed',
             stage_transition: 'stage_transition',
             connection_ack: 'connection_ack',
           }
@@ -415,6 +419,94 @@ export function useScanWebSocket({
               stage: 'ai_generation',
               progress: 100,
               message: data.message || 'AI analysis complete',
+            })
+            onAICompleteRef.current?.(data || {})
+            break
+          }
+
+          case 'ai.analysis.started': {
+            const progress: AIGenerationProgress = {
+              phase: data.phase || 'started',
+              message: data.message || 'Building AI recommendations…',
+              progress: 0,
+              findings_processed: data.findings_processed ?? 0,
+              findings_total: data.findings_total ?? 0,
+              timestamp: data.timestamp || new Date().toISOString(),
+            }
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return { ...base, aiProgress: progress }
+            })
+            pushEvent('ai_analysis_started', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: progress.message,
+            })
+            break
+          }
+
+          case 'ai.finding.completed': {
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const findings_total = data.findings_total ?? base.aiProgress?.findings_total ?? 0
+              const findings_processed = data.findings_processed ?? base.aiProgress?.findings_processed ?? 0
+              const progress: AIGenerationProgress = {
+                phase: 'generating',
+                message: `AI recommendation ${findings_processed} of ${findings_total}`,
+                progress: findings_total ? Math.round((findings_processed / findings_total) * 100) : 100,
+                findings_processed,
+                findings_total,
+                timestamp: data.timestamp || new Date().toISOString(),
+              }
+              return { ...base, aiProgress: progress }
+            })
+            pushEvent('ai_finding_completed', {
+              stage: 'ai_generation',
+              progress: data.findings_total ? Math.round((data.findings_processed / data.findings_total) * 100) : 100,
+              message: `AI recommendation ${data.findings_processed ?? 0} of ${data.findings_total ?? 0}`,
+            })
+            break
+          }
+
+          case 'ai.analysis.completed': {
+            const completed: AIGenerationProgress = {
+              phase: data.phase || 'completed',
+              message: data.message || 'AI analysis complete',
+              progress: 100,
+              findings_processed: data.findings_processed ?? 0,
+              findings_total: data.findings_total ?? 0,
+              timestamp: data.timestamp || new Date().toISOString(),
+            }
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return { ...base, aiProgress: completed }
+            })
+            pushEvent('ai_analysis_completed', {
+              stage: 'ai_generation',
+              progress: 100,
+              message: completed.message,
+            })
+            onAICompleteRef.current?.(data || {})
+            break
+          }
+
+          case 'ai.analysis.failed': {
+            const failed: AIGenerationProgress = {
+              phase: 'failed',
+              message: data.message || data.error || 'AI analysis failed',
+              progress: 0,
+              findings_processed: data.findings_processed ?? 0,
+              findings_total: data.findings_total ?? 0,
+              timestamp: data.timestamp || new Date().toISOString(),
+            }
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return { ...base, aiProgress: failed }
+            })
+            pushEvent('ai_analysis_failed', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: failed.message,
             })
             onAICompleteRef.current?.(data || {})
             break
