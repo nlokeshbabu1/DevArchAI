@@ -20,7 +20,7 @@ import typer
 from devsec.api.client import ApiClient
 from devsec.config import Config
 from devsec.models.user import UserInfo
-from devsec.utils.errors import AuthError, UsageError
+from devsec.utils.errors import ApiError, AuthError, UsageError
 
 API_KEY_PREFIX = "sk-"
 LEGACY_API_KEY_PREFIX = "dk_"
@@ -29,6 +29,15 @@ LEGACY_API_KEY_PREFIX = "dk_"
 def _is_api_key(token: str) -> bool:
     """True for current ``sk-`` keys and legacy ``dk_`` keys."""
     return token.startswith((API_KEY_PREFIX, LEGACY_API_KEY_PREFIX))
+
+
+def authentication_method(token: str | None) -> str | None:
+    """Human-readable authentication method label (never includes the secret)."""
+    if not token:
+        return None
+    if _is_api_key(token):
+        return "API Key"
+    return "Bearer Token"
 
 
 def _frontend_key_page(config: Config) -> str:
@@ -89,6 +98,13 @@ def login(config: Config, client: ApiClient, *, api_key: str | None = None) -> d
                 ),
                 file=sys.stderr,
             )
+            print(
+                typer.style(
+                    f"Create an API key under Settings > Security: {key_page}",
+                    fg="cyan",
+                ),
+                file=sys.stderr,
+            )
             _open_browser(key_page)
             print(
                 typer.style(
@@ -98,7 +114,7 @@ def login(config: Config, client: ApiClient, *, api_key: str | None = None) -> d
                 file=sys.stderr,
             )
             api_key = typer.prompt(
-                "Paste your API key (create one under Settings > Security)",
+                "Paste your API key (input is hidden)",
                 hide_input=True,
             )
         else:
@@ -119,47 +135,74 @@ def login(config: Config, client: ApiClient, *, api_key: str | None = None) -> d
             f"Settings > Security in the web app: {key_page}",
         )
 
-    # Validate against the backend before persisting anything.
-    email: str | None = None
-    if config.token != api_key:
-        payload = ApiClient(config, token=api_key).get_json("/auth/me")
+    # Always validate against the backend before persisting anything.
+    # Never log or echo the key.
+    validate_client = ApiClient(config, token=api_key)
+    try:
+        payload = validate_client.get_json("/auth/me")
         email = (payload or {}).get("email")
+    finally:
+        validate_client.close()
 
     config.secrets.set_token(api_key)
+    stored_source = "credentials-file" if config.secrets.using_fallback else "keyring"
     return {
         "stored": True,
-        "token_source": "keyring",
-        "key_prefix": api_key[:6],
+        "token_source": stored_source,
         "email": email,
+        "api_url": config.api_url_display(),
+        "authentication": "API Key",
     }
 
 
 def logout(config: Config, client: ApiClient, *, revoke: bool = False) -> dict:
-    """Remove the stored token, optionally revoking the API key server-side."""
-    token = config.token
+    """Remove the stored token, optionally revoking the API key server-side.
+
+    Environment variables (``DEVSEC_API_KEY`` / ``DEVSEC_API_TOKEN``) are never
+    modified - only keyring / credentials-file state is cleared.
+    """
+    # Prefer the keyring copy for server-side revoke; env may still override
+    # ``config.token`` for subsequent commands until the shell is updated.
+    stored = config.secrets.get_token()
+    effective = config.token
     revoked = False
-    if revoke and token and config.is_using_api_key:
-        if token.startswith(API_KEY_PREFIX):
-            client.delete("/settings/api-keys/current")
-        else:
-            client.delete("/auth/api-key")
-        revoked = True
+    revoke_token = stored or effective
+    if revoke and revoke_token and _is_api_key(revoke_token):
+        revoke_client = ApiClient(config, token=revoke_token)
+        try:
+            if revoke_token.startswith(API_KEY_PREFIX):
+                revoke_client.delete("/settings/api-keys/current")
+            else:
+                revoke_client.delete("/auth/api-key")
+            revoked = True
+        finally:
+            revoke_client.close()
+
     config.secrets.delete_token()
-    return {"logged_out": True, "revoked": revoked}
+    return {
+        "logged_out": True,
+        "revoked": revoked,
+        "env_credential_still_set": config.env_credential_set,
+    }
 
 
 def status(config: Config, client: ApiClient) -> dict:
     """Report authentication state and, when authenticated, the current user."""
     token = config.token
+    api_url = config.api_url_display()
     if not token:
         return {
             "authenticated": False,
             "token_source": None,
-            "api_url": config.api_url_display(),
+            "api_url": api_url,
+            "authentication": None,
+            "account": None,
             "user": None,
             "error": None,
         }
+
     source = config.token_source or "unknown"
+    method = authentication_method(token)
     user: UserInfo | None = None
     error: str | None = None
     try:
@@ -167,10 +210,21 @@ def status(config: Config, client: ApiClient) -> dict:
         user = UserInfo.model_validate(payload)
     except AuthError as exc:
         error = exc.message
+    except ApiError as exc:
+        # Network/timeout/5xx during validation - report as not authenticated
+        # with a clear reason rather than crashing the status command.
+        error = exc.message
+
+    account = None
+    if user is not None:
+        account = user.email or user.username or user.id
+
     return {
         "authenticated": user is not None,
         "token_source": source,
-        "api_url": config.api_url_display(),
+        "api_url": api_url,
+        "authentication": method,
+        "account": account,
         "user": user.model_dump() if user else None,
         "error": error,
     }

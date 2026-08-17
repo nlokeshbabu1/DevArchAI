@@ -2,46 +2,50 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from rich.table import Table
 
 from devsec.models.project import Project
 
-_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+def _fmt_dt(value: datetime | None) -> str:
+    if value is None:
+        return "-"
+    try:
+        return value.strftime("%Y-%m-%d %H:%M")
+    except (AttributeError, ValueError):
+        return str(value)
+
+
+def _short_id(value: str) -> str:
+    """Compact a long (UUID) repository ID for table display.
+
+    Full IDs are unwieldy in tables and squeeze out more useful columns; the
+    complete value is always available via ``devsec project list --json``.
+    """
+    return value[:8] if len(value) > 8 else value
 
 
 def projects_table(projects: list[Project]) -> Table:
     """Render a list of projects (backend repositories) as a Rich table."""
     table = Table(title="Projects", show_lines=False, header_style="bold cyan")
     table.add_column("ID", style="dim", no_wrap=True)
-    table.add_column("Name", style="bold")
-    table.add_column("Default Branch", no_wrap=True)
+    table.add_column("Repository", style="bold")
+    table.add_column("Provider", no_wrap=True)
+    table.add_column("Branch", no_wrap=True)
     table.add_column("Status", no_wrap=True)
-    table.add_column("Score")
-    table.add_column("Issues", no_wrap=True)
-    table.add_column("Last Scanned", no_wrap=True)
+    table.add_column("Last Scan", no_wrap=True)
+    table.add_column("Created", no_wrap=True)
 
     for project in projects:
-        issues = project.issues or {}
-        issue_label = "".join(
-            f"[{color}]{severity}:{issues.get(severity, 0)}[/{color}] "
-            for severity, color in (
-                ("critical", "red"),
-                ("high", "orange1"),
-                ("medium", "yellow"),
-                ("low", "green"),
-            )
-        )
-        score = f"{project.overall_score:.0f}" if project.overall_score is not None else "-"
-        last_scanned = (
-            project.last_scan_at.strftime("%Y-%m-%d %H:%M") if project.last_scan_at else "-"
-        )
         table.add_row(
-            project.id,
-            project.name,
+            _short_id(project.id),
+            project.repository,
+            project.provider,
             project.default_branch,
             project.scan_status or "-",
-            score,
-            issue_label or "-",
-            last_scanned,
+            _fmt_dt(project.last_scan_at),
+            _fmt_dt(project.created_at),
         )
     return table

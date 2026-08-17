@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 
 from devsec.commands import auth_app, config_app, project_app
-from devsec.commands.base import command
+from devsec.commands.base import command, set_debug
 from devsec.commands.version import version_cmd
 
 app = typer.Typer(
@@ -32,8 +32,14 @@ def main(
         is_eager=True,
         help="Show version and exit.",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Show full tracebacks on errors (never logs credentials).",
+    ),
 ) -> None:
     """DevArchAI CLI."""
+    set_debug(debug)
 
 
 @app.command("version")

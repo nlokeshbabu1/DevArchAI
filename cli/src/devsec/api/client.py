@@ -71,8 +71,12 @@ def _extract_detail(payload: dict[str, Any], status_code: int) -> str:
 def _hint_for_status(status_code: int, request_id: str | None = None) -> str | None:
     if status_code in _AUTH_STATUS:
         return "Run 'devsec auth login' to authenticate."
+    if status_code == 404:
+        return "The resource may have been deleted or the ID is wrong."
     if status_code == 409:
         return "The resource conflicts with the current state on the server."
+    if status_code == 422:
+        return "Check the request values and try again."
     if status_code == 429:
         return "Rate limit exceeded. Wait a moment and try again."
     if status_code >= 500:
@@ -204,8 +208,10 @@ class ApiClient:
             )
         if status == 404:
             raise ApiError(
-                f"Resource not found: {url}",
-                hint="The resource may have been deleted or the ID is wrong.",
+                message
+                if message and message != f"HTTP {status}"
+                else f"Resource not found: {url}",
+                hint=hint,
                 status_code=status,
                 request_id=request_id,
                 method=method,

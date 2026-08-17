@@ -11,12 +11,19 @@ Rules:
 
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.theme import Theme
 
 # A single Console instance is created lazily so tests can capture cleanly.
 console: Console | None = None
+
+# Widens the non-TTY fallback (default is 80) so data-dense tables such as
+# ``devsec project list`` keep all their columns when piped to a file or in
+# CI. Real terminals still auto-detect their own width.
+_NON_TTY_WIDTH = 100
 
 THEME = Theme(
     {
@@ -38,7 +45,8 @@ def get_console() -> Console:
     """Return the shared, themed console instance."""
     global console
     if console is None:
-        console = Console(theme=THEME, highlight=False)
+        width: int | None = _NON_TTY_WIDTH if not sys.stdout.isatty() else None
+        console = Console(theme=THEME, highlight=False, width=width)
     return console
 
 

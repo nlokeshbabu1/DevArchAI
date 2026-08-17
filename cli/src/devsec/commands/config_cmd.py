@@ -28,7 +28,24 @@ def _config_list_data() -> dict[str, Any]:
         "api_url_source": config.api_url_source,
         "frontend_url": config.frontend_url,
         "token_source": config.token_source,
+        "selected_project": config.selected_project,
     }
+
+
+def _render_config(data: dict[str, Any]) -> None:
+    """Human-readable configuration table (never includes secrets)."""
+    table = Table(title="Configuration", header_style="bold cyan")
+    table.add_column("Key", style="bold")
+    table.add_column("Value")
+    for key, value in sorted(data["values"].items()):
+        table.add_row(key, value)
+    table.add_row("api_url (effective)", str(data["api_url"]))
+    table.add_row("api_url source", str(data["api_url_source"]))
+    table.add_row("frontend_url (effective)", str(data["frontend_url"]))
+    table.add_row("token_source", data["token_source"] or "none")
+    table.add_row("selected_project", data.get("selected_project") or "none")
+    get_console().print(table)
+    print_success(f"Config file: {data['config_file']}")
 
 
 @app.command("list")
@@ -37,17 +54,7 @@ def config_list(*, json: bool = typer.Option(False, "--json", help="Emit JSON to
     """Show all configured values."""
     data = _config_list_data()
     if not json:
-        config = Config()
-        table = Table(title="Configuration", header_style="bold cyan")
-        table.add_column("Key", style="bold")
-        table.add_column("Value")
-        for key, value in sorted(data["values"].items()):
-            table.add_row(key, value)
-        table.add_row("api_url (effective)", config.api_url)
-        table.add_row("frontend_url (effective)", config.frontend_url)
-        table.add_row("token_source", data["token_source"] or "none")
-        get_console().print(table)
-        print_success(f"Config file: {config.config_file}")
+        _render_config(data)
     return data
 
 
@@ -57,8 +64,11 @@ def config_show(
     *,
     json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> dict:
-    """Alias for 'config list' - show all configured values."""
-    return _config_list_data()
+    """Show all configured values (alias of ``config list``)."""
+    data = _config_list_data()
+    if not json:
+        _render_config(data)
+    return data
 
 
 @app.command("get")
@@ -76,10 +86,21 @@ def config_get(
             f"Unknown config key: {key}",
             hint=f"Valid keys: {', '.join(sorted(CONFIG_KEYS))}",
         )
-    data = {"key": key, "value": config.file_values().get(mapped)}
+    # Prefer effective (env-overridden) values for api-url / frontend-url.
+    if mapped == "api_url":
+        value: str | None = config.api_url
+    elif mapped == "frontend_url":
+        value = config.frontend_url
+    else:
+        value = config.file_values().get(mapped)
+    data = {
+        "key": key,
+        "value": value,
+        "source": config.api_url_source if mapped == "api_url" else None,
+    }
     if not json:
-        value = data["value"] if data["value"] is not None else "(unset)"
-        print_success(f"{key} = {value}")
+        display = data["value"] if data["value"] is not None else "(unset)"
+        print_success(f"{key} = {display}")
     return data
 
 
@@ -91,7 +112,7 @@ def config_set(
     *,
     json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> dict:
-    """Set a configuration value (e.g. api-url, frontend-url)."""
+    """Set a configuration value (e.g. ``api-url``, ``frontend-url``)."""
     config = Config()
     config.set(key, value)
     data = {"key": key, "value": config.file_values().get(CONFIG_KEYS[key])}

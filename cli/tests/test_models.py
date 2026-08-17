@@ -98,7 +98,32 @@ def test_git_metadata_display_name_from_url():
 
 
 def test_user_info_parses():
+    from devsec.models.project import Project
     from devsec.models.user import UserInfo
+
+    project = Project.model_validate(
+        {
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "acme/infra",
+            "url": "https://github.com/acme/infra",
+            "default_branch": "main",
+            "created_at": "2026-01-15T08:30:00Z",
+        }
+    )
+    assert project.provider == "GitHub"
+    assert project.repository == "acme/infra"
+    assert project.created_at is not None
+
+    # UUID-like ids coerce to str.
+    project_uuid = Project.model_validate(
+        {
+            "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "name": "x",
+            "url": "https://gitlab.com/x/y",
+        }
+    )
+    assert project_uuid.provider == "GitLab"
+    assert isinstance(project_uuid.id, str)
 
     user = UserInfo.model_validate(
         {"id": "1", "email": "a@b.c", "username": "u", "extra": "ignored"}

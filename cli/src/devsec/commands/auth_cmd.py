@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import typer
-from rich.table import Table
 
 from devsec.api.auth import login as api_login, logout as api_logout, status as api_status
 from devsec.commands.base import command, make_client
-from devsec.output.console import get_console, print_muted, print_success
+from devsec.output.console import get_console, print_muted, print_success, print_warning
 
 app = typer.Typer(
     help="Authenticate with the DevArchAI platform.",
@@ -35,6 +34,8 @@ def auth_login(
                 print_success(f"Logged in as {email}.")
             else:
                 print_success("Logged in.")
+            print_muted(f"API: {data.get('api_url')}")
+            print_muted("Credential stored securely (never written to config.toml).")
         return data
     finally:
         client.close()
@@ -47,14 +48,20 @@ def auth_logout(
     *,
     json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> dict:
-    """Remove the stored API key."""
+    """Remove the stored API key from the local keyring."""
     config, client = make_client()
     try:
         data = api_logout(config, client, revoke=revoke)
         if not json:
-            print_success(
-                f"Logged out. API key {'revoked' if data['revoked'] else 'removed locally'}."
-            )
+            if data["revoked"]:
+                print_success("Logged out. API key revoked on the server and removed locally.")
+            else:
+                print_success("Logged out. Local credential removed.")
+            if data.get("env_credential_still_set"):
+                print_warning(
+                    "DEVSEC_API_KEY (or DEVSEC_API_TOKEN) is still set in this environment "
+                    "and will continue to authenticate until you unset it."
+                )
         return data
     finally:
         client.close()
@@ -71,18 +78,24 @@ def auth_status(
     try:
         data = api_status(config, client)
         if not json:
+            console = get_console()
             if data["authenticated"]:
-                user = data["user"]
-                print_success(f"Authenticated as {user['email']} (role: {user['role']})")
-                table = Table(header_style="bold cyan")
-                table.add_column("Property")
-                table.add_column("Value")
-                table.add_row("Source", data["token_source"])
-                table.add_row("Plan", user["plan"])
-                table.add_row("API key", "yes" if user["has_api_key"] else "no")
-                get_console().print(table)
+                print_success("Authenticated")
+                console.print("")
+                console.print(f"[key]Account:[/key] {data.get('account') or 'unknown'}")
+                console.print(f"[key]API:[/key] {data['api_url']}")
+                console.print(
+                    f"[key]Authentication:[/key] {data.get('authentication') or 'unknown'}"
+                )
+                if data.get("token_source"):
+                    console.print(f"[key]Source:[/key] {data['token_source']}")
             else:
                 print_muted("Not authenticated.")
+                console.print(f"[key]API:[/key] {data['api_url']}")
+                if data.get("authentication"):
+                    console.print(
+                        f"[key]Authentication:[/key] {data['authentication']} (invalid or unreachable)"
+                    )
                 if data["error"]:
                     print_muted(f"Reason: {data['error']}")
                 print_muted("Run 'devsec auth login' to authenticate.")

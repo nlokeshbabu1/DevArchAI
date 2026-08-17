@@ -314,6 +314,14 @@ class Config:
         token = self.token
         return bool(token and token.startswith(("sk-", "dk_")))
 
+    @property
+    def env_credential_set(self) -> bool:
+        """True when ``DEVSEC_API_KEY`` or legacy ``DEVSEC_API_TOKEN`` is set in the env."""
+        return bool(
+            (self._env.get(ENV_API_KEY) or "").strip()
+            or (self._env.get(ENV_API_TOKEN) or "").strip()
+        )
+
     def api_url_display(self) -> str:
         """Display form of the API URL for user messages."""
         return self.api_url.rstrip("/")

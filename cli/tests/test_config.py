@@ -121,3 +121,36 @@ def test_token_not_written_to_config_toml(tmp_path: Path):
     cfg.secrets.set_token("dk_super_secret")
     body = cfg.config_file.read_text(encoding="utf-8") if cfg.config_file.exists() else ""
     assert "dk_super_secret" not in body
+
+
+def test_selected_project_roundtrip(tmp_path: Path):
+    cfg = Config(config_file=tmp_path / "config.toml", env={"DEVSEC_API_TOKEN": ""})
+    assert cfg.selected_project is None
+    cfg.set_selected_project("11111111-2222-3333-4444-555555555555")
+    assert cfg.selected_project == "11111111-2222-3333-4444-555555555555"
+    # Selected project ID is non-secret and lives in the config file, not credentials.
+    body = cfg.config_file.read_text(encoding="utf-8")
+    assert "11111111-2222-3333-4444-555555555555" in body
+    assert "selected_project" in body
+
+
+def test_env_credential_set_property(tmp_path: Path):
+    cfg = Config(
+        config_file=tmp_path / "config.toml",
+        env={"DEVSEC_API_KEY": "sk-env"},
+    )
+    assert cfg.env_credential_set is True
+    cfg2 = Config(config_file=tmp_path / "config.toml", env={})
+    assert cfg2.env_credential_set is False
+
+
+def test_api_url_precedence_env_over_file(tmp_path: Path):
+    cfg = Config(config_file=tmp_path / "config.toml", env={})
+    cfg.set("api-url", "http://from-file")
+    cfg_env = Config(
+        config_file=tmp_path / "config.toml",
+        env={"DEVSEC_API_URL": "http://from-env"},
+    )
+    assert cfg.api_url == "http://from-file"
+    assert cfg_env.api_url == "http://from-env"
+    assert cfg_env.api_url_source == "environment"

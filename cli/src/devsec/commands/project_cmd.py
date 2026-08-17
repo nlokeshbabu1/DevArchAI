@@ -110,7 +110,9 @@ def project_current(
             data: dict[str, Any] = {"selected": None, "project": None}
             if not json:
                 print_muted("No project selected.")
-                print_muted("Run 'devsec project select <id>' to choose one.")
+                print_muted("")
+                print_muted('Use: "devsec project select <id>"')
+                print_muted("to select one.")
             return data
         project = get_project(client, project_id)
         data = {"selected": project.id, "project": project.model_dump()}
@@ -207,24 +209,30 @@ def project_detect(
 
 
 def _render_project(project: Project) -> None:
-    table = Table(title=project.name, header_style="bold cyan")
+    table = Table(title=project.repository, header_style="bold cyan")
     table.add_column("Property")
     table.add_column("Value")
     table.add_row("ID", project.id)
+    table.add_row("Repository", project.repository)
+    table.add_row("Provider", project.provider)
     table.add_row("URL", project.url)
-    table.add_row("Default branch", project.default_branch)
+    table.add_row("Branch", project.default_branch)
     table.add_row("Status", project.scan_status or "-")
-    score = f"{project.overall_score:.0f}" if project.overall_score is not None else "-"
-    table.add_row("Overall score", score)
+    if project.last_scan_at:
+        table.add_row("Last scan", project.last_scan_at.strftime("%Y-%m-%d %H:%M"))
+    if project.created_at:
+        table.add_row("Created", project.created_at.strftime("%Y-%m-%d %H:%M"))
+    score = f"{project.overall_score:.0f}" if project.overall_score is not None else None
+    if score is not None:
+        table.add_row("Overall score", score)
     if project.tech_stack:
         table.add_row("Tech stack", ", ".join(project.tech_stack))
     issues = project.issues or {}
-    table.add_row(
-        "Issues",
-        ", ".join(f"{sev}:{count}" for sev, count in issues.items()) or "-",
-    )
-    if project.last_scan_at:
-        table.add_row("Last scanned", project.last_scan_at.strftime("%Y-%m-%d %H:%M"))
+    if issues:
+        table.add_row(
+            "Issues",
+            ", ".join(f"{sev}:{count}" for sev, count in issues.items()),
+        )
     get_console().print(table)
 
 

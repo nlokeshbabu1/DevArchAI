@@ -8,8 +8,9 @@ commands while remaining tolerant of extra backend fields.
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Project(BaseModel):
@@ -31,6 +32,36 @@ class Project(BaseModel):
     overall_score: float | None = None
     tech_stack: list[str] = Field(default_factory=list)
     issues: dict[str, int] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id(cls, value: object) -> str:
+        return str(value)
+
+    @property
+    def repository(self) -> str:
+        """Display name for the repository (full_name preferred)."""
+        return self.full_name or self.name
+
+    @property
+    def provider(self) -> str:
+        """Best-effort provider label derived from the repository URL.
+
+        The backend schema does not expose a provider field; this is display-
+        only and never persisted.
+        """
+        host = (urlparse(self.url).hostname or "").lower()
+        if host in {"github.com", "www.github.com"} or host.endswith(".github.com"):
+            return "GitHub"
+        if "gitlab" in host:
+            return "GitLab"
+        if "bitbucket" in host:
+            return "Bitbucket"
+        if "dev.azure.com" in host or host.endswith("azure.com"):
+            return "Azure DevOps"
+        return "-"
 
 
 class ProjectCreate(BaseModel):
