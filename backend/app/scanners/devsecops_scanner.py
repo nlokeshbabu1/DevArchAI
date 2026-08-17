@@ -1,8 +1,14 @@
 """
-DevSecOps Scanner Engine
+DevSecOps Scanner Engine — DEPRECATED.
 
-Production-grade security scanner for DevOps architectures.
-Scans Dockerfile, Kubernetes YAML, Terraform, and CI/CD pipelines.
+This scanner is NOT used by any production code path (never imported by other modules).
+The production scan path uses app.rule_engine.base.RuleRegistry directly.
+
+This scanner uses the legacy app.rules.base.RuleRegistry, which is a separate
+singleton from the production app.rule_engine.base.RuleRegistry.
+
+DO NOT add new production code that uses this scanner.
+"""
 """
 
 import json

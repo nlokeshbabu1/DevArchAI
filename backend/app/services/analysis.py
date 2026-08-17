@@ -1,5 +1,16 @@
 """
-Analysis Service - Orchestrates the analysis pipeline
+Analysis Service - Orchestrates the analysis pipeline — DEPRECATED.
+
+This service is NOT used by the production scan path.
+The production scan path uses:
+  - SyncScanService (app.workers.tasks.scan_repository) — primary
+  - ScanService (app.services.scan_service) — secondary
+
+This service uses the legacy app.rules.base.RuleRegistry, which is a separate
+singleton from the production app.rule_engine.base.RuleRegistry.
+
+Only referenced by the legacy v0 route: app.api.routes.analysis
+DO NOT add new production code that uses this service.
 """
 
 import time

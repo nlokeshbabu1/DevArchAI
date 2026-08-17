@@ -1,8 +1,18 @@
-"""Rule engine package."""
+"""Canonical rule engine package for production scanning.
 
-from app.rule_engine.rule_runner import RuleRunner
+This is the ONE authoritative rule engine used by:
+  - SyncScanService (unified_scan.py, scans.py, repo_analysis.py, public_scans.py)
+  - ScanService (scan_worker.py, repo_analysis.py)
+  - Celery scan_repository_task
 
-# Import devops tool rules to register all Jenkins, GitLab, CircleCI, etc. rules
+Rules self-register via @register_rule decorator at import time.
+RuleRegistry is a singleton — all consumers share the same registry.
+
+DEPRECATED: app.rules/ is a legacy rule system NOT used by production scanning.
+DEPRECATED: app.engines.rule_engine.py (YAMLRuleEngine) is NOT used in production.
+DEPRECATED: RuleRunner is dead code — use RuleRegistry.evaluate_all() directly.
+"""
+
 from app.rule_engine.rules import (
     cicd_rules,
     devops_tool_rules,
@@ -11,4 +21,4 @@ from app.rule_engine.rules import (
     terraform_rules,
 )
 
-__all__ = ["RuleRunner"]
+__all__ = []

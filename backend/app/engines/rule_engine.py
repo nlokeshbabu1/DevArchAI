@@ -1,4 +1,13 @@
-"""YAML-based rule engine for DevOps production readiness."""
+"""YAML-based rule engine for DevOps production readiness — DEPRECATED.
+
+This engine is NOT used by any production code path.
+The canonical rule engine is app.rule_engine/ (app.rule_engine.base.RuleRegistry).
+
+The only consumer was app.services.enhanced_scan_service.EnhancedScanService,
+which is itself dead code (never imported by any production module).
+
+DO NOT add new production code that uses this engine.
+"""
 
 import re
 from dataclasses import dataclass, field

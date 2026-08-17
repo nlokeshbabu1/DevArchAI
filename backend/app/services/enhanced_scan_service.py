@@ -1,4 +1,12 @@
-"""Enhanced scan service with external scanners and rule engine."""
+"""Enhanced scan service with external scanners and rule engine — DEPRECATED.
+
+This service is NOT used by any production code path (never imported).
+The production scan path uses:
+  - SyncScanService (app.workers.tasks.scan_repository)
+  - ScanService (app.services.scan_service)
+
+DO NOT add new production code that uses this service.
+"""
 
 import time
 from collections.abc import Callable

@@ -1,4 +1,19 @@
-"""Rule Engine"""
+"""Legacy Rule Engine — DEPRECATED.
+
+This package is NOT used by the production scan path.
+The canonical rule engine is app.rule_engine/ (app.rule_engine.base.RuleRegistry).
+
+Production callers:
+  - SyncScanService uses app.rule_engine.base.RuleRegistry
+  - ScanService uses app.rule_engine.base.RuleRegistry
+
+This legacy package is retained only for backward compatibility with:
+  - app.services.analysis.AnalysisService (legacy v0 route)
+  - app.services.devops_scanner.DevOpsScanner (dead code)
+  - tests that import from app.rules.base
+
+DO NOT add new production code that imports from this package.
+"""
 
 # Import all rule modules to register them
 from app.rules import (
