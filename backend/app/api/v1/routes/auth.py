@@ -88,9 +88,9 @@ def user_to_response(user: User) -> dict:
         "last_login_at": user.last_login_at,
         "has_api_key": bool(user.api_key) or user_has_api_keys(str(user.id)),
         "plan": user.subscription_plan if hasattr(user, 'subscription_plan') else "free",
-        "has_github": bool(user.github_id or user.github_access_token),
-        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token),
-        "provider": "github" if user.github_id or user.github_access_token else "gitlab" if user.gitlab_id or user.gitlab_access_token else "password",
+        "has_github": bool(user.github_id or user.github_access_token or user.github_access_token_encrypted),
+        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted),
+        "provider": "github" if user.github_id or user.github_access_token or user.github_access_token_encrypted else "gitlab" if user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted else "password",
     }
 
 
@@ -576,9 +576,11 @@ async def github_callback(
                     avatar_url=avatar_url or "",
                     github_id=github_id,
                     github_login=username,  # Store GitHub username for webhook lookups
-                    github_access_token=github_access_token,  # Store GitHub token for API access
                     is_verified=True,  # GitHub emails are verified
                 )
+                # Store encrypted GitHub token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "github", github_access_token)
                 db.add(user)
                 await db.flush()
                 logger.info("User created from GitHub OAuth", user_id=user.id)
@@ -586,7 +588,9 @@ async def github_callback(
                 # Update existing user with GitHub info
                 user.github_id = github_id
                 user.github_login = username  # Store/update GitHub username
-                user.github_access_token = github_access_token  # Update token
+                # Store encrypted GitHub token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "github", github_access_token)
                 if avatar_url:
                     user.avatar_url = avatar_url
                 if full_name and not user.full_name:

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.encryption import get_user_oauth_token
 from app.core.exceptions import InvalidRepositoryException, RepositoryNotFoundException
 from app.core.security import get_current_user
 from app.db.session import get_db
@@ -227,7 +228,8 @@ async def get_user_repositories(
     Returns both GitHub repos and manually added repos for a unified view.
     """
     # Get user's GitHub access token
-    if not current_user.github_access_token:
+    github_token = get_user_oauth_token(current_user, "github")
+    if not github_token:
         # User logged in via email/password, not GitHub OAuth
         return {
             "github_connected": False,
@@ -241,7 +243,7 @@ async def get_user_repositories(
     api_url = "https://api.github.com/user/repos?per_page=100&sort=updated"
 
     headers = {
-        "Authorization": f"token {current_user.github_access_token}",
+        "Authorization": f"token {github_token}",
         "Accept": "application/vnd.github.v3+json",
     }
 
@@ -332,7 +334,8 @@ async def import_github_repos(
     Returns:
         List of imported repositories
     """
-    if not current_user.github_access_token:
+    github_token = get_user_oauth_token(current_user, "github")
+    if not github_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="GitHub not connected. Please login via GitHub first.",
@@ -349,7 +352,7 @@ async def import_github_repos(
         # Fetch repo details from GitHub
         api_url = f"https://api.github.com/repositories/{github_repo_id}"
         headers = {
-            "Authorization": f"token {current_user.github_access_token}",
+            "Authorization": f"token {github_token}",
             "Accept": "application/vnd.github.v3+json",
         }
 

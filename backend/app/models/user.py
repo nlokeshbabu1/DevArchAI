@@ -49,11 +49,14 @@ class User(Base):
     github_id = Column(String(100), unique=True, index=True, nullable=True)
     github_login = Column(String(100), index=True, nullable=True)  # GitHub username for webhook lookups
     github_access_token = Column(String(500), nullable=True)  # Store OAuth token for API access
+    github_access_token_encrypted = Column(String(1000), nullable=True)  # Encrypted GitHub token
+    token_encryption_version = Column(Integer, nullable=True, default=1)  # Encryption version for key rotation
 
     # GitLab OAuth
     gitlab_id = Column(String(100), unique=True, index=True, nullable=True)
     gitlab_username = Column(String(100), nullable=True)
     gitlab_access_token = Column(String(500), nullable=True)
+    gitlab_access_token_encrypted = Column(String(1000), nullable=True)  # Encrypted GitLab token
 
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)

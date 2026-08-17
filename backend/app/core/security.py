@@ -154,16 +154,18 @@ async def get_current_user_from_token(
     if user_id is None:
         return None
 
-    # Check blacklist
+    # Check blacklist — fail closed if Redis is unavailable
     jti = payload.get("jti")
     if jti:
+        from app.services.token_blacklist import BlacklistRedisError, is_blacklisted
         try:
-            from app.services.token_blacklist import is_blacklisted
             if await is_blacklisted(jti):
-                logger.warning("Token is blacklisted", jti=jti[:8])
+                logger.warning("token_blacklisted", jti=jti[:8])
                 return None
-        except Exception:
-            pass
+        except BlacklistRedisError:
+            # Fail closed: reject the request if we cannot verify blacklist status
+            logger.error("auth_revocation_check_failed", jti=jti[:8], reason="redis_unavailable")
+            return None
 
     # User.id is a UUID, not an integer
     try:

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.encryption import get_user_oauth_token
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.repository import Repository
@@ -122,7 +123,8 @@ async def get_user_projects(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all projects for the authenticated GitLab user."""
-    if not current_user.gitlab_access_token:
+    gitlab_token = get_user_oauth_token(current_user, "gitlab")
+    if not gitlab_token:
         logger.warning("No GitLab token for user", user_id=current_user.id)
         return {
             "gitlab_connected": False,
@@ -134,14 +136,14 @@ async def get_user_projects(
         "Fetching user projects from GitLab",
         user_id=current_user.id,
         gitlab_username=current_user.gitlab_username,
-        has_token=bool(current_user.gitlab_access_token),
+        has_token=bool(gitlab_token),
     )
 
     gitlab_url = settings.GITLAB_URL.rstrip("/")
     api_url = f"{gitlab_url}/api/v4/projects?per_page=100&order_by=updated_at&sort=desc&membership=true"
 
     headers = {
-        "Authorization": f"Bearer {current_user.gitlab_access_token}",
+        "Authorization": f"Bearer {gitlab_token}",
         "Accept": "application/json",
     }
 
@@ -232,7 +234,8 @@ async def import_gitlab_projects(
     db: AsyncSession = Depends(get_db),
 ):
     """Import selected GitLab projects to user's repository list."""
-    if not current_user.gitlab_access_token:
+    gitlab_token = get_user_oauth_token(current_user, "gitlab")
+    if not gitlab_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="GitLab not connected. Please login via GitLab first.",
@@ -249,7 +252,7 @@ async def import_gitlab_projects(
     for project_id in project_ids:
         api_url = f"{gitlab_url}/api/v4/projects/{project_id}"
         headers = {
-            "Authorization": f"Bearer {current_user.gitlab_access_token}",
+            "Authorization": f"Bearer {gitlab_token}",
             "Accept": "application/json",
         }
 

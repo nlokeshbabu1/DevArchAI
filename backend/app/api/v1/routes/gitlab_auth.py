@@ -80,9 +80,9 @@ def user_to_response(user: User) -> dict:
         "is_verified": user.is_verified,
         "role": user.role.value if hasattr(user.role, "value") else user.role,
         "current_org_id": str(user.current_org_id) if user.current_org_id else None,
-        "has_github": bool(user.github_id or user.github_access_token),
-        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token),
-        "provider": "github" if user.github_id or user.github_access_token else "gitlab" if user.gitlab_id or user.gitlab_access_token else "password",
+        "has_github": bool(user.github_id or user.github_access_token or user.github_access_token_encrypted),
+        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted),
+        "provider": "github" if user.github_id or user.github_access_token or user.github_access_token_encrypted else "gitlab" if user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted else "password",
     }
 
 
@@ -239,16 +239,20 @@ async def gitlab_callback(
                     avatar_url=avatar_url or "",
                     gitlab_id=gitlab_id,
                     gitlab_username=username,
-                    gitlab_access_token=gitlab_access_token,
                     is_verified=True,
                 )
+                # Store encrypted GitLab token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "gitlab", gitlab_access_token)
                 db.add(user)
                 await db.flush()
                 logger.info("User created from GitLab OAuth", user_id=user.id)
             else:
                 user.gitlab_id = gitlab_id
                 user.gitlab_username = username
-                user.gitlab_access_token = gitlab_access_token
+                # Store encrypted GitLab token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "gitlab", gitlab_access_token)
                 if avatar_url:
                     user.avatar_url = avatar_url
                 if full_name and not user.full_name:

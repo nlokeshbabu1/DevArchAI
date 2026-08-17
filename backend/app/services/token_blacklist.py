@@ -1,4 +1,9 @@
-"""Redis-backed token blacklist for revoked JWT tokens."""
+"""Redis-backed token blacklist for revoked JWT tokens.
+
+Security policy: Fail-closed. If Redis is unavailable, token validation
+and blacklisting operations raise exceptions rather than silently passing
+revoked tokens.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +19,14 @@ BLACKLIST_PREFIX = "devarchai:blacklist:"
 DEFAULT_TTL = timedelta(days=7)
 
 
+class BlacklistRedisError(Exception):
+    """Raised when the Redis blacklist service is unavailable.
+
+    This signals callers that they should FAIL CLOSED (reject the request)
+    rather than allowing a potentially revoked token through.
+    """
+
+
 async def blacklist_token(jti: str, expires_in: timedelta | None = None) -> bool:
     """Add a token's jti to the Redis blacklist.
 
@@ -22,23 +35,28 @@ async def blacklist_token(jti: str, expires_in: timedelta | None = None) -> bool
         expires_in: TTL for the blacklist entry (defaults to 7 days).
 
     Returns:
-        True if the token was blacklisted, False if Redis is unavailable.
+        True if the token was blacklisted.
+
+    Raises:
+        BlacklistRedisError: If Redis is unavailable (fail-closed).
     """
     if not jti:
         return False
     try:
         cache = await get_cache()
-        if not cache.is_connected:
-            logger.warning("Redis unavailable, skipping token blacklist")
-            return False
+        if not cache.is_connected or cache._redis is None:
+            logger.error("auth_revocation_check_failed", reason="redis_unavailable", operation="blacklist_token")
+            raise BlacklistRedisError("Redis unavailable for token blacklisting")
         ttl = expires_in or DEFAULT_TTL
         key = f"{BLACKLIST_PREFIX}{jti}"
         await cache._redis.setex(key, int(ttl.total_seconds()), "1")
-        logger.debug("Token blacklisted", jti=jti[:8])
+        logger.debug("token_blacklisted", jti=jti[:8])
         return True
+    except BlacklistRedisError:
+        raise
     except Exception as exc:
-        logger.warning("Failed to blacklist token", jti=jti[:8], error=str(exc))
-        return False
+        logger.error("auth_revocation_check_failed", operation="blacklist_token", error_type=type(exc).__name__)
+        raise BlacklistRedisError(f"Failed to blacklist token: {exc}") from exc
 
 
 async def is_blacklisted(jti: str) -> bool:
@@ -48,20 +66,26 @@ async def is_blacklisted(jti: str) -> bool:
         jti: The unique JWT ID to check.
 
     Returns:
-        True if the token is blacklisted, False otherwise.
+        True if the token is blacklisted, False if it is not.
+
+    Raises:
+        BlacklistRedisError: If Redis is unavailable (fail-closed).
     """
     if not jti:
         return False
     try:
         cache = await get_cache()
-        if not cache.is_connected:
-            return False
+        if not cache.is_connected or cache._redis is None:
+            logger.error("auth_revocation_check_failed", reason="redis_unavailable", operation="is_blacklisted")
+            raise BlacklistRedisError("Redis unavailable for blacklist check")
         key = f"{BLACKLIST_PREFIX}{jti}"
         exists = await cache._redis.exists(key)
         return bool(exists)
+    except BlacklistRedisError:
+        raise
     except Exception as exc:
-        logger.warning("Failed to check blacklist", jti=jti[:8], error=str(exc))
-        return False
+        logger.error("auth_revocation_check_failed", operation="is_blacklisted", error_type=type(exc).__name__)
+        raise BlacklistRedisError(f"Failed to check blacklist: {exc}") from exc
 
 
 async def blacklist_user_tokens(user_id: str) -> bool:
@@ -78,15 +102,16 @@ async def blacklist_user_tokens(user_id: str) -> bool:
     """
     try:
         cache = await get_cache()
-        if not cache.is_connected:
+        if not cache.is_connected or cache._redis is None:
+            logger.warning("redis_unavailable", operation="blacklist_user_tokens")
             return False
         pattern = f"{BLACKLIST_PREFIX}{user_id[:8]}*"
         deleted = 0
         async for key in cache._redis.scan_iter(match=pattern):
             await cache._redis.delete(key)
             deleted += 1
-        logger.info("Blacklisted user tokens", user_id=user_id, count=deleted)
+        logger.info("user_tokens_blacklisted", user_id=user_id[:8], count=deleted)
         return True
     except Exception as exc:
-        logger.warning("Failed to blacklist user tokens", user_id=user_id, error=str(exc))
+        logger.warning("failed_to_blacklist_user_tokens", user_id=user_id[:8], error_type=type(exc).__name__)
         return False
