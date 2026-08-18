@@ -190,6 +190,21 @@ export interface AIGenerationProgress {
   timestamp: string
 }
 
+export interface AIPipelineStage {
+  stage: 'rag' | 'mcp_decision' | 'mcp' | 'llm' | 'cache_hit'
+  rule_id: string
+  technology?: string
+  required?: boolean
+  reason?: string
+  documents_found?: number
+  method?: string
+  status?: string
+  provider?: string
+  ai_generated?: boolean
+  layer?: string
+  timestamp: string
+}
+
 export interface StageTransition {
   stage: ScanStage
   stage_label: string

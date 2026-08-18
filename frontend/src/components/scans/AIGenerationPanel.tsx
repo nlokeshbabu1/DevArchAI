@@ -1,16 +1,16 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Brain, Sparkles, Loader2, CheckCircle2, FileText, GitPullRequest, Search, Layers } from 'lucide-react'
+import { Brain, Sparkles, Loader2, CheckCircle2, Database, Globe, Cpu, Zap } from 'lucide-react'
 
 import { cn } from '../../lib/utils'
 import type { AIGenerationProgress } from '../../types'
 
 const AI_PHASES = [
-  { id: 'analyzing', label: 'Analyzing findings', icon: <Search className="w-4 h-4" />, description: 'Grouping findings by category' },
-  { id: 'root_causes', label: 'Finding root causes', icon: <Layers className="w-4 h-4" />, description: 'Identifying common patterns' },
-  { id: 'remediations', label: 'Generating remediations', icon: <Sparkles className="w-4 h-4" />, description: 'Creating fix recommendations' },
-  { id: 'scoring', label: 'Calculating security score', icon: <Brain className="w-4 h-4" />, description: 'Computing risk assessment' },
-  { id: 'summary', label: 'Generating executive summary', icon: <FileText className="w-4 h-4" />, description: 'Writing summary report' },
-  { id: 'pr_fixes', label: 'Generating PR fixes', icon: <GitPullRequest className="w-4 h-4" />, description: 'Creating automated fixes' },
+  { id: 'rag', label: 'Loading DevArchAI knowledge', icon: <Database className="w-4 h-4" />, description: 'Retrieving rule knowledge from internal docs' },
+  { id: 'mcp_decision', label: 'Checking documentation needs', icon: <Globe className="w-4 h-4" />, description: 'Determining if current external docs are needed' },
+  { id: 'mcp', label: 'Fetching current documentation', icon: <Globe className="w-4 h-4" />, description: 'Retrieving official documentation' },
+  { id: 'llm', label: 'Generating AI recommendation', icon: <Cpu className="w-4 h-4" />, description: 'Creating production-grade remediation guidance' },
+  { id: 'llm_done', label: 'AI recommendation ready', icon: <Zap className="w-4 h-4" />, description: 'Recommendation generated and cached' },
+  { id: 'cache_hit', label: 'Using cached recommendation', icon: <Zap className="w-4 h-4" />, description: 'Retrieved from cache (no LLM call needed)' },
 ]
 
 interface AIGenerationPanelProps {

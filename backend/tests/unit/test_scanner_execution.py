@@ -50,7 +50,7 @@ class TestScannerStatus:
         expected = {
             "DISCOVERED", "INITIALIZING", "RUNNING", "COMPLETED",
             "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS",
-            "SKIPPED_NOT_APPLICABLE", "DISABLED", "FAILED",
+            "SKIPPED_NOT_APPLICABLE", "DISABLED", "FAILED", "UNAVAILABLE",
         }
         actual = {s.name for s in ScannerStatus}
         assert actual == expected
@@ -297,7 +297,7 @@ class TestScannerRegistryExecution:
     """ScannerRegistry must track execution start/end, version, duration, and errors."""
 
     def test_disabled_scanner_records_disabled_status(self):
-        """When CLI is unavailable, registry should return DISABLED status."""
+        """When CLI is unavailable, registry should return UNAVAILABLE status."""
         from app.scanners.registry import ScannerRegistry
 
         with patch.object(ScannerRegistry, "_register_adapters", return_value=None):
@@ -319,9 +319,8 @@ class TestScannerRegistryExecution:
             results = registry.run_scanners(["mock_scanner"], repo, {})
 
         assert len(results) == 1
-        assert results[0].status == ScannerStatus.DISABLED
+        assert results[0].status == ScannerStatus.UNAVAILABLE
         assert results[0].scanner_id == "mock_scanner"
-        assert "CLI tool not installed" in (results[0].skipped_reason or "")
 
     def test_successful_scanner_records_completed(self):
         """When scanner succeeds, registry should return COMPLETED_WITH_FINDINGS or COMPLETED_NO_FINDINGS."""

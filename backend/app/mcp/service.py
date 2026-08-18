@@ -76,6 +76,18 @@ class McpContextService:
             technology, rule_id, connection_id=connection_id
         )
 
+    def requires_docs_context(
+        self,
+        technology: str,
+        rule_id: str | None = None,
+        *,
+        category: str | None = None,
+    ) -> bool:
+        """Whether current official documentation would improve the recommendation."""
+        return self._router.requires_docs_context(
+            technology, rule_id, category=category
+        )
+
     async def get_live_context(
         self,
         technology: str,

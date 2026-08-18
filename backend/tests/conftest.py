@@ -2,8 +2,11 @@
 
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -230,3 +233,75 @@ def sample_rule_findings():
             file_path="terraform/s3.tf",
         ),
     ]
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Provide an async database session against the test database.
+
+    Uses ``DATABASE_URL`` from settings (which tests override to point at
+    ``devarchai_test``).  The session is rolled back after each test so
+    fixtures never leak between tests.
+    """
+    from app.config import settings
+
+    engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+        await session.rollback()
+    await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _reset_redis_singleton():
+    """Reset Redis cache singleton before each test.
+
+    The Redis cache is a module-level singleton.  Tests run in different
+    event loops, so the cached connection becomes stale and causes
+    ``RuntimeError: Event loop is closed``.
+    """
+    import app.cache.redis_cache as redis_mod
+    import app.db.session as session_mod
+
+    orig_cache = redis_mod._cache_instance
+    orig_engine = session_mod._engine
+    orig_sf = session_mod._session_factory
+
+    redis_mod._cache_instance = None
+    session_mod._engine = None
+    session_mod._session_factory = None
+
+    yield
+
+    redis_mod._cache_instance = orig_cache
+    session_mod._engine = orig_engine
+    session_mod._session_factory = orig_sf
+
+
+@pytest.fixture
+def mock_settings():
+    """A mock ``settings`` object with safe defaults for unit tests."""
+    mock = MagicMock()
+    mock.VERSION = "1.0.0"
+    mock.DEBUG = False
+    mock.DATABASE_URL = "sqlite+aiosqlite:///test.db"
+    mock.REDIS_URL = None
+    mock.SECRET_KEY = "test-secret-key-for-testing-only-32chars!"
+    mock.ALGORITHM = "HS256"
+    mock.ACCESS_TOKEN_EXPIRE_MINUTES = 30
+    mock.REFRESH_TOKEN_EXPIRE_DAYS = 7
+    mock.GITHUB_CLIENT_ID = None
+    mock.GITHUB_CLIENT_SECRET = None
+    mock.GITHUB_REDIRECT_URI = "http://localhost:3000/auth/github/callback"
+    mock.GITLAB_CLIENT_ID = None
+    mock.GITLAB_CLIENT_SECRET = None
+    mock.ENCRYPTION_KEY = "test-encryption-key-for-testing-only-32c!"
+    mock.AUTH_REFRESH_TOKEN_STORAGE_MODE = "legacy"
+    mock.COOKIE_SECURE = False
+    mock.COOKIE_SAMESITE = "lax"
+    mock.COOKIE_PATH = "/"
+    mock.COOKIE_DOMAIN = None
+    mock.MAX_FAILED_LOGIN_ATTEMPTS = 5
+    mock.ACCOUNT_LOCKOUT_MINUTES = 30
+    return mock

@@ -88,7 +88,7 @@ export function RepositoryResultsPage() {
   })
 
   // WebSocket for real-time updates during scan
-  useScanWebSocket({
+  const { scanState: wsState } = useScanWebSocket({
     scanId: scanState.scanId,
     enabled: scanState.isScanning || isAiPending,
     onComplete: (data) => {
@@ -104,6 +104,8 @@ export function RepositoryResultsPage() {
       void handleAIComplete()
     },
   })
+
+  const wsAiProgress = wsState?.aiProgress || null
 
   // Auto-refresh on scan complete
   useEffect(() => {
@@ -510,7 +512,8 @@ export function RepositoryResultsPage() {
       <AnimatePresence>
         {isAiPending && !scanState.isScanning && (
           <AIProgressBanner
-            scanId={scanResult?.id}
+            aiStatus={scanResult?.ai_status}
+            aiProgress={wsAiProgress}
             onAIComplete={handleAIComplete}
           />
         )}

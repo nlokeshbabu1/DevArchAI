@@ -16,8 +16,40 @@ from app.config import settings
 from app.mcp.providers import McpProvider, default_providers
 from app.rag.inventory import get_inventory
 
-# Technologies whose context is primarily *live environment data*.
+# Technologies whose context is primarily *live environment data* (AWS/Azure).
 LIVE_CONTEXT_TECHNOLOGIES = {"aws", "azure"}
+
+# All technologies that benefit from current official documentation.
+# MCP is triggered for these when the finding requires version-specific or
+# configuration-specific knowledge that may change over time.
+DOCS_CONTEXT_TECHNOLOGIES = {
+    "kubernetes",
+    "helm",
+    "terraform",
+    "docker",
+    "github_actions",
+    "gitlab_ci",
+    "jenkins",
+    "circleci",
+    "azure_devops",
+    "ansible",
+    "prometheus",
+    "grafana",
+}
+
+# Rule categories where current documentation adds the most value.
+# Best-practice and general-security rules tend to be stable; configuration
+# and deployment rules benefit from up-to-date references.
+MCP_BENEFITING_CATEGORIES = {
+    "security",
+    "configuration",
+    "deployment",
+    "pipeline",
+    "infrastructure",
+    "scaling",
+    "monitoring",
+    "cost",
+}
 
 
 class McpRouter:
@@ -66,6 +98,31 @@ class McpRouter:
             return False
         return True
 
+    def requires_docs_context(
+        self,
+        technology: str,
+        rule_id: str | None = None,
+        *,
+        category: str | None = None,
+    ) -> bool:
+        """Whether current official documentation would improve the recommendation.
+
+        Returns True when:
+        1. MCP is enabled
+        2. The technology has official documentation available
+        3. The rule category benefits from current documentation
+
+        This is a broader check than ``requires_live_context`` — it covers all
+        supported DevOps technologies, not just cloud providers.
+        """
+        if not self.is_enabled():
+            return False
+        if technology not in DOCS_CONTEXT_TECHNOLOGIES:
+            return False
+        if category and category.lower() not in MCP_BENEFITING_CATEGORIES:
+            return False
+        return True
+
     def technology_for_rule_id(self, rule_id: str) -> list[str]:
         return get_inventory().technology_for_rule_id(rule_id)
 
@@ -83,6 +140,8 @@ class McpRouter:
                 for p in self._providers
             ],
             "live_context_technologies": sorted(LIVE_CONTEXT_TECHNOLOGIES),
+            "docs_context_technologies": sorted(DOCS_CONTEXT_TECHNOLOGIES),
+            "mcp_benefiting_categories": sorted(MCP_BENEFITING_CATEGORIES),
         }
 
 

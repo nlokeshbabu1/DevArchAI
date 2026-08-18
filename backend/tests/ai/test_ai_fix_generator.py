@@ -16,6 +16,7 @@ class TestAIFixGenerator:
         """Test AI generates fix for HIGH severity finding."""
         # Arrange
         ai_service = AIFixEnrichmentService()
+        ai_service._use_mock = False
         
         finding = {
             "rule_id": "TF-STATE-001",
@@ -82,6 +83,7 @@ class TestAIFixGenerator:
         """Test that AI responses are cached."""
         # Arrange
         ai_service = AIFixEnrichmentService()
+        ai_service._use_mock = False
         
         finding = {
             "rule_id": "TF-STATE-001",
@@ -107,6 +109,7 @@ class TestAIFixGenerator:
         """Test AI handles markdown-formatted JSON responses."""
         # Arrange
         ai_service = AIFixEnrichmentService()
+        ai_service._use_mock = False
         
         # Mock LLM returning markdown code block
         markdown_response = '''```json

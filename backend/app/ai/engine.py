@@ -806,6 +806,14 @@ def get_llm_provider() -> BaseLLMProvider:
             model=mistral_model,
         )
 
+    # Try local providers before falling back to Mock
+    if _ollama_is_available():
+        logger.info("Using Ollama local LLM provider (fallback)")
+        return OllamaProvider()
+    if _gpt4all_is_available():
+        logger.info("Using GPT4All local LLM provider (fallback)")
+        return GPT4AllProvider()
+
     # Fallback to Mock provider (static examples)
     logger.info("No LLM API keys configured, using static fallback (Mock provider)")
     return MockLLMProvider()

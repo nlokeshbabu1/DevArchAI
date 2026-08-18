@@ -21,6 +21,15 @@ from app.db.init import initialize_database
 from app.db.migrate import DatabaseInitializationError, current_revision, migration_lock
 from app.db.verify import verify_schema
 
+
+def _head_revision() -> str:
+    """Determine the current Alembic head revision from migration files."""
+    import alembic.config
+    from alembic.script import ScriptDirectory
+
+    cfg = alembic.config.Config("alembic.ini")
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
 structlog.configure(
     processors=[structlog.processors.JSONRenderer()],
     logger_factory=structlog.PrintLoggerFactory(),
@@ -155,7 +164,7 @@ class TestDatabaseInitialization:
     def test_initialization_is_idempotent(self, initialized):
         """Running initialization twice is a no-op."""
         initialize_database()
-        assert current_revision() == "032"
+        assert current_revision() == _head_revision()
         assert _tables(initialized) == _tables(initialized)
 
     def test_orphan_database_is_restamped(self, initialized):
@@ -163,11 +172,20 @@ class TestDatabaseInitialization:
         engine = create_engine(initialized)
         with engine.connect() as conn:
             conn.exec_driver_sql("DROP TABLE alembic_version")
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN github_access_token_encrypted"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN gitlab_access_token_encrypted"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN token_encryption_version"
+            )
             conn.commit()
         engine.dispose()
 
         initialize_database()
-        assert current_revision() == "032"
+        assert current_revision() == _head_revision()
         assert "alembic_version" in _tables(initialized)
 
     def test_newer_database_is_refused(self, initialized):
@@ -201,19 +219,33 @@ class TestDatabaseInitialization:
                 "ALTER TABLE cloud_ai_recommendations DROP COLUMN cloudformation_fix"
             )
             conn.exec_driver_sql("DROP TABLE ai_recommendations")
+            conn.exec_driver_sql("DROP TABLE scan_ai_recommendations")
             conn.exec_driver_sql("DROP TABLE mcp_context")
             conn.exec_driver_sql("DROP TABLE rag_chunks")
             conn.exec_driver_sql("DROP TABLE knowledge_documents")
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN github_access_token_encrypted"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN gitlab_access_token_encrypted"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE users DROP COLUMN token_encryption_version"
+            )
             conn.commit()
         engine.dispose()
 
         initialize_database()
-        assert current_revision() == "032"
+        assert current_revision() == _head_revision()
         assert "ai_recommendations" in _tables(initialized)
+        assert "scan_ai_recommendations" in _tables(initialized)
         assert "cloudformation_fix" in _columns(initialized, "cloud_ai_recommendations")
         assert "knowledge_documents" in _tables(initialized)
         assert "rag_chunks" in _tables(initialized)
         assert "mcp_context" in _tables(initialized)
+        assert "github_access_token_encrypted" in _columns(initialized, "users")
+        assert "gitlab_access_token_encrypted" in _columns(initialized, "users")
+        assert "token_encryption_version" in _columns(initialized, "users")
 
     def test_migration_lock_contention(self, initialized):
         """A concurrent instance holding the lock blocks then fails clearly."""
@@ -249,7 +281,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="032")
+        report = verify_schema(initialized, database_revision=_head_revision())
         assert not report.ok
         type_errors = [i for i in report.errors if i.kind == "type_mismatch"]
         assert any(i.table == "users" and i.column == "is_active" for i in type_errors)
@@ -262,7 +294,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="032")
+        report = verify_schema(initialized, database_revision=_head_revision())
         assert not report.ok
         assert any(i.kind == "missing_table" and i.table == "findings" for i in report.errors)
 
@@ -274,7 +306,7 @@ class TestSchemaVerification:
             conn.commit()
         engine.dispose()
 
-        report = verify_schema(initialized, database_revision="032")
+        report = verify_schema(initialized, database_revision=_head_revision())
         assert not report.ok
         assert any(i.kind == "primary_key_mismatch" and i.table == "users" for i in report.errors)
 

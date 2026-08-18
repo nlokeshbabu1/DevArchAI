@@ -196,25 +196,75 @@ class AIRecommendationService:
             representative = group[0]
             fingerprint = finding_fingerprint(representative)
             rule_id = str(getattr(representative, "rule_id", "") or "")
+            technology = self.context_engine.technology_for_finding(representative)
+
+            logger.info(
+                "AI_PIPELINE_FINDING_START",
+                scan_id=str(scan_uuid),
+                rule_id=rule_id,
+                technology=technology,
+                group_index=index + 1,
+                groups_total=len(groups),
+            )
 
             entry = await self.cache.get(key)
             if entry is not None:
                 cache_hits += 1
                 recommendation = self._recommendation_from_entry(entry, representative, fingerprint)
+                logger.info(
+                    "AI_PIPELINE_CACHE_HIT",
+                    scan_id=str(scan_uuid),
+                    rule_id=rule_id,
+                    layer=getattr(entry, "source", "unknown"),
+                )
+                await self._broadcast_cache_hit(str(scan_uuid), rule_id, entry)
             else:
+                # RAG retrieval
                 context = await self.context_engine.build_context(
                     representative,
                     file_snippet=self.snippet_loader(scan, representative),
                 )
                 if context.rule_knowledge is not None:
                     rag_lookups += 1
+                    docs_found = len(getattr(context.rule_knowledge, "documents", []) or [])
+                    logger.info(
+                        "AI_PIPELINE_RAG_COMPLETED",
+                        scan_id=str(scan_uuid),
+                        rule_id=rule_id,
+                        documents_found=docs_found,
+                        method=getattr(context.rule_knowledge, "method", "unknown"),
+                    )
+                    await self._broadcast_rag_completed(
+                        str(scan_uuid), rule_id, context
+                    )
+
+                # MCP decision + retrieval
                 if context.mcp_results:
                     mcp_required += 1
+                    mcp_statuses = [getattr(r, "status", "unknown") for r in context.mcp_results]
+                    logger.info(
+                        "AI_PIPELINE_MCP_COMPLETED",
+                        scan_id=str(scan_uuid),
+                        rule_id=rule_id,
+                        technology=technology,
+                        results_count=len(context.mcp_results),
+                        statuses=mcp_statuses,
+                    )
+                    await self._broadcast_mcp_completed(
+                        str(scan_uuid), rule_id, technology, context
+                    )
+
+                # LLM generation
+                await self._broadcast_llm_started(str(scan_uuid), rule_id, technology)
                 recommendation = await self.context_engine.generate_recommendation(
                     representative, context, fingerprint
                 )
                 if recommendation.ai_generated:
                     llm_calls += 1
+                await self._broadcast_llm_completed(
+                    str(scan_uuid), rule_id, recommendation
+                )
+
                 await self._persist_recommendation(
                     key, recommendation, representative, scan_uuid, versions, context
                 )
@@ -417,6 +467,66 @@ class AIRecommendationService:
             await scan_progress_manager.broadcast_ai_analysis_failed(scan_id, error)
         except Exception as exc:
             logger.debug("AI_RECOMMENDATION_WS_FAILED_ERROR", error=str(exc))
+
+    async def _broadcast_cache_hit(
+        self, scan_id: str, rule_id: str, entry: Any
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            layer = getattr(entry, "source", "cache")
+            await scan_progress_manager.broadcast_ai_cache_hit(scan_id, rule_id, layer)
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_CACHE_HIT_ERROR", error=str(exc))
+
+    async def _broadcast_rag_completed(
+        self, scan_id: str, rule_id: str, context: Any
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            rk = context.rule_knowledge
+            docs_found = len(getattr(rk, "documents", []) or []) if rk else 0
+            method = getattr(rk, "method", "unknown") if rk else "unknown"
+            await scan_progress_manager.broadcast_ai_rag_completed(
+                scan_id, rule_id, docs_found, method
+            )
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_RAG_ERROR", error=str(exc))
+
+    async def _broadcast_mcp_completed(
+        self, scan_id: str, rule_id: str, technology: str | None, context: Any
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            for mcp_result in context.mcp_results:
+                status = getattr(mcp_result, "status", "unknown") or "unknown"
+                provider = getattr(mcp_result, "provider", "") or ""
+                await scan_progress_manager.broadcast_ai_mcp_completed(
+                    scan_id, rule_id, technology or "unknown", status, provider
+                )
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_MCP_ERROR", error=str(exc))
+
+    async def _broadcast_llm_started(
+        self, scan_id: str, rule_id: str, technology: str | None
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            await scan_progress_manager.broadcast_ai_llm_started(
+                scan_id, rule_id, technology
+            )
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_LLM_STARTED_ERROR", error=str(exc))
+
+    async def _broadcast_llm_completed(
+        self, scan_id: str, rule_id: str, recommendation: Any
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            await scan_progress_manager.broadcast_ai_llm_completed(
+                scan_id, rule_id, recommendation.ai_generated
+            )
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_LLM_COMPLETED_ERROR", error=str(exc))
 
     def _record_metrics(
         self,

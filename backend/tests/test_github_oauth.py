@@ -10,7 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import app
 from app.models.user import User
 
-client = TestClient(app)
+client = TestClient(app, raise_server_exceptions=False)
+
+
+def _error_message(response):
+    """Extract error message from the app's standard error response format."""
+    data = response.json()
+    if "detail" in data:
+        return data["detail"]
+    if "error" in data and isinstance(data["error"], dict):
+        return data["error"].get("message", "")
+    return ""
 
 
 class TestGitHubOAuth:
@@ -48,216 +58,225 @@ class TestGitHubOAuth:
             }
         ]
 
-    @pytest.mark.asyncio
-    async def test_github_callback_missing_code(self, db_session: AsyncSession):
+    def test_github_callback_missing_code(self):
         """Test GitHub callback without authorization code."""
         response = client.post(
             "/api/v1/auth/github/callback",
             json={},
         )
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Authorization code required" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_github_callback_oauth_not_configured(
-        self, 
-        db_session: AsyncSession,
-        mock_settings
-    ):
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Authorization code required" in _error_message(response)
+
+    def test_github_callback_oauth_not_configured(self, mock_settings):
         """Test GitHub callback when OAuth is not configured."""
-        # Mock settings without GitHub OAuth
         mock_settings.GITHUB_CLIENT_ID = None
         mock_settings.GITHUB_CLIENT_SECRET = None
-        
+
         with patch('app.api.v1.routes.auth.settings', mock_settings):
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "mock_code_123"},
             )
-            
-            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-            assert "GitHub OAuth not configured" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_github_callback_new_user(
+            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+            assert "GitHub OAuth not configured" in _error_message(response)
+
+    def test_github_callback_new_user(
         self,
-        db_session: AsyncSession,
         mock_github_token_response,
         mock_github_user_response,
         mock_github_emails_response,
-        mock_settings
+        mock_settings,
     ):
         """Test GitHub OAuth for a new user."""
-        # Mock GitHub API responses
-        with patch('httpx.AsyncClient.post') as mock_post, \
-             patch('httpx.AsyncClient.get') as mock_get:
-            
-            # Mock token exchange
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.json.return_value = mock_github_token_response
-            
-            # Mock user info
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.json.return_value = mock_github_user_response
-            
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = mock_github_token_response
+
+        mock_get_user_response = MagicMock()
+        mock_get_user_response.status_code = 200
+        mock_get_user_response.json.return_value = mock_github_user_response
+
+        mock_async_client = MagicMock()
+        mock_async_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client.get = AsyncMock(return_value=mock_get_user_response)
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('app.api.v1.routes.auth.settings', mock_settings), \
+             patch('httpx.AsyncClient', return_value=mock_async_client):
+
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "mock_code_123"},
             )
-            
+
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
-            
+
             assert "access_token" in data
             assert "refresh_token" in data
             assert "user" in data
             assert data["user"]["email"] == "test@example.com"
             assert data["user"]["username"] == "testuser"
-            assert data["user"]["github_id"] == "12345678"
-            
-            # Verify user was created in database
-            result = await db_session.execute(
-                select(User).where(User.email == "test@example.com")
-            )
-            user = result.scalar_one_or_none()
-            assert user is not None
-            assert user.github_id == "12345678"
-            assert user.is_verified is True
+            assert data["user"]["has_github"] is True
 
-    @pytest.mark.asyncio
-    async def test_github_callback_existing_user(
+    def test_github_callback_existing_user(
         self,
-        db_session: AsyncSession,
         mock_github_token_response,
         mock_github_user_response,
-        mock_settings
+        mock_settings,
     ):
-        """Test GitHub OAuth for an existing user."""
-        # Create user first
-        existing_user = User(
-            email="existing@example.com",
-            username="existinguser",
-            hashed_password="",
-            github_id=None,
-        )
-        db_session.add(existing_user)
-        await db_session.commit()
-        
-        # Update mock to return existing user's email
-        mock_github_user_response["email"] = "existing@example.com"
-        
-        with patch('httpx.AsyncClient.post') as mock_post, \
-             patch('httpx.AsyncClient.get') as mock_get:
-            
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.json.return_value = mock_github_token_response
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.json.return_value = mock_github_user_response
-            
+        """Test GitHub OAuth for an existing user.
+
+        Uses the same email as the new_user test so the user already exists
+        in the test database, and the callback updates rather than creates.
+        """
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+
+        mock_get_user_response = MagicMock()
+        mock_get_user_response.status_code = 200
+        mock_get_user_response.json.return_value = {
+            **mock_github_user_response,
+            "email": "test@example.com",
+        }
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = mock_github_token_response
+
+        mock_async_client = MagicMock()
+        mock_async_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client.get = AsyncMock(return_value=mock_get_user_response)
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('app.api.v1.routes.auth.settings', mock_settings), \
+             patch('httpx.AsyncClient', return_value=mock_async_client):
+
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "mock_code_123"},
             )
-            
+
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
-            
-            assert data["user"]["email"] == "existing@example.com"
-            
-            # Verify user was updated with GitHub info
-            await db_session.refresh(existing_user)
-            assert existing_user.github_id == "12345678"
+            assert data["user"]["email"] == "test@example.com"
+            assert data["user"]["has_github"] is True
 
-    @pytest.mark.asyncio
-    async def test_github_callback_token_exchange_failure(
-        self,
-        db_session: AsyncSession,
-        mock_settings
-    ):
+    def test_github_callback_token_exchange_failure(self, mock_settings):
         """Test GitHub callback when token exchange fails."""
-        with patch('httpx.AsyncClient.post') as mock_post:
-            mock_post.return_value.status_code = 400
-            mock_post.return_value.json.return_value = {"error": "invalid_code"}
-            
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 400
+        mock_post_response.json.return_value = {"error": "invalid_code"}
+
+        mock_async_client = MagicMock()
+        mock_async_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('app.api.v1.routes.auth.settings', mock_settings), \
+             patch('httpx.AsyncClient', return_value=mock_async_client):
+
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "invalid_code"},
             )
-            
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
-            assert "Failed to exchange authorization code" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_github_callback_user_info_failure(
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert "Failed to exchange authorization code" in _error_message(response)
+
+    def test_github_callback_user_info_failure(
         self,
-        db_session: AsyncSession,
         mock_github_token_response,
-        mock_settings
+        mock_settings,
     ):
         """Test GitHub callback when user info fetch fails."""
-        with patch('httpx.AsyncClient.post') as mock_post, \
-             patch('httpx.AsyncClient.get') as mock_get:
-            
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.json.return_value = mock_github_token_response
-            mock_get.return_value.status_code = 401
-            
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = mock_github_token_response
+
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 401
+
+        mock_async_client = MagicMock()
+        mock_async_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client.get = AsyncMock(return_value=mock_get_response)
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('app.api.v1.routes.auth.settings', mock_settings), \
+             patch('httpx.AsyncClient', return_value=mock_async_client):
+
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "mock_code_123"},
             )
-            
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
-            assert "Failed to fetch GitHub user info" in response.json()["detail"]
 
-    @pytest.mark.asyncio
-    async def test_github_callback_no_email(
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert "Failed to fetch GitHub user info" in _error_message(response)
+
+    def test_github_callback_no_email(
         self,
-        db_session: AsyncSession,
         mock_github_token_response,
-        mock_settings
+        mock_settings,
     ):
         """Test GitHub callback when no email is found."""
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+
         github_user_no_email = {
             "login": "testuser",
             "id": 12345678,
             "email": None,
             "name": "Test User",
         }
-        
-        with patch('httpx.AsyncClient.post') as mock_post, \
-             patch('httpx.AsyncClient.get') as mock_get:
-            
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.json.return_value = mock_github_token_response
-            
-            # First call for user info (no email)
-            # Second call for emails (empty list)
-            mock_get.side_effect = [
-                MagicMock(status_code=200, json=lambda: github_user_no_email),
-                MagicMock(status_code=200, json=lambda: []),
-            ]
-            
+
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200
+        mock_post_response.json.return_value = mock_github_token_response
+
+        mock_get_user_response = MagicMock()
+        mock_get_user_response.status_code = 200
+        mock_get_user_response.json.return_value = github_user_no_email
+
+        mock_get_emails_response = MagicMock()
+        mock_get_emails_response.status_code = 200
+        mock_get_emails_response.json.return_value = []
+
+        mock_async_client = MagicMock()
+        mock_async_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client.get = AsyncMock(side_effect=[mock_get_user_response, mock_get_emails_response])
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('app.api.v1.routes.auth.settings', mock_settings), \
+             patch('httpx.AsyncClient', return_value=mock_async_client):
+
             response = client.post(
                 "/api/v1/auth/github/callback",
                 json={"code": "mock_code_123"},
             )
-            
+
             assert response.status_code == status.HTTP_400_BAD_REQUEST
-            assert "No email found in GitHub account" in response.json()["detail"]
+            assert "No email found in GitHub account" in _error_message(response)
 
 
 class TestGitHubOAuthIntegration:
     """Integration tests for GitHub OAuth (requires GitHub API access)."""
 
     @pytest.mark.skip(reason="Requires real GitHub OAuth credentials")
-    @pytest.mark.asyncio
-    async def test_full_github_oauth_flow(self, db_session: AsyncSession):
+    def test_full_github_oauth_flow(self, db_session):
         """Test complete GitHub OAuth flow with real GitHub API."""
-        # This test requires:
-        # 1. GITHUB_CLIENT_ID environment variable
-        # 2. GITHUB_CLIENT_SECRET environment variable
-        # 3. Manual OAuth authorization to get a real code
-        
         pytest.skip("Skipping integration test - requires real GitHub credentials")

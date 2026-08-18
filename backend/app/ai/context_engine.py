@@ -332,8 +332,17 @@ class AIContextEngine:
         try:
             mcp = self._get_mcp_service()
             from app.services.metrics import record_mcp_request, record_mcp_result
-            if not mcp.requires_live_context(technology, rule_id):
+
+            category = _enum_value(getattr(finding, "category", ""))
+
+            requires_live = mcp.requires_live_context(technology, rule_id)
+            requires_docs = mcp.requires_docs_context(
+                technology, rule_id, category=category or None
+            )
+
+            if not requires_live and not requires_docs:
                 return []
+
             record_mcp_request(technology, "rule_context")
             query = _clean_text(getattr(finding, "description", ""))[:500] or f"rule:{rule_id}"
             results = await mcp.get_live_context(
@@ -365,8 +374,10 @@ class AIContextEngine:
             return snippet
 
     async def _call_llm(self, provider: Any, prompt: str) -> str:
-        from app.services.metrics import record_ai_request
         import time
+
+        from app.services.metrics import record_ai_request
+
         started = time.monotonic()
         try:
             result = provider.generate(prompt)

@@ -109,17 +109,20 @@ class TestGeminiProvider:
         mock_response = MagicMock()
         mock_response.text = json.dumps(MOCK_GEMINI_RESPONSE)
         
-        with patch.object(GeminiProvider, 'client', new_callable=PropertyMock) as mock_client_prop:
-            mock_client = MagicMock()
-            mock_client.generate_content_async = AsyncMock(return_value=mock_response)
-            mock_client_prop.return_value = mock_client
-            
-            # Act
-            result = await provider.generate("Test prompt")
-            
-            # Assert
-            assert result is not None
-            assert "summary" in result or "Terraform" in result or "Container" in result
+        mock_models = MagicMock()
+        mock_models.generate_content = MagicMock(return_value=mock_response)
+        
+        mock_client = MagicMock()
+        mock_client.models = mock_models
+        
+        provider._client = mock_client
+        
+        # Act
+        result = await provider.generate("Test prompt")
+        
+        # Assert
+        assert result is not None
+        assert "summary" in result or "Terraform" in result or "Container" in result
 
     @pytest.mark.asyncio
     async def test_gemini_response_has_required_fields(self):
@@ -186,19 +189,20 @@ class TestOpenAIProvider:
         mock_choice.message.content = json.dumps(MOCK_OPENAI_RESPONSE)
         mock_response.choices = [mock_choice]
         
-        with patch.object(provider, 'client') as mock_client:
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-            
-            # Act
-            explanation = await provider.generate_explanation(
-                "Container runs as root",
-                {"rule_id": "DOCKER-001"}
-            )
-            
-            # Assert
-            assert explanation is not None
-            assert isinstance(explanation, AIExplanation)
-            assert explanation.confidence > 0
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        provider._client = mock_client
+        
+        # Act
+        explanation = await provider.generate_explanation(
+            "Container runs as root",
+            {"rule_id": "DOCKER-001"}
+        )
+        
+        # Assert
+        assert explanation is not None
+        assert isinstance(explanation, AIExplanation)
+        assert explanation.confidence > 0
 
     @pytest.mark.asyncio
     async def test_openai_response_has_required_fields(self):
@@ -230,6 +234,7 @@ class TestOpenAIProvider:
     async def test_openai_confidence_validation(self):
         """Test OpenAI confidence is valid number."""
         ai_service = AIFixEnrichmentService()
+        ai_service._use_mock = False
         
         with patch.object(ai_service, '_generate_ai_fix',
                          new_callable=AsyncMock) as mock_ai:
@@ -262,18 +267,19 @@ class TestAnthropicProvider:
         mock_content.text = json.dumps(MOCK_ANTHROPIC_RESPONSE)
         mock_response.content = [mock_content]
         
-        with patch.object(provider, 'client') as mock_client:
-            mock_client.messages.create = AsyncMock(return_value=mock_response)
-            
-            # Act
-            explanation = await provider.generate_explanation(
-                "Missing resource limits",
-                {"rule_id": "K8S-001"}
-            )
-            
-            # Assert
-            assert explanation is not None
-            assert explanation.confidence > 0
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        provider._client = mock_client
+        
+        # Act
+        explanation = await provider.generate_explanation(
+            "Missing resource limits",
+            {"rule_id": "K8S-001"}
+        )
+        
+        # Assert
+        assert explanation is not None
+        assert explanation.confidence > 0
 
     @pytest.mark.asyncio
     async def test_anthropic_response_has_required_fields(self):
@@ -517,6 +523,7 @@ class TestAIFallbackLogic:
         """Test that low confidence responses are flagged."""
         # Arrange
         ai_service = AIFixEnrichmentService()
+        ai_service._use_mock = False
         
         finding = {
             "rule_id": "TEST-001",
@@ -578,6 +585,7 @@ class TestAIFallbackLogic:
             severity=Severity.HIGH,
             category=Category.RELIABILITY,
             description="Test",
+            recommendation="Use remote backend",
             file_path="test.tf"
         )
         
@@ -680,6 +688,7 @@ class TestAIIntegration:
             severity=Severity.CRITICAL,
             category=Category.RELIABILITY,
             description="Test",
+            recommendation="Use remote backend",
             file_path="test.tf"
         )
         
@@ -724,6 +733,7 @@ class TestAIIntegration:
                 severity=Severity.HIGH,
                 category=Category.SECURITY,
                 description="Test",
+                recommendation="Fix the issue",
                 file_path=f"test.{file_type}"
             )
             
@@ -1060,12 +1070,8 @@ class TestProviderSelection:
             mock_settings.LLM_PROVIDER = "gemini"
             mock_settings.GEMINI_API_KEY = "test-key"
             
-            # Import after mocking
-            from importlib import reload
-            import app.ai.engine as engine_module
-            reload(engine_module)
-            
-            provider = engine_module.get_llm_provider()
+            from app.ai.engine import get_llm_provider
+            provider = get_llm_provider()
             
             assert isinstance(provider, GeminiProvider)
 
@@ -1075,11 +1081,8 @@ class TestProviderSelection:
             mock_settings.LLM_PROVIDER = "openai"
             mock_settings.OPENAI_API_KEY = "test-key"
             
-            from importlib import reload
-            import app.ai.engine as engine_module
-            reload(engine_module)
-            
-            provider = engine_module.get_llm_provider()
+            from app.ai.engine import get_llm_provider
+            provider = get_llm_provider()
             
             assert isinstance(provider, OpenAIProvider)
 
@@ -1089,11 +1092,8 @@ class TestProviderSelection:
             mock_settings.LLM_PROVIDER = "anthropic"
             mock_settings.ANTHROPIC_API_KEY = "test-key"
             
-            from importlib import reload
-            import app.ai.engine as engine_module
-            reload(engine_module)
-            
-            provider = engine_module.get_llm_provider()
+            from app.ai.engine import get_llm_provider
+            provider = get_llm_provider()
             
             assert isinstance(provider, AnthropicProvider)
 
@@ -1101,15 +1101,18 @@ class TestProviderSelection:
         """Test fallback to Mock when no API key."""
         with patch('app.ai.engine.settings') as mock_settings:
             mock_settings.LLM_PROVIDER = "openai"
-            mock_settings.OPENAI_API_KEY = None  # No API key
+            mock_settings.OPENAI_API_KEY = None
+            mock_settings.ANTHROPIC_API_KEY = None
+            mock_settings.GEMINI_API_KEY = None
+            mock_settings.MISTRAL_API_KEY = None
+            mock_settings.LLM_MODEL = None
             
-            from importlib import reload
-            import app.ai.engine as engine_module
-            reload(engine_module)
-            
-            provider = engine_module.get_llm_provider()
-            
-            assert isinstance(provider, MockLLMProvider)
+            with patch('app.ai.engine._ollama_is_available', return_value=False, create=True), \
+                 patch('app.ai.engine._gpt4all_is_available', return_value=False, create=True):
+                from app.ai.engine import get_llm_provider
+                provider = get_llm_provider()
+                
+                assert isinstance(provider, MockLLMProvider)
 
 
 # ============================================================================

@@ -209,9 +209,15 @@ class RagIngestionService:
         technology and category) plus one per cross-cutting rule id, so the
         rule-id-first retrieval path has real data to match. Idempotent by
         fingerprint.
+
+        Each document includes the rule description, recommendation, and
+        technology context to provide grounded knowledge for the LLM.
         """
         inventory = get_inventory()
         docs: list[KnowledgeDocumentInput] = []
+
+        # Build a lookup of rule definitions from the rule engine
+        rule_definitions = _load_rule_definitions()
 
         for tech_id in inventory.technologies():
             tech = inventory.get_technology(tech_id)
@@ -221,24 +227,46 @@ class RagIngestionService:
             scanners = inventory.external_scanners_for(tech_id)
             categories = inventory.categories_for_technology(tech_id)
             for rule_id in rule_ids:
+                rule_def = rule_definitions.get(rule_id, {})
+                title = rule_def.get("title") or f"Rule {rule_id}"
+                description = rule_def.get("description", "")
+                recommendation = rule_def.get("recommendation", "")
+                severity = rule_def.get("severity", "")
+
+                content_parts = [
+                    f"# {rule_id}",
+                    "",
+                    f"Technology: {tech_id}",
+                    f"Rule ID: {rule_id}",
+                    f"Severity: {severity}" if severity else "",
+                    f"Category: {', '.join(categories) or '(none)'}",
+                    f"External scanners: {', '.join(scanners) or '(none)'}",
+                    "",
+                ]
+                if description:
+                    content_parts.extend(["## Problem", "", description, ""])
+                if recommendation:
+                    content_parts.extend(["## Recommendation", "", recommendation, ""])
+                content_parts.append("## Context")
+                content_parts.append("")
+                content_parts.append(
+                    f"This rule checks {tech_id} configurations for {rule_id}. "
+                    f"When this rule triggers, it means the configuration does not "
+                    f"follow the recommended best practice for {tech_id}."
+                )
+
                 docs.append(
                     KnowledgeDocumentInput(
                         source_type="curated",
                         source_name="technology_inventory",
                         authority="devarchai_curated",
-                        title=f"Rule {rule_id} — {tech_id}",
-                        content=(
-                            f"# {rule_id}\n\n"
-                            f"Technology: {tech_id}. Canonical rule id: {rule_id}.\n"
-                            f"Cross-cutting categories: "
-                            f"{', '.join(categories) or '(none)'}.\n"
-                            f"External scanners that may enrich this finding: "
-                            f"{', '.join(scanners) or '(none)'}."
-                        ),
+                        title=f"{title} ({rule_id})",
+                        content="\n".join(content_parts),
                         version=inventory.version,
                         technology=tech_id,
                         rule_id=rule_id,
                         category=categories[0] if categories else None,
+                        severity=severity or None,
                         metadata={"inventory_version": inventory.version},
                     )
                 )
@@ -246,16 +274,30 @@ class RagIngestionService:
         for cat in inventory.cross_cutting():
             cat_id = cat["id"]
             for rule_id in cat.get("rule_ids", []):
+                rule_def = rule_definitions.get(rule_id, {})
+                title = rule_def.get("title") or f"Rule {rule_id}"
+                description = rule_def.get("description", "")
+                recommendation = rule_def.get("recommendation", "")
+
+                content_parts = [
+                    f"# {rule_id}",
+                    "",
+                    f"Cross-cutting category: {cat_id}",
+                    f"Rule ID: {rule_id}",
+                    "",
+                ]
+                if description:
+                    content_parts.extend(["## Problem", "", description, ""])
+                if recommendation:
+                    content_parts.extend(["## Recommendation", "", recommendation, ""])
+
                 docs.append(
                     KnowledgeDocumentInput(
                         source_type="curated",
                         source_name="technology_inventory",
                         authority="devarchai_curated",
-                        title=f"Rule {rule_id} — {cat_id}",
-                        content=(
-                            f"# {rule_id}\n\n"
-                            f"Cross-cutting category: {cat_id}. Canonical rule id: {rule_id}."
-                        ),
+                        title=f"{title} ({rule_id})",
+                        content="\n".join(content_parts),
                         version=inventory.version,
                         technology=None,
                         rule_id=rule_id,
@@ -277,3 +319,22 @@ def get_ingestion_service() -> RagIngestionService:
     if _ingestion_service is None:
         _ingestion_service = RagIngestionService()
     return _ingestion_service
+
+
+def _load_rule_definitions() -> dict[str, dict[str, str]]:
+    """Load rule definitions from the rule engine for richer RAG documents."""
+    try:
+        from app.rule_engine.base import RuleRegistry
+        registry = RuleRegistry()
+        definitions: dict[str, dict[str, str]] = {}
+        for rule in registry.rules.values():
+            definitions[rule.rule_id] = {
+                "title": getattr(rule, "title", "") or rule.rule_id,
+                "description": getattr(rule, "description", "") or "",
+                "recommendation": getattr(rule, "recommendation", "") or "",
+                "severity": getattr(rule, "severity", "") or "",
+                "category": getattr(rule, "category", "") or "",
+            }
+        return definitions
+    except Exception:
+        return {}

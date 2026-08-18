@@ -740,7 +740,8 @@ class TestDeleteStale:
 
     CONN_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-    def test_delete_stale_builds_correct_where_clause(self):
+    @pytest.mark.asyncio
+    async def test_delete_stale_builds_correct_where_clause(self):
         """Verify the update statement targets: connection, not-current-scan, not-already-deleted."""
         from unittest.mock import AsyncMock, MagicMock
 
@@ -751,10 +752,7 @@ class TestDeleteStale:
 
         repo = CloudResourceRepository(mock_db)
 
-        import asyncio
-        deleted = asyncio.get_event_loop().run_until_complete(
-            repo.delete_stale(self.CONN_ID, "scan-current")
-        )
+        deleted = await repo.delete_stale(self.CONN_ID, "scan-current")
 
         assert deleted == 5
         assert mock_db.execute.call_count == 2
@@ -765,7 +763,8 @@ class TestDeleteStale:
         from sqlalchemy.sql.dml import Update
         assert isinstance(stmt, Update)
 
-    def test_delete_stale_returns_zero_when_nothing_deleted(self):
+    @pytest.mark.asyncio
+    async def test_delete_stale_returns_zero_when_nothing_deleted(self):
         from unittest.mock import AsyncMock, MagicMock
 
         mock_result = MagicMock()
@@ -775,14 +774,12 @@ class TestDeleteStale:
 
         repo = CloudResourceRepository(mock_db)
 
-        import asyncio
-        deleted = asyncio.get_event_loop().run_until_complete(
-            repo.delete_stale(self.CONN_ID, "scan-current")
-        )
+        deleted = await repo.delete_stale(self.CONN_ID, "scan-current")
 
         assert deleted == 0
 
-    def test_delete_stale_scales_to_large_sets(self):
+    @pytest.mark.asyncio
+    async def test_delete_stale_scales_to_large_sets(self):
         """The scan_id approach doesn't depend on resource count — always O(1) SQL."""
         from unittest.mock import AsyncMock, MagicMock
 
@@ -793,17 +790,15 @@ class TestDeleteStale:
 
         repo = CloudResourceRepository(mock_db)
 
-        import asyncio
-        deleted = asyncio.get_event_loop().run_until_complete(
-            repo.delete_stale(self.CONN_ID, "scan-huge")
-        )
+        deleted = await repo.delete_stale(self.CONN_ID, "scan-huge")
 
         # One single UPDATE, no batching needed regardless of resource count
         assert deleted == 10_000
         # One SELECT + one UPDATE, no batching needed regardless of resource count
         assert mock_db.execute.call_count == 2
 
-    def test_delete_stale_does_not_affect_already_deleted(self):
+    @pytest.mark.asyncio
+    async def test_delete_stale_does_not_affect_already_deleted(self):
         """Resources with status='deleted' are left untouched."""
         from unittest.mock import AsyncMock, MagicMock
 
@@ -814,14 +809,12 @@ class TestDeleteStale:
 
         repo = CloudResourceRepository(mock_db)
 
-        import asyncio
-        deleted = asyncio.get_event_loop().run_until_complete(
-            repo.delete_stale(self.CONN_ID, "scan-new")
-        )
+        deleted = await repo.delete_stale(self.CONN_ID, "scan-new")
 
         assert deleted == 0
 
-    def test_delete_stale_only_affects_target_connection(self):
+    @pytest.mark.asyncio
+    async def test_delete_stale_only_affects_target_connection(self):
         """Other connections' resources are not touched."""
         from unittest.mock import AsyncMock, MagicMock
 
@@ -832,10 +825,7 @@ class TestDeleteStale:
 
         repo = CloudResourceRepository(mock_db)
 
-        import asyncio
-        deleted = asyncio.get_event_loop().run_until_complete(
-            repo.delete_stale(self.CONN_ID, "scan-123")
-        )
+        deleted = await repo.delete_stale(self.CONN_ID, "scan-123")
 
         assert deleted == 3
         # Verify the statement filters by connection_id

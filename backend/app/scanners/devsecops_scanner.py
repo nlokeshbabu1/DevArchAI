@@ -9,7 +9,6 @@ singleton from the production app.rule_engine.base.RuleRegistry.
 
 DO NOT add new production code that uses this scanner.
 """
-"""
 
 import json
 from dataclasses import dataclass, field

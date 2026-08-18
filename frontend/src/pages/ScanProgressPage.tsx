@@ -172,12 +172,12 @@ function getEventBg(event: ScanEvent): string {
 }
 
 const AI_PHASES = [
-  { key: 'analyzing', label: 'Analyzing findings' },
-  { key: 'root_causes', label: 'Identifying root causes' },
-  { key: 'remediations', label: 'Generating remediations' },
-  { key: 'scoring', label: 'Computing risk scores' },
-  { key: 'summary', label: 'Building summary' },
-  { key: 'pr_fixes', label: 'Preparing PR fixes' },
+  { key: 'rag', label: 'Loading DevArchAI knowledge' },
+  { key: 'mcp_decision', label: 'Checking documentation needs' },
+  { key: 'mcp', label: 'Fetching current documentation' },
+  { key: 'llm', label: 'Generating AI recommendation' },
+  { key: 'llm_done', label: 'AI recommendation ready' },
+  { key: 'cache_hit', label: 'Using cached recommendation' },
 ]
 
 const MONO = 'font-[ui-monospace,SFMono-Regular,\'SF Mono\',Menlo,Consolas,monospace]'

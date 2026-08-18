@@ -52,6 +52,13 @@ class WSMessageType:
     AI_FINDING_COMPLETED = "ai.finding.completed"
     AI_ANALYSIS_COMPLETED = "ai.analysis.completed"
     AI_ANALYSIS_FAILED = "ai.analysis.failed"
+    # AI pipeline stage events (granular per-finding pipeline)
+    AI_RAG_COMPLETED = "ai.rag.completed"
+    AI_MCP_DECISION = "ai.mcp.decision"
+    AI_MCP_COMPLETED = "ai.mcp.completed"
+    AI_LLM_STARTED = "ai.llm.started"
+    AI_LLM_COMPLETED = "ai.llm.completed"
+    AI_CACHE_HIT = "ai.cache.hit"
     # Stage transition (richer than progress_update)
     STAGE_TRANSITION = "stage_transition"
 
@@ -475,6 +482,120 @@ class ScanProgressWebSocketManager:
             "timestamp": datetime.utcnow().isoformat(),
         }
         ws_message = _make_message(WSMessageType.AI_ANALYSIS_FAILED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_rag_completed(
+        self,
+        scan_id: str,
+        rule_id: str,
+        documents_found: int,
+        method: str,
+    ) -> int:
+        """Broadcast that RAG retrieval completed for a finding."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "rag",
+            "rule_id": rule_id,
+            "documents_found": documents_found,
+            "method": method,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_RAG_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_mcp_decision(
+        self,
+        scan_id: str,
+        rule_id: str,
+        technology: str,
+        required: bool,
+        reason: str,
+    ) -> int:
+        """Broadcast the MCP decision for a finding."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "mcp_decision",
+            "rule_id": rule_id,
+            "technology": technology,
+            "required": required,
+            "reason": reason,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_MCP_DECISION, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_mcp_completed(
+        self,
+        scan_id: str,
+        rule_id: str,
+        technology: str,
+        status: str,
+        provider: str = "",
+    ) -> int:
+        """Broadcast that MCP context retrieval completed for a finding."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "mcp",
+            "rule_id": rule_id,
+            "technology": technology,
+            "status": status,
+            "provider": provider,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_MCP_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_llm_started(
+        self,
+        scan_id: str,
+        rule_id: str,
+        technology: str | None = None,
+    ) -> int:
+        """Broadcast that LLM generation started for a finding."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "llm",
+            "rule_id": rule_id,
+            "technology": technology,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_LLM_STARTED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_llm_completed(
+        self,
+        scan_id: str,
+        rule_id: str,
+        ai_generated: bool,
+        latency_ms: float | None = None,
+    ) -> int:
+        """Broadcast that LLM generation completed for a finding."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "llm",
+            "rule_id": rule_id,
+            "ai_generated": ai_generated,
+            "latency_ms": latency_ms,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_LLM_COMPLETED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_cache_hit(
+        self,
+        scan_id: str,
+        rule_id: str,
+        layer: str,
+    ) -> int:
+        """Broadcast that a cache hit occurred (skipping RAG/MCP/LLM)."""
+        data = {
+            "scan_id": scan_id,
+            "stage": "cache_hit",
+            "rule_id": rule_id,
+            "layer": layer,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_CACHE_HIT, data)
         return await self._broadcast(scan_id, ws_message)
 
     async def broadcast_stage_transition(

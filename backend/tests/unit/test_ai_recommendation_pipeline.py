@@ -142,7 +142,6 @@ async def session_factory():
             Scan.__table__,
             Finding.__table__,
             AISuggestion.__table__,
-            ScanAIRecommendation.__table__,
         ):
             await conn.run_sync(table.create, checkfirst=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -300,7 +299,7 @@ async def test_dedup_100_identical_findings_single_llm_call(session_factory):
                 session, scan.id, rule_id="DKR-SEC-001", description="same", file_path="Dockerfile"
             )
         engine = FakeEngine()
-        service = _make_service(session, engine=engine, cache=FakeCache())
+        service = _make_service(session, engine=engine, cache=FakeCache(), max_per_scan=100)
 
         result = await service.process_scan(scan.id)
 
@@ -331,6 +330,7 @@ def select_findings(session, scan_id):
 async def test_mcp_not_required_skips_live_fetch():
     mcp = MagicMock()
     mcp.requires_live_context.return_value = False
+    mcp.requires_docs_context.return_value = False
     mcp.get_live_context = AsyncMock()
     rag = MagicMock()
     rag.technology_for_rule_id.return_value = ["docker"]
@@ -471,9 +471,9 @@ async def test_websocket_finding_completed_broadcast(session_factory):
 
             mock_manager.broadcast_ai_analysis_started.assert_awaited_once_with(str(scan.id))
             assert mock_manager.broadcast_ai_finding_completed.await_count == 2
-            _, args, _ = mock_manager.broadcast_ai_finding_completed.await_args_list[1]
-            assert args[1] == 2
-            assert args[2] == 2
+            call = mock_manager.broadcast_ai_finding_completed.await_args_list[1]
+            assert call.args[1] == 2
+            assert call.args[2] == 2
             mock_manager.broadcast_ai_analysis_completed.assert_awaited()
 
 
@@ -488,7 +488,7 @@ async def test_dedup_across_distinct_rules(session_factory):
         for i in range(6):
             rule = "DKR-SEC-001" if i % 2 == 0 else "K8S-SEC-001"
             await _insert_finding(
-                session, scan.id, rule_id=rule, description=f"issue {i}", file_path=f"f{i}.yaml"
+                session, scan.id, rule_id=rule, description=f"issue for {rule}", file_path=f"{rule}.yaml"
             )
         engine = FakeEngine()
         service = _make_service(session, engine=engine, cache=FakeCache())
@@ -555,7 +555,8 @@ async def test_recover_pending_ai_scans_re_enqueues():
     pending = [uuid4() for _ in range(2)]
     session = MagicMock()
     scalars = MagicMock()
-    scalars.all.return_value = pending
+    mock_rows = [MagicMock(id=uuid_val) for uuid_val in pending]
+    scalars.all.return_value = mock_rows
     result = MagicMock()
     result.scalars.return_value = scalars
     session.execute.return_value = result

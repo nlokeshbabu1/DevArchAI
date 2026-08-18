@@ -512,6 +512,132 @@ export function useScanWebSocket({
             break
           }
 
+          case 'ai.rag.completed': {
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'rag', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'rag',
+                  message: `DevArchAI knowledge loaded (${data.documents_found || 0} documents)`,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            pushEvent('ai_rag_completed', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: `RAG: ${data.documents_found || 0} docs via ${data.method || 'unknown'}`,
+            })
+            break
+          }
+
+          case 'ai.mcp.decision': {
+            const mcpRequired = data.required ?? false
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'mcp_decision', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'mcp_decision',
+                  message: mcpRequired
+                    ? `Checking current ${data.technology || ''} documentation`
+                    : `Internal knowledge sufficient for ${data.rule_id || ''}`,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            pushEvent('ai_mcp_decision', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: mcpRequired ? `MCP required: ${data.technology}` : `MCP skipped: ${data.rule_id}`,
+            })
+            break
+          }
+
+          case 'ai.mcp.completed': {
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'mcp', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'mcp',
+                  message: `Current ${data.technology || ''} docs: ${data.status || 'completed'}`,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            pushEvent('ai_mcp_completed', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: `MCP: ${data.technology} (${data.status})`,
+            })
+            break
+          }
+
+          case 'ai.llm.started': {
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'llm', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'llm',
+                  message: 'Generating AI recommendation',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            break
+          }
+
+          case 'ai.llm.completed': {
+            const aiGen = data.ai_generated ?? false
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'llm_done', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'llm_done',
+                  message: aiGen ? 'AI recommendation generated' : 'Using static recommendation',
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            break
+          }
+
+          case 'ai.cache.hit': {
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const current = base.aiProgress || { phase: 'cache_hit', message: '', progress: 0, findings_processed: 0, findings_total: 0, timestamp: '' }
+              return {
+                ...base,
+                aiProgress: {
+                  ...current,
+                  phase: 'cache_hit',
+                  message: `Cache hit (${data.layer || 'redis'}): ${data.rule_id || ''}`,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            pushEvent('ai_cache_hit', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: `Cache hit: ${data.rule_id}`,
+            })
+            break
+          }
+
           case 'stage_transition': {
             const transition: StageTransition = {
               stage: data.stage as ScanStage,

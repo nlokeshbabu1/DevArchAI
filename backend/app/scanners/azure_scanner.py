@@ -39,29 +39,36 @@ class AzureScanner:
         self.findings = []
 
         for parsed_file in parsed_files:
-            # Access ParsedFile attributes directly (it's a dataclass, not dict)
-            if parsed_file.file_type != "terraform":
+            if isinstance(parsed_file, dict):
+                file_type = parsed_file.get("file_type", "")
+                file_path = parsed_file.get("file_path", "")
+                resources = parsed_file.get("parsed_data", {}).get("resources", [])
+            else:
+                file_type = parsed_file.file_type
+                file_path = parsed_file.file_path
+                resources = parsed_file.parsed_data.get("resources", [])
+
+            if file_type != "terraform":
                 continue
 
-            self.files_scanned.append(parsed_file.file_path)
-            resources = parsed_file.parsed_data.get("resources", [])
+            self.files_scanned.append(file_path)
 
             for resource in resources:
                 resource_type = resource.get("type", "")
 
                 # Route to appropriate scanner based on resource type
                 if resource_type == "azurerm_storage_account":
-                    self._check_storage_account(resource, parsed_file.file_path)
+                    self._check_storage_account(resource, file_path)
                 elif resource_type == "azurerm_network_security_group":
-                    self._check_nsg(resource, parsed_file.file_path)
+                    self._check_nsg(resource, file_path)
                 elif resource_type == "azurerm_sql_firewall_rule":
-                    self._check_sql_firewall(resource, parsed_file.file_path)
+                    self._check_sql_firewall(resource, file_path)
                 elif resource_type == "azurerm_role_assignment":
-                    self._check_rbac(resource, parsed_file.file_path)
+                    self._check_rbac(resource, file_path)
                 elif resource_type == "azurerm_app_service":
-                    self._check_app_service(resource, parsed_file.file_path)
+                    self._check_app_service(resource, file_path)
                 elif resource_type == "azurerm_key_vault":
-                    self._check_key_vault(resource, parsed_file.file_path)
+                    self._check_key_vault(resource, file_path)
 
         return self.findings
 
