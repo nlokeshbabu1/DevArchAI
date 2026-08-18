@@ -1,0 +1,117 @@
+name: Ci of he frontend application
+
+on:
+  push:
+    branches:
+      - main
+  # pull_request:
+  #   branches:
+  #     - main
+
+job:
+
+  # ==========================================
+  # INSTALL + BUILD + TEST
+  # ==========================================
+  
+  build:
+    name: Build and Test Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build frontend application
+        run: npm run build
+      
+      - name: Integration Tests
+        run: npm run test:integration --if-present
+
+      - name: WebSocket Tests
+        run: npm run test:websocket --if-present
+
+  # ==========================================
+  # NPM SECURITY
+  # ==========================================
+
+  npm-security:
+    name: NPM Security
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: NPM audit
+        run: npm audit --audit-level=high
+
+# ==========================================
+# CODEQL SAST Performs SAST (Static Application Security Testing) against your JavaScript/TypeScript code.
+# ==========================================
+
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+
+
+  # ==========================================
+  # DEPENDENCY REVIEW
+  # ==========================================
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high

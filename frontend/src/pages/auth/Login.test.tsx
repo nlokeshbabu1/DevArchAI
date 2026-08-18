@@ -1,10 +1,10 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { Login } from '../pages/auth/Login'
+import { Login } from './Login'
 
 // Mock the auth store
-vi.mock('../stores/auth-store', () => ({
+vi.mock('../../stores/auth-store', () => ({
   useAuthStore: vi.fn(() => ({
     login: vi.fn(),
     setUser: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock('../stores/auth-store', () => ({
 }))
 
 // Mock API
-vi.mock('../api/endpoints/auth', () => ({
+vi.mock('../../api/endpoints/auth', () => ({
   authApi: {
     login: vi.fn(),
     register: vi.fn(),

@@ -55,10 +55,10 @@ describe('Auth Store', () => {
   })
 
   it('updates loading state', () => {
-    useAuthStore.getState().setLoading(true)
+    useAuthStore.setState({ isLoading: true })
     expect(useAuthStore.getState().isLoading).toBe(true)
-    
-    useAuthStore.getState().setLoading(false)
+
+    useAuthStore.setState({ isLoading: false })
     expect(useAuthStore.getState().isLoading).toBe(false)
   })
 

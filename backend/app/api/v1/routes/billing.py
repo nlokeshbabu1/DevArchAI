@@ -381,11 +381,14 @@ async def create_checkout_session(
         current_user.selected_gateway = selected_gateway
         await db.flush()
 
+        plan_name = _map_plan_name(request.plan)
+        billing_interval = _normalize_billing_interval(request.billing)
+
         result = await payment_svc.create_checkout(
             db=db,
             user=current_user,
-            plan_name=request.plan,
-            billing_interval=request.billing,
+            plan_name=plan_name,
+            billing_interval=billing_interval,
             user_country=user_country,
             coupon_code=request.coupon,
             selected_gateway=selected_gateway,

@@ -38,6 +38,8 @@ vi.mock('lucide-react', () => ({
   Brain: () => <span data-testid="icon-brain">Brain</span>,
   FileText: () => <span data-testid="icon-filetext">FileText</span>,
   CheckCheck: () => <span data-testid="icon-checkcheck">CheckCheck</span>,
+  Download: () => <span data-testid="icon-download">Download</span>,
+  Filter: () => <span data-testid="icon-filter">Filter</span>,
 }))
 
 const defaultProps = {

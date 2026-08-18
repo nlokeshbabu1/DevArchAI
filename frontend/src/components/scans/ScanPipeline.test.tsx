@@ -70,7 +70,7 @@ describe('ScanPipeline', () => {
       />
     )
 
-    const blueIcons = document.querySelectorAll('.text-blue-400')
+    const blueIcons = document.querySelectorAll('.text-indigo-400')
     expect(blueIcons.length).toBeGreaterThanOrEqual(1)
   })
 

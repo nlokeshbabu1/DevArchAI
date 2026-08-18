@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
-import { Landing } from './Landing'
+import { Landing } from '../Landing'
 
 // Mock react-router-dom
 vi.mock('react-router-dom', async () => {
