@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { authApi } from './endpoints/auth'
+import { authApi } from './auth'
 import axios from 'axios'
 
 // Mock axios

@@ -11,7 +11,7 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/devarchai
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/devarchai
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -43,9 +43,9 @@ services:
     depends_on:
       - backend
 
-  # PostgreSQL Database
+  # PostgreSQL Database (pgvector-enabled image for the RAG knowledge layer)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15-alpine
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

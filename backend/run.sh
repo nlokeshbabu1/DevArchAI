@@ -18,6 +18,11 @@ export ENVIRONMENT=development
 export LOG_LEVEL=INFO
 export LOG_FORMAT=console
 
+# Run database migrations and verify the schema
+echo "Running database migrations and verifying schema..."
+python3 -c "from app.db.init import initialize_database; initialize_database()"
+echo "Migrations complete"
+
 # Start uvicorn
 exec uvicorn app.main:app \
     --host 0.0.0.0 \

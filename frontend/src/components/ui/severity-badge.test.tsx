@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { SeverityBadge } from '../components/ui/severity-badge'
+import { SeverityBadge } from './severity-badge'
 
 describe('SeverityBadge', () => {
   it('renders critical severity', () => {
@@ -36,13 +36,13 @@ describe('SeverityBadge', () => {
   it('shows icon by default', () => {
     render(<SeverityBadge severity="high" />)
     
-    expect(screen.getByRole('img')).toBeInTheDocument()
+    expect(screen.getByText('High').querySelector('svg')).toBeInTheDocument()
   })
 
   it('hides icon when showIcon is false', () => {
     render(<SeverityBadge severity="high" showIcon={false} />)
     
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('High').querySelector('svg')).not.toBeInTheDocument()
   })
 
   it('applies size classes', () => {

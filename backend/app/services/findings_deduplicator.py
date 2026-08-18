@@ -9,8 +9,8 @@ Provides deduplication statistics for monitoring and logging.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import structlog
 

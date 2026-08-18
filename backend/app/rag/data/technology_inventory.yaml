@@ -1,0 +1,573 @@
+# ============================================================================
+# DevArchAI Technology Inventory
+# ----------------------------------------------------------------------------
+# Seed knowledge artifact for the RAG knowledge layer. This index maps every
+# technology DevArchAI can analyze to its canonical rule IDs (extracted from
+# the backend source of truth), applicable file types, external scanners, and
+# ownership precedence used by technology detection.
+#
+# DO NOT hand-edit rule_id lists as free text — regenerate from source:
+#   python scripts/generate_technology_inventory.py
+# Rule IDs below are copied from the actual code at generation time.
+# ============================================================================
+
+inventory_version: "1.0.0"
+generated_at: "2026-08-10"
+generated_from:
+  - app/rules/kubernetes.py
+  - app/rules/terraform.py
+  - app/rules/dockerfile.py
+  - app/rules/cicd.py
+  - app/rules/security.py
+  - app/rules/reliability.py
+  - app/rules/scalability.py
+  - app/rules/cost.py
+  - app/rules/observability.py
+  - app/rules/devsecops/cicd_security.py
+  - app/rules/devsecops/docker_security.py
+  - app/rules/devsecops/kubernetes_security.py
+  - app/rules/devsecops/kubernetes_reliability.py
+  - app/rules/devsecops/observability.py
+  - app/rule_engine/rules/devops_tool_rules.py
+  - app/scanners/adapters/*.py
+
+# Canonical technology identifiers. These match the canonical tech constants
+# used by app/services/technology_classifier.py.
+technologies:
+  - id: kubernetes
+    aliases: [k8s, kubernetes_manifest, k8s_manifests]
+    description: Kubernetes manifests (Deployment, Service, ConfigMap, Ingress, etc.)
+    file_types: [kubernetes]
+    ownership_priority: 2
+    rule_modules:
+      - app.rules.kubernetes
+      - app.rules.devsecops.kubernetes_security
+      - app.rules.devsecops.kubernetes_reliability
+    rule_ids:
+      # app/rules/kubernetes.py
+      - k8s_single_replica
+      - k8s_latest_image_tag
+      - k8s_no_hpa
+      - k8s_no_liveness_probe
+      - k8s_no_network_policy
+      - k8s_no_readiness_probe
+      - k8s_no_resource_limits
+      - k8s_no_resource_requests
+      - k8s_privileged_container
+      - k8s_secret_env_usage
+      # app/rules/devsecops/kubernetes_security.py
+      - K8S-SEC-001
+      - K8S-SEC-002
+      - K8S-SEC-003
+      - K8S-SEC-004
+      - K8S-SEC-005
+      - K8S-SEC-006
+      - K8S-SEC-007
+      - K8S-SEC-008
+      - K8S-SEC-009
+      - K8S-SEC-010
+      # app/rules/devsecops/kubernetes_reliability.py
+      - K8S-REL-001
+      - K8S-REL-002
+      - K8S-REL-003
+      - K8S-REL-004
+      - K8S-REL-005
+      - K8S-REL-006
+      - K8S-REL-007
+      - K8S-REL-008
+      - K8S-REL-009
+      - K8S-REL-010
+    external_scanners: [trivy_config, checkov, kube_score]
+    categories: [security, reliability]
+
+  - id: terraform
+    aliases: [terraform, terraform_hcl, tf]
+    description: Terraform configuration (HCL, .tf, .tfvars, .tf.json)
+    file_types: [terraform, terraform_vars]
+    ownership_priority: 3
+    rule_modules:
+      - app.rules.terraform
+      - app.rule_engine.rules.terraform_rules
+    rule_ids:
+      # app/rules/terraform.py
+      - terraform_hardcoded_secrets
+      - terraform_no_encryption
+      - terraform_no_lifecycle
+      - terraform_no_logging
+      - terraform_no_tags
+      - terraform_no_version_pinning
+      - terraform_open_security_group
+      - terraform_state_locking
+    external_scanners: [trivy_config, checkov, tfsec]
+    categories: [security, reliability, cost, observability]
+
+  - id: docker
+    aliases: [dockerfile, docker]
+    description: Dockerfile and Containerfile definitions
+    file_types: [dockerfile, docker_compose]
+    ownership_priority: 4
+    rule_modules:
+      - app.rules.dockerfile
+      - app.rules.devsecops.docker_security
+    rule_ids:
+      # app/rules/dockerfile.py
+      - docker_copy_all_context
+      - docker_exposes_unnecessary_ports
+      - docker_large_base_image
+      - docker_latest_tag
+      - docker_no_healthcheck
+      - docker_no_multistage
+      - docker_runs_as_root
+      - docker_secret_in_env
+      # app/rules/devsecops/docker_security.py
+      - DKR-SEC-001
+      - DKR-SEC-002
+      - DKR-SEC-003
+      - DKR-SEC-004
+      - DKR-SEC-005
+      - DKR-SEC-006
+      - DKR-SEC-007
+      - DKR-SEC-008
+      - DKR-SEC-009
+      - DKR-SEC-010
+    external_scanners: [trivy_config, trivy_filesystem, checkov, hadolint]
+    categories: [security, reliability]
+
+  - id: helm
+    aliases: [helm, helm_chart]
+    description: Helm charts (Chart.yaml, values.yaml, chart templates)
+    file_types: [helm]
+    ownership_priority: 1
+    rule_modules:
+      - app.rules.kubernetes
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rule_engine/rules/devops_tool_rules.py (Helm* classes)
+      - HELM_001
+      - HELM_002
+      - HELM_003
+      - HELM_004
+      - HELM_005
+      - HELM_006
+      - HELM_007
+      - HELM_008
+      - HELM_009
+      - HELM_010
+      - HELM_011
+      - HELM_012
+      - HELM_013
+      - HELM_014
+      - HELM_015
+    external_scanners: [trivy_config, checkov]
+    categories: [security, reliability]
+
+  - id: github_actions
+    aliases: [github, github_actions, gh_actions]
+    description: GitHub Actions workflows (.github/workflows/*.yml)
+    file_types: [cicd]
+    ownership_priority: 3
+    rule_modules:
+      - app.rules.cicd
+      - app.rules.devsecops.cicd_security
+    rule_ids:
+      # app/rules/cicd.py
+      - cicd_no_artifact_storage
+      - cicd_no_build_cache
+      - cicd_no_container_scan
+      - cicd_no_dependency_scan
+      - cicd_no_environment_protection
+      - cicd_no_rollback_strategy
+      - cicd_no_security_scan
+      - cicd_no_terraform_validation
+      - cicd_no_test_stage
+      # app/rules/devsecops/cicd_security.py
+      - CI-SEC-001
+      - CI-SEC-002
+      - CI-SEC-003
+      - CI-SEC-004
+      - CI-SEC-005
+      - CI-SEC-006
+      - CI-SEC-007
+      - CI-SEC-008
+      - CI-SEC-009
+      - CI-SEC-010
+    external_scanners: [trivy_config, checkov]
+    categories: [security]
+
+  - id: gitlab_ci
+    aliases: [gitlab, gitlab_ci]
+    description: GitLab CI pipelines (.gitlab-ci.yml)
+    file_types: [cicd]
+    ownership_priority: 5
+    rule_modules:
+      - app.rules.cicd
+      - app.rules.devsecops.cicd_security
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rules/cicd.py
+      - cicd_no_artifact_storage
+      - cicd_no_build_cache
+      - cicd_no_container_scan
+      - cicd_no_dependency_scan
+      - cicd_no_environment_protection
+      - cicd_no_rollback_strategy
+      - cicd_no_security_scan
+      - cicd_no_terraform_validation
+      - cicd_no_test_stage
+      # app/rules/devsecops/cicd_security.py
+      - CI-SEC-001
+      - CI-SEC-002
+      - CI-SEC-003
+      - CI-SEC-004
+      - CI-SEC-005
+      - CI-SEC-006
+      - CI-SEC-007
+      - CI-SEC-008
+      - CI-SEC-009
+      - CI-SEC-010
+      # app/rule_engine/rules/devops_tool_rules.py (GitLab* classes)
+      - GITLAB_001
+      - GITLAB_002
+      - GITLAB_003
+      - GITLAB_004
+      - GITLAB_005
+      - GITLAB_006
+      - GITLAB_007
+      - GITLAB_008
+      - GITLAB_009
+      - GITLAB_010
+      - GITLAB_011
+      - GITLAB_012
+      - GITLAB_013
+      - GITLAB_014
+      - GITLAB_015
+    external_scanners: [trivy_config]
+    categories: [security]
+
+  - id: jenkins
+    aliases: [jenkins, jenkinsfile]
+    description: Jenkins pipelines (Jenkinsfile, Declarative/scripted)
+    file_types: [cicd]
+    ownership_priority: 5
+    rule_modules:
+      - app.rules.cicd
+      - app.rules.devsecops.cicd_security
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rules/cicd.py
+      - cicd_no_artifact_storage
+      - cicd_no_build_cache
+      - cicd_no_container_scan
+      - cicd_no_dependency_scan
+      - cicd_no_environment_protection
+      - cicd_no_rollback_strategy
+      - cicd_no_security_scan
+      - cicd_no_terraform_validation
+      - cicd_no_test_stage
+      # app/rules/devsecops/cicd_security.py
+      - CI-SEC-001
+      - CI-SEC-002
+      - CI-SEC-003
+      - CI-SEC-004
+      - CI-SEC-005
+      - CI-SEC-006
+      - CI-SEC-007
+      - CI-SEC-008
+      - CI-SEC-009
+      - CI-SEC-010
+      # app/rule_engine/rules/devops_tool_rules.py (Jenkins* classes)
+      - JENKINS_001
+      - JENKINS_002
+      - JENKINS_003
+      - JENKINS_004
+      - JENKINS_005
+      - JENKINS_006
+      - JENKINS_007
+      - JENKINS_008
+      - JENKINS_009
+      - JENKINS_010
+      - JENKINS_011
+      - JENKINS_012
+      - JENKINS_013
+      - JENKINS_014
+      - JENKINS_015
+      - JENKINS_016
+      - JENKINS_017
+      - JENKINS_018
+      - JENKINS_019
+      - JENKINS_020
+      - JENKINS_021
+    external_scanners: []
+    categories: [security]
+
+  - id: circleci
+    aliases: [circleci, circle_ci]
+    description: CircleCI pipelines (.circleci/config.yml)
+    file_types: [cicd]
+    ownership_priority: 5
+    rule_modules:
+      - app.rules.cicd
+      - app.rules.devsecops.cicd_security
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rules/cicd.py
+      - cicd_no_artifact_storage
+      - cicd_no_build_cache
+      - cicd_no_container_scan
+      - cicd_no_dependency_scan
+      - cicd_no_environment_protection
+      - cicd_no_rollback_strategy
+      - cicd_no_security_scan
+      - cicd_no_terraform_validation
+      - cicd_no_test_stage
+      # app/rules/devsecops/cicd_security.py
+      - CI-SEC-001
+      - CI-SEC-002
+      - CI-SEC-003
+      - CI-SEC-004
+      - CI-SEC-005
+      - CI-SEC-006
+      - CI-SEC-007
+      - CI-SEC-008
+      - CI-SEC-009
+      - CI-SEC-010
+      # app/rule_engine/rules/devops_tool_rules.py (CircleCI* classes)
+      - CIRCLECI_001
+      - CIRCLECI_002
+      - CIRCLECI_003
+      - CIRCLECI_004
+      - CIRCLECI_005
+      - CIRCLECI_006
+      - CIRCLECI_007
+      - CIRCLECI_008
+      - CIRCLECI_009
+      - CIRCLECI_010
+      - CIRCLECI_011
+      - CIRCLECI_012
+      - CIRCLECI_013
+      - CIRCLECI_014
+      - CIRCLECI_015
+    external_scanners: []
+    categories: [security]
+
+  - id: azure_devops
+    aliases: [azure_devops, azure_pipelines, azure]
+    description: Azure DevOps pipelines (azure-pipelines.yml)
+    file_types: [cicd]
+    ownership_priority: 5
+    rule_modules:
+      - app.rules.cicd
+      - app.rules.devsecops.cicd_security
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rules/cicd.py
+      - cicd_no_artifact_storage
+      - cicd_no_build_cache
+      - cicd_no_container_scan
+      - cicd_no_dependency_scan
+      - cicd_no_environment_protection
+      - cicd_no_rollback_strategy
+      - cicd_no_security_scan
+      - cicd_no_terraform_validation
+      - cicd_no_test_stage
+      # app/rules/devsecops/cicd_security.py
+      - CI-SEC-001
+      - CI-SEC-002
+      - CI-SEC-003
+      - CI-SEC-004
+      - CI-SEC-005
+      - CI-SEC-006
+      - CI-SEC-007
+      - CI-SEC-008
+      - CI-SEC-009
+      - CI-SEC-010
+      # app/rule_engine/rules/devops_tool_rules.py (Azure* classes)
+      - AZURE_001
+      - AZURE_002
+      - AZURE_003
+      - AZURE_004
+      - AZURE_005
+      - AZURE_006
+      - AZURE_007
+      - AZURE_008
+      - AZURE_009
+      - AZURE_010
+      - AZURE_011
+      - AZURE_012
+      - AZURE_013
+      - AZURE_014
+      - AZURE_015
+    external_scanners: []
+    categories: [security]
+
+  - id: ansible
+    aliases: [ansible, ansible_playbook]
+    description: Ansible playbooks and roles
+    file_types: [cicd]
+    ownership_priority: 6
+    rule_modules:
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rule_engine/rules/devops_tool_rules.py (Ansible* classes)
+      - ANSIBLE_001
+      - ANSIBLE_002
+      - ANSIBLE_003
+      - ANSIBLE_004
+      - ANSIBLE_005
+      - ANSIBLE_006
+      - ANSIBLE_007
+      - ANSIBLE_008
+      - ANSIBLE_009
+      - ANSIBLE_010
+      - ANSIBLE_011
+      - ANSIBLE_012
+      - ANSIBLE_013
+      - ANSIBLE_014
+      - ANSIBLE_015
+    external_scanners: []
+    categories: [security]
+
+  - id: prometheus
+    aliases: [prometheus]
+    description: Prometheus configuration (prometheus.yml, alerting rules)
+    file_types: [cicd]
+    ownership_priority: 6
+    rule_modules:
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rule_engine/rules/devops_tool_rules.py (Prometheus* classes)
+      - PROMETHEUS_001
+      - PROMETHEUS_002
+      - PROMETHEUS_003
+      - PROMETHEUS_004
+      - PROMETHEUS_005
+      - PROMETHEUS_006
+      - PROMETHEUS_007
+      - PROMETHEUS_008
+      - PROMETHEUS_009
+      - PROMETHEUS_010
+      - PROMETHEUS_011
+      - PROMETHEUS_012
+      - PROMETHEUS_013
+      - PROMETHEUS_014
+      - PROMETHEUS_015
+    external_scanners: []
+    categories: [observability]
+
+  - id: grafana
+    aliases: [grafana]
+    description: Grafana dashboards and configuration
+    file_types: [cicd]
+    ownership_priority: 6
+    rule_modules:
+      - app.rule_engine.rules.devops_tool_rules
+    rule_ids:
+      # app/rule_engine/rules/devops_tool_rules.py (Grafana* classes)
+      - GRAFANA_001
+      - GRAFANA_002
+      - GRAFANA_003
+      - GRAFANA_004
+      - GRAFANA_005
+      - GRAFANA_006
+      - GRAFANA_007
+      - GRAFANA_008
+      - GRAFANA_009
+      - GRAFANA_010
+      - GRAFANA_011
+      - GRAFANA_012
+      - GRAFANA_013
+      - GRAFANA_014
+      - GRAFANA_015
+    external_scanners: []
+    categories: [observability]
+
+  - id: aws
+    aliases: [aws, amazon_web_services]
+    description: AWS live-environment scanning (EC2, S3, IAM, RDS, EKS, ECR, KMS, VPC, ELB, Lambda, CloudTrail, CloudWatch, Config, GuardDuty, SecurityHub)
+    file_types: []
+    ownership_priority: 0
+    rule_modules:
+      - app.cloud.aws.scanners
+    rule_ids:
+      # app/cloud/aws/scanners/*.py (lowercase kebab-case ids)
+      - ec2-open-sg
+      - ecr-no-scan-on-push
+      - kms-no-rotation
+      - lambda-no-tracing
+      - config-recorder-off
+      - securityhub-not-enabled
+    external_scanners: []
+    categories: [security]
+    live_context: true
+
+  - id: azure
+    aliases: [azure, microsoft_azure]
+    description: Azure live-environment scanning (storage, network, etc.)
+    file_types: []
+    ownership_priority: 0
+    rule_modules:
+      - app.cloud.azure_scanner
+    rule_ids:
+      # app/cloud/azure_scanner.py
+      - AZ-STORAGE-001
+    external_scanners: []
+    categories: [security]
+    live_context: true
+
+# Cross-cutting rule categories (apply across file types).
+cross_cutting:
+  - id: security
+    rule_ids: [SEC-001, SEC-002, SEC-003, SEC-004, SEC-005, SEC-006, SEC-007, SEC-008]
+    rule_modules: [app.rules.security]
+  - id: reliability
+    rule_ids: [REL-001, REL-002, REL-003, REL-004, REL-006]
+    rule_modules: [app.rules.reliability]
+  - id: scalability
+    rule_ids: [SCALE-001, SCALE-002, SCALE-003, SCALE-004, SCALE-005, SCALE-006]
+    rule_modules: [app.rules.scalability]
+  - id: cost
+    rule_ids: [COST-001, COST-002, COST-003, COST-004, COST-005]
+    rule_modules: [app.rules.cost]
+  - id: observability
+    rule_ids: [OBS-001, OBS-002, OBS-003, OBS-004, OBS-005, OBS-006, OBS-007, OBS-0BS-008, OBS-009, OBS-010]
+    rule_modules: [app.rules.observability, app.rules.devsecops.observability]
+    notes:
+      - "OBS-0BS-008 is the literal id attribute used by rule OBS-008 (typo preserved from source)."
+
+# External scanner names registered in app/scanners/registry.py, and the rule
+# ID families their findings carry. These enrich knowledge context but are NOT
+# DevArchAI-owned rules.
+external_scanners:
+  - name: trivy_filesystem
+    rule_id_families: [TRV, AVD]
+    description: Trivy filesystem scan (vulnerabilities, misconfigurations, secrets)
+  - name: trivy_config
+    rule_id_families: [AVD, TRV]
+    description: Trivy config scan (IaC misconfigurations)
+  - name: checkov
+    rule_id_families: [CKV]
+    description: Checkov IaC security scanning
+  - name: tfsec
+    rule_id_families: [AWS, GCP, AZURE, K8S, GEN]
+    description: Terraform security scanner
+  - name: kube_score
+    rule_id_families: [KS]
+    description: Kubernetes object security scoring
+  - name: hadolint
+    rule_id_families: [DL, HL]
+    description: Dockerfile linter
+  - name: gitleaks
+    rule_id_families: [GL, GITLEAKS]
+    description: Secret scanning across git history
+  - name: npm_audit
+    rule_id_families: [npm]
+    description: npm dependency vulnerabilities
+  - name: pip_audit
+    rule_id_families: [pip]
+    description: Python dependency vulnerabilities
+  - name: govulncheck
+    rule_id_families: [go]
+    description: Go vulnerability scanner
+  - name: dependency_check
+    rule_id_families: [CVE, NVD]
+    description: OWASP dependency-check across ecosystems

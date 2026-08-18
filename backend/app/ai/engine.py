@@ -2,12 +2,17 @@
 AI Explanation Layer - LLM Integration
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
 
+from app.ai_engine.llm_client import (
+    GPT4AllProvider as _GPT4AllProviderBase,
+    OllamaProvider as _OllamaProviderBase,
+)
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -535,7 +540,8 @@ Write a 3-paragraph executive summary."""
     async def generate(self, prompt: str) -> str:
         """Generate raw text response - used by fix generator."""
         try:
-            response = self.client.chat.complete(
+            response = await asyncio.to_thread(
+                self.client.chat.complete,
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -543,6 +549,22 @@ Write a 3-paragraph executive summary."""
         except Exception as e:
             logger.error("Mistral generation failed", error=str(e))
             raise
+
+
+class OllamaProvider(_OllamaProviderBase, BaseLLMProvider):
+    """Ollama local LLM provider (self-hosted via ``ollama serve``).
+
+    Reuses the shared implementation from ``app.ai_engine.llm_client`` while
+    satisfying this module's ``BaseLLMProvider`` interface.
+    """
+
+
+class GPT4AllProvider(_GPT4AllProviderBase, BaseLLMProvider):
+    """GPT4All local LLM provider.
+
+    Reuses the shared implementation from ``app.ai_engine.llm_client`` while
+    satisfying this module's ``BaseLLMProvider`` interface.
+    """
 
 
 class MockLLMProvider(BaseLLMProvider):
@@ -699,9 +721,10 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
     async def generate(self, prompt: str) -> str:
         """Generate raw text response - used by fix generator."""
         try:
-            response = self.client.models.generate_content(
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=self.model,
-                contents=prompt
+                contents=prompt,
             )
             return response.text
         except Exception as e:
@@ -747,6 +770,12 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.MISTRAL_API_KEY,
             model=mistral_model,
         )
+    if provider == "ollama":
+        logger.info("Using Ollama local LLM provider (configured)")
+        return OllamaProvider()
+    if provider == "gpt4all":
+        logger.info("Using GPT4All local LLM provider (configured)")
+        return GPT4AllProvider()
 
     # Fallback chain: try available providers in order
     if settings.OPENAI_API_KEY:
@@ -776,6 +805,14 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.MISTRAL_API_KEY,
             model=mistral_model,
         )
+
+    # Try local providers before falling back to Mock
+    if _ollama_is_available():
+        logger.info("Using Ollama local LLM provider (fallback)")
+        return OllamaProvider()
+    if _gpt4all_is_available():
+        logger.info("Using GPT4All local LLM provider (fallback)")
+        return GPT4AllProvider()
 
     # Fallback to Mock provider (static examples)
     logger.info("No LLM API keys configured, using static fallback (Mock provider)")

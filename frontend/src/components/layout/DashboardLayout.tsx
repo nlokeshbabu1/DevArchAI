@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
   Brain, CreditCard, Settings, LogOut, Menu, X, Bell, Search,
-  Zap, Cloud, User, ChevronDown, Sparkles
+  Zap, Cloud, User, ChevronDown, Sparkles, BookOpen,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { Button } from '../ui'
@@ -22,6 +22,7 @@ const navigation = [
   { name: 'AI Suggestions', href: '/ai-suggestions', icon: Brain },
   { name: 'AWS Cloud', href: '/aws', icon: Cloud },
   { name: 'Integrations', href: '/integrations', icon: Cloud },
+  { name: 'Documentation', href: '/docs', icon: BookOpen },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
@@ -96,11 +97,12 @@ export function Layout({ children }: LayoutProps) {
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-indigo-600 shadow-lg shadow-primary/30">
               <Shield className="h-5 w-5 text-white" />
             </div>
-            <span className="text-lg font-bold gradient-text">DevArchAI</span>
+            <span className="text-lg font-bold text-primary">DevArchAI</span>
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+            aria-label="Close sidebar"
           >
             <X className="h-5 w-5 text-muted-foreground" />
           </button>
@@ -197,6 +199,7 @@ export function Layout({ children }: LayoutProps) {
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden p-2 rounded-lg hover:bg-white/5 transition-colors"
+              aria-label="Open navigation menu"
             >
               <Menu className="h-5 w-5 text-muted-foreground" />
             </button>
@@ -223,7 +226,7 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors">
+            <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors" aria-label="Notifications">
               <Bell className="h-5 w-5 text-muted-foreground" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
             </button>

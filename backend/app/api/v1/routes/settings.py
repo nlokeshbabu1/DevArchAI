@@ -1,14 +1,20 @@
 """Settings routes for user profile, preferences, sessions, API keys, and account management."""
 
 import secrets
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.api_key_store import (
+    create_api_key_entry as store_create_api_key,
+    list_api_keys as store_list_api_keys,
+    remove_all_api_keys as store_remove_all_api_keys,
+    revoke_api_key as store_revoke_api_key,
+    revoke_key_by_value as store_revoke_key_by_value,
+)
 from app.core.security import (
     decrypt_user_email,
     get_current_user,
@@ -25,7 +31,6 @@ router = APIRouter(prefix="/settings", tags=["Settings"])
 # ── In-memory fallback stores (used when DB tables don't exist) ──
 _preferences_store: dict[str, dict] = {}
 _sessions_store: dict[str, list[dict]] = {}
-_api_keys_store: dict[str, list[dict]] = {}
 
 
 # def _get_email(user: User) -> str:
@@ -210,7 +215,7 @@ async def get_sessions(
     # Fallback to in-memory store
     uid = str(current_user.id)
     existing = _sessions_store.get(uid, [])
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     current_session = {
         "id": f"sess_{secrets.token_urlsafe(8)}",
         "device": "Chrome on Linux",
@@ -235,8 +240,9 @@ async def revoke_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke a session by ID."""
-    from app.models.settings import UserSession
     from uuid import UUID as UUIDType
+
+    from app.models.settings import UserSession
     try:
         session_uuid = UUIDType(session_id)
         result = await db.execute(
@@ -264,15 +270,7 @@ async def revoke_session(
 async def list_api_keys(current_user: User = Depends(get_current_user)):
     uid = str(current_user.id)
     logger.info("Fetching API keys", user_id=uid)
-    keys = []
-    existing = _api_keys_store.get(uid, [])
-    for k in existing:
-        keys.append({
-            "id": k["id"],
-            "name": k.get("name", ""),
-            "masked_key": k.get("masked_key", f"sk-****{k['id'][-4:]}"),
-            "created_at": k.get("created_at"),
-        })
+    keys = store_list_api_keys(uid)
     if current_user.api_key_prefix and current_user.api_key:
         keys.append({
             "id": "legacy_key",
@@ -289,26 +287,24 @@ async def create_api_key(
     current_user: User = Depends(get_current_user),
 ):
     uid = str(current_user.id)
-    key_id = f"key_{secrets.token_urlsafe(12)}"
-    raw_key = f"sk-{secrets.token_urlsafe(32)}"
+    logger.info("Creating API key", user_id=uid)
     name = body.get("name", "")
-    now = datetime.now(timezone.utc).isoformat()
-    entry = {
-        "id": key_id,
-        "name": name,
-        "masked_key": f"sk-****{raw_key[-4:]}",
-        "full_key": raw_key,
-        "created_at": now,
-    }
-    if uid not in _api_keys_store:
-        _api_keys_store[uid] = []
-    _api_keys_store[uid].insert(0, {
-        "id": key_id,
-        "name": name,
-        "masked_key": entry["masked_key"],
-        "created_at": now,
-    })
-    return entry
+    return store_create_api_key(uid, name)
+
+
+@router.delete("/api-keys/current")
+async def revoke_current_api_key(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke the ``sk-`` key used to authenticate this request."""
+    api_key = request.headers.get("X-API-Key", "")
+    if not api_key.startswith("sk-"):
+        raise HTTPException(status_code=400, detail="No API key in request")
+    if store_revoke_key_by_value(str(current_user.id), api_key):
+        logger.info("Current API key revoked", user_id=str(current_user.id))
+        return {"message": "API key revoked successfully", "success": True}
+    raise HTTPException(status_code=404, detail="API key not found")
 
 
 @router.delete("/api-keys/{key_id}")
@@ -317,9 +313,10 @@ async def revoke_api_key(
     current_user: User = Depends(get_current_user),
 ):
     uid = str(current_user.id)
-    if uid in _api_keys_store:
-        _api_keys_store[uid] = [k for k in _api_keys_store[uid] if k["id"] != key_id]
-    return {"message": "API key revoked successfully", "success": True}
+    if store_revoke_api_key(uid, key_id):
+        logger.info("API key revoked", user_id=uid, key_id=key_id)
+        return {"message": "API key revoked successfully", "success": True}
+    raise HTTPException(status_code=404, detail="API key not found")
 
 
 @router.delete("/account")
@@ -336,7 +333,7 @@ async def delete_account(
     uid = str(current_user.id)
     _preferences_store.pop(uid, None)
     _sessions_store.pop(uid, None)
-    _api_keys_store.pop(uid, None)
+    store_remove_all_api_keys(uid)
     await db.delete(current_user)
     await db.commit()
     return {"message": "Account deleted successfully", "success": True}

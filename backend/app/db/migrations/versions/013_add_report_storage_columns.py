@@ -5,16 +5,16 @@ Revises: 012_add_ai_status_to_scans
 Create Date: 2026-05-07 10:00:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "013_add_report_storage_columns"
-down_revision: Union[str, None] = "012_add_ai_status_to_scans"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "012_add_ai_status_to_scans"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _has_column(table_name: str, column_name: str) -> bool:

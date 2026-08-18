@@ -1,7 +1,7 @@
 """AI Suggestion schemas."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -16,10 +16,10 @@ class AISuggestionBase(BaseModel):
     category: str  # security, reliability, cost, etc.
     fix_type: str  # terraform, dockerfile, kubernetes, ci_cd, general
     file_path: str
-    line_number: Optional[int] = None
-    fix_code: Optional[str] = None
+    line_number: int | None = None
+    fix_code: str | None = None
     auto_fix_available: bool = False
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class AISuggestionCreate(AISuggestionBase):
@@ -32,10 +32,10 @@ class AISuggestionCreate(AISuggestionBase):
 class AISuggestionUpdate(BaseModel):
     """Schema for updating AI suggestion."""
 
-    status: Optional[str] = None
-    pr_url: Optional[str] = None
-    pr_number: Optional[int] = None
-    metadata: Optional[Dict[str, Any]] = None
+    status: str | None = None
+    pr_url: str | None = None
+    pr_number: int | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class AISuggestionResponse(AISuggestionBase):
@@ -45,9 +45,9 @@ class AISuggestionResponse(AISuggestionBase):
     finding_id: str
     scan_id: str
     status: str
-    applied_at: Optional[datetime] = None
-    pr_url: Optional[str] = None
-    pr_number: Optional[int] = None
+    applied_at: datetime | None = None
+    pr_url: str | None = None
+    pr_number: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -60,7 +60,7 @@ class AISuggestionListResponse(BaseModel):
 
     suggestions: list[AISuggestionResponse]
     total: int
-    status_filter: Optional[str] = None
+    status_filter: str | None = None
 
 
 class ApplyFixRequest(BaseModel):
@@ -75,15 +75,15 @@ class ApplyFixResponse(BaseModel):
     success: bool
     message: str
     file_path: str
-    backup_path: Optional[str] = None
+    backup_path: str | None = None
 
 
 class CreatePRRequest(BaseModel):
     """Request to create GitHub PR."""
 
-    branch_name: Optional[str] = None
-    pr_title: Optional[str] = None
-    pr_description: Optional[str] = None
+    branch_name: str | None = None
+    pr_title: str | None = None
+    pr_description: str | None = None
 
 
 class CreatePRResponse(BaseModel):

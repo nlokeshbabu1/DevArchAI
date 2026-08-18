@@ -13,7 +13,7 @@ Usage:
 
 import time
 import traceback
-from typing import Callable
+from collections.abc import Callable
 
 import structlog
 from fastapi import Request, Response
@@ -38,10 +38,10 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and track errors."""
         start_time = time.time()
-        
+
         try:
             response = await call_next(request)
-            
+
             # Track 4xx/5xx responses
             if response.status_code >= 400:
                 error_type = f"HTTP_{response.status_code}"
@@ -49,7 +49,7 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
                     error_type=error_type,
                     endpoint=request.url.path,
                 )
-                
+
                 logger.warning(
                     "HTTP error response",
                     method=request.method,
@@ -57,16 +57,16 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
                     status_code=response.status_code,
                     duration=time.time() - start_time,
                 )
-            
+
             return response
-            
+
         except Exception as e:
             # Record error metric
             record_error(
                 error_type=type(e).__name__,
                 endpoint=request.url.path,
             )
-            
+
             # Log error with full stack trace
             logger.exception(
                 "Unhandled exception",
@@ -77,7 +77,7 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
                 duration=time.time() - start_time,
                 stack_trace=traceback.format_exc(),
             )
-            
+
             # Re-raise to let FastAPI exception handlers deal with it
             raise
 
@@ -95,7 +95,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process and log request."""
         start_time = time.time()
-        
+
         # Log request
         logger.info(
             "Request started",
@@ -103,13 +103,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             path=request.url.path,
             query_params=str(request.query_params) if request.query_params else None,
         )
-        
+
         # Process request
         response = await call_next(request)
-        
+
         # Calculate duration
         duration = time.time() - start_time
-        
+
         # Log response
         logger.info(
             "Request completed",
@@ -118,10 +118,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             status_code=response.status_code,
             duration=f"{duration:.3f}s",
         )
-        
+
         # Add timing header
         response.headers["X-Response-Time"] = f"{duration:.3f}s"
-        
+
         return response
 
 

@@ -3,7 +3,7 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 class ScannerOrchestrator:
     """Orchestrates multiple security scanners."""
 
-    def __init__(self, scanners: Optional[list[BaseScanner]] = None):
+    def __init__(self, scanners: list[BaseScanner] | None = None):
         self.scanners = scanners or self._create_default_scanners()
         self._scanner_status: dict[str, bool] = {}
 
@@ -43,7 +43,7 @@ class ScannerOrchestrator:
     async def scan_repository(
         self,
         repo_path: str,
-        file_paths: Optional[list[str]] = None,
+        file_paths: list[str] | None = None,
         timeout_seconds: int = 300,
     ) -> list[ScannerResult]:
         """

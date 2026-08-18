@@ -2,7 +2,6 @@
 Report Routes
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -25,7 +24,7 @@ async def get_report(report_id: str):
 
 
 @router.get("/reports/{report_id}/download")
-async def download_report(report_id: str, format: Optional[str] = "json"):
+async def download_report(report_id: str, format: str | None = "json"):
     """Download analysis report."""
     if report_id not in reports_store:
         raise HTTPException(status_code=404, detail="Report not found")

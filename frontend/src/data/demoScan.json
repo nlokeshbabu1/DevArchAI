@@ -1,0 +1,81 @@
+{
+  "scan_id": "demo-scan-12345",
+  "repository_name": "demo-infrastructure",
+  "repository_url": "https://github.com/example/demo-infrastructure",
+  "branch": "main",
+  "status": "completed",
+  "security_score": 68.5,
+  "overall_score": 72.0,
+  "severity_counts": {
+    "critical": 3,
+    "high": 8,
+    "medium": 12,
+    "low": 15,
+    "info": 5
+  },
+  "files_analyzed": 24,
+  "detected_technologies": [
+    "docker",
+    "terraform",
+    "kubernetes",
+    "github_actions",
+    "aws"
+  ],
+  "findings_count": 43,
+  "findings": [
+    {
+      "rule_id": "TF-STATE-004",
+      "rule_name": "Backend State Encryption Required",
+      "severity": "critical",
+      "category": "security",
+      "description": "Terraform state file is not encrypted. State files may contain sensitive data.",
+      "recommendation": "Enable server-side encryption for your Terraform state backend.",
+      "file_path": "terraform/backend.tf",
+      "line_number": 5,
+      "fix_example": "# Enable encryption for S3 backend\nresource \"aws_s3_bucket_server_side_encryption_configuration\" \"this\" {\n  bucket = aws_s3_bucket.terraform_state.id\n  rule {\n    apply_server_side_encryption_by_default {\n      sse_algorithm = \"aws:kms\"\n    }\n  }\n}"
+    },
+    {
+      "rule_id": "DKR-SEC-001",
+      "rule_name": "Run Docker Container as Non-Root User",
+      "severity": "critical",
+      "category": "security",
+      "description": "Docker container is running as root user, which poses security risks.",
+      "recommendation": "Add USER directive to run container as non-root user.",
+      "file_path": "Application-Code/frontend/Dockerfile",
+      "line_number": 8,
+      "fix_example": "FROM node:18-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm install\nCOPY . .\nRUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001\nUSER nodejs\nCMD [\"node\", \"server.js\"]"
+    },
+    {
+      "rule_id": "K8S-SEC-001",
+      "rule_name": "Kubernetes Pod Security Context Missing",
+      "severity": "critical",
+      "category": "security",
+      "description": "Pod does not define security context, allowing privileged containers.",
+      "recommendation": "Add securityContext to pod spec with runAsNonRoot: true.",
+      "file_path": "kubernetes/deployment.yaml",
+      "line_number": 15,
+      "fix_example": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: secure-pod\nspec:\n  securityContext:\n    runAsNonRoot: true\n    runAsUser: 1000\n  containers:\n  - name: app\n    image: myapp:latest"
+    },
+    {
+      "rule_id": "TF-ENC-001",
+      "rule_name": "S3 Bucket Without Encryption",
+      "severity": "high",
+      "category": "security",
+      "description": "S3 bucket does not have server-side encryption enabled.",
+      "recommendation": "Enable SSE-S3 or SSE-KMS encryption for the bucket.",
+      "file_path": "terraform/s3.tf",
+      "line_number": 12
+    },
+    {
+      "rule_id": "DKR-REL-001",
+      "rule_name": "Missing Docker HEALTHCHECK",
+      "severity": "low",
+      "category": "reliability",
+      "description": "Dockerfile does not have HEALTHCHECK instruction.",
+      "recommendation": "Add HEALTHCHECK to enable container health monitoring.",
+      "file_path": "Application-Code/frontend/Dockerfile",
+      "line_number": 12
+    }
+  ],
+  "generated_at": "2026-03-19T16:45:00.000Z"
+}

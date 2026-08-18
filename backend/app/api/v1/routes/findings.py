@@ -1,8 +1,9 @@
 """Global findings endpoint."""
 
-import structlog
-from typing import Optional
 
+import json
+
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,10 +23,10 @@ router = APIRouter(prefix="/findings", tags=["Findings"])
 async def list_findings(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
-    severity: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    current_user: Optional[User] = Depends(get_optional_user),
+    severity: str | None = Query(None),
+    category: str | None = Query(None),
+    search: str | None = Query(None),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -43,15 +44,15 @@ async def list_findings(
             "page": page,
             "page_size": page_size,
         }
-    
+
     offset = (page - 1) * page_size
-    
+
     # Get user's scan IDs
     scans_result = await db.execute(
         select(Scan.id).where(Scan.user_id == current_user.id)
     )
     scan_ids = [str(row[0]) for row in scans_result.all()]
-    
+
     if not scan_ids:
         return {
             "findings": [],
@@ -59,24 +60,24 @@ async def list_findings(
             "page": page,
             "page_size": page_size,
         }
-    
+
     # Build query
     query = select(Finding).where(Finding.scan_id.in_(scan_ids))
-    
+
     # Apply filters
     if severity:
         query = query.where(Finding.severity == severity.lower())
-    
+
     if category:
         query = query.where(Finding.category == category.lower())
-    
+
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
             (Finding.rule_name.ilike(search_pattern)) |
             (Finding.description.ilike(search_pattern))
         )
-    
+
     # Get total count before pagination
     count_query = select(Finding.id).where(Finding.scan_id.in_(scan_ids))
     if severity:
@@ -89,10 +90,10 @@ async def list_findings(
             (Finding.rule_name.ilike(search_pattern)) |
             (Finding.description.ilike(search_pattern))
         )
-    
+
     total_result = await db.execute(select(func.count()).select_from(count_query.subquery()))
     total = total_result.scalar() or 0
-    
+
     # Apply ordering and pagination
     query = query.order_by(Finding.severity, Finding.created_at.desc())
     query = query.offset(offset).limit(page_size)
@@ -125,6 +126,15 @@ async def list_findings(
                 "confidence_score": finding.confidence_score,
                 "documentation_url": finding.documentation_url,
                 "created_at": finding.created_at.isoformat(),
+                "scanner_name": finding.scanner_name,
+                "scanner_rule_id": finding.scanner_rule_id,
+                "package": finding.package,
+                "installed_version": finding.installed_version,
+                "fixed_version": finding.fixed_version,
+                "cve": finding.cve,
+                "cwe": finding.cwe,
+                "references": json.loads(finding.references) if finding.references else [],
+                "evidence": finding.evidence,
             }
             for finding in findings
         ],
@@ -142,7 +152,7 @@ async def get_finding(
 ):
     """Get a specific finding by ID."""
     from uuid import UUID
-    
+
     try:
         finding_uuid = UUID(finding_id)
     except ValueError:
@@ -150,19 +160,19 @@ async def get_finding(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid finding ID format"
         )
-    
+
     # Get finding
     result = await db.execute(
         select(Finding).where(Finding.id == finding_uuid)
     )
     finding = result.scalar_one_or_none()
-    
+
     if not finding:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Finding not found"
         )
-    
+
     # Verify user has access to the scan
     scan_result = await db.execute(
         select(Scan).where(
@@ -171,13 +181,13 @@ async def get_finding(
         )
     )
     scan = scan_result.scalar_one_or_none()
-    
+
     if not scan:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
         )
-    
+
     return {
         "id": str(finding.id),
         "scan_id": str(finding.scan_id),
@@ -192,6 +202,15 @@ async def get_finding(
         "ai_explanation": finding.ai_explanation,
         "impact_analysis": finding.impact_analysis,
         "created_at": finding.created_at.isoformat(),
+        "scanner_name": finding.scanner_name,
+        "scanner_rule_id": finding.scanner_rule_id,
+        "package": finding.package,
+        "installed_version": finding.installed_version,
+        "fixed_version": finding.fixed_version,
+        "cve": finding.cve,
+        "cwe": finding.cwe,
+        "references": json.loads(finding.references) if finding.references else [],
+        "evidence": finding.evidence,
     }
 
 

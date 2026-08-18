@@ -5,17 +5,17 @@ Revises: 009_add_github_login_to_users
 Create Date: 2026-04-19 17:05:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "010_add_billing_country_gateway_columns"
-down_revision: Union[str, None] = "009_add_github_login_to_users"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "009_add_github_login_to_users"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _has_column(table_name: str, column_name: str) -> bool:

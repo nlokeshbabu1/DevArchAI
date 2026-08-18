@@ -1,9 +1,17 @@
-"""Enhanced scan service with external scanners and rule engine."""
+"""Enhanced scan service with external scanners and rule engine — DEPRECATED.
+
+This service is NOT used by any production code path (never imported).
+The production scan path uses:
+  - SyncScanService (app.workers.tasks.scan_repository)
+  - ScanService (app.services.scan_service)
+
+DO NOT add new production code that uses this service.
+"""
 
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -38,7 +46,7 @@ class EnhancedScanService:
         self,
         db_session: Any,
         include_ai_explanations: bool = True,
-        rules_dir: Optional[str] = None,
+        rules_dir: str | None = None,
     ):
         self.db = db_session
         self.include_ai_explanations = include_ai_explanations
@@ -63,7 +71,7 @@ class EnhancedScanService:
     async def execute_enhanced_scan(
         self,
         repo_path: str,
-        progress_callback: Optional[Callable[[int, str], None]] = None,
+        progress_callback: Callable[[int, str], None] | None = None,
     ) -> dict[str, Any]:
         """
         Execute enhanced scan with external scanners and rules.
@@ -319,11 +327,20 @@ class EnhancedScanService:
             "description": finding.description,
             "recommendation": finding.recommendation,
             "file_path": finding.file_path,
+            "scanner_name": getattr(finding, 'scanner_name', None),
+            "scanner_rule_id": getattr(finding, 'scanner_rule_id', None),
+            "package": getattr(finding, 'package', None),
+            "installed_version": getattr(finding, 'installed_version', None),
+            "fixed_version": getattr(finding, 'fixed_version', None),
+            "cve": getattr(finding, 'cve', None),
+            "cwe": getattr(finding, 'cwe', None),
+            "references": getattr(finding, 'references', None),
+            "evidence": getattr(finding, 'evidence', None),
         }
 
     def _update_progress(
         self,
-        callback: Optional[Callable[[int, str], None]],
+        callback: Callable[[int, str], None] | None,
         progress: int,
         message: str,
     ):

@@ -1,19 +1,17 @@
 """GitHub service for Pull Request automation."""
 
+import difflib
 import os
 import re
-import tempfile
 import shutil
-import difflib
-from pathlib import Path
-from typing import Optional, Any
+import tempfile
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 import httpx
 import structlog
-from git import Repo, GitCommandError
-
-from app.config import settings
+from git import GitCommandError, Repo
 
 logger = structlog.get_logger(__name__)
 
@@ -622,7 +620,7 @@ class GitHubPRService:
 
             try:
                 # Read original content
-                with open(full_path, 'r', encoding='utf-8') as f:
+                with open(full_path, encoding='utf-8') as f:
                     original_content = f.read()
 
                 rel_path = normalize_path(full_path, self.temp_dir)
@@ -1057,14 +1055,14 @@ echo "password={self.github_token}"
         branch_name: str,
         base_branch: str,
         title: str,
-        description: Optional[str],
+        description: str | None,
         commit_message: str,
         is_draft: bool = False,
         *,
-        scan_id: Optional[str] = None,
-        findings: Optional[list[dict]] = None,
-        score_before: Optional[float] = None,
-        score_after: Optional[float] = None,
+        scan_id: str | None = None,
+        findings: list[dict] | None = None,
+        score_before: float | None = None,
+        score_after: float | None = None,
         app_url: str = "https://app.devarchai.com",
     ) -> dict:
         """
@@ -1174,8 +1172,8 @@ def generate_pr_description(
     score_after: float,
     app_url: str = "https://app.devarchai.com",
     *,
-    repo_root: Optional[str] = None,
-    applied_fixes: Optional[list[dict]] = None,
+    repo_root: str | None = None,
+    applied_fixes: list[dict] | None = None,
 ) -> str:
     """Generate production-grade PR description (no internal path leakage)."""
 

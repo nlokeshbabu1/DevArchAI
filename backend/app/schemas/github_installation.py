@@ -1,9 +1,10 @@
 """GitHub App installation schemas."""
 
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.validators import validate_repository_url
 
 
 class InstallationCreate(BaseModel):
@@ -19,6 +20,11 @@ class InstallationCreate(BaseModel):
         description="GitHub App installation ID",
         example=12345678,
     )
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url_field(cls, value: str) -> str:
+        return validate_repository_url(value)
 
 
 class InstallationResponse(BaseModel):
@@ -54,6 +60,11 @@ class InstallationValidateRequest(BaseModel):
         example=12345678,
     )
 
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url_field(cls, value: str) -> str:
+        return validate_repository_url(value)
+
 
 class InstallationValidateResponse(BaseModel):
     """Schema for installation validation response."""
@@ -62,5 +73,5 @@ class InstallationValidateResponse(BaseModel):
     app_id: int
     permissions: dict
     events: list[str]
-    repository_selection: Optional[str]
+    repository_selection: str | None
     repo_full_name: str

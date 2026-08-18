@@ -10,23 +10,21 @@ Provides application-level metrics for monitoring:
 
 Usage:
     GET /metrics
-    
+
 Returns Prometheus-compatible metrics
 """
 
-import time
-from typing import Dict, Any
 
+import structlog
+from fastapi import APIRouter, Response
 from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
     generate_latest,
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
 )
-from fastapi import APIRouter, Response
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -166,6 +164,58 @@ rag_documents_retrieved = Histogram(
     registry=registry,
 )
 
+rag_cache_hits_total = Counter(
+    'devarchai_rag_cache_hits_total',
+    'RAG retrieval cache hits',
+    ['cache_type'],  # rag
+    registry=registry,
+)
+
+rag_cache_misses_total = Counter(
+    'devarchai_rag_cache_misses_total',
+    'RAG retrieval cache misses',
+    ['cache_type'],  # rag
+    registry=registry,
+)
+
+knowledge_version = Gauge(
+    'devarchai_knowledge_version',
+    'RAG knowledge version (numeric component for comparison)',
+    registry=registry,
+)
+
+# ============================================================================
+# MCP / LIVE CONTEXT METRICS
+# ============================================================================
+
+mcp_requests_total = Counter(
+    'devarchai_mcp_requests_total',
+    'MCP live-context requests',
+    ['technology', 'source_type'],  # doc | live
+    registry=registry,
+)
+
+mcp_results_total = Counter(
+    'devarchai_mcp_results_total',
+    'MCP live-context results by outcome',
+    ['status'],  # success | failure | timeout | skipped
+    registry=registry,
+)
+
+mcp_latency_seconds = Histogram(
+    'devarchai_mcp_latency_seconds',
+    'MCP live-context request latency',
+    buckets=[0.1, 0.25, 0.5, 1, 2, 5, 10],
+    registry=registry,
+)
+
+mcp_circuit_breaker_open = Gauge(
+    'devarchai_mcp_circuit_breaker_open',
+    'MCP circuit breaker state (1 = open)',
+    ['technology'],
+    registry=registry,
+)
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -231,6 +281,44 @@ def record_rag_retrieval(status: str, doc_count: int):
     rag_documents_retrieved.observe(doc_count)
 
 
+def record_rag_cache_hit(cache_type: str = "rag"):
+    """Record a RAG cache hit."""
+    rag_cache_hits_total.labels(cache_type=cache_type).inc()
+
+
+def record_rag_cache_miss(cache_type: str = "rag"):
+    """Record a RAG cache miss."""
+    rag_cache_misses_total.labels(cache_type=cache_type).inc()
+
+
+def set_knowledge_version(version: str) -> None:
+    """Record the active RAG knowledge version (numeric component)."""
+    import re
+
+    match = re.search(r"(\d+(?:\.\d+)*)", version)
+    if match:
+        try:
+            knowledge_version.set(float(match.group(1)))
+        except ValueError:
+            pass
+
+
+def record_mcp_request(technology: str, source_type: str):
+    """Record an MCP live-context request."""
+    mcp_requests_total.labels(technology=technology, source_type=source_type).inc()
+
+
+def record_mcp_result(status: str, latency_ms: float):
+    """Record an MCP live-context outcome."""
+    mcp_results_total.labels(status=status).inc()
+    mcp_latency_seconds.observe(latency_ms / 1000.0)
+
+
+def set_mcp_circuit_breaker(technology: str, is_open: bool):
+    """Record whether the MCP circuit breaker for a technology is open."""
+    mcp_circuit_breaker_open.labels(technology=technology).set(1 if is_open else 0)
+
+
 # ============================================================================
 # METRICS ENDPOINT
 # ============================================================================
@@ -242,7 +330,7 @@ router = APIRouter(tags=["Metrics"])
 async def metrics():
     """
     Prometheus metrics endpoint.
-    
+
     Returns all application metrics in Prometheus format.
     """
     return Response(
@@ -264,4 +352,10 @@ __all__ = [
     "record_cache_miss",
     "record_error",
     "record_rag_retrieval",
+    "record_rag_cache_hit",
+    "record_rag_cache_miss",
+    "set_knowledge_version",
+    "record_mcp_request",
+    "record_mcp_result",
+    "set_mcp_circuit_breaker",
 ]

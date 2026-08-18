@@ -7,27 +7,23 @@ Allows unauthenticated users to:
 - See blurred AI suggestions with login CTA
 """
 
-import json
-import structlog
 from datetime import datetime
-from typing import Any, Dict, Optional
 from uuid import uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.security import get_current_user, get_optional_user
+from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db
 from app.models.anonymous_scan import AnonymousScan
-from app.models.finding import Finding
-from app.models.repository import Repository as RepositoryModel
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.workers.tasks.scan_repository import scan_repository_task
-
-from pydantic import BaseModel
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +34,16 @@ class PublicScanRequest(BaseModel):
     """Request model for public scan endpoint."""
     repository_url: str
     branch: str = "main"
+
+    @field_validator("repository_url")
+    @classmethod
+    def validate_repository_url(cls, v: str) -> str:
+        return validate_repository_url(v)
+
+    @field_validator("branch")
+    @classmethod
+    def validate_branch(cls, v: str) -> str:
+        return validate_branch(v)
 
 
 @router.post("/scan", response_model=dict)
@@ -52,10 +58,11 @@ async def create_anonymous_scan(
     Returns a session token to retrieve results.
     """
     try:
+        import httpx
+
         from app.db.session import get_sync_session_factory
         from app.workers.tasks.scan_repository import SyncScanService
-        import httpx
-        
+
         # Generate session token
         session_token = AnonymousScan.generate_session_token()
         expires_at = AnonymousScan.get_expiry()
@@ -149,7 +156,7 @@ async def create_anonymous_scan(
             sync_db = SessionLocal()
             try:
                 scan_service = SyncScanService(
-                    db=sync_db, 
+                    db=sync_db,
                     include_ai_explanations=True,
                     progress_store=store,
                     scan_id=str(scan.id),
@@ -236,7 +243,7 @@ async def create_anonymous_scan(
                         "scan_id": str(scan.id),
                         "repository_name": repo_name,
                         "status": "failed",
-                        "message": f"Scan failed: No valid branch found. Please specify a valid branch.",
+                        "message": "Scan failed: No valid branch found. Please specify a valid branch.",
                         "expires_at": expires_at.isoformat(),
                     }
             else:
@@ -287,6 +294,7 @@ async def get_scan_status(
     """
     from app.services.scan_progress_store import get_scan_progress_store
 
+    parse_uuid(scan_id, "scan_id")
     store = get_scan_progress_store()
     progress = await store.get_progress(scan_id)
 
@@ -294,20 +302,20 @@ async def get_scan_status(
         # Return scan status from database if progress not found
         result = await db.execute(select(Scan).where(Scan.id == scan_id))
         scan = result.scalar_one_or_none()
-        
+
         if not scan:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Scan not found",
             )
-        
+
         # Only expose anonymous scan status via public endpoint
         if scan.user_id is not None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-        
+
         # Return completed scan data
         detected_techs = []
         if scan.detected_stack:
@@ -348,7 +356,7 @@ async def get_scan_status(
 async def get_anonymous_scan_results(
     session_token: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Get anonymous scan results.
@@ -362,6 +370,7 @@ async def get_anonymous_scan_results(
     No authentication required, but authenticated users get AI suggestions based on plan.
     """
     from sqlalchemy.orm import selectinload
+
     from app.services.feature_gating import FeatureGatingService
 
     # Find scan session
@@ -473,11 +482,11 @@ async def get_anonymous_scan_results(
 
     # Calculate security score as string (e.g., "72/100")
     security_score = f"{int(scan.security_score)}/100" if scan.security_score else "N/A"
-    
+
     # Calculate files analyzed from detected_stack or findings
     files_analyzed = 0
     detected_technologies = []
-    
+
     if scan.detected_stack:
         stack = scan.detected_stack
         files_analyzed = (
@@ -495,7 +504,7 @@ async def get_anonymous_scan_results(
             len(stack.get('travis_files', [])) +
             len(stack.get('drone_files', []))
         )
-        
+
         # Build detected technologies list
         if stack.get('has_docker') or stack.get('docker_files'):
             detected_technologies.append('docker')
@@ -523,7 +532,7 @@ async def get_anonymous_scan_results(
             detected_technologies.append('travis')
         if stack.get('has_drone') or stack.get('drone_files'):
             detected_technologies.append('drone')
-    
+
     if files_analyzed == 0:
         files_analyzed = len(set(f.file_path for f in scan.findings if f.file_path))
 
@@ -569,8 +578,7 @@ async def claim_anonymous_scan(
     Called after user logs in or signs up.
     Converts anonymous scan to authenticated scan.
     """
-    from app.core.security import get_current_user, get_optional_user
-    
+
     # Find anonymous scan
     result = await db.execute(
         select(AnonymousScan).where(
@@ -579,13 +587,13 @@ async def claim_anonymous_scan(
         )
     )
     anon_scan = result.scalar_one_or_none()
-    
+
     if not anon_scan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scan session not found or expired",
         )
-    
+
     # Create authenticated scan
     auth_scan = Scan(
         user_id=current_user.id,
@@ -594,15 +602,15 @@ async def claim_anonymous_scan(
         status=ScanStatus.COMPLETED if anon_scan.status == "completed" else ScanStatus.PENDING,
         security_score=float(anon_scan.security_score.split("/")[0]) if anon_scan.security_score else None,
     )
-    
+
     db.add(auth_scan)
-    
+
     # Mark anonymous scan as claimed
     anon_scan.status = "claimed"
-    
+
     await db.commit()
     await db.refresh(auth_scan)
-    
+
     return {
         "scan_id": str(auth_scan.id),
         "message": "Scan claimed successfully. Full results now available.",
@@ -619,13 +627,13 @@ async def delete_anonymous_scan(
         select(AnonymousScan).where(AnonymousScan.session_token == session_token)
     )
     anon_scan = result.scalar_one_or_none()
-    
+
     if not anon_scan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scan session not found",
         )
-    
+
     await db.delete(anon_scan)
     await db.commit()
 

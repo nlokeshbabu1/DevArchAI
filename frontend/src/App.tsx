@@ -1,28 +1,31 @@
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { Layout } from './components/layout/DashboardLayout'
 import { Landing } from './pages/Landing'
-import { Home } from './pages/Home'
-import { Dashboard } from './pages/Dashboard'
-import { Report } from './pages/Report'
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
-import { ScansPage } from './pages/scans/ScansPage'
-import { Findings } from './pages/findings/FindingsPage'
-import { RepositoriesPage } from './pages/repositories/RepositoriesPage'
-import { BillingPage } from './pages/billing/BillingPage'
-import { BillingSuccess } from './pages/billing/BillingSuccess'
-import { PricingPage } from './pages/billing/PricingPage'
-import { ScanPage } from './pages/ScanPage'
-import { ResultPage } from './pages/ResultPage'
-import { ScanHistoryPage } from './pages/ScanHistoryPage'
-import { AISuggestionsPage } from './pages/dashboard/AISuggestions'
-import { IntegrationsPage } from './pages/dashboard/Integrations'
-import { SettingsPage } from './pages/settings/SettingsPage'
-import { AwsPage } from './pages/aws/AwsPage'
 import { useAuthStore } from './stores/auth-store'
-import { useEffect } from 'react'
+
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
+const Report = lazy(() => import('./pages/Report').then(m => ({ default: m.Report })))
+const ScansPage = lazy(() => import('./pages/scans/ScansPage').then(m => ({ default: m.ScansPage })))
+const Findings = lazy(() => import('./pages/findings/FindingsPage').then(m => ({ default: m.Findings })))
+const RepositoriesPage = lazy(() => import('./pages/repositories/RepositoriesPage').then(m => ({ default: m.RepositoriesPage })))
+const RepositoryResultsPage = lazy(() => import('./pages/repositories/RepositoryResultsPage').then(m => ({ default: m.RepositoryResultsPage })))
+const BillingPage = lazy(() => import('./pages/billing/BillingPage').then(m => ({ default: m.BillingPage })))
+const BillingSuccess = lazy(() => import('./pages/billing/BillingSuccess').then(m => ({ default: m.BillingSuccess })))
+const PricingPage = lazy(() => import('./pages/billing/PricingPage').then(m => ({ default: m.PricingPage })))
+const ScanPage = lazy(() => import('./pages/ScanPage').then(m => ({ default: m.ScanPage })))
+const ScanProgressPage = lazy(() => import('./pages/ScanProgressPage').then(m => ({ default: m.ScanProgressPage })))
+const ScanHistoryPage = lazy(() => import('./pages/ScanHistoryPage').then(m => ({ default: m.ScanHistoryPage })))
+const AISuggestionsPage = lazy(() => import('./pages/dashboard/AISuggestions').then(m => ({ default: m.AISuggestionsPage })))
+const IntegrationsPage = lazy(() => import('./pages/dashboard/Integrations').then(m => ({ default: m.IntegrationsPage })))
+const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const AwsPage = lazy(() => import('./pages/aws/AwsPage').then(m => ({ default: m.AwsPage })))
+const DocsHome = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocsHome })))
+const DocPage = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocPage })))
 
 // Protected route component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -70,6 +73,11 @@ export default function App() {
   }, [])
 
   return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    }>
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
@@ -79,6 +87,10 @@ export default function App() {
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
+
+      {/* Documentation - public */}
+      <Route path="/docs" element={<DocsHome />} />
+      <Route path="/docs/:slug" element={<DocPage />} />
 
       {/* Redirect old routes */}
       <Route path="/analyze" element={<Navigate to="/scan" replace />} />
@@ -101,12 +113,11 @@ export default function App() {
         </ProtectedRoute>
       } />
 
+      {/* Scan progress page — accessible for both auth and guest users */}
       <Route path="/scans/:id" element={
-        <ProtectedRoute>
-          <Layout>
-            <ResultPage />
-          </Layout>
-        </ProtectedRoute>
+        <Layout>
+          <ScanProgressPage />
+        </Layout>
       } />
 
       <Route path="/history" element={
@@ -129,6 +140,14 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <RepositoriesPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/repositories/:repositoryId/results" element={
+        <ProtectedRoute>
+          <Layout>
+            <RepositoryResultsPage />
           </Layout>
         </ProtectedRoute>
       } />
@@ -192,5 +211,6 @@ export default function App() {
       {/* Catch all - redirect to dashboard */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </Suspense>
   )
 }

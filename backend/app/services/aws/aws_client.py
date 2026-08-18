@@ -13,7 +13,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 from app.core.encryption import get_encryption_service
 from app.models.aws import AWSAccount
 
-
 AWS_CONFIG = Config(retries={"max_attempts": 6, "mode": "adaptive"}, user_agent_extra="DevArchAI/aws-integration")
 
 

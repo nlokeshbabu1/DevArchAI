@@ -5,8 +5,6 @@ Scans Azure Terraform configurations for security issues.
 Implements rules from docs/rules/azu_helm.md
 """
 
-from pathlib import Path
-from typing import Any
 
 from app.rules.base import RuleFinding, Severity
 
@@ -23,11 +21,11 @@ class AzureScanner:
     - IAM/Role assignments
     - App Services
     """
-    
+
     def __init__(self):
         self.findings: list[RuleFinding] = []
         self.files_scanned: list[str] = []
-    
+
     def scan(self, parsed_files: list) -> list[RuleFinding]:
         """
         Scan parsed Terraform files for Azure security issues.
@@ -39,39 +37,46 @@ class AzureScanner:
             List of security findings
         """
         self.findings = []
-        
+
         for parsed_file in parsed_files:
-            # Access ParsedFile attributes directly (it's a dataclass, not dict)
-            if parsed_file.file_type != "terraform":
+            if isinstance(parsed_file, dict):
+                file_type = parsed_file.get("file_type", "")
+                file_path = parsed_file.get("file_path", "")
+                resources = parsed_file.get("parsed_data", {}).get("resources", [])
+            else:
+                file_type = parsed_file.file_type
+                file_path = parsed_file.file_path
+                resources = parsed_file.parsed_data.get("resources", [])
+
+            if file_type != "terraform":
                 continue
-            
-            self.files_scanned.append(parsed_file.file_path)
-            resources = parsed_file.parsed_data.get("resources", [])
-            
+
+            self.files_scanned.append(file_path)
+
             for resource in resources:
                 resource_type = resource.get("type", "")
-                
+
                 # Route to appropriate scanner based on resource type
                 if resource_type == "azurerm_storage_account":
-                    self._check_storage_account(resource, parsed_file.file_path)
+                    self._check_storage_account(resource, file_path)
                 elif resource_type == "azurerm_network_security_group":
-                    self._check_nsg(resource, parsed_file.file_path)
+                    self._check_nsg(resource, file_path)
                 elif resource_type == "azurerm_sql_firewall_rule":
-                    self._check_sql_firewall(resource, parsed_file.file_path)
+                    self._check_sql_firewall(resource, file_path)
                 elif resource_type == "azurerm_role_assignment":
-                    self._check_rbac(resource, parsed_file.file_path)
+                    self._check_rbac(resource, file_path)
                 elif resource_type == "azurerm_app_service":
-                    self._check_app_service(resource, parsed_file.file_path)
+                    self._check_app_service(resource, file_path)
                 elif resource_type == "azurerm_key_vault":
-                    self._check_key_vault(resource, parsed_file.file_path)
-        
+                    self._check_key_vault(resource, file_path)
+
         return self.findings
-    
+
     def _check_storage_account(self, resource: dict, file_path: str) -> None:
         """Check Azure storage account security."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         # AZ-STORAGE-001: Public blob access
         allow_blob_public = properties.get("allow_blob_public_access", False)
         if allow_blob_public:
@@ -86,7 +91,7 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=0.95,
             ))
-        
+
         # AZ-STORAGE-002: Network rules
         network_rules = properties.get("network_rules", {})
         default_action = network_rules.get("default_action", "Allow")
@@ -102,14 +107,14 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=0.9,
             ))
-    
+
     def _check_nsg(self, resource: dict, file_path: str) -> None:
         """Check Network Security Group configuration."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         security_rules = properties.get("security_rules", [])
-        
+
         # AZ-NETWORK-001: Missing security rules
         if not security_rules:
             self.findings.append(RuleFinding(
@@ -123,16 +128,16 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=0.95,
             ))
-    
+
     def _check_sql_firewall(self, resource: dict, file_path: str) -> None:
         """Check SQL Server firewall configuration."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         # AZ-NETWORK-002: Open firewall
         start_ip = properties.get("start_ip_address", "")
         end_ip = properties.get("end_ip_address", "")
-        
+
         if start_ip == "0.0.0.0" and end_ip == "255.255.255.255":
             self.findings.append(RuleFinding(
                 rule_id="AZ-NETWORK-002",
@@ -145,16 +150,16 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=1.0,
             ))
-    
+
     def _check_rbac(self, resource: dict, file_path: str) -> None:
         """Check RBAC role assignments."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         # AZ-IAM-001: Overly permissive RBAC
         role_name = properties.get("role_definition_name", "")
         scope = properties.get("scope", "")
-        
+
         if role_name == "Contributor" and "/subscriptions/" in scope and "/resourceGroups/" not in scope:
             self.findings.append(RuleFinding(
                 rule_id="AZ-IAM-001",
@@ -167,12 +172,12 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=0.9,
             ))
-    
+
     def _check_app_service(self, resource: dict, file_path: str) -> None:
         """Check App Service configuration."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         # AZ-IAM-002: Missing managed identity
         identity = properties.get("identity", {})
         if not identity:
@@ -187,16 +192,16 @@ class AzureScanner:
                 resource_name=resource_name,
                 confidence=0.85,
             ))
-    
+
     def _check_key_vault(self, resource: dict, file_path: str) -> None:
         """Check Key Vault configuration."""
         resource_name = resource.get("name", "unknown")
         properties = resource.get("properties", {})
-        
+
         # AZ-KEYVAULT-001: Public access
         network_acls = properties.get("network_acls", {})
         default_action = network_acls.get("default_action", "Allow")
-        
+
         if default_action == "Allow":
             self.findings.append(RuleFinding(
                 rule_id="AZ-KEYVAULT-001",

@@ -127,7 +127,7 @@ class TerraformParser(BaseParser):
 
             # Check for locking mechanisms
             has_locking = self._check_backend_locking(backend_type, backend_body)
-            
+
             # Check for encryption
             has_encryption = "encrypt" in backend_body.lower() and "= true" in backend_body.lower()
 

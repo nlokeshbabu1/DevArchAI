@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { api } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, sanitizePath, copyToClipboard } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
 interface Finding {
@@ -137,7 +137,7 @@ function FullExampleSection({ fullExample, filePath }: { fullExample: string; fi
                   className="h-7 text-xs"
                   onClick={(e) => {
                     e.stopPropagation()
-                    navigator.clipboard.writeText(fullExample)
+                    copyToClipboard(fullExample)
                   }}
                 >
                   Copy Full File
@@ -202,9 +202,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   }
 
   // Clean file path (remove /tmp/devarchai/...)
-  const cleanFilePath = (path: string) => {
-    return path.replace(/\/tmp\/devarchai\/[^/]+\//, '')
-  }
+  const cleanFilePath = (path: string) => sanitizePath(path)
 
   // Get documentation URL based on category and file path
   const getDocumentationUrl = (finding: Finding): string => {
@@ -373,7 +371,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
           category: f.category,
           description: f.description,
           recommendation: f.recommendation,
-          file_path: f.file_path,
+          file_path: sanitizePath(f.file_path),
           line_number: f.line_number,
         })),
         generated_at: new Date().toISOString(),
@@ -480,7 +478,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
       </Card>
 
       {/* Score Card */}
-      <Card className="p-8 glow-primary" hover={false}>
+      <Card className="p-8" hover={false}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-foreground">{repoName}</h2>
@@ -744,7 +742,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                               'px-2 py-1 rounded-full text-xs font-medium mt-1 inline-block',
                                               getConfidenceBadge(finding.confidence ?? finding.confidence_score).color
                                             )}>
-                                              {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence ({Math.round(((finding.confidence ?? finding.confidence_score) || 0.8) * 100)}%)
+                                              {getConfidenceBadge(finding.confidence ?? finding.confidence_score).label} Confidence ({Math.round(((finding.confidence ?? finding.confidence_score) ?? 0) * 100)}%)
                                             </span>
                                           )}
                                         </div>
@@ -803,7 +801,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                               className="h-7 text-xs"
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                navigator.clipboard.writeText(finding.fix_code || finding.fix_example!)
+                                                copyToClipboard(finding.fix_code || finding.fix_example!)
                                               }}
                                             >
                                               Copy
@@ -886,7 +884,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
                                   e.stopPropagation()
                                   const codeToCopy = finding.fix_code || finding.fix_example
                                   if (codeToCopy) {
-                                    navigator.clipboard.writeText(codeToCopy)
+                                    copyToClipboard(codeToCopy)
                                   }
                                 }}
                               >

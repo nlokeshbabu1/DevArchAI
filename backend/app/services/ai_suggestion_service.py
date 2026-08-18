@@ -6,10 +6,11 @@ import asyncio
 import inspect
 import json
 import threading
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -28,7 +29,7 @@ logger = get_logger(__name__)
 
 MAX_FINDINGS_PER_BATCH = 10
 MAX_FILE_CONTEXT_CHARS = 2000
-AI_CALL_TIMEOUT_SECONDS = 10
+AI_CALL_TIMEOUT_SECONDS = 60
 
 
 @dataclass
@@ -67,7 +68,7 @@ def run_ai_suggestions_generation(scan_id: UUID | str) -> None:
 def generate_ai_suggestions_for_scan(
     scan_id: UUID | str,
     db: Session | None = None,
-    service: "AISuggestionGenerationService | None" = None,
+    service: AISuggestionGenerationService | None = None,
 ) -> AISuggestionGenerationResult:
     """Generate and persist AI suggestions for findings already saved in the database."""
     owns_session = db is None
@@ -88,15 +89,23 @@ class AISuggestionGenerationService:
         self,
         llm_provider: Any | None = None,
         repo_scanner: RepositoryScanner | None = None,
-        batch_size: int = MAX_FINDINGS_PER_BATCH,
-        max_file_chars: int = MAX_FILE_CONTEXT_CHARS,
-        call_timeout_seconds: int = AI_CALL_TIMEOUT_SECONDS,
+        batch_size: int | None = None,
+        max_file_chars: int | None = None,
+        call_timeout_seconds: int | None = None,
     ) -> None:
         self.llm_provider = llm_provider
         self.repo_scanner = repo_scanner or RepositoryScanner()
-        self.batch_size = batch_size
-        self.max_file_chars = max_file_chars
-        self.call_timeout_seconds = call_timeout_seconds
+        self.batch_size = batch_size or int(
+            getattr(settings, "AI_SUGGESTION_BATCH_SIZE", None) or MAX_FINDINGS_PER_BATCH
+        )
+        self.max_file_chars = max_file_chars or int(
+            getattr(settings, "AI_SUGGESTION_MAX_FILE_CHARS", None) or MAX_FILE_CONTEXT_CHARS
+        )
+        self.call_timeout_seconds = call_timeout_seconds or int(
+            getattr(settings, "AI_CALL_TIMEOUT_SECONDS", None) or AI_CALL_TIMEOUT_SECONDS
+        )
+        self.progress_store = None
+        self.scan_progress_manager = None
 
     def generate_for_scan(
         self,
@@ -143,6 +152,7 @@ class AISuggestionGenerationService:
         repo_path: str | None = None
         file_snippets: dict[str, str] = {}
         ai_capable = self._supports_prompt_generation()
+        llm_used = False
 
         try:
             if ai_capable:
@@ -155,12 +165,59 @@ class AISuggestionGenerationService:
                 file_snippets = self._load_file_snippets(Path(repo_path), findings)
 
             findings_updated = 0
-            for batch in _batched(findings, self.batch_size):
-                batch_results = asyncio.run(
+            total_findings = len(findings)
+            batches = list(_batched(findings, self.batch_size))
+
+            # Initialize progress store for AI progress
+            try:
+                from app.services.scan_progress_store import scan_progress_store
+                self.progress_store = scan_progress_store
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    self.progress_store.add_log(str(scan_uuid), f"Generating AI recommendations for {total_findings} findings...")
+                )
+                loop.close()
+            except Exception:
+                pass
+
+            for batch_idx, batch in enumerate(batches):
+                batch_results, batch_llm_used = asyncio.run(
                     self._generate_batch_results(batch, file_snippets, ai_capable)
                 )
+                llm_used = llm_used or batch_llm_used
                 findings_updated += self._apply_batch_results(db, batch, batch_results)
                 db.commit()
+
+                # Update progress after each batch
+                try:
+                    from app.services.scan_progress_store import scan_progress_store
+                    from app.websockets.scan_progress import scan_progress_manager
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(
+                        scan_progress_store.add_log(
+                            str(scan_uuid),
+                            f"AI recommendations {batch_idx * self.batch_size + len(batch)} of {total_findings}",
+                        )
+                    )
+                    loop.run_until_complete(
+                        scan_progress_manager.broadcast_log(
+                            str(scan_uuid),
+                            f"AI recommendation {batch_idx * self.batch_size + len(batch)} of {total_findings}",
+                        )
+                    )
+                    loop.run_until_complete(
+                        scan_progress_manager.broadcast_progress(
+                            scan_id=str(scan_uuid),
+                            progress=100,
+                            status="completed",
+                            current_step=f"AI: {batch_idx * self.batch_size + len(batch)}/{total_findings}",
+                        )
+                    )
+                    loop.close()
+                except Exception:
+                    pass
 
             suggestions_upserted = self._upsert_ai_suggestions(db, scan_uuid, findings)
 
@@ -169,13 +226,46 @@ class AISuggestionGenerationService:
             scan.ai_error_message = None
             db.commit()
 
+            # Broadcast AI completion
+            try:
+                from app.websockets.scan_progress import (
+                    scan_progress_manager,
+                )
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    scan_progress_manager.broadcast_log(str(scan_uuid), "AI recommendation generation completed")
+                )
+                loop.run_until_complete(
+                    self.progress_store.add_log(str(scan_uuid), "AI suggestions generated successfully")
+                )
+                # Send AI completion event
+                loop.run_until_complete(
+                    scan_progress_manager.broadcast_ai_completed(
+                        str(scan_uuid),
+                        status="completed",
+                        suggestions_count=suggestions_upserted,
+                    )
+                )
+                loop.close()
+            except Exception:
+                pass
+
+            if ai_capable and not llm_used:
+                logger.warning(
+                    "AI suggestion generation failed for all batches; "
+                    "suggestions are fallback-based",
+                    scan_id=str(scan_uuid),
+                    findings_processed=len(findings),
+                )
+
             logger.info(
                 "AI suggestion generation complete",
                 scan_id=str(scan_uuid),
                 findings_processed=len(findings),
                 findings_updated=findings_updated,
                 suggestions_upserted=suggestions_upserted,
-                used_llm=ai_capable,
+                used_llm=llm_used,
             )
 
             return AISuggestionGenerationResult(
@@ -200,23 +290,31 @@ class AISuggestionGenerationService:
         findings: Sequence[Finding],
         file_snippets: dict[str, str],
         ai_capable: bool,
-    ) -> list[dict[str, Any]]:
-        """Generate AI payload for one findings batch."""
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Generate AI payload for one findings batch.
+
+        Returns a ``(results, llm_used)`` tuple where ``llm_used`` is True only
+        when the configured LLM provider actually produced a response for this
+        batch (i.e. no exception/timeout triggered the fallback path).
+        """
         if not ai_capable:
-            return [self._build_fallback_result(finding) for finding in findings]
+            return [self._build_fallback_result(finding) for finding in findings], False
 
         prompt = self._build_batch_prompt(findings, file_snippets)
 
+        llm_used = False
         try:
             raw_response = await asyncio.wait_for(
                 self._call_llm(prompt),
                 timeout=self.call_timeout_seconds,
             )
+            llm_used = True
             parsed = self._parse_batch_response(raw_response)
         except Exception as exc:
+            error_msg = str(exc) or type(exc).__name__
             logger.warning(
                 "AI batch generation failed, using fallback suggestions",
-                error=str(exc),
+                error=error_msg,
                 findings=len(findings),
             )
             parsed = []
@@ -234,7 +332,7 @@ class AISuggestionGenerationService:
             result.setdefault("ai_generated", bool(results_by_id.get(str(finding.id))))
             merged_results.append(result)
 
-        return merged_results
+        return merged_results, llm_used
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the configured LLM provider and normalize sync/async providers."""
@@ -257,7 +355,22 @@ class AISuggestionGenerationService:
         provider = self._get_llm_provider()
         if provider.__class__.__name__ == "MockLLMProvider":
             return False
-        return callable(getattr(provider, "generate", None))
+        if not callable(getattr(provider, "generate", None)):
+            return False
+        # Local-model providers depend on an optional package; verify it is
+        # importable so "capable" is truthful instead of assuming generate()
+        # will succeed.
+        provider_name = provider.__class__.__name__
+        if provider_name == "GPT4AllProvider":
+            try:
+                from gpt4all import GPT4All  # noqa: F401 - optional dependency probe
+                return True
+            except ImportError:
+                logger.warning(
+                    "GPT4All provider configured but 'gpt4all' package is not installed"
+                )
+                return False
+        return True
 
     def _build_batch_prompt(
         self,

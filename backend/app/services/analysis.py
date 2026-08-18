@@ -1,5 +1,16 @@
 """
-Analysis Service - Orchestrates the analysis pipeline
+Analysis Service - Orchestrates the analysis pipeline — DEPRECATED.
+
+This service is NOT used by the production scan path.
+The production scan path uses:
+  - SyncScanService (app.workers.tasks.scan_repository) — primary
+  - ScanService (app.services.scan_service) — secondary
+
+This service uses the legacy app.rules.base.RuleRegistry, which is a separate
+singleton from the production app.rule_engine.base.RuleRegistry.
+
+Only referenced by the legacy v0 route: app.api.routes.analysis
+DO NOT add new production code that uses this service.
 """
 
 import time
@@ -7,7 +18,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -31,7 +42,7 @@ class AnalysisService:
         self.parser_registry = self._setup_parsers()
         self.rule_registry = RuleRegistry()
         self.scoring_engine = ScoringEngine()
-        self.llm_provider: Optional[BaseLLMProvider] = None
+        self.llm_provider: BaseLLMProvider | None = None
 
     def _setup_parsers(self) -> ParserRegistry:
         """Initialize and register all parsers."""
@@ -46,7 +57,7 @@ class AnalysisService:
         self,
         repo_path: str,
         include_ai_explanations: bool = True,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> AnalysisReport:
         """
         Analyze a repository and generate a report.
@@ -255,14 +266,21 @@ class AnalysisService:
         # Process findings in batches to avoid rate limits
         for finding in findings[:20]:  # Limit to top 20 findings
             try:
+                context = {
+                    "rule_id": finding.rule_id,
+                    "category": finding.category.value,
+                    "severity": finding.severity.value,
+                    "file_path": finding.file_path,
+                }
+                scanner_name = getattr(finding, 'scanner_name', None)
+                if scanner_name:
+                    context["scanner_name"] = scanner_name
+                    context["scanner_rule_id"] = getattr(finding, 'scanner_rule_id', None)
+                    context["cve"] = getattr(finding, 'cve', None)
+                    context["package"] = getattr(finding, 'package', None)
                 explanation = await self.llm_provider.generate_explanation(
                     finding.description,
-                    {
-                        "rule_id": finding.rule_id,
-                        "category": finding.category.value,
-                        "severity": finding.severity.value,
-                        "file_path": finding.file_path,
-                    },
+                    context,
                 )
 
                 finding.ai_explanation = explanation.explanation
@@ -280,7 +298,7 @@ class AnalysisService:
 
     def _finding_to_dict(self, finding: RuleFinding) -> dict[str, Any]:
         """Convert RuleFinding to dictionary for AI processing."""
-        return {
+        result = {
             "rule_id": finding.rule_id,
             "rule_name": finding.rule_name,
             "severity": finding.severity.value,
@@ -289,6 +307,16 @@ class AnalysisService:
             "recommendation": finding.recommendation,
             "file_path": finding.file_path,
         }
+        result["scanner_name"] = getattr(finding, 'scanner_name', None)
+        result["scanner_rule_id"] = getattr(finding, 'scanner_rule_id', None)
+        result["package"] = getattr(finding, 'package', None)
+        result["installed_version"] = getattr(finding, 'installed_version', None)
+        result["fixed_version"] = getattr(finding, 'fixed_version', None)
+        result["cve"] = getattr(finding, 'cve', None)
+        result["cwe"] = getattr(finding, 'cwe', None)
+        result["references"] = getattr(finding, 'references', None)
+        result["evidence"] = getattr(finding, 'evidence', None)
+        return result
 
     def _finding_to_schema(self, finding: RuleFinding):
         """Convert RuleFinding to API schema."""
@@ -306,4 +334,13 @@ class AnalysisService:
             ai_explanation=finding.ai_explanation,
             impact_analysis=finding.impact_analysis,
             confidence_score=finding.confidence,
+            scanner_name=getattr(finding, 'scanner_name', None),
+            scanner_rule_id=getattr(finding, 'scanner_rule_id', None),
+            package=getattr(finding, 'package', None),
+            installed_version=getattr(finding, 'installed_version', None),
+            fixed_version=getattr(finding, 'fixed_version', None),
+            cve=getattr(finding, 'cve', None),
+            cwe=getattr(finding, 'cwe', None),
+            references=getattr(finding, 'references', None),
+            evidence=getattr(finding, 'evidence', None),
         )

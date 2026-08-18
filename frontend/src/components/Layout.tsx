@@ -66,7 +66,7 @@ export function Layout({ children }: LayoutProps) {
               <Shield className="h-6 w-6 text-white" />
             </div>
             <span className={cn(
-              'text-xl font-bold gradient-text whitespace-nowrap transition-opacity duration-300',
+              'text-xl font-bold text-primary whitespace-nowrap transition-opacity duration-300',
               sidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
             )}>
               DevArchAI

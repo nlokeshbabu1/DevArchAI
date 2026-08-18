@@ -1,5 +1,6 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
-import { Shield, AlertTriangle, AlertCircle, Info, Lock, Github, ArrowRight, Terminal, Cloud, Layers, Sparkles, CheckCircle, FileCode, Brain } from 'lucide-react'
+import { Shield, AlertTriangle, AlertCircle, Info, Lock, Github, ArrowRight, Terminal, Cloud, Layers, CheckCircle } from 'lucide-react'
 import { Button, Card, ScoreCircle } from '../ui-animated'
 import { Badge } from '../ui'
 import { cn } from '../../lib/utils'
@@ -45,6 +46,48 @@ const severityColors = {
   low: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
   info: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
 }
+
+const FindingItem = memo(function FindingItem({
+  finding,
+  index,
+}: {
+  finding: Finding
+  index: number
+}) {
+  const Icon = severityIcons[finding.severity]
+  const colorClass = severityColors[finding.severity]
+
+  return (
+    <motion.div
+      className="p-4 rounded-xl border border-white/[0.06] hover:border-white/[0.12] transition-colors bg-card/30"
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.4 + index * 0.1, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+    >
+      <div className="flex items-start gap-4">
+        <div className={cn('p-2 rounded-lg', colorClass)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="secondary" className={cn('text-xs', colorClass)}>
+              {finding.severity.toUpperCase()}
+            </Badge>
+            <span className="text-xs font-mono text-muted-foreground">
+              {finding.rule_id}
+            </span>
+          </div>
+          <h4 className="font-semibold text-foreground mb-1">
+            {finding.rule_name}
+          </h4>
+          <p className="text-sm text-muted-foreground">
+            {finding.description}
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  )
+})
 
 export function ScanResultsPreview({
   sessionId,
@@ -93,7 +136,7 @@ export function ScanResultsPreview({
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.1, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <Card className="p-8" hover={false}>
             <div className="text-center space-y-6">
@@ -107,7 +150,7 @@ export function ScanResultsPreview({
                 delay={200}
               />
               <div className="text-center">
-                <div className="text-4xl font-bold gradient-text">
+                <div className="text-4xl font-bold text-foreground">
                   {securityScore} / 100
                 </div>
                 <div className="text-lg text-muted-foreground mt-1">
@@ -122,7 +165,7 @@ export function ScanResultsPreview({
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.2, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <Card className="p-8" hover={false}>
             <h3 className="text-xl font-semibold text-foreground mb-6">
@@ -132,7 +175,7 @@ export function ScanResultsPreview({
               {Object.entries(severityCounts).map(([severity, count]) => {
                 const Icon = severityIcons[severity as keyof typeof severityIcons]
                 const colorClass = severityColors[severity as keyof typeof severityColors]
-                
+
                 return (
                   <div
                     key={severity}
@@ -150,8 +193,8 @@ export function ScanResultsPreview({
                 )
               })}
             </div>
-            
-            <div className="mt-6 pt-6 border-t border-white/10">
+
+            <div className="mt-6 pt-6 border-t border-white/[0.06]">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total Issues</span>
                 <span className="text-foreground font-bold text-lg">{totalIssues}</span>
@@ -165,51 +208,18 @@ export function ScanResultsPreview({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.3, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
       >
         <Card className="p-6" hover={false}>
           <h3 className="text-xl font-semibold text-foreground mb-6">
             Detected Issues
           </h3>
           <div className="space-y-4">
-            {findings.slice(0, 5).map((finding, index) => {
-              const Icon = severityIcons[finding.severity]
-              const colorClass = severityColors[finding.severity]
-              
-              return (
-                <motion.div
-                  key={finding.rule_id}
-                  className="p-4 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + index * 0.1 }}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={cn('p-2 rounded-lg', colorClass)}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="secondary" className={cn('text-xs', colorClass)}>
-                          {finding.severity.toUpperCase()}
-                        </Badge>
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {finding.rule_id}
-                        </span>
-                      </div>
-                      <h4 className="font-semibold text-foreground mb-1">
-                        {finding.rule_name}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {finding.description}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )
-            })}
+            {findings.slice(0, 5).map((finding, index) => (
+              <FindingItem key={finding.rule_id} finding={finding} index={index} />
+            ))}
           </div>
-          
+
           {findings.length > 5 && (
             <p className="text-center text-sm text-muted-foreground mt-4">
               + {findings.length - 5} more issues found
@@ -222,12 +232,12 @@ export function ScanResultsPreview({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
+        transition={{ delay: 0.5, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
       >
-        <Card className="p-8 glow-primary" hover={false}>
+        <Card className="p-8" hover={false}>
           <div className="text-center space-y-6">
-            <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary to-indigo-600">
-              <Lock className="h-8 w-8 text-white" />
+            <div className="inline-flex p-4 rounded-2xl bg-primary/10 border border-primary/20">
+              <Lock className="h-8 w-8 text-primary" />
             </div>
 
             <div>
@@ -241,29 +251,20 @@ export function ScanResultsPreview({
 
             {/* Blurred Code Preview */}
             <div className="relative max-w-2xl mx-auto">
-              <div className="p-6 rounded-xl bg-black/50 border border-white/10 overflow-hidden">
+              <div className="p-6 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
                     <motion.div
                       key={i}
-                      className="h-4 bg-gradient-to-r from-primary/30 via-primary/20 to-primary/30 rounded animate-pulse"
+                      className="h-4 bg-white/[0.08] rounded animate-pulse"
                       style={{
-                        width: `${Math.random() * 40 + 60}%`,
-                        animationDelay: `${i * 0.1}s`,
-                      }}
-                      initial={{ opacity: 0.5 }}
-                      animate={{ opacity: [0.5, 0.8, 0.5] }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        delay: i * 0.1,
+                        width: `${80 - i * 10}%`,
                       }}
                     />
                   ))}
                 </div>
               </div>
 
-              {/* Lock Overlay */}
               <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl">
                 <div className="text-center p-6">
                   <Lock className="h-12 w-12 text-primary mx-auto mb-3" />
@@ -311,7 +312,7 @@ export function ScanResultsPreview({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.6, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <Card className="p-6" hover={false}>
             <h3 className="text-xl font-semibold text-foreground mb-6">
@@ -320,15 +321,14 @@ export function ScanResultsPreview({
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {detectedTechnologies.map((tech, index) => {
                 const Icon = tech === 'Docker' ? Terminal : tech === 'Kubernetes' ? Cloud : Layers
-                
+
                 return (
                   <motion.div
                     key={tech}
-                    className="flex flex-col items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-primary/30 transition-all"
+                    className="flex flex-col items-center gap-3 p-4 rounded-xl bg-card/30 border border-white/[0.06] hover:border-primary/30 transition-all"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.7 + index * 0.05 }}
-                    whileHover={{ scale: 1.05 }}
+                    transition={{ delay: 0.7 + index * 0.05, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                   >
                     <Icon className="h-8 w-8 text-primary" />
                     <span className="text-sm font-medium text-foreground">{tech}</span>

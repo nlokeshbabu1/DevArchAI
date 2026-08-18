@@ -11,7 +11,7 @@ Supports:
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -21,6 +21,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.api_key_store import user_has_api_keys
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -73,7 +74,7 @@ def _safe_email(user: User) -> str:
 def user_to_response(user: User) -> dict:
     """Convert User model to response dict with proper UUID serialization."""
     email = _safe_email(user)
-    
+
     return {
         "id": str(user.id) if isinstance(user.id, uuid.UUID) else user.id,
         "email": email,
@@ -85,11 +86,11 @@ def user_to_response(user: User) -> dict:
         "is_verified": user.is_verified,
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
-        "has_api_key": bool(user.api_key),
+        "has_api_key": bool(user.api_key) or user_has_api_keys(str(user.id)),
         "plan": user.subscription_plan if hasattr(user, 'subscription_plan') else "free",
-        "has_github": bool(user.github_id or user.github_access_token),
-        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token),
-        "provider": "github" if user.github_id or user.github_access_token else "gitlab" if user.gitlab_id or user.gitlab_access_token else "password",
+        "has_github": bool(user.github_id or user.github_access_token or user.github_access_token_encrypted),
+        "has_gitlab": bool(user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted),
+        "provider": "github" if user.github_id or user.github_access_token or user.github_access_token_encrypted else "gitlab" if user.gitlab_id or user.gitlab_access_token or user.gitlab_access_token_encrypted else "password",
     }
 
 
@@ -260,7 +261,7 @@ async def _create_session(
         user_agent=user_agent,
         device_name=request.headers.get("Sec-Ch-UA-Platform", device),
         is_current=True,
-        expires_at=datetime.now(timezone.utc).replace(hour=0, minute=0, second=0)
+        expires_at=datetime.now(UTC).replace(hour=0, minute=0, second=0)
         + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(session)
@@ -284,8 +285,8 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 async def _check_account_locked(user: User) -> None:
     """Check if account is locked due to too many failed attempts."""
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() / 60)
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail=f"Account is locked. Try again in {remaining} minutes.",
@@ -322,7 +323,7 @@ async def login(
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
-                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
+                user.locked_until = datetime.now(UTC) + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
                 await db.commit()
             else:
                 await db.commit()
@@ -358,7 +359,7 @@ async def login(
     # Reset failed attempts on successful login
     user.failed_login_attempts = 0
     user.locked_until = None
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await ensure_user_organization_membership(db, user)
     await db.flush()
 
@@ -448,7 +449,13 @@ async def github_callback(
     """
     try:
         # Get authorization code from request
-        data = await request.json()
+        try:
+            data = await request.json()
+        except Exception as exc:  # invalid/empty JSON body
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request body must be valid JSON",
+            ) from exc
         code = data.get("code")
 
         if not code:
@@ -569,9 +576,11 @@ async def github_callback(
                     avatar_url=avatar_url or "",
                     github_id=github_id,
                     github_login=username,  # Store GitHub username for webhook lookups
-                    github_access_token=github_access_token,  # Store GitHub token for API access
                     is_verified=True,  # GitHub emails are verified
                 )
+                # Store encrypted GitHub token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "github", github_access_token)
                 db.add(user)
                 await db.flush()
                 logger.info("User created from GitHub OAuth", user_id=user.id)
@@ -579,7 +588,9 @@ async def github_callback(
                 # Update existing user with GitHub info
                 user.github_id = github_id
                 user.github_login = username  # Store/update GitHub username
-                user.github_access_token = github_access_token  # Update token
+                # Store encrypted GitHub token
+                from app.core.encryption import set_user_oauth_token
+                set_user_oauth_token(user, "github", github_access_token)
                 if avatar_url:
                     user.avatar_url = avatar_url
                 if full_name and not user.full_name:
@@ -588,7 +599,7 @@ async def github_callback(
             # Reset failed attempts on successful login
             user.failed_login_attempts = 0
             user.locked_until = None
-            user.last_login_at = datetime.now(timezone.utc)
+            user.last_login_at = datetime.now(UTC)
             await ensure_user_organization_membership(db, user)
             await db.flush()
 
@@ -639,11 +650,11 @@ async def github_callback(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception("GitHub OAuth callback failed", error=str(e))
+    except Exception:
+        logger.exception("GitHub OAuth callback failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"GitHub OAuth failed: {str(e)}",
+            detail="GitHub OAuth failed. Please try again.",
         )
 
 
@@ -735,7 +746,7 @@ async def list_sessions(
         if auth_header and auth_header.startswith("Bearer "):
             raw_token = auth_header.replace("Bearer ", "")
             _warn_if_local_storage_used(request)
-    
+
     current_token_hash = hash_token(raw_token) if raw_token else None
 
     session_list = []

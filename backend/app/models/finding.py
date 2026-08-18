@@ -80,6 +80,17 @@ class Finding(Base):
     documentation_url = Column(Text, nullable=True)  # Official vendor documentation link
     confidence = Column(Float, default=1.0, nullable=True)  # AI confidence score
 
+    # Scanner metadata (external scanner integration)
+    scanner_name = Column(String(100), nullable=True, index=True)
+    scanner_rule_id = Column(String(200), nullable=True)
+    package = Column(String(255), nullable=True, index=True)
+    installed_version = Column(String(100), nullable=True)
+    fixed_version = Column(String(100), nullable=True)
+    cve = Column(String(50), nullable=True, index=True)
+    cwe = Column(String(50), nullable=True)
+    references = Column(Text, nullable=True)  # JSON array of reference URLs
+    evidence = Column(Text, nullable=True)  # Raw scanner evidence output
+
     # Metadata
     confidence_score = Column(Float, default=1.0, nullable=False)
     is_resolved = Column(Boolean, default=False, nullable=False)

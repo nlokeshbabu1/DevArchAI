@@ -2,12 +2,31 @@
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.models  # noqa: F401
+import app.models.ai_recommendation  # noqa: F401
+import app.models.ai_suggestion  # noqa: F401
+import app.models.anonymous_scan  # noqa: F401
+import app.models.audit_log  # noqa: F401
+import app.models.aws  # noqa: F401
+import app.models.cloud_recommendation  # noqa: F401
+import app.models.finding  # noqa: F401
+import app.models.github_installation  # noqa: F401
+import app.models.organization  # noqa: F401
+import app.models.payment  # noqa: F401
+import app.models.pull_request  # noqa: F401
+import app.models.repo_analysis  # noqa: F401
+import app.models.report  # noqa: F401
+import app.models.repository  # noqa: F401
+import app.models.scan  # noqa: F401
+import app.models.settings  # noqa: F401
+import app.models.subscription  # noqa: F401
+import app.models.user  # noqa: F401
+from alembic import context
 from app.config import settings
 
-# Import your models' Base
+# Import all models so Alembic autogenerate detects schema changes
 from app.db.base import Base
 
 # this is the Alembic Config object
@@ -31,16 +50,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-    """
+    """Run migrations in 'offline' mode."""
     url = alembic_config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -54,11 +64,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-    """
+    """Run migrations in 'online' mode."""
     connectable = engine_from_config(
         alembic_config.get_section(alembic_config.config_ini_section, {}),
         prefix="sqlalchemy.",

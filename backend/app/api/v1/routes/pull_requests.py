@@ -1,8 +1,8 @@
 """Pull Request creation endpoint."""
 
-import structlog
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,16 +11,16 @@ from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.github_installation import GitHubInstallation
-from app.models.pull_request import PullRequest, PRStatus
+from app.models.pull_request import PRStatus, PullRequest
 from app.models.scan import Scan
 from app.models.user import User
 from app.schemas.pull_request import CreatePRRequest, CreatePRResponse
 from app.services.github_app_service import GitHubAppService, GitHubAppServiceError
 from app.services.github_pr import (
-    GitHubPRService,
     FixApplicationError,
-    PartialFixError,
     FixValidationError,
+    GitHubPRService,
+    PartialFixError,
     generate_pr_title,
 )
 
@@ -264,13 +264,13 @@ async def create_pull_request(
 
     # Step 5: Generate branch name, title, and description
     branch_name = request.branch_name or f"devarchai/fix-{request.scan_id}"
-    
+
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for finding in findings:
         severity_counts[finding.severity.value] = severity_counts.get(finding.severity.value, 0) + 1
 
     pr_title = request.pr_title or generate_pr_title(len(findings), severity_counts)
-    
+
     score_before = scan.overall_score or 0
     # Estimate score improvement (rough calculation: ~5 points per critical, ~3 per high)
     estimated_improvement = (severity_counts.get("critical", 0) * 5) + (severity_counts.get("high", 0) * 3)
@@ -319,6 +319,15 @@ async def create_pull_request(
                 "file_path": f.file_path,
                 "line_number": f.line_number,
                 "confidence": f.confidence_score or f.confidence,
+                "scanner_name": getattr(f, 'scanner_name', None),
+                "scanner_rule_id": getattr(f, 'scanner_rule_id', None),
+                "package": getattr(f, 'package', None),
+                "installed_version": getattr(f, 'installed_version', None),
+                "fixed_version": getattr(f, 'fixed_version', None),
+                "cve": getattr(f, 'cve', None),
+                "cwe": getattr(f, 'cwe', None),
+                "references": getattr(f, 'references', None),
+                "evidence": getattr(f, 'evidence', None),
             } for f in findings],
             score_before=score_before,
             score_after=score_after,

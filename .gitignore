@@ -13,6 +13,8 @@
 .env.*
 !.env.example
 !.env.template
+# Local API key store (backend/app/core/api_key_store.py)
+backend/data/
 .env.local
 .env.*.local
 .env.development
@@ -295,7 +297,7 @@ reports/
 *.report.json
 *.report.pdf
 *.report.xlsx
-scan-results/
+/scan-results/
 analysis-results/
 
 # Database dumps
@@ -387,7 +389,7 @@ docs/build/
 uploads/
 media/
 user-data/
-scans/
+/scans/
 *.upload
 *.uploaded
 
@@ -459,3 +461,4 @@ vault-token
 # ===========================================
 # END OF .gitignore
 # ===========================================
+.aider*

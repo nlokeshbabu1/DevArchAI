@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.db.base import Base
+from app.db.init import initialize_database
 
 logger = structlog.get_logger(__name__)
 
@@ -61,19 +61,21 @@ def get_session_factory():
 
 def get_sync_session_factory():
     """Get or create synchronous session factory for Celery tasks."""
-    global _sync_session_factory
+    global _sync_session_factory, _sync_engine
     if _sync_session_factory is None:
         # Convert async URL to sync URL
         sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2").replace("+aiomysql", "+pymysql")
 
-        sync_engine = create_engine(
+        _sync_engine = create_engine(
             sync_url,
+            pool_size=settings.DB_POOL_SIZE,
+            max_overflow=settings.DB_MAX_OVERFLOW,
             pool_pre_ping=True,
             echo=settings.DEBUG,
         )
 
         _sync_session_factory = sessionmaker(
-            bind=sync_engine,
+            bind=_sync_engine,
             class_=Session,
             expire_on_commit=False,
             autocommit=False,
@@ -87,15 +89,17 @@ SessionLocal = get_sync_session_factory
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
-    engine = get_engine()
-    try:
-        async with engine.begin() as conn:
-            # Import all models to ensure they're registered
-            from app.models import AWSAccount, AWSCostRecommendation, AWSFinding, AWSInventory, Finding, GitHubInstallation, Report, Repository, Scan, User  # noqa: F401
+    """Initialize and verify the database schema before serving traffic.
 
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables created successfully")
+    Runs migrations under a cross-instance lock and verifies the resulting
+    schema against the SQLAlchemy models, failing fast with a clear error if
+    the database cannot be brought to a consistent state.
+    """
+    import asyncio
+
+    try:
+        await asyncio.to_thread(initialize_database)
+        logger.info("Database initialized via Alembic migrations")
     except Exception as e:
         logger.error("Failed to initialize database", error=str(e))
         raise

@@ -13,7 +13,7 @@ import { authApi, type SessionInfo } from '../../api/endpoints/auth'
 import { settingsApi, type ProfileData, type NotificationPrefs, type SessionData, type ApiKeyData, type CreateApiKeyResponse } from '../../api/endpoints/settings'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -187,7 +187,7 @@ function ProfileTab({ profile, fullName, username, setFullName, setUsername, sav
           <p className="text-foreground font-medium text-lg">{profile?.full_name || profile?.username}</p>
           <p className="text-sm text-muted-foreground">{safeEmail(profile?.email)}</p>
           <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium mt-1.5 border', providerColor)}>
-            {providerIcon === Github ? <Github className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+              {providerIcon === Github ? <Github className="h-3 w-3" /> : providerIcon === Gitlab ? <Gitlab className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
             {providerLabel}
           </span>
         </div>
@@ -230,33 +230,64 @@ function ProfileTab({ profile, fullName, username, setFullName, setUsername, sav
         </div>
       </div>
 
-      {/* Authentication Method */}
-      <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
-        <p className="text-sm font-medium text-foreground mb-2">Authentication Method</p>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {profile?.provider === 'github' ? (
-            <><Github className="h-4 w-4 text-gray-400" /> GitHub OAuth</>
-          ) : profile?.provider === 'gitlab' ? (
-            <><Gitlab className="h-4 w-4 text-gray-400" /> GitLab OAuth</>
-          ) : profile?.provider === 'email+github' ? (
-            <><><Mail className="h-4 w-4 text-primary" /> Email</> <span className="text-muted-foreground/40">+</span> <Github className="h-4 w-4 text-gray-400" /> GitHub</>
-          ) : profile?.provider === 'email+gitlab' ? (
-            <><><Mail className="h-4 w-4 text-primary" /> Email</> <span className="text-muted-foreground/40">+</span> <Gitlab className="h-4 w-4 text-gray-400" /> GitLab</>
-          ) : (
-            <><Mail className="h-4 w-4 text-primary" /> Email Login</>
-          )}
-          {!profile?.has_password && profile?.provider !== 'github' && profile?.provider !== 'gitlab' && profile?.provider !== 'email+github' && profile?.provider !== 'email+gitlab' && (
-            <span className="text-xs text-yellow-400 ml-2">(No password set)</span>
-          )}
+      {/* Authentication Section (read-only) */}
+      <div className="mt-6 p-5 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-primary/15 border border-primary/30">
+            <Lock className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Authentication</p>
+            <p className="text-[11px] text-muted-foreground">Your sign-in method is managed by your OAuth provider</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {/* Provider */}
+          <div className="p-3 rounded-xl bg-black/20 border border-white/5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Authentication Provider</p>
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              {profile?.provider === 'github' ? (
+                <><Github className="h-4 w-4 text-gray-400" /> GitHub OAuth</>
+              ) : profile?.provider === 'gitlab' ? (
+                <><Gitlab className="h-4 w-4 text-orange-400" /> GitLab OAuth</>
+              ) : profile?.provider === 'email+github' ? (
+                <><Mail className="h-4 w-4 text-primary" /> Email <span className="text-muted-foreground/40 mx-1">+</span> <Github className="h-4 w-4 text-gray-400" /> GitHub</>
+              ) : profile?.provider === 'email+gitlab' ? (
+                <><Mail className="h-4 w-4 text-primary" /> Email <span className="text-muted-foreground/40 mx-1">+</span> <Gitlab className="h-4 w-4 text-orange-400" /> GitLab</>
+              ) : (
+                <><Mail className="h-4 w-4 text-primary" /> Email Login</>
+              )}
+            </div>
+          </div>
+
+          {/* Connected Since */}
+          <div className="p-3 rounded-xl bg-black/20 border border-white/5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Connected Since</p>
+            <p className="text-sm text-foreground">
+              {profile?.created_at
+                ? new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : '—'}
+            </p>
+          </div>
+
+          {/* Last Login */}
+          <div className="p-3 rounded-xl bg-black/20 border border-white/5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Last Login</p>
+            <p className="text-sm text-foreground">
+              {profile?.last_login_at
+                ? new Date(profile.last_login_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : '—'}
+            </p>
+          </div>
+
+          {/* Account Type */}
+          <div className="p-3 rounded-xl bg-black/20 border border-white/5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Account Type</p>
+            <p className="text-sm text-foreground capitalize">{profile?.role || 'User'}</p>
+          </div>
         </div>
       </div>
-
-      {/* Member since */}
-      {profile?.created_at && (
-        <p className="mt-4 text-xs text-muted-foreground">
-          Member since {new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-        </p>
-      )}
 
       <div className="mt-6 flex justify-end">
         <Button variant="primary" onClick={handleSaveProfile} loading={saving === 'profile'} disabled={saving === 'profile'}>
@@ -690,9 +721,9 @@ export function SettingsPage() {
     }
   }
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboardLocal = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
       setCopiedKey(true)
       setTimeout(() => setCopiedKey(false), 2000)
     } catch {
@@ -839,7 +870,7 @@ export function SettingsPage() {
                 setNewPassword={setNewPassword} setConfirmPassword={setConfirmPassword}
                 setShowPassword={setShowPassword} saving={saving} handleChangePassword={handleChangePassword}
                 apiKeys={apiKeys} newKeyData={newKeyData} handleCreateApiKey={handleCreateApiKey}
-                handleRevokeKey={handleRevokeKey} copyToClipboard={copyToClipboard}
+                handleRevokeKey={handleRevokeKey} copyToClipboard={copyToClipboardLocal}
                 copiedKey={copiedKey} setNewKeyData={setNewKeyData}
                 showDeleteModal={showDeleteModal} setShowDeleteModal={setShowDeleteModal}
                 deletePassword={deletePassword} setDeletePassword={setDeletePassword}

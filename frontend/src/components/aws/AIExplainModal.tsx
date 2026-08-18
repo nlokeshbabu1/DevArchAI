@@ -1,5 +1,6 @@
 import { Check, Copy, Loader2, X } from 'lucide-react'
 import { useState } from 'react'
+import { copyToClipboard } from '../../lib/utils'
 import { AwsFindingExplanation } from '../../api/endpoints/aws'
 import { Button } from '../ui'
 
@@ -7,7 +8,7 @@ function CodeBlock({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
 
   async function copy() {
-    await navigator.clipboard.writeText(value)
+    await copyToClipboard(value)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
   }

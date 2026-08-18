@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -21,19 +20,19 @@ class CreatePRRequest(BaseModel):
     """Request body for creating a Pull Request."""
 
     scan_id: str = Field(..., description="Scan ID containing findings to fix")
-    finding_ids: Optional[list[str]] = Field(
+    finding_ids: list[str] | None = Field(
         default=None,
         description="List of finding IDs to fix (defaults to all critical+high if not provided)"
     )
-    branch_name: Optional[str] = Field(
+    branch_name: str | None = Field(
         default=None,
         description="Custom branch name (auto-generated if not provided)"
     )
-    pr_title: Optional[str] = Field(
+    pr_title: str | None = Field(
         default=None,
         description="Custom PR title (auto-generated if not provided)"
     )
-    pr_description: Optional[str] = Field(
+    pr_description: str | None = Field(
         default=None,
         description="Custom PR description (auto-generated if not provided)"
     )
@@ -63,8 +62,8 @@ class CreatePRResponse(BaseModel):
     title: str
     status: PRStatus
     findings_fixed: list[str]
-    score_before: Optional[float]
-    score_after: Optional[float]
+    score_before: float | None
+    score_after: float | None
     created_at: datetime
 
     @field_validator('pr_id', 'scan_id', mode='before')

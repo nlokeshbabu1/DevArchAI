@@ -4,7 +4,7 @@ Analyzes repository files to detect DevOps tools and configurations.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -38,7 +38,7 @@ class DevOpsStackResult:
     kustomize_files: list[str] = field(default_factory=list)
 
     # CI/CD
-    cicd: Optional[str] = None  # github_actions, gitlab_ci, jenkins, circleci, travis, azure_devops
+    cicd: str | None = None  # github_actions, gitlab_ci, jenkins, circleci, travis, azure_devops
     cicd_files: list[str] = field(default_factory=list)
 
     # Monitoring

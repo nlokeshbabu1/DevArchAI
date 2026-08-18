@@ -1,14 +1,19 @@
 """
-DevOps Production Readiness Scanner
+DevOps Production Readiness Scanner — DEPRECATED.
 
-Scans repositories for DevOps production readiness issues using file-type based rule filtering.
-Only applies rules to relevant file types (e.g., Terraform rules only to .tf files).
+This scanner is NOT used by any production code path (never imported by other modules).
+The production scan path uses app.rule_engine.base.RuleRegistry directly.
+
+This scanner uses the legacy app.rules.base.RuleRegistry, which is a separate
+singleton from the production app.rule_engine.base.RuleRegistry.
+
+DO NOT add new production code that uses this scanner.
 """
 
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -292,7 +297,7 @@ class DevOpsScanner:
         repo_path: str,
         file_path: str,
         file_type: str,
-    ) -> Optional[ParsedFile]:
+    ) -> ParsedFile | None:
         """Parse a file using the appropriate parser."""
         try:
             full_path = Path(repo_path) / file_path

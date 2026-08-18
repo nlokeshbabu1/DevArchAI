@@ -1,205 +1,285 @@
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { cn } from '../../lib/utils'
-import { Github, Gitlab, Cloud, Server, Check, Loader2, Link as LinkIcon } from 'lucide-react'
-import { Button } from '../../components/ui'
-import { AnimatedCard } from '../../components/ui/animated-card'
+import { Search, Plug, Settings, RefreshCw, Grid3x3 } from 'lucide-react'
+import type { ConnectionStatus } from '@/components/integrations/types'
 
-interface Integration {
-  id: string
-  name: string
-  description: string
-  icon: React.ElementType
-  status: 'connected' | 'disconnected' | 'connecting'
-  features: string[]
-}
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+import { integrationsApi, type IntegrationInfo } from '@/api/endpoints/integrations'
+import { cloudApi } from '@/api/endpoints/cloud'
+import { AwsOnboardingWizard } from '@/components/integrations/AwsOnboardingWizard'
+import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
+import { IntegrationCategory } from '@/components/integrations/IntegrationCategory'
+import { buildCategories } from '@/components/integrations/providers'
 
-const integrations: Integration[] = [
-  {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Connect your GitHub repositories for automated scanning',
-    icon: Github,
-    status: 'connected',
-    features: ['Auto-scan on push', 'PR comments', 'Status checks'],
-  },
-  {
-    id: 'gitlab',
-    name: 'GitLab',
-    description: 'Integrate with GitLab CI/CD pipelines',
-    icon: Gitlab,
-    status: 'disconnected',
-    features: ['CI/CD integration', 'MR comments', 'Pipeline status'],
-  },
-  {
-    id: 'aws',
-    name: 'AWS',
-    description: 'Scan AWS infrastructure and CloudFormation templates',
-    icon: Cloud,
-    status: 'connected',
-    features: ['Resource scanning', 'Compliance checks', 'Cost optimization'],
-  },
-  {
-    id: 'azure',
-    name: 'Azure',
-    description: 'Connect Azure subscriptions for infrastructure analysis',
-    icon: Server,
-    status: 'disconnected',
-    features: ['Resource scanning', 'Policy compliance', 'Security insights'],
-  },
-  {
-    id: 'bitbucket',
-    name: 'Bitbucket',
-    description: 'Integrate with Bitbucket repositories',
-    icon: LinkIcon,
-    status: 'disconnected',
-    features: ['PR scanning', 'Commit checks', 'Pipeline integration'],
-  },
-]
+type ViewMode = 'grid' | 'cloud-dashboard'
 
 export function IntegrationsPage() {
-  const [integrationState, setIntegrationState] = useState<Integration[]>(integrations)
-  const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const [view, setView] = useState<ViewMode>('grid')
+  const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [awsModalOpen, setAwsModalOpen] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [awsConnection, setAwsConnection] = useState<{
+    connected: boolean
+    accountId?: string
+    resourceCount?: number
+    securityScore?: number
+    lastScan?: string
+  }>({ connected: false })
+  const [error, setError] = useState<string | null>(null)
+  const [autoScanConnectionId, setAutoScanConnectionId] = useState<string | null>(null)
 
-  const handleConnect = (id: string) => {
-    if (id === 'aws') {
-      navigate('/aws')
-      return
+  const authProvider = (user?.provider || 'email') as 'github' | 'gitlab' | 'email'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await integrationsApi.getStatus({ authProvider })
+      setIntegrations(result)
+    } catch {
+      setError('Failed to load integration status')
     }
-    setIntegrationState(prev =>
-      prev.map(integration =>
-        integration.id === id
-          ? { ...integration, status: 'connecting' as const }
-          : integration
-      )
-    )
 
-    // Simulate connection
-    setTimeout(() => {
-      setIntegrationState(prev =>
-        prev.map(integration =>
-          integration.id === id
-            ? { ...integration, status: 'connected' as const }
-            : integration
-        )
-      )
-    }, 2000)
+    try {
+      const connections = await cloudApi.connections()
+      const awsConn = connections.find((c) => c.provider === 'aws')
+      if (awsConn) {
+        setAwsConnection({
+          connected: true,
+          accountId: awsConn.account_id,
+          resourceCount: awsConn.resource_count ?? undefined,
+          securityScore: awsConn.security_score ?? undefined,
+          lastScan: awsConn.last_scanned_at ? formatTimeAgo(awsConn.last_scanned_at) : undefined,
+        })
+      } else {
+        setAwsConnection({ connected: false })
+      }
+    } catch {
+      setAwsConnection({ connected: false })
+    }
+
+    setLoading(false)
+  }, [authProvider])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const getStatus = (provider: string): ConnectionStatus => {
+    const integration = integrations.find((i) => i.provider === provider)
+    return (integration?.status as ConnectionStatus) || 'not_connected'
   }
 
-  const handleDisconnect = (id: string) => {
-    setIntegrationState(prev =>
-      prev.map(integration =>
-        integration.id === id
-          ? { ...integration, status: 'disconnected' as const }
-          : integration
-      )
-    )
+  const categories = buildCategories({
+    githubStatus: getStatus('github'),
+    gitlabStatus: getStatus('gitlab'),
+    bitbucketStatus: getStatus('bitbucket'),
+    awsStatus: awsConnection.connected ? 'connected' : getStatus('aws'),
+    awsAccountId: awsConnection.accountId,
+    awsResourceCount: awsConnection.resourceCount,
+    awsSecurityScore: awsConnection.securityScore,
+    awsLastScan: awsConnection.lastScan,
+    onConnect: handleConnect,
+    onManage: handleManage,
+    onNotify: handleNotify,
+  })
+
+  const filteredCategories = categories.map((cat) => ({
+    ...cat,
+    providers: cat.providers.filter(
+      (p) =>
+        !searchQuery ||
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  })).filter((cat) => cat.providers.length > 0)
+
+  const totalConnected = categories.reduce(
+    (sum, cat) => sum + cat.providers.filter((p) => p.status === 'connected').length,
+    0,
+  )
+  const totalProviders = categories.reduce((sum, cat) => sum + cat.providers.length, 0)
+
+  function handleConnect(id: string) {
+    if (id === 'aws') setAwsModalOpen(true)
+  }
+
+  function handleManage(id: string) {
+    if (id === 'aws') setView('cloud-dashboard')
+  }
+
+  function handleNotify(id: string) {
+    // Future: notification settings
   }
 
   return (
     <div className="space-y-6">
+      <AwsOnboardingWizard
+        open={awsModalOpen}
+        onClose={() => setAwsModalOpen(false)}
+        onComplete={(data) => {
+          setAwsModalOpen(false)
+          load()
+          if (data?.action === 'scan' && data.connectionId) {
+            setAutoScanConnectionId(data.connectionId)
+            setView('cloud-dashboard')
+          } else if (data?.action === 'dashboard') {
+            setView('cloud-dashboard')
+          }
+        }}
+      />
+
+      {/* Error Banner */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30"
+        >
+          <span className="text-sm text-red-200">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+          >
+            Dismiss
+          </button>
+        </motion.div>
+      )}
+
       {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
       >
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Integrations</h1>
-          <p className="text-muted-foreground mt-1">
-            Connect your favorite tools and platforms
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Integrations</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Connect your tools and infrastructure for automated scanning
           </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-card/60 backdrop-blur-xl border border-white/10 rounded-xl">
-          <Check className="h-5 w-5 text-green-400" />
-          <span className="text-sm font-medium text-foreground">
-            {integrationState.filter(i => i.status === 'connected').length} connected
-          </span>
+        <div className="flex items-center gap-2">
+          {view === 'cloud-dashboard' && (
+            <button
+              onClick={() => setView('grid')}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
+            >
+              <Grid3x3 className="h-4 w-4" />
+              All Integrations
+            </button>
+          )}
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
+          >
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            Refresh
+          </button>
         </div>
       </motion.div>
 
-      {/* Integrations Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {integrationState.map((integration, index) => {
-          const Icon = integration.icon
-          return (
-            <AnimatedCard key={integration.id} delay={index * 0.1}>
-              <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-                      <Icon className="h-6 w-6 text-foreground" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">{integration.name}</h3>
-                      <div className={cn(
-                        'flex items-center gap-1.5 text-xs',
-                        integration.status === 'connected' && 'text-green-400',
-                        integration.status === 'disconnected' && 'text-muted-foreground',
-                        integration.status === 'connecting' && 'text-blue-400'
-                      )}>
-                        {integration.status === 'connected' && <Check className="h-3 w-3" />}
-                        {integration.status === 'connecting' && <Loader2 className="h-3 w-3 animate-spin" />}
-                        <span className="capitalize">{integration.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+      {/* Stats bar */}
+      {view === 'grid' && !loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex items-center gap-6 px-4 py-3 rounded-2xl bg-card/60 backdrop-blur-xl border border-white/10"
+        >
+          <div className="flex items-center gap-2">
+            <Plug className="h-4 w-4 text-emerald-400" />
+            <span className="text-xs text-muted-foreground">Connected</span>
+            <span className="text-sm font-semibold text-foreground">{totalConnected}</span>
+          </div>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2">
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Total</span>
+            <span className="text-sm font-semibold text-foreground">{totalProviders}</span>
+          </div>
+          <div className="flex-1" />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search integrations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-white/20 transition-all w-56"
+            />
+          </div>
+        </motion.div>
+      )}
 
-                <p className="text-sm text-muted-foreground">{integration.description}</p>
-
-                <div className="space-y-2">
-                  {integration.features.map(feature => (
-                    <div key={feature} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Check className="h-3 w-3 text-green-400" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-4 border-t border-white/10">
-                  {integration.status === 'connected' ? (
-                    <Button
-                      variant="secondary"
-                      className="w-full"
-                      onClick={() => handleDisconnect(integration.id)}
-                    >
-                      Disconnect
-                    </Button>
-                  ) : integration.status === 'connecting' ? (
-                    <Button variant="primary" className="w-full" disabled>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Connecting...
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      className="w-full"
-                      onClick={() => handleConnect(integration.id)}
-                    >
-                      Connect
-                    </Button>
-                  )}
-                </div>
+      {/* Loading skeletons */}
+      {loading && (
+        <div className="space-y-8">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="space-y-4">
+              <div className="h-8 w-48 rounded-xl bg-card/60 backdrop-blur-xl border border-white/10 animate-pulse" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {[...Array(4)].map((_, j) => (
+                  <div key={j} className="h-44 rounded-2xl bg-card/60 backdrop-blur-xl border border-white/10 animate-pulse" />
+                ))}
               </div>
-            </AnimatedCard>
-          )
-        })}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* Coming Soon Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="p-6 bg-card/60 backdrop-blur-xl border border-white/10 rounded-2xl"
-      >
-        <h3 className="text-lg font-semibold text-foreground mb-2">More integrations coming soon</h3>
-        <p className="text-muted-foreground">
-          We're working on adding support for more platforms including GCP, Kubernetes, and more.
-        </p>
-      </motion.div>
+      {/* Cloud Dashboard view */}
+      {!loading && view === 'cloud-dashboard' && (
+        <CloudDashboard
+          isConnected={awsConnection.connected}
+          onConnect={() => setAwsModalOpen(true)}
+          onRefresh={load}
+          autoScanConnectionId={autoScanConnectionId}
+          onAutoScanComplete={() => setAutoScanConnectionId(null)}
+        />
+      )}
+
+      {/* Categories grid view */}
+      {!loading && view === 'grid' && (
+        <div className="space-y-8">
+          {filteredCategories.map((category) => (
+            <IntegrationCategory
+              key={category.id}
+              category={category}
+              onConnect={handleConnect}
+              onManage={handleManage}
+            />
+          ))}
+
+          {filteredCategories.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center py-24 text-center"
+            >
+              <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
+              <h3 className="text-sm font-medium text-foreground mb-1">No integrations found</h3>
+              <p className="text-xs text-muted-foreground">
+                Try a different search term
+              </p>
+            </motion.div>
+          )}
+        </div>
+      )}
     </div>
   )
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }

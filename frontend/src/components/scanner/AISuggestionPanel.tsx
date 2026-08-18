@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '../ui-animated'
 import { Badge, Card } from '../ui'
-import { cn } from '../../lib/utils'
+import { cn, copyToClipboard } from '../../lib/utils'
 
 interface AISuggestionPanelProps {
   finding: {
@@ -63,16 +63,18 @@ export function AISuggestionPanel({
   const isPreviewFinding = index < 2 // Free users see first 2 AI suggestions
 
   // Get confidence level
-  const confidence = finding.confidence ?? finding.confidence_score ?? 0.8
-  const confidenceLevel = confidence >= 0.8 ? 'high' : confidence >= 0.6 ? 'medium' : 'low'
-  
+  const confidence = finding.confidence ?? finding.confidence_score
+  const confidenceLevel = confidence != null
+    ? confidence >= 0.8 ? 'high' : confidence >= 0.6 ? 'medium' : 'low'
+    : null
+
   const confidenceConfig = {
     high: { color: 'bg-green-500', text: 'text-green-400', label: 'High' },
     medium: { color: 'bg-yellow-500', text: 'text-yellow-400', label: 'Medium' },
     low: { color: 'bg-gray-500', text: 'text-gray-400', label: 'Low' },
   }
 
-  const config = confidenceConfig[confidenceLevel]
+  const config = confidenceLevel ? confidenceConfig[confidenceLevel] : null
 
   // Check if AI data is available
   const hasAIData = finding.ai_generated || finding.summary || finding.fix_code || finding.ai_explanation
@@ -82,7 +84,7 @@ export function AISuggestionPanel({
 
   const handleCopy = async (text: string) => {
     if (text) {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
     }
   }
 
@@ -195,19 +197,21 @@ export function AISuggestionPanel({
                   </Badge>
                 )}
               </h5>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex items-center gap-1">
-                  <div className="w-24 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div 
-                      className={cn('h-full rounded-full transition-all', config.color)}
-                      style={{ width: `${confidence * 100}%` }}
-                    />
+              {config && confidence != null && (
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-1">
+                    <div className="w-24 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div 
+                        className={cn('h-full rounded-full transition-all', config.color)}
+                        style={{ width: `${confidence * 100}%` }}
+                      />
+                    </div>
+                    <span className={cn('text-xs font-medium', config.text)}>
+                      {config.label} ({Math.round(confidence * 100)}%)
+                    </span>
                   </div>
-                  <span className={cn('text-xs font-medium', config.text)}>
-                    {config.label} ({Math.round(confidence * 100)}%)
-                  </span>
                 </div>
-              </div>
+              )}
             </div>
           </div>
           

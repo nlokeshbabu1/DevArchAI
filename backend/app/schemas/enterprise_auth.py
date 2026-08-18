@@ -1,21 +1,20 @@
 """Enterprise authentication schemas."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
 
 class SessionResponse(BaseModel):
     id: str
-    device_name: Optional[str] = None
-    browser: Optional[str] = None
-    os: Optional[str] = None
-    ip_address: Optional[str] = None
-    location: Optional[str] = None
+    device_name: str | None = None
+    browser: str | None = None
+    os: str | None = None
+    ip_address: str | None = None
+    location: str | None = None
     created_at: datetime
     last_active_at: datetime
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     is_current: bool = False
 
     model_config = ConfigDict(from_attributes=True)

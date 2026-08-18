@@ -1,6 +1,6 @@
 """Explanation engine for AI-powered analysis."""
 
-from typing import Any, Optional
+from typing import Any
 
 from app.ai_engine.llm_client import AIExplanation, BaseLLMProvider, get_llm_provider
 from app.core.logging import get_logger
@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class ExplanationEngine:
     """Engine for generating AI explanations for findings."""
 
-    def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
+    def __init__(self, llm_provider: BaseLLMProvider | None = None):
         self.llm_provider = llm_provider or get_llm_provider()
         self._explanation_cache: dict[str, AIExplanation] = {}
 

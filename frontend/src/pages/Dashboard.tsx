@@ -13,23 +13,13 @@ import { dashboardApi, type RecentScan } from '../api/endpoints/dashboard'
 import { repositoriesApi, type Repository } from '../api/endpoints/repositories'
 import apiClient from '../api/endpoints/client'
 import { InlineScanPanel } from '../components/InlineScanPanel'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 
 import {
-  KpiRow, SecurityOverview, FindingsChart,
+  KpiRow, SecurityOverview,
   RiskTable, ActivityFeed, AiSuggestions,
   OnboardingView
 } from '../components/dashboard'
-
-const findingsData = [
-  { name: 'Mon', critical: 2, high: 5, medium: 12, low: 8 },
-  { name: 'Tue', critical: 1, high: 3, medium: 8, low: 15 },
-  { name: 'Wed', critical: 3, high: 7, medium: 15, low: 10 },
-  { name: 'Thu', critical: 1, high: 4, medium: 10, low: 12 },
-  { name: 'Fri', critical: 2, high: 6, medium: 14, low: 9 },
-  { name: 'Sat', critical: 0, high: 2, medium: 5, low: 7 },
-  { name: 'Sun', critical: 1, high: 3, medium: 7, low: 11 },
-]
 
 const getValidScore = (score: number | null | undefined) => {
   if (typeof score !== 'number' || Number.isNaN(score)) return null
@@ -145,20 +135,12 @@ export function Dashboard() {
     return getRepositoryCriticalCount(repo) > 0 || getRepositoryHighCount(repo) > 0 || (score !== null && score < 70)
   }).length
 
-  const riskScore = Math.min(100, Math.max(0, Math.round(
-    (100 - securityScore) + Math.min(35, criticalIssues * 4) + Math.min(20, repositoriesAtRisk * 3)
-  )))
-
   const sortedRecentScores = recentScans
     .map((scan) => getValidScore(scan.overall_score ?? scan.security_score))
     .filter((score): score is number => score !== null)
   const scoreDelta = sortedRecentScores.length >= 2
     ? formatScore(sortedRecentScores[0] - sortedRecentScores[1])
     : null
-  const fixedFindingsEstimate = scoreDelta !== null && scoreDelta > 0
-    ? Math.max(1, Math.round(scoreDelta / 3)) : 0
-  const newCriticalFindings = scoreDelta !== null && scoreDelta < 0 ? criticalIssues : 0
-
   // Loading state
   if (isLoading) {
     return (
@@ -194,21 +176,28 @@ export function Dashboard() {
   // Error state
   if (hasError) {
     return (
-      <div className="space-y-6">
-        <Card className="p-8 text-center" hover={false}>
-          <div className="p-3 rounded-full bg-red-500/10 border border-red-500/30 w-fit mx-auto mb-4">
-            <AlertTriangle className="h-8 w-8 text-red-400" />
-          </div>
-          <h2 className="text-lg font-bold text-foreground mb-2">Unable to Load Dashboard</h2>
-          <p className="text-sm text-muted-foreground mb-5">{errorMessage}</p>
-          <div className="flex gap-3 justify-center">
-            <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
-            <Button variant="primary" onClick={() => navigate('/scan')} icon={<Play className="h-4 w-4" />}>
-              Start Scan
-            </Button>
-          </div>
-        </Card>
-      </div>
+      <Fragment>
+        <div className="space-y-6">
+          <Card className="p-8 text-center" hover={false}>
+            <div className="p-3 rounded-full bg-red-500/10 border border-red-500/30 w-fit mx-auto mb-4">
+              <AlertTriangle className="h-8 w-8 text-red-400" />
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-2">Unable to Load Dashboard</h2>
+            <p className="text-sm text-muted-foreground mb-5">{errorMessage}</p>
+            <div className="flex gap-3 justify-center">
+              <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
+              <Button variant="primary" onClick={() => setShowScanPanel(true)} icon={<Play className="h-4 w-4" />}>
+                Start Scan
+              </Button>
+            </div>
+          </Card>
+        </div>
+        <InlineScanPanel
+          isOpen={showScanPanel}
+          onClose={() => setShowScanPanel(false)}
+          onScanComplete={(scanId) => { setShowScanPanel(false); navigate(`/scans/${scanId}`) }}
+        />
+      </Fragment>
     )
   }
 
@@ -230,7 +219,7 @@ export function Dashboard() {
   // Analytics dashboard
   return (
     <>
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Header */}
         <motion.div
           className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -288,89 +277,121 @@ export function Dashboard() {
           </div>
         </motion.div>
 
-        {/* KPI Row */}
-        <KpiRow
-          items={[
-            {
-              title: 'Total Repositories',
-              value: totalRepositories.toString(),
-              subtitle: 'Monitored repositories',
-              icon: FolderGit2,
-              trend: totalRepositories > 0 ? 'up' : 'neutral',
-              trendValue: `${totalRepositories} total`,
-            },
-            {
-              title: 'Total Scans',
-              value: totalScans.toString(),
-              subtitle: 'Completed security scans',
-              icon: Activity,
-              trend: totalScans > 0 ? 'up' : 'neutral',
-              trendValue: `${totalScans} scans`,
-            },
-            {
-              title: 'Critical Issues',
-              value: criticalIssues.toString(),
-              subtitle: criticalIssues > 0 ? 'Needs immediate attention' : 'No critical issues',
-              icon: AlertTriangle,
-              trend: criticalIssues > 0 ? 'down' : 'up',
-              trendValue: `${criticalIssues} open`,
-              severity: {
-                critical: criticalIssues,
-                high: Math.round(criticalIssues * 0.6),
-                medium: Math.round(criticalIssues * 1.5),
-                low: Math.round(criticalIssues * 2),
-              },
-              accentColor: criticalIssues > 0 ? 'text-red-400' : 'text-green-400',
-            },
-            {
-              title: 'AI Suggestions',
-              value: aiSuggestions.toString(),
-              subtitle: 'AI-powered remediation',
-              icon: Brain,
-              trend: aiSuggestions > 0 ? 'up' : 'neutral',
-              trendValue: `${aiSuggestions} active`,
-              accentColor: 'text-primary',
-            },
-          ]}
-        />
+        {/* Security Overview Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+              Security Overview
+            </h2>
+          </div>
 
-        {/* Security Overview */}
-        <SecurityOverview
-          securityScore={securityScore}
-          hasSecurityScore={hasSecurityScore}
-          riskScore={riskScore}
-          criticalIssues={criticalIssues}
-          repositoriesAtRisk={repositoriesAtRisk}
-          scoreDelta={scoreDelta}
-          newCriticalFindings={newCriticalFindings}
-          fixedFindingsEstimate={fixedFindingsEstimate}
-          isLoading={isLoading}
-        />
-
-        {/* Findings Chart */}
-        <FindingsChart data={findingsData} />
-
-        {/* Risk Repositories & Activity Feed */}
-        <div className="grid gap-5 lg:grid-cols-2">
-          <RiskTable
-            repositories={repositories}
-            isLoading={repositoriesLoading}
-            getScore={getRepositoryScore}
-            getCritical={getRepositoryCriticalCount}
-            getHigh={getRepositoryHighCount}
-            formatDate={formatRelativeDate}
+          <SecurityOverview
+            securityScore={securityScore}
+            hasSecurityScore={hasSecurityScore}
+            criticalIssues={criticalIssues}
+            repositoriesAtRisk={repositoriesAtRisk}
+            scoreDelta={scoreDelta}
+            isLoading={isLoading}
           />
-          <ActivityFeed
-            scans={recentScans}
-            isLoading={scansLoading}
+
+          <KpiRow
+            items={[
+              {
+                title: 'Total Repositories',
+                value: totalRepositories.toString(),
+                subtitle: 'Monitored repositories',
+                icon: FolderGit2,
+                trend: totalRepositories > 0 ? 'up' : 'neutral',
+                trendValue: `${totalRepositories} total`,
+              },
+              {
+                title: 'Total Scans',
+                value: totalScans.toString(),
+                subtitle: 'Completed security scans',
+                icon: Activity,
+                trend: totalScans > 0 ? 'up' : 'neutral',
+                trendValue: `${totalScans} scans`,
+              },
+              {
+                title: 'AI Suggestions',
+                value: aiSuggestions.toString(),
+                subtitle: 'AI-powered remediation',
+                icon: Brain,
+                trend: aiSuggestions > 0 ? 'up' : 'neutral',
+                trendValue: `${aiSuggestions} active`,
+                accentColor: 'text-primary',
+              },
+            ]}
+            className="lg:grid-cols-3"
           />
         </div>
 
-        {/* AI Recommendations */}
+        {/* Recent Activity Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+              Recent Activity
+            </h2>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <RiskTable
+              repositories={repositories}
+              isLoading={repositoriesLoading}
+              getScore={getRepositoryScore}
+              getCritical={getRepositoryCriticalCount}
+              getHigh={getRepositoryHighCount}
+              formatDate={formatRelativeDate}
+            />
+            <ActivityFeed
+              scans={recentScans}
+              isLoading={scansLoading}
+            />
+          </div>
+        </div>
+
+        {/* AI Suggestions */}
         <AiSuggestions
           suggestions={suggestions}
           isLoading={suggestionsLoading}
         />
+
+        {/* Quick Actions Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Play className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+              Quick Actions
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="primary"
+              onClick={() => setShowScanPanel(true)}
+              icon={<Play className="h-4 w-4" />}
+              glow
+            >
+              Start New Scan
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/repositories')}
+              icon={<FolderGit2 className="h-4 w-4" />}
+            >
+              Connect Repository
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/reports')}
+              icon={<FileText className="h-4 w-4" />}
+            >
+              View Reports
+            </Button>
+          </div>
+        </div>
       </div>
 
       <InlineScanPanel

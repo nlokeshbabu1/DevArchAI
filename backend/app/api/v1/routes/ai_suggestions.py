@@ -1,19 +1,18 @@
 """AI Suggestion API routes - Production Grade."""
 
-import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user, get_optional_user
+from app.core.security import get_optional_user
+from app.core.validators import parse_uuid
 from app.db.session import get_db
 from app.models.ai_suggestion import AISuggestion, SuggestionStatus
 from app.models.finding import Finding
-from app.models.scan import Scan, ScanStatus
+from app.models.scan import Scan
 from app.models.user import User
 from app.schemas.ai_suggestion import (
     AISuggestionListResponse,
@@ -26,11 +25,36 @@ from app.schemas.ai_suggestion import (
 from app.services.feature_gating import FeatureGatingService
 from app.services.fix_generation import get_fix_generation_service
 from app.services.github_integration import get_github_integration_service
-from app.workers.tasks.scan_repository import scan_repository_task
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/suggestions", tags=["AI Suggestions"])
+
+
+def suggestion_to_response(s: AISuggestion) -> AISuggestionResponse:
+    """Convert an AISuggestion record to the response format."""
+    return AISuggestionResponse(
+        id=str(s.id),
+        finding_id=str(s.finding_id),
+        scan_id=str(s.scan_id),
+        title=s.title or "",
+        description=s.description or "",
+        severity=s.severity.value if hasattr(s.severity, 'value') else str(s.severity),
+        confidence=s.confidence or 0.9,
+        category=s.category.value if hasattr(s.category, 'value') else str(s.category),
+        fix_type=s.fix_type.value if hasattr(s.fix_type, 'value') else str(s.fix_type),
+        file_path=s.file_path or "",
+        line_number=s.line_number,
+        fix_code=s.fix_code,
+        auto_fix_available=s.auto_fix_available or False,
+        metadata=s.metadata if isinstance(s.metadata, dict) else None,
+        status=s.status.value if hasattr(s.status, 'value') else str(s.status),
+        applied_at=s.applied_at,
+        pr_url=s.pr_url,
+        pr_number=s.pr_number,
+        created_at=s.created_at or datetime.utcnow(),
+        updated_at=s.updated_at or datetime.utcnow(),
+    )
 
 
 async def _verify_suggestion_ownership(
@@ -39,6 +63,7 @@ async def _verify_suggestion_ownership(
     db: AsyncSession,
 ) -> AISuggestion:
     """Verify the current user owns the scan associated with this suggestion."""
+    parse_uuid(suggestion_id, "suggestion_id")
     result = await db.execute(select(AISuggestion).where(AISuggestion.id == suggestion_id))
     suggestion = result.scalar_one_or_none()
 
@@ -56,9 +81,9 @@ async def _verify_suggestion_ownership(
 
 @router.get("", response_model=AISuggestionListResponse)
 async def list_all_suggestions(
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    status_filter: str | None = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """List ALL AI suggestions from all user's scans.
 
@@ -124,30 +149,6 @@ async def list_all_suggestions(
             ))
 
     # Convert AISuggestion records to response format (handle UUID -> string conversion)
-    def suggestion_to_response(s):
-        return AISuggestionResponse(
-            id=str(s.id),
-            finding_id=str(s.finding_id),
-            scan_id=str(s.scan_id),
-            title=s.title or "",
-            description=s.description or "",
-            severity=s.severity.value if hasattr(s.severity, 'value') else str(s.severity),
-            confidence=s.confidence or 0.9,
-            category=s.category.value if hasattr(s.category, 'value') else str(s.category),
-            fix_type=s.fix_type.value if hasattr(s.fix_type, 'value') else str(s.fix_type),
-            file_path=s.file_path or "",
-            line_number=s.line_number,
-            fix_code=s.fix_code,
-            auto_fix_available=s.auto_fix_available or False,
-            metadata=s.metadata if isinstance(s.metadata, dict) else None,
-            status=s.status.value if hasattr(s.status, 'value') else str(s.status),
-            applied_at=s.applied_at,
-            pr_url=s.pr_url,
-            pr_number=s.pr_number,
-            created_at=s.created_at or datetime.utcnow(),
-            updated_at=s.updated_at or datetime.utcnow(),
-        )
-
     all_suggestions = [suggestion_to_response(s) for s in suggestions] + finding_suggestions
 
     return AISuggestionListResponse(
@@ -160,31 +161,32 @@ async def list_all_suggestions(
 @router.get("/{scan_id}", response_model=AISuggestionListResponse)
 async def list_suggestions(
     scan_id: str,
-    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    status_filter: str | None = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """List AI suggestions for a scan."""
     # Verify scan exists and user has access
+    parse_uuid(scan_id, "scan_id")
     scan_result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = scan_result.scalar_one_or_none()
-    
+
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
+
     # Check access (public scans or user's own scans)
     if scan.user_id and scan.user_id != (current_user.id if current_user else None):
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Build query
     query = select(AISuggestion).where(AISuggestion.scan_id == scan_id)
-    
+
     if status_filter:
         query = query.where(AISuggestion.status == status_filter)
-    
+
     result = await db.execute(query)
     suggestions = result.scalars().all()
-    
+
     return AISuggestionListResponse(
         suggestions=[suggestion_to_response(s) for s in suggestions],
         total=len(suggestions),
@@ -196,7 +198,7 @@ async def list_suggestions(
 async def get_suggestion(
     suggestion_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Get a specific AI suggestion."""
     if not current_user:
@@ -211,7 +213,7 @@ async def apply_fix(
     suggestion_id: str,
     request: ApplyFixRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Apply fix code to file.
@@ -221,20 +223,20 @@ async def apply_fix(
     # Check plan gating
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     user_plan = getattr(current_user, 'subscription_plan', 'free')
     if user_plan not in ['pro', 'enterprise']:
         raise HTTPException(
             status_code=403,
             detail=f"Apply fix requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
-    
+
     # Get suggestion with ownership verification
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
-    
+
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
-    
+
     if request.dry_run:
         return ApplyFixResponse(
             success=True,
@@ -242,13 +244,13 @@ async def apply_fix(
             file_path=suggestion.file_path,
             backup_path=None,
         )
-    
+
     # In a real implementation, this would:
     # 1. Clone the repository
     # 2. Apply the fix to the file
     # 3. Create a backup
     # 4. Commit the changes
-    
+
     # For now, return success with mock data
     return ApplyFixResponse(
         success=True,
@@ -263,7 +265,7 @@ async def create_pr(
     suggestion_id: str,
     request: CreatePRRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Create GitHub PR with fix.
@@ -273,30 +275,30 @@ async def create_pr(
     # Check plan gating
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     user_plan = getattr(current_user, 'subscription_plan', 'free')
     if user_plan not in ['pro', 'enterprise']:
         raise HTTPException(
             status_code=403,
             detail=f"Create PR requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
-    
+
     # Get suggestion with ownership verification
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
-    
+
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
-    
+
     # Get scan to get repo URL
     scan_result = await db.execute(select(Scan).where(Scan.id == suggestion.scan_id))
     scan = scan_result.scalar_one_or_none()
-    
+
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
+
     # Create PR using GitHub integration
     github_service = get_github_integration_service()
-    
+
     pr_result = await github_service.apply_fix_and_create_pr(
         repo_url=scan.repository_url,
         file_path=suggestion.file_path,
@@ -304,16 +306,16 @@ async def create_pr(
         finding_title=suggestion.title,
         branch_name=request.branch_name,
     )
-    
+
     if not pr_result["success"]:
         raise HTTPException(status_code=500, detail=pr_result.get("error", "Failed to create PR"))
-    
+
     # Update suggestion with PR info
     suggestion.status = SuggestionStatus.IN_PROGRESS
     suggestion.pr_url = pr_result["pr_url"]
     suggestion.pr_number = pr_result["pr_number"]
     await db.commit()
-    
+
     return CreatePRResponse(
         success=True,
         pr_url=pr_result["pr_url"],
@@ -327,7 +329,7 @@ async def create_pr(
 async def ignore_suggestion(
     suggestion_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Mark suggestion as ignored."""
     if not current_user:
@@ -336,7 +338,7 @@ async def ignore_suggestion(
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     suggestion.status = SuggestionStatus.IGNORED
     await db.commit()
-    
+
     return {"success": True, "message": "Suggestion marked as ignored"}
 
 
@@ -344,7 +346,7 @@ async def ignore_suggestion(
 async def mark_fixed(
     suggestion_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Mark suggestion as fixed."""
     if not current_user:
@@ -353,7 +355,7 @@ async def mark_fixed(
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
     suggestion.status = SuggestionStatus.FIXED
     await db.commit()
-    
+
     return {"success": True, "message": "Suggestion marked as fixed"}
 
 
@@ -361,19 +363,20 @@ async def mark_fixed(
 async def generate_suggestion(
     finding_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """Generate AI suggestion for a finding."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    parse_uuid(finding_id, "finding_id")
     # Get finding with ownership verification
     result = await db.execute(select(Finding).where(Finding.id == finding_id))
     finding = result.scalar_one_or_none()
-    
+
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
-    
+
     # Verify finding belongs to user's scan
     scan_result = await db.execute(
         select(Scan).where(Scan.id == finding.scan_id, Scan.user_id == current_user.id)
@@ -381,15 +384,15 @@ async def generate_suggestion(
     scan = scan_result.scalar_one_or_none()
     if not scan:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Check if suggestion already exists
     existing = await db.execute(select(AISuggestion).where(AISuggestion.finding_id == finding_id))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Suggestion already exists for this finding")
-    
+
     # Generate fix code
     fix_service = get_fix_generation_service()
-    
+
     # Determine fix type from file path
     file_path = finding.file_path or ""
     if ".tf" in file_path:
@@ -403,7 +406,7 @@ async def generate_suggestion(
             fix_type = "ci_cd"
     else:
         fix_type = "general"
-    
+
     fix_result = fix_service.generate_fix(
         finding={
             "rule_id": finding.rule_id,
@@ -412,10 +415,10 @@ async def generate_suggestion(
         },
         fix_type=fix_type,
     )
-    
+
     if not fix_result["success"]:
         raise HTTPException(status_code=500, detail=fix_result.get("error", "Failed to generate fix"))
-    
+
     # Create suggestion
     suggestion = AISuggestion(
         finding_id=finding_id,
@@ -432,7 +435,7 @@ async def generate_suggestion(
         auto_fix_available=True,
         status=SuggestionStatus.OPEN,
     )
-    
+
     db.add(suggestion)
     await db.commit()
     await db.refresh(suggestion)
@@ -449,7 +452,7 @@ async def generate_suggestion(
 async def copy_fix(
     suggestion_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Get fix code for copying.
@@ -459,7 +462,7 @@ async def copy_fix(
     """
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     # Check plan gating - FREE users cannot copy fixes
     if not FeatureGatingService.can_copy_fix(current_user):
         user_plan = getattr(current_user, 'subscription_plan', 'free')
@@ -467,13 +470,13 @@ async def copy_fix(
             status_code=403,
             detail=f"Copy fix requires Plus, Pro, or Enterprise plan. Current plan: {user_plan}",
         )
-    
+
     # Get suggestion with ownership verification
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
-    
+
     if not suggestion.fix_code:
         raise HTTPException(status_code=400, detail="No fix code available")
-    
+
     return {
         "success": True,
         "fix_code": suggestion.fix_code,
@@ -487,7 +490,7 @@ async def rescan_after_fix(
     suggestion_id: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Trigger re-scan after applying fix to verify resolution.
@@ -496,28 +499,28 @@ async def rescan_after_fix(
     """
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     user_plan = getattr(current_user, 'subscription_plan', 'free')
     if user_plan not in ['pro', 'enterprise']:
         raise HTTPException(
             status_code=403,
             detail=f"Re-scan requires Pro or Enterprise plan. Current plan: {user_plan}",
         )
-    
+
     # Get suggestion with ownership verification
     suggestion = await _verify_suggestion_ownership(suggestion_id, current_user, db)
-    
+
     # Get scan
     scan_result = await db.execute(select(Scan).where(Scan.id == suggestion.scan_id))
     scan = scan_result.scalar_one_or_none()
-    
+
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
+
     # Update suggestion status to IN_PROGRESS
     suggestion.status = SuggestionStatus.IN_PROGRESS
     await db.commit()
-    
+
     # Trigger re-scan as background task
     try:
         # In production, this would use Celery
@@ -527,7 +530,7 @@ async def rescan_after_fix(
             scan_id=str(scan.id),
             suggestion_id=str(suggestion.id),
         )
-        
+
         return {
             "success": True,
             "message": "Re-scan initiated",

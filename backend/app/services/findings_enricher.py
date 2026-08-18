@@ -9,7 +9,7 @@ Now supports:
 import difflib
 import hashlib
 import json
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -3450,7 +3450,7 @@ jobs:
 class AIFixEnrichmentService:
     """AI-powered fix enrichment service with caching."""
 
-    def __init__(self, llm_provider: Optional[BaseLLMProvider] = None):
+    def __init__(self, llm_provider: BaseLLMProvider | None = None):
         self.llm_provider = llm_provider
 
         # Determine if we should use mock based on provider and API keys
@@ -3499,7 +3499,7 @@ class AIFixEnrichmentService:
         """
         rule_id = finding.get("rule_id", "")
         logger.info("Generating fix", rule_id=rule_id, use_mock=self._use_mock, provider=settings.LLM_PROVIDER)
-        
+
         # Check cache first
         cache_key = self._get_cache_key(
             rule_id,
@@ -3525,24 +3525,24 @@ class AIFixEnrichmentService:
 
         # Cache result
         self._cache[cache_key] = result
-        
+
         # Generate code diff if we have file content
         if file_content and result.get("fix_code"):
             result["before_code"] = file_content
             result["after_code"] = result.get("fix_code", "")
             result["unified_diff"] = self._generate_unified_diff(
-                file_content, 
+                file_content,
                 result.get("fix_code", ""),
                 finding.get("file_path", "file")
             )
-        
+
         return result
-    
+
     def _generate_unified_diff(self, before: str, after: str, filename: str = "file") -> str:
         """Generate unified diff between before and after code."""
         before_lines = before.splitlines(keepends=True)
         after_lines = after.splitlines(keepends=True)
-        
+
         diff = difflib.unified_diff(
             before_lines,
             after_lines,
@@ -3550,7 +3550,7 @@ class AIFixEnrichmentService:
             tofile=f"b/{filename}",
             n=3
         )
-        
+
         return ''.join(diff)
 
     async def _generate_ai_fix(self, finding: dict[str, Any], file_content: str) -> dict[str, Any]:
@@ -3614,7 +3614,6 @@ Respond ONLY with the JSON, no other text."""
 
     def _parse_ai_response(self, response: str, finding: dict[str, Any]) -> dict[str, Any]:
         """Parse AI response into structured format."""
-        import json
         import re
 
         try:
@@ -3671,7 +3670,7 @@ class FindingsEnricher:
 
     def __init__(self):
         self._fix_examples = FIX_EXAMPLES
-        self._ai_service: Optional[AIFixEnrichmentService] = None
+        self._ai_service: AIFixEnrichmentService | None = None
 
     def _get_ai_service(self) -> AIFixEnrichmentService:
         """Get or create AI enrichment service."""
@@ -3747,7 +3746,7 @@ class FindingsEnricher:
                 finding.best_practices = ai_fix.get("best_practices", [])
             finding.confidence = ai_fix.get("confidence", 0.8)
             finding.ai_generated = True  # Mark as AI-generated
-            
+
             # Add code diff fields for Code Diff Viewer
             if ai_fix.get("before_code"):
                 finding.metadata['before_code'] = ai_fix.get("before_code")
@@ -3790,7 +3789,7 @@ class FindingsEnricher:
             Finding with enrichment fields populated
         """
         logger.debug(f"Static enrichment: rule={finding.rule_id}")
-        
+
         # Look up fix example by rule_id
         fix_data = self._fix_examples.get(finding.rule_id, {})
 
@@ -3822,7 +3821,7 @@ class FindingsEnricher:
         if not finding.confidence and "confidence" in fix_data:
             finding.confidence = fix_data["confidence"]
             logger.debug(f"Enriched {finding.rule_id} with confidence")
-        
+
         # Backwards compatibility: populate ai_explanation from summary
         if not finding.ai_explanation and finding.summary:
             finding.ai_explanation = finding.summary
@@ -3837,7 +3836,7 @@ class FindingsEnricher:
         # Mark as static (not AI-generated)
         if not hasattr(finding, 'ai_generated'):
             finding.ai_generated = False
-        
+
         logger.info(f"📝 Static enrichment complete: rule={finding.rule_id}, ai_generated={finding.ai_generated}")
 
         return finding

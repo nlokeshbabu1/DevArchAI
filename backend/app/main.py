@@ -28,6 +28,15 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting DevArchAI backend", version=settings.VERSION, environment=settings.ENVIRONMENT)
 
+    # Validate AWS identity (fails with sys.exit(1) if running as root)
+    try:
+        from app.cloud.aws.sts import validate_startup_identity
+        validate_startup_identity()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        logger.warning(f"AWS identity check failed (non-fatal): {exc}")
+
     # Initialize database
     await init_db()
     logger.info("Database initialized")
@@ -35,6 +44,39 @@ async def lifespan(app: FastAPI):
     # Store engine reference for health checks
     from app.db.session import get_engine
     app.state.db_engine = get_engine()
+
+    # Initialize Knowledge System (providers, cache, metrics)
+    try:
+        from app.knowledge.registration import initialize_knowledge_system
+        knowledge_registry = await initialize_knowledge_system()
+        app.state.knowledge_registry = knowledge_registry
+        logger.info("Knowledge system initialized successfully")
+
+        # Start periodic cache cleanup task
+        from app.knowledge.cache import get_knowledge_cache
+        cache = get_knowledge_cache()
+        cache.start_cleanup_task(interval_seconds=300)
+        logger.info("Knowledge cache cleanup task started")
+    except Exception as e:
+        logger.warning(f"Knowledge system initialization failed (non-fatal): {e}")
+
+    # PHASE 1: Initialize RAG knowledge layer (seed from technology inventory)
+    try:
+        if settings.RAG_ENABLED:
+            from app.rag.service import get_rag_service
+            from app.services.metrics import set_knowledge_version
+
+            rag = get_rag_service()
+            set_knowledge_version(rag.knowledge_version)
+            if settings.RAG_SEED_ON_STARTUP:
+                seeded = await rag.seed_from_inventory()
+                logger.info("RAG knowledge layer ready", knowledge_version=rag.knowledge_version, seeded=seeded)
+            else:
+                logger.info("RAG knowledge layer ready (seeding skipped)", knowledge_version=rag.knowledge_version)
+        else:
+            logger.info("RAG knowledge layer disabled (RAG_ENABLED=false)")
+    except Exception as e:
+        logger.warning(f"RAG knowledge layer initialization failed (non-fatal): {e}")
 
     # PHASE 2C: Initialize Redis cache (NEW - Production Grade)
     try:
@@ -56,11 +98,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"WebSocket manager initialization failed: {e}")
 
+    # Start scan timeout detector (marks stuck scans as failed)
+    try:
+        from app.services.scan_timeout import start_timeout_detector
+        await start_timeout_detector()
+        logger.info("Scan timeout detector started")
+    except Exception as e:
+        logger.warning(f"Scan timeout detector failed to start: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down DevArchAI backend")
-    
+
+    # Cleanup knowledge cache refresh tasks
+    if hasattr(app.state, 'knowledge_registry'):
+        try:
+            from app.knowledge.cache import get_knowledge_cache
+            cache = get_knowledge_cache()
+            # Stop cleanup task
+            cache.stop_cleanup_task()
+            # Cancel any pending refresh tasks
+            for task in cache._refresh_tasks.values():
+                if not task.done():
+                    task.cancel()
+            logger.info("Knowledge cache cleanup complete")
+        except Exception as e:
+            logger.warning(f"Knowledge cache cleanup failed: {e}")
+
     # Close Redis connection
     if hasattr(app.state, 'cache'):
         try:
@@ -68,7 +133,7 @@ async def lifespan(app: FastAPI):
             logger.info("Redis cache closed")
         except Exception as e:
             logger.warning(f"Error closing Redis cache: {e}")
-    
+
     await close_db()
 
 
@@ -112,7 +177,11 @@ def create_app() -> FastAPI:
 
     # Enterprise Security Middleware
     try:
-        from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, SessionValidationMiddleware
+        from app.middleware.security import (
+            RateLimitMiddleware,
+            SecurityHeadersMiddleware,
+            SessionValidationMiddleware,
+        )
         app.add_middleware(SecurityHeadersMiddleware)
         app.add_middleware(RateLimitMiddleware)
         app.add_middleware(SessionValidationMiddleware)
@@ -139,15 +208,40 @@ def create_app() -> FastAPI:
 
     # PHASE 2B: Add WebSocket endpoint (NEW - Production Grade)
     try:
-        from app.websockets.scan_progress import scan_progress_websocket
         from fastapi import WebSocket
+
+        from app.websockets.scan_progress import scan_progress_websocket
 
         @app.websocket("/ws/scan/{scan_id}")
         async def websocket_scan_progress(websocket: WebSocket, scan_id: str):
             """WebSocket endpoint for real-time scan progress updates."""
             await scan_progress_websocket(websocket, scan_id)
-        
+
         logger.info("WebSocket endpoint registered at /ws/scan/{scan_id}")
+    except Exception as e:
+        logger.warning(f"WebSocket endpoint registration failed: {e}")
+
+    # PHASE 2B: Add Cloud WebSocket endpoint (NEW - Production Grade)
+    try:
+        from fastapi import WebSocket as _WS
+
+        from app.cloud.websocket_manager import cloud_ws_manager
+
+        @app.websocket("/ws/cloud/{connection_id}")
+        async def websocket_cloud_progress(websocket: _WS, connection_id: str):
+            """WebSocket endpoint for real-time cloud scan progress updates."""
+            connected = await cloud_ws_manager.connect(connection_id, websocket)
+            if not connected:
+                return
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    if data == "ping":
+                        await websocket.send_text('{"type":"pong","data":{}}')
+            except Exception:
+                await cloud_ws_manager.disconnect(connection_id, websocket)
+
+        logger.info("WebSocket endpoint registered at /ws/cloud/{connection_id}")
     except Exception as e:
         logger.warning(f"WebSocket endpoint registration failed: {e}")
 
@@ -168,12 +262,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/ready")
     async def readiness_check():
-        """Readiness check - verifies database connectivity."""
+        """Readiness check - verifies database connectivity and migration state."""
         try:
             from sqlalchemy import text
             async with app.state.db_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
-            return {"status": "ready", "database": "connected"}
         except Exception as e:
             logger.error("Readiness check failed", error=str(e))
             from fastapi.responses import JSONResponse
@@ -181,6 +274,21 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "not ready", "database": "disconnected", "error": str(e)}
             )
+
+        # Check migration status (sync, run in thread executor)
+        import asyncio
+
+        from app.db.migrate import current_revision, pending_migrations
+
+        rev = await asyncio.to_thread(current_revision)
+        pending = await asyncio.to_thread(pending_migrations)
+
+        return {
+            "status": "ready",
+            "database": "connected",
+            "migration_revision": rev,
+            "pending_migrations": pending,
+        }
 
     return app
 

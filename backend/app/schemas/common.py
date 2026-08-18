@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -61,4 +61,4 @@ class BulkOperationResponse(BaseModel):
 
     success_count: int
     failure_count: int
-    errors: Optional[list[dict]] = None
+    errors: list[dict] | None = None

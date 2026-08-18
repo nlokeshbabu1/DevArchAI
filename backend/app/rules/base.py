@@ -36,17 +36,31 @@ class RuleFinding:
         category: Category,
         description: str,
         recommendation: str,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
-        resource_name: Optional[str] = None,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        resource_name: str | None = None,
         confidence: float = 1.0,
-        metadata: Optional[dict[str, Any]] = None,
-        ai_explanation: Optional[str] = None,
-        impact_analysis: Optional[str] = None,
-        documentation_url: Optional[str] = None,
-        risk: Optional[str] = None,
-        impact: Optional[str] = None,
-        fix_example: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        ai_explanation: str | None = None,
+        impact_analysis: str | None = None,
+        documentation_url: str | None = None,
+        risk: str | None = None,
+        impact: str | None = None,
+        fix_example: str | None = None,
+        summary: str | None = None,
+        fix_code: str | None = None,
+        full_example: str | None = None,
+        best_practices: list[str] | None = None,
+        ai_generated: bool = False,
+        scanner_name: str | None = None,
+        scanner_rule_id: str | None = None,
+        package: str | None = None,
+        installed_version: str | None = None,
+        fixed_version: str | None = None,
+        cve: str | None = None,
+        cwe: str | None = None,
+        references: list[str] | None = None,
+        evidence: str | None = None,
     ):
         self.rule_id = rule_id
         self.rule_name = rule_name
@@ -68,6 +82,22 @@ class RuleFinding:
         self.risk = risk
         self.impact = impact
         self.fix_example = fix_example
+        # Fields populated by the findings enricher
+        self.summary = summary
+        self.fix_code = fix_code
+        self.full_example = full_example
+        self.best_practices = best_practices or []
+        self.ai_generated = ai_generated
+        # Scanner metadata fields (for external scanner integration)
+        self.scanner_name = scanner_name
+        self.scanner_rule_id = scanner_rule_id
+        self.package = package
+        self.installed_version = installed_version
+        self.fixed_version = fixed_version
+        self.cve = cve
+        self.cwe = cwe
+        self.references = references or []
+        self.evidence = evidence
 
     def to_dict(self) -> dict[str, Any]:
         """Convert finding to dictionary."""
@@ -89,6 +119,20 @@ class RuleFinding:
             "risk": self.risk,
             "impact": self.impact,
             "fix_example": self.fix_example,
+            "summary": self.summary,
+            "fix_code": self.fix_code,
+            "full_example": self.full_example,
+            "best_practices": self.best_practices,
+            "ai_generated": self.ai_generated,
+            "scanner_name": self.scanner_name,
+            "scanner_rule_id": self.scanner_rule_id,
+            "package": self.package,
+            "installed_version": self.installed_version,
+            "fixed_version": self.fixed_version,
+            "cve": self.cve,
+            "cwe": self.cwe,
+            "references": self.references,
+            "evidence": self.evidence,
         }
 
     def __repr__(self) -> str:
@@ -107,8 +151,8 @@ class Rule:
         severity: Severity,
         category: Category,
         enabled: bool = True,
-        tags: Optional[list[str]] = None,
-        file_types: Optional[list[str]] = None,
+        tags: list[str] | None = None,
+        file_types: list[str] | None = None,
     ):
         self.id = id
         self.name = name
@@ -172,7 +216,7 @@ class RuleRegistry:
             cls._instance._rules_by_file_type = {}
         return cls._instance
 
-    def register(self, rule_class: type[BaseRule], file_types: Optional[list[str]] = None) -> None:
+    def register(self, rule_class: type[BaseRule], file_types: list[str] | None = None) -> None:
         """
         Register a rule class.
 
@@ -223,7 +267,7 @@ class RuleRegistry:
 
         return []
 
-    def get_rule(self, rule_id: str) -> Optional[BaseRule]:
+    def get_rule(self, rule_id: str) -> BaseRule | None:
         """Get a rule by ID."""
         return self._rules.get(rule_id)
 
@@ -243,7 +287,7 @@ class RuleRegistry:
         self,
         resources: list[dict[str, Any]],
         file_path: str,
-        file_type: Optional[str] = None,
+        file_type: str | None = None,
     ) -> list[RuleFinding]:
         """
         Evaluate all rules against resources.
@@ -306,7 +350,7 @@ class RuleRegistry:
 registry = RuleRegistry()
 
 
-def register_rule(file_types: Optional[list[str]] = None):
+def register_rule(file_types: list[str] | None = None):
     """
     Decorator to register a rule.
 

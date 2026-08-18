@@ -509,7 +509,8 @@ class TestFullPipelineIntegration:
             ScanProgressWebSocketManager
         ])
 
-    def test_pipeline_order(self):
+    @pytest.mark.asyncio
+    async def test_pipeline_order(self):
         """Test pipeline executes in correct order."""
         from app.services.findings_enricher import enrich_findings_with_ai
         from app.services.findings_deduplicator import deduplicate_findings
@@ -539,10 +540,7 @@ class TestFullPipelineIntegration:
                 "confidence": 0.9
             })
 
-            import asyncio
-            enriched = asyncio.get_event_loop().run_until_complete(
-                enrich_findings_with_ai([finding])
-            )
+            enriched = await enrich_findings_with_ai([finding])
 
             assert len(enriched) == 1
             assert enriched[0].summary is not None
