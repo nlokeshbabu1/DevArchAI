@@ -26,6 +26,7 @@ from app.models.scan import Scan, ScanStatus
 from app.models.user import User
 from app.services.scan_progress_store import get_scan_progress_store
 from app.services.technology_classifier import classify_technology
+from app.utils.github_branch import resolve_repository_branch
 from app.workers.tasks.scan_repository import SyncScanService
 
 logger = structlog.get_logger(__name__)
@@ -42,8 +43,8 @@ class UnifiedScanRequest(BaseModel):
         min_length=10,
         max_length=500,
     )
-    branch: str = Field(
-        default="main",
+    branch: str | None = Field(
+        default=None,
         max_length=100,
     )
     include_ai_explanations: bool = True
@@ -56,8 +57,10 @@ class UnifiedScanRequest(BaseModel):
 
     @field_validator("branch")
     @classmethod
-    def validate_branch(cls, v: str) -> str:
+    def validate_branch(cls, v: str | None) -> str | None:
         """Validate branch name format."""
+        if v is None:
+            return None
         return validate_branch(v)
 
 
@@ -236,37 +239,27 @@ async def start_unified_scan(
                     "branch": existing_scan.branch,
                 }
 
-        # Auto-detect branch from GitHub API if not specified or is 'main'
-        branch = request.branch or "main"
-        if branch == "main":
-            try:
-                import httpx
+        # Resolve branch: request > repository default > error
+        branch_input = (request.branch or "").strip() or None
+        if not branch_input and repository and repository.default_branch:
+            branch_input = repository.default_branch.strip() or None
+        if not branch_input:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "branch is required. Pass branch in the request or set "
+                    "default_branch on the repository."
+                ),
+            )
 
-                # Extract owner and repo from URL
-                url_parts = repository_url.rstrip("/").split("/")
-                if len(url_parts) >= 2:
-                    owner = url_parts[-2]
-                    repo = url_parts[-1].replace(".git", "")
+        branch = resolve_repository_branch(
+            repository_url,
+            branch_input,
+            github_token=settings.GITHUB_TOKEN,
+        )
 
-                    # Try to get default branch from GitHub API
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        api_url = f"https://api.github.com/repos/{owner}/{repo}"
-                        headers = {}
-                        if settings.GITHUB_TOKEN:
-                            headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
-                        response = await client.get(api_url, headers=headers)
-                        if response.status_code == 200:
-                            repo_data = response.json()
-                            branch = repo_data.get("default_branch", "main")
-                            logger.info(f"✅ Detected default branch: {branch} for {owner}/{repo}")
-                        else:
-                            logger.warning(
-                                f"GitHub API returned {response.status_code}, using default: main"
-                            )
-            except Exception as e:
-                logger.warning(
-                    f"❌ Could not detect branch from GitHub API: {e}, using default: main"
-                )
+        if repository and repository.default_branch != branch:
+            repository.default_branch = branch
 
         # Create scan record FIRST so we always use a single scan_id everywhere
         scan_id_uuid = uuid4()
@@ -543,7 +536,9 @@ async def get_scan_results(
     parse_uuid(scan_id, "scan_id")
     # Get scan (eagerly load scanner_executions to avoid lazy-load in async context)
     result = await db.execute(
-        select(Scan).options(selectinload(Scan.scanner_executions)).where(Scan.id == scan_id)
+        select(Scan)
+        .options(selectinload(Scan.scanner_executions))
+        .where(Scan.id == scan_id)
     )
     scan = result.scalar_one_or_none()
 
@@ -670,16 +665,8 @@ async def get_scan_results(
         for f in findings if f.file_path and "/" in f.file_path
     })
 
-    # Derive repository_size from repository relationship (if available)
+    # repository_size is optional metadata; avoid lazy-loading scan.repository in async context
     repository_size = None
-    if scan.repository and hasattr(scan.repository, "size") and scan.repository.size:
-        size_kb = scan.repository.size
-        if size_kb >= 1048576:
-            repository_size = f"{size_kb / 1048576:.1f} GB"
-        elif size_kb >= 1024:
-            repository_size = f"{size_kb / 1024:.1f} MB"
-        else:
-            repository_size = f"{size_kb} KB"
 
     # Build per-technology file counts from detected_stack + findings.
     # Every file is assigned to its canonical technology (each file belongs

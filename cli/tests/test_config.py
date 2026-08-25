@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from devsec.config import Config, SecretStore
+from devsec.config import Config, SecretStore, api_url_misconfiguration_hint
 from devsec.utils.errors import UsageError
 
 
@@ -22,7 +22,8 @@ def test_env_overrides_config_file(tmp_path: Path):
 
 def test_config_file_falls_back_to_default(tmp_path: Path):
     cfg = Config(config_file=tmp_path / "config.toml", env={"DEVSEC_API_TOKEN": ""})
-    assert cfg.api_url == "http://localhost:8000"
+    assert cfg.api_url == "https://backend.devarchai.xyz"
+    assert cfg.frontend_url == "https://www.devarchai.xyz"
     assert cfg.api_url_source == "default"
 
 
@@ -134,7 +135,23 @@ def test_selected_project_roundtrip(tmp_path: Path):
     assert "selected_project" in body
 
 
-def test_env_credential_set_property(tmp_path: Path):
+def test_api_url_misconfiguration_hint_frontend_port():
+    hint = api_url_misconfiguration_hint("http://localhost:5174")
+    assert hint is not None
+    assert "5174" in hint
+    assert "backend.devarchai.xyz" in hint
+
+
+def test_config_rejects_frontend_as_api_url(tmp_path: Path):
+    cfg = Config(config_file=tmp_path / "config.toml", env={"DEVSEC_API_TOKEN": ""})
+    try:
+        cfg.set("api-url", "http://localhost:5174")
+    except UsageError as exc:
+        assert "backend API" in str(exc.message) or "backend API" in str(exc)
+    else:
+        raise AssertionError("expected UsageError")
+
+
     cfg = Config(
         config_file=tmp_path / "config.toml",
         env={"DEVSEC_API_KEY": "sk-env"},

@@ -812,47 +812,36 @@ export function CliContent() {
 
       <Steps>
         <Step number="1" title="Install the CLI">
-          <P>From the DevArchAI repository root, install the CLI in editable mode:</P>
-          <CodeBlock lang="bash" code={`# Clone the repository (if you have not already)
-git clone https://github.com/nlokeshbabu1/DevArchAI.git
-cd DevArchAI
+          <P>Install from PyPI — no repository clone required:</P>
+          <CodeBlock lang="bash" code={`pip install devsec
 
-# Optional: use a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
-
-# Install the devsec CLI
-pip install -e ./cli
-
-# Verify installation
+# Verify installation (works from any directory)
 devsec --version
 devsec --help`} />
           <Callout type="success" title="Expected output">
-            <code className="text-primary">devsec 0.1.0</code> and a list of commands including <code className="text-primary">auth</code>, <code className="text-primary">project</code>, and <code className="text-primary">scan</code>.
+            <code className="text-primary">devsec 0.1.0</code> and commands including <code className="text-primary">auth</code>, <code className="text-primary">project</code>, and <code className="text-primary">scan</code>.
           </Callout>
         </Step>
 
-        <Step number="2" title="Configure the API URL">
+        <Step number="2" title="Configure (optional)">
           <P>
-            Point the CLI at your DevArchAI backend. Use the API URL (not the frontend URL) for scan requests.
+            Production defaults are preconfigured. Override only for local development or custom deployments.
           </P>
           <Table
             headers={['Environment', 'API URL', 'Frontend URL']}
             rows={[
+              ['Production (default)', 'https://backend.devarchai.xyz', 'https://www.devarchai.xyz'],
               ['Local development', 'http://localhost:8000', 'http://localhost:5174'],
-              ['Production / SaaS', 'https://your-api-domain.com', 'https://your-app-domain.com'],
             ]}
           />
-          <P>Set configuration with the CLI or environment variables:</P>
-          <CodeBlock lang="bash" code={`# Option A — config file (~/.config/devsec/config.toml)
+          <CodeBlock lang="bash" code={`# Optional — only needed for local dev or custom API
 devsec config set api-url http://localhost:8000
 devsec config set frontend-url http://localhost:5174
 
-# Option B — environment variables (recommended for CI)
-export DEVSEC_API_URL=http://localhost:8000
-export DEVSEC_FRONTEND_URL=http://localhost:5174
+# Or use environment variables (recommended for CI)
+export DEVSEC_API_URL=https://backend.devarchai.xyz
+export DEVSEC_FRONTEND_URL=https://www.devarchai.xyz
 
-# Verify effective configuration
 devsec config show`} />
           <Callout type="warning" title="HTTPS in production">
             Non-local API URLs must use <code className="text-primary">https://</code>. For local HTTP only, set{' '}
@@ -862,7 +851,7 @@ devsec config show`} />
           <Ol>
             <li>Environment variables (<code className="text-primary">DEVSEC_API_URL</code>, <code className="text-primary">DEVSEC_API_KEY</code>)</li>
             <li>Config file at <code className="text-primary">~/.config/devsec/config.toml</code></li>
-            <li>Built-in default: <code className="text-primary">http://localhost:8000</code></li>
+            <li>Built-in production defaults (<code className="text-primary">https://backend.devarchai.xyz</code>)</li>
           </Ol>
         </Step>
 
@@ -896,10 +885,10 @@ devsec auth status --json`} />
           </Callout>
         </Step>
 
-        <Step number="4" title="Select a Project">
+        <Step number="4" title="Projects (optional)">
           <P>
-            Projects in the CLI map to repositories in the backend (<code className="text-primary">/api/v1/repositories</code>).
-            You must select a project before running <code className="text-primary">devsec scan</code>, unless you have exactly one project (auto-selected).
+            Projects map to repositories in the backend. You can scan without selecting a project by using{' '}
+            <code className="text-primary">devsec scan</code> inside a git repo or passing <code className="text-primary">--repo</code>.
           </P>
           <CodeBlock lang="bash" code={`# List your projects
 devsec project list
@@ -927,50 +916,59 @@ devsec project list`} />
 
         <Step number="5" title="Run a Scan">
           <P>
-            Start a scan for the selected project. The CLI calls{' '}
-            <code className="text-primary">POST /api/v1/scan/start</code>, waits for completion, and prints findings.
+            Start a scan from a git repository, an explicit URL, or a selected project. The CLI calls{' '}
+            <code className="text-primary">POST /api/v1/scan/start</code> and streams backend-driven progress.
           </P>
-          <CodeBlock lang="bash" code={`# Run a full scan (waits for completion)
+          <CodeBlock lang="bash" code={`# From inside a git repo (uses origin/upstream + current branch)
+cd your-repo
 devsec scan
 
-# Scan a specific project without saving selection
-devsec scan --project ae8f8620
+# Scan any public/private repo URL (auto-registers if needed)
+devsec scan --repo https://github.com/your-org/your-repo
 
-# Scan a branch other than default
-devsec scan --branch develop
+# Selected project or explicit project ID
+devsec project select ae8f8620
+devsec scan
+devsec scan --project ae8f8620 --branch develop
 
-# Start scan without waiting (returns scan_id immediately)
+# Start without waiting
 devsec scan --no-wait
 
-# Check progress and results later
+# Inspect later
 devsec scan status <scan-id>
 devsec scan results <scan-id>`} />
-          <P>Progress is streamed over WebSocket when using JWT bearer tokens. API keys use HTTP polling automatically.</P>
-          <CodeBlock lang="bash" code={`# Fail the command if HIGH or CRITICAL findings exist (default: --fail-on high)
+          <P>Progress uses WebSocket (API keys supported) with HTTP polling fallback. Technologies are detected dynamically by the backend.</P>
+          <CodeBlock lang="bash" code={`# Policy gate for CI (default: --fail-on high)
 devsec scan --fail-on high
 
-# Machine-readable output for scripts
-devsec scan --json --quiet`} />
+# JSON output
+devsec scan --json --quiet
+
+# Skip waiting for AI recommendations
+devsec scan --no-ai`} />
         </Step>
 
-        <Step number="6" title="Use in CI/CD">
+        <Step number="6" title="Scan lifecycle">
+          <P>The CLI and web app share the same backend scan model. A typical flow:</P>
+          <CodeBlock code={`Connect → Clone → Detect technologies → Scan → Findings → AI analysis → Results`} />
+          <P>Stages and technologies come from the backend — never hardcoded in the CLI.</P>
+        </Step>
+
+        <Step number="7" title="Use in CI/CD">
           <P>Use environment variables so the pipeline never prompts for input:</P>
-          <CodeBlock lang="bash" code={`export DEVSEC_API_URL=https://api.your-domain.com
+          <CodeBlock lang="bash" code={`export DEVSEC_API_URL=https://backend.devarchai.xyz
 export DEVSEC_API_KEY=sk-your-ci-key
-export DEVSEC_PROJECT_ID=ae8f8620-1234-5678-9abc-def012345678
 
 devsec auth status --json
-devsec project select "$DEVSEC_PROJECT_ID"
-devsec scan --json --quiet --no-color --fail-on high`} />
+devsec scan --repo https://github.com/your-org/your-repo --json --quiet --no-color --fail-on high`} />
           <P>Example GitHub Actions step:</P>
           <CodeBlock lang="yaml" code={`- name: DevArchAI security scan
   env:
-    DEVSEC_API_URL: https://api.your-domain.com
+    DEVSEC_API_URL: https://backend.devarchai.xyz
     DEVSEC_API_KEY: \${{ secrets.DEVSEC_API_KEY }}
   run: |
-    pip install -e ./cli
-    devsec project select \${{ vars.DEVSEC_PROJECT_ID }}
-    devsec scan --json --quiet --no-color --fail-on high`} />
+    pip install devsec
+    devsec scan --repo \${{ github.server_url }}/\${{ github.repository }} --json --quiet --no-color --fail-on high`} />
           <Callout type="info" title="CI detection">
             The CLI detects CI environments (<code className="text-primary">GITHUB_ACTIONS</code>,{' '}
             <code className="text-primary">GITLAB_CI</code>, <code className="text-primary">JENKINS_URL</code>, etc.)
@@ -1002,7 +1000,8 @@ devsec scan --json --quiet --no-color --fail-on high`} />
           ['devsec project list', 'List registered repositories'],
           ['devsec project select <id>', 'Set the current project (prefix or full UUID)'],
           ['devsec project current', 'Show the selected project'],
-          ['devsec scan', 'Start a scan and wait for results'],
+          ['devsec scan', 'Start a scan (git repo, --repo, or selected project)'],
+          ['devsec scan --repo <url>', 'Scan a repository URL directly'],
           ['devsec scan status <id>', 'Show scan progress'],
           ['devsec scan results <id>', 'Fetch findings for a completed scan'],
         ]}
@@ -1023,6 +1022,10 @@ devsec scan --json --quiet --no-color --fail-on high`} />
       />
 
       <H2 id="troubleshooting">Troubleshooting</H2>
+      <Expandable title="No Git remote found">
+        Run <code className="text-primary">devsec scan</code> inside a git repository with an origin/upstream remote, or use{' '}
+        <code className="text-primary">devsec scan --repo &lt;repository-url&gt;</code>.
+      </Expandable>
       <Expandable title="No project selected">
         Run <code className="text-primary">devsec project list</code>, then{' '}
         <code className="text-primary">devsec project select &lt;id-prefix&gt;</code> or{' '}

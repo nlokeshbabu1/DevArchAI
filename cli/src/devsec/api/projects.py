@@ -7,10 +7,49 @@ the CLI exposes them under ``devsec project``.
 from __future__ import annotations
 
 import uuid
+from urllib.parse import urlparse
 
 from devsec.api.client import ApiClient
 from devsec.models.project import Project, ProjectCreate, ProjectList
-from devsec.utils.errors import UsageError
+from devsec.utils.errors import ApiError, UsageError
+
+
+def _normalize_repo_url(url: str) -> str:
+    """Normalize repository URLs for comparison (scheme/host/path, no .git)."""
+    url = url.strip().rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url.lower()
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{path}".lower()
+
+
+def find_project_by_url(client: ApiClient, url: str) -> Project | None:
+    """Return an existing project matching ``url``, if registered."""
+    needle = _normalize_repo_url(url)
+    listing = list_projects(client, page_size=100)
+    for project in listing.projects:
+        if _normalize_repo_url(project.url) == needle:
+            return project
+    return None
+
+
+def resolve_or_register_by_url(
+    client: ApiClient,
+    url: str,
+    *,
+    name: str | None = None,
+) -> Project:
+    """Find a project by URL or register it with the backend."""
+    url = url.strip()
+    if not url:
+        raise UsageError("Repository URL cannot be empty.")
+    existing = find_project_by_url(client, url)
+    if existing:
+        return existing
+    return create_project(client, url, name=name)
 
 
 def list_projects(
@@ -78,7 +117,17 @@ def resolve_project(
         )
     raise UsageError(
         f"No project matches ID prefix: {needle}",
-        hint='Run "devsec project list --json" to see available project IDs.',
+        hint=_prefix_hint(projects),
+    )
+
+
+def _prefix_hint(projects: list[Project]) -> str:
+    if not projects:
+        return 'Run "devsec project create <repo-url>" to register a repository.'
+    prefixes = ", ".join(p.id[:8] for p in projects[:3])
+    return (
+        f'Available ID prefix(es): {prefixes}. '
+        f'Run "devsec project select <prefix>" (example: devsec project select {projects[0].id[:8]}).'
     )
 
 
@@ -90,10 +139,40 @@ def resolve_project_for_command(
     auto_single: bool = False,
 ) -> Project:
     """Resolve explicit ID, configured selection, or (optionally) the only project."""
-    explicit = (project_id or selected_project or "").strip()
+    explicit = (project_id or "").strip()
     if explicit:
         return resolve_project(client, explicit)
+
+    selected = (selected_project or "").strip()
+    if selected:
+        try:
+            if _is_uuid(selected):
+                return get_project(client, selected)
+            return resolve_project(client, selected)
+        except ApiError as exc:
+            if exc.status_code != 404:
+                raise
+            # Stale selected_project — fall through to auto-select / caller fallback.
+
     return resolve_project(client, None, auto_single=auto_single)
+
+
+def set_project_branch(client: ApiClient, project_id: str, branch: str) -> Project:
+    """Update the stored default branch for a project (backend repository)."""
+    branch = branch.strip()
+    if not branch:
+        raise UsageError("Branch cannot be empty.")
+    project_id = project_id.strip()
+    if not project_id:
+        raise UsageError("Project ID cannot be empty.")
+    if not _is_uuid(project_id):
+        project = resolve_project(client, project_id)
+        project_id = project.id
+    payload = client.put_json(
+        f"/repositories/{project_id}",
+        payload={"default_branch": branch},
+    )
+    return Project.model_validate(payload)
 
 
 def create_project(

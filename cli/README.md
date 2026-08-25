@@ -1,103 +1,184 @@
-# devsec - DevArchAI CLI
+# devsec — DevArchAI CLI
 
-A production-grade command-line interface for the
-[DevArchAI](https://github.com/nlokeshbabu1/DevArchAI) DevSecOps platform.
-The CLI is a thin client: it authenticates against the SaaS backend and drives
-the same repositories / scans / findings APIs the web app uses. It never runs
-its own scanning engine.
+Production command-line client for [DevArchAI](https://www.devarchai.xyz/).
+The CLI authenticates against the hosted SaaS backend, registers repositories,
+starts scans, streams real-time progress, and returns findings. It does **not**
+run a local scanning engine.
 
 ## Install
 
 Requires Python 3.11+.
 
 ```bash
+pip install devsec
+```
+
+Or install from this repository while developing:
+
+```bash
 pip install -e ./cli
+```
+
+Verify:
+
+```bash
+devsec --version
+devsec --help
 ```
 
 ## Quick start
 
 ```bash
-# Point at your backend (or the public SaaS) and log in once
-devsec config set api-url https://api.devarchai.example
+# Log in (opens https://www.devarchai.xyz/ settings)
 devsec auth login
 
-# Register a repository as a project to track
-devsec project create https://github.com/acme/infrastructure
-devsec project select <project-id>
-
-# Run a scan (waits for completion, streams progress via WebSocket or polling)
+# Scan the current git repository (uses origin/upstream remote)
+cd your-repo
 devsec scan
-devsec scan --json --quiet    # CI-friendly output
 
-# Inspect a scan
+# Scan a specific repository URL
+devsec scan --repo https://github.com/org/repo
+
+# CI / scripting
+devsec scan --json --quiet --no-color --fail-on high
+```
+
+Production API and frontend URLs are the defaults — no local setup required:
+
+| Setting | Default |
+|---------|---------|
+| API | `https://backend.devarchai.xyz` |
+| Web app | `https://www.devarchai.xyz` |
+
+Override for local development:
+
+```bash
+export DEVSEC_API_URL=http://localhost:8000
+export DEVSEC_FRONTEND_URL=http://localhost:5174
+# or
+devsec config set api-url http://localhost:8000
+```
+
+## Authentication
+
+```bash
+devsec auth login          # paste API key from Settings → Security
+devsec auth status         # show current user
+devsec auth logout         # remove local credential
+devsec auth logout --revoke  # also revoke key on server
+```
+
+API keys (`sk-...`) are stored in the OS keyring (or `~/.config/devsec/credentials.json`
+with `0600` permissions as fallback). Keys are never logged or written to `config.toml`.
+
+For CI, set `DEVSEC_API_KEY` in the environment.
+
+## Projects
+
+Projects map to repositories in the DevArchAI backend (single source of truth).
+
+```bash
+devsec project list
+devsec project create https://github.com/org/repo
+devsec project select <project-id>
+devsec project current
+devsec project show <project-id>
+```
+
+## Scan
+
+```bash
+# From inside a git repo (detects origin/upstream + branch)
+devsec scan
+
+# Explicit repository URL (auto-registers if needed)
+devsec scan --repo https://github.com/org/repo
+
+# Selected or explicit project
+devsec project select <id>
+devsec scan
+devsec scan --project <id> --branch develop
+
+# Inspect scans
 devsec scan status <scan-id>
 devsec scan results <scan-id>
 ```
+
+### Scan lifecycle
+
+Progress is **backend-driven** (WebSocket with polling fallback):
+
+1. Connect to repository
+2. Clone repository
+3. Detect technologies (dynamic — Docker, Kubernetes, Helm, Terraform, CI/CD, …)
+4. Scan infrastructure
+5. Analyze findings
+6. Scan completed
+7. AI recommendations (when enabled)
+
+### Results
+
+After completion the CLI prints findings summary and a link to the web UI:
+
+`https://www.devarchai.xyz/repositories/<id>/results`
+
+Scans started from the CLI appear in the SaaS dashboard immediately.
+
+## CI/CD
+
+```bash
+export DEVSEC_API_URL=https://backend.devarchai.xyz
+export DEVSEC_API_KEY=sk-...
+devsec scan --repo https://github.com/org/repo --json --quiet --fail-on high
+```
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success / scan passed policy |
+| 1 | Policy violation (findings above `--fail-on`) |
+| 2 | Usage error |
+| 3 | Authentication error |
+| 4 | API error |
+| 5 | Scan failure |
 
 ## Configuration
 
 Precedence (highest wins):
 
-1. Environment variables - `DEVSEC_API_URL`, `DEVSEC_API_KEY`
-   (`DEVSEC_API_KEY` is the recommended CI/CD flow; the legacy
-   `DEVSEC_API_TOKEN` name is also accepted)
-2. `~/.config/devsec/config.toml` (non-secret values, `devsec config set`)
-3. Built-in defaults (`http://localhost:8000`)
-
-Tokens are stored in the OS keyring; on hosts without a keyring backend they
-fall back to `~/.config/devsec/credentials.json` with `0600` permissions.
-Tokens are never written to the config TOML and never logged.
-
-Non-local API URLs must use HTTPS unless `DEVSEC_ALLOW_HTTP=1` is set.
-
-## Authentication
-
-`devsec auth login` opens the web app's Settings page; paste the generated
-`sk-...` API key. Keys are validated against `GET /api/v1/auth/me` before
-storage. `devsec auth status` and `devsec auth logout [--revoke]` manage the
-session.
-
-## Scan workflow
-
-`devsec scan`:
-
-1. Authenticates (API key or bearer token)
-2. Uses the selected project (`devsec project select`) or `--project`
-3. Calls `POST /api/v1/scan/start`
-4. Streams progress over `/ws/scan/{scan_id}` when using JWT bearer tokens
-5. Falls back to polling `GET /api/v1/scan/status/{scan_id}` for API keys or
-   when WebSocket is unavailable
-6. Fetches results from `GET /api/v1/scan/results/{scan_id}`
-7. Exits with code `1` when findings meet `--fail-on` (default: `high`)
-
-## CI usage
+1. Environment: `DEVSEC_API_URL`, `DEVSEC_FRONTEND_URL`, `DEVSEC_API_KEY`
+2. `~/.config/devsec/config.toml` (non-secret values via `devsec config`)
+3. Production defaults
 
 ```bash
-export DEVSEC_API_URL=https://api.example.com
-export DEVSEC_API_KEY=sk-...
-devsec scan --json --quiet --no-color --fail-on high
+devsec config show
+devsec config set api-url https://backend.devarchai.xyz
+devsec config set frontend-url https://www.devarchai.xyz
 ```
 
-The CLI detects CI environments (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`,
-`JENKINS_URL`, etc.) and avoids interactive prompts automatically.
+Non-local API URLs must use HTTPS unless `DEVSEC_ALLOW_HTTP=1`.
 
-## Exit codes
+## Troubleshooting
 
-| Code | Meaning                                |
-| ---- | -------------------------------------- |
-| 0    | Success / scan passed                  |
-| 1    | Policy violation (findings above threshold) |
-| 2    | CLI usage error                        |
-| 3    | Authentication error                   |
-| 4    | API error                              |
-| 5    | Scan failure                           |
+| Problem | Fix |
+|---------|-----|
+| `Authentication required` | Run `devsec auth login` or set `DEVSEC_API_KEY` |
+| `No Git remote found` | Add a remote or use `devsec scan --repo <url>` |
+| `Unable to reach the API` | Check network and `DEVSEC_API_URL` |
+| Scan stuck / WebSocket fails | CLI falls back to polling automatically |
+| HTTPS error in production | Use `https://` API URL |
 
 ## Development
 
 ```bash
 pip install -e "./cli[dev]"
 cd cli
-ruff check src tests && ruff format --check src tests
-mypy src/devsec
-pytest
+pytest -q
+ruff check src tests
+python -m build
 ```
+
+## License
+
+Apache-2.0

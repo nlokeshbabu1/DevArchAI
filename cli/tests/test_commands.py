@@ -22,6 +22,7 @@ _ENV_KEYS = (
     "DEVSEC_API_TOKEN",
     "DEVSEC_API_KEY",
     "DEVSEC_FRONTEND_URL",
+    "DEVSEC_DISABLE_WEBSOCKET",
     "XDG_CONFIG_HOME",
 )
 
@@ -32,6 +33,7 @@ def isolated_env(tmp_path: Path):
     old_env = {k: os.environ.get(k) for k in _ENV_KEYS}
     os.environ["XDG_CONFIG_HOME"] = str(tmp_path)
     os.environ["DEVSEC_API_URL"] = "http://127.0.0.1:59999"
+    os.environ["DEVSEC_DISABLE_WEBSOCKET"] = "1"
     os.environ.pop("DEVSEC_API_TOKEN", None)
     os.environ.pop("DEVSEC_API_KEY", None)
     os.environ.pop("DEVSEC_FRONTEND_URL", None)

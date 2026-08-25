@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import typer
 
-from devsec.api.progress import ProgressTracker, render_progress
-from devsec.api.projects import resolve_project_for_command
+from devsec.api.progress import ProgressTracker
+from devsec.api.projects import (
+    get_project,
+    list_projects,
+    resolve_or_register_by_url,
+    resolve_project,
+)
 from devsec.api.scans import (
     ensure_scan_completed,
     evaluate_scan_outcome,
@@ -16,11 +22,15 @@ from devsec.api.scans import (
     start_scan,
 )
 from devsec.commands.base import command, make_client
-from devsec.models.scan import ScanResultsResponse, ScanStatusResponse
+from devsec.config import Config
+from devsec.models.project import Project
+from devsec.models.scan import ScanResultsResponse, ScanStateResponse, ScanStatusResponse
 from devsec.output.console import get_console, is_ci, print_error, print_muted, print_success
 from devsec.output.json import emit
+from devsec.output.progress_display import format_technology_label
 from devsec.output.tables import findings_table, scan_summary_table
-from devsec.utils.errors import DevSecError, ExitCode, PolicyViolationError
+from devsec.utils.errors import ApiError, DevSecError, ExitCode, PolicyViolationError, UsageError
+from devsec.utils.git import get_git_metadata
 
 app = typer.Typer(
     help="Run security scans and inspect results.",
@@ -47,7 +57,23 @@ def scan_group(
         "-p",
         help="Project (repository) ID to scan.",
     ),
-    branch: str | None = typer.Option(None, "--branch", "-b", help="Branch to scan."),
+    repo: str | None = typer.Option(
+        None,
+        "--repo",
+        "-r",
+        help="Repository URL to scan (registers with backend if needed).",
+    ),
+    path: str = typer.Option(
+        ".",
+        "--path",
+        help="Path to a local git repository (uses origin/upstream remote).",
+    ),
+    branch: str | None = typer.Option(
+        None,
+        "--branch",
+        "-b",
+        help="Branch to scan (uses project default or local git branch if omitted).",
+    ),
     wait: bool = typer.Option(True, "--wait/--no-wait", help="Wait for scan completion."),
     fail_on: str = typer.Option(
         "high",
@@ -57,7 +83,7 @@ def scan_group(
     include_ai: bool = typer.Option(
         True,
         "--include-ai/--no-ai",
-        help="Request AI explanations from the backend.",
+        help="Wait for AI remediation recommendations after the scan.",
     ),
 ) -> None:
     """Shared options for scan commands."""
@@ -79,6 +105,8 @@ def scan_group(
     try:
         result = _run_scan(
             project_id=project_id,
+            repo=repo,
+            path=path,
             branch=branch,
             wait=wait,
             fail_on=fail_on,
@@ -98,18 +126,102 @@ def scan_group(
         raise typer.Exit(2) from None
 
 
-def _resolve_project(config, client, project_id: str | None):
-    return resolve_project_for_command(
-        client,
-        project_id,
-        selected_project=config.selected_project,
-        auto_single=True,
+def _is_uuid(value: str) -> bool:
+    import uuid
+
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_scan_branch(
+    branch_flag: str | None,
+    *,
+    project: Project,
+    git_branch: str | None = None,
+) -> str:
+    """Pick scan branch from flag, project default, or local git — never hardcode main/master."""
+    if branch_flag and branch_flag.strip():
+        return branch_flag.strip()
+    if project.default_branch and project.default_branch.strip():
+        return project.default_branch.strip()
+    if git_branch and git_branch.strip() and git_branch != "HEAD":
+        return git_branch.strip()
+    short_id = project.id[:8]
+    raise UsageError(
+        "Branch not specified.",
+        hint=(
+            f'Pass --branch <name> (e.g. devsec scan --project {short_id} --branch <branch>) '
+            f"or set the project default branch:\n"
+            f"  devsec project set-branch {short_id} <branch>"
+        ),
     )
+
+
+def _resolve_scan_target(
+    config: Config,
+    client,
+    *,
+    project_id: str | None,
+    repo: str | None,
+    path: str,
+    branch: str | None,
+) -> tuple[Project, str]:
+    if repo:
+        project = resolve_or_register_by_url(client, repo.strip())
+        scan_branch = _resolve_scan_branch(branch, project=project)
+        return project, scan_branch
+
+    explicit_id = (project_id or "").strip()
+    if explicit_id:
+        project = resolve_project(client, explicit_id)
+        config.set_selected_project(project.id)
+        scan_branch = _resolve_scan_branch(branch, project=project)
+        return project, scan_branch
+
+    selected = (config.selected_project or "").strip()
+    if selected:
+        try:
+            project = get_project(client, selected) if _is_uuid(selected) else resolve_project(client, selected)
+            scan_branch = _resolve_scan_branch(branch, project=project)
+            return project, scan_branch
+        except ApiError as exc:
+            if exc.status_code != 404:
+                raise
+            # Stale selection — continue to auto-select or git detection.
+
+    listing = list_projects(client, page_size=100)
+    if len(listing.projects) == 1:
+        project = listing.projects[0]
+        config.set_selected_project(project.id)
+        scan_branch = _resolve_scan_branch(branch, project=project)
+        return project, scan_branch
+
+    if listing.projects:
+        prefixes = ", ".join(p.id[:8] for p in listing.projects[:3])
+        raise UsageError(
+            "No project selected.",
+            hint=(
+                f'Run "devsec project select <id>" (available: {prefixes}) '
+                'or "devsec scan --repo <url>".'
+            ),
+        )
+
+    git = get_git_metadata(path)
+    remote_url = git.require_remote()
+    project = resolve_or_register_by_url(client, remote_url, name=git.display_name)
+    config.set_selected_project(project.id)
+    scan_branch = _resolve_scan_branch(branch, project=project, git_branch=git.branch)
+    return project, scan_branch
 
 
 def _run_scan(
     *,
     project_id: str | None,
+    repo: str | None,
+    path: str,
     branch: str | None,
     wait: bool,
     fail_on: str,
@@ -119,12 +231,19 @@ def _run_scan(
 ) -> dict[str, Any]:
     config, client = make_client()
     try:
-        project = _resolve_project(config, client, project_id)
+        project, scan_branch = _resolve_scan_target(
+            config,
+            client,
+            project_id=project_id,
+            repo=repo,
+            path=path,
+            branch=branch,
+        )
         start = start_scan(
             client,
             repository_url=project.url,
             repository_id=project.id,
-            branch=branch or project.default_branch,
+            branch=scan_branch,
             include_ai=include_ai,
         )
 
@@ -133,43 +252,65 @@ def _run_scan(
             "status": start.status,
             "repository_id": start.repository_id or project.id,
             "repository_url": start.repository_url or project.url,
-            "branch": start.branch or branch or project.default_branch,
+            "repository_name": project.repository,
+            "branch": start.branch or scan_branch,
             "message": start.message,
+            "results_url": _results_url(config, project.id),
         }
 
         if not json_mode and not quiet_mode:
             print_success(f"Scan started: {start.scan_id}")
+            print_muted(f"Repository: {project.repository}")
             if start.message:
                 print_muted(start.message)
 
         if not wait:
+            if not json_mode and not quiet_mode:
+                print_muted(f"View in DevArchAI: {data['results_url']}")
             return data
 
-        tracker = ProgressTracker(client, start.scan_id)
-        last_progress = -1
+        tracker = ProgressTracker(
+            client,
+            start.scan_id,
+            wait_for_ai=include_ai,
+        )
 
-        def on_update(state) -> None:
-            nonlocal last_progress
-            if state.progress != last_progress or state.is_terminal:
-                last_progress = state.progress
-                render_progress(state)
+        def on_update(_state) -> None:
+            pass
 
-        final_status = tracker.wait(on_update=on_update)
-        ensure_scan_completed(final_status)
+        final_state = tracker.wait(on_update=on_update)
+        ensure_scan_completed(
+            ScanStatusResponse(
+                scan_id=start.scan_id,
+                status=final_state.status,
+                progress=final_state.progress or 100,
+                current_step=final_state.message,
+                error_message=final_state.error_message,
+            )
+        )
         results = get_scan_results(client, start.scan_id)
         passed, reason = evaluate_scan_outcome(results, fail_on=fail_on)
 
         data.update(
             {
-                "final_status": final_status.model_dump(),
+                "final_status": final_state.model_dump(),
                 "results": results.model_dump(),
                 "passed": passed,
                 "policy_reason": reason,
+                "ai_status": final_state.ai_status,
             }
         )
 
         if not json_mode:
-            _render_results(results, passed=passed, reason=reason)
+            _render_results(
+                results,
+                project=project,
+                scan_id=start.scan_id,
+                config=config,
+                final_state=final_state,
+                passed=passed,
+                reason=reason,
+            )
 
         if not passed and reason:
             if json_mode:
@@ -179,6 +320,10 @@ def _run_scan(
         return data
     finally:
         client.close()
+
+
+def _results_url(config: Config, repository_id: str) -> str:
+    return f"{config.frontend_url.rstrip('/')}/repositories/{repository_id}/results"
 
 
 @app.command("status")
@@ -221,7 +366,7 @@ def scan_results_cmd(
 ) -> dict:
     """Fetch and display findings for a completed scan."""
     json_mode = json or bool((ctx.obj or {}).get("json"))
-    _, client = make_client()
+    config, client = make_client()
     try:
         results = get_scan_results(client, scan_id)
         passed, reason = evaluate_scan_outcome(results, fail_on=fail_on)
@@ -231,7 +376,15 @@ def scan_results_cmd(
             "policy_reason": reason,
         }
         if not json_mode:
-            _render_results(results, passed=passed, reason=reason)
+            _render_results(
+                results,
+                project=None,
+                scan_id=scan_id,
+                config=config,
+                final_state=None,
+                passed=passed,
+                reason=reason,
+            )
         if not passed and reason:
             if json_mode:
                 emit(data)
@@ -249,15 +402,60 @@ def _render_status(status: ScanStatusResponse) -> None:
 def _render_results(
     results: ScanResultsResponse,
     *,
+    project: Project | None,
+    scan_id: str,
+    config: Config,
+    final_state: ScanStateResponse | None,
     passed: bool,
     reason: str | None,
 ) -> None:
     if passed:
-        print_success(f"Scan passed ({results.findings_count} finding(s)).")
+        print_success("Scan completed ✓")
     else:
         print_error(reason or "Scan failed policy check.")
+
+    repo_name = results.repository_name or (project.repository if project else "repository")
+    print_muted("")
+    print_muted(f"Repository: {repo_name}")
+    print_muted(f"Scan ID: {scan_id}")
+
+    tech_counts: dict[str, int] = {}
+    if final_state and final_state.technology_items:
+        for tech in final_state.technology_items:
+            tech_counts[format_technology_label(tech.id, tech.name)] = tech.findings
+    elif results.detected_technologies:
+        for tech_id in results.detected_technologies:
+            tech_counts[format_technology_label(tech_id)] = 0
+
+    if tech_counts:
+        print_muted("")
+        print_muted("Technologies")
+        for name, count in sorted(tech_counts.items()):
+            label = "finding" if count == 1 else "findings"
+            print_muted(f"  {name:<18} {count} {label}")
+
+    risk = results.risk_distribution or results.severity_counts
+    if risk:
+        print_muted("")
+        print_muted("Risk")
+        for level in ("critical", "high", "medium", "low", "info"):
+            count = risk.get(level) or risk.get(level.upper()) or 0
+            if count:
+                print_muted(f"  {level.capitalize():<10} {count}")
+
+    repo_id = project.id if project else None
+    if repo_id:
+        url = _results_url(config, repo_id)
+        print_muted("")
+        if final_state and final_state.ai_status == "completed":
+            print_muted("View recommendations:")
+        else:
+            print_muted("View full results:")
+        print_muted(url)
+
     if results.overall_score is not None:
-        print_muted(f"Overall score: {results.overall_score:.0f}")
+        print_muted(f"\nOverall score: {results.overall_score:.0f}")
+
     if results.findings:
         get_console().print(findings_table(results.findings[:25]))
         if len(results.findings) > 25:

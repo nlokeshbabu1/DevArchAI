@@ -7,6 +7,7 @@ from devsec.models.scan import (
     ScanResultsResponse,
     ScanStartRequest,
     ScanStartResponse,
+    ScanStateResponse,
     ScanStatusResponse,
 )
 from devsec.utils.errors import AuthError, ScanError, UsageError
@@ -36,9 +37,18 @@ def start_scan(
     payload = ScanStartRequest(
         repository_url=url,
         repository_id=repository_id,
-        branch=branch or "main",
+        branch=branch,
         include_ai_explanations=include_ai,
     )
+    body = payload.model_dump(exclude_none=True)
+    if not body.get("branch"):
+        raise UsageError(
+            "Branch is required to start a scan.",
+            hint=(
+                'Pass --branch <name> (e.g. devsec scan --branch master) or set a default '
+                'with "devsec project set-branch <project-id> <branch>".'
+            ),
+        )
     data = client.post_json("/scan/start", payload=payload.model_dump(exclude_none=True))
     return ScanStartResponse.model_validate(data)
 
@@ -51,6 +61,16 @@ def get_scan_status(client: ApiClient, scan_id: str) -> ScanStatusResponse:
         raise UsageError("Scan ID cannot be empty.")
     data = client.get_json(f"/scan/status/{scan_id}")
     return ScanStatusResponse.model_validate(data)
+
+
+def get_scan_state(client: ApiClient, scan_id: str) -> ScanStateResponse:
+    """Fetch authoritative scan state (lifecycle, technologies, AI status)."""
+    _require_auth(client)
+    scan_id = scan_id.strip()
+    if not scan_id:
+        raise UsageError("Scan ID cannot be empty.")
+    data = client.get_json(f"/scan/state/{scan_id}")
+    return ScanStateResponse.model_validate(data)
 
 
 def get_scan_results(client: ApiClient, scan_id: str) -> ScanResultsResponse:
@@ -82,6 +102,21 @@ def evaluate_scan_outcome(
     return True, None
 
 
+def _scan_failure_hint(message: str | None) -> str:
+    if not message:
+        return "Check scan logs with 'devsec scan status <scan-id>'."
+    lowered = message.lower()
+    if "no analyzable files" in lowered:
+        return (
+            f"{message} "
+            "Add Terraform, Kubernetes, Docker, Helm, or CI/CD files to the repository, "
+            "or scan a repo that contains infrastructure code."
+        )
+    if "clone" in lowered or "access" in lowered:
+        return f"{message} Check repository access and that the URL is correct."
+    return message
+
+
 def ensure_scan_completed(status: ScanStatusResponse) -> None:
     """Raise ScanError when a scan did not complete successfully."""
     normalized = status.status.lower()
@@ -90,7 +125,7 @@ def ensure_scan_completed(status: ScanStatusResponse) -> None:
     if normalized in {"failed", "cancelled"}:
         raise ScanError(
             f"Scan {status.scan_id} {normalized}.",
-            hint=status.error_message or "Check scan logs with 'devsec scan status'.",
+            hint=_scan_failure_hint(status.error_message),
         )
     raise ScanError(
         f"Scan {status.scan_id} is not complete (status: {status.status}).",

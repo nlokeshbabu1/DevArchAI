@@ -1,20 +1,20 @@
-"""Live scan progress via WebSocket with HTTP polling fallback."""
+"""Live scan progress via WebSocket with HTTP state polling fallback."""
 
 from __future__ import annotations
 
 import json
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 from devsec.api.client import ApiClient
-from devsec.api.scans import get_scan_status
+from devsec.api.scans import get_scan_state, get_scan_status, _scan_failure_hint
 from devsec.config import Config
-from devsec.models.scan import ScanStatusResponse
-from devsec.output.console import get_console, is_no_color, is_quiet
+from devsec.models.scan import ScanStateResponse, ScanStatusResponse
+from devsec.output.progress_display import LifecycleProgressRenderer
+from devsec.utils.errors import ScanError
 
 
 @dataclass
@@ -23,43 +23,68 @@ class ProgressState:
 
     scan_id: str
     status: str = "pending"
-    progress: int = 0
+    stage: str | None = None
+    progress: int | None = None
     current_step: str | None = None
-    logs: list[str] = field(default_factory=list)
     error_message: str | None = None
+    ai_status: str | None = None
+    snapshot: ScanStateResponse | None = None
     source: str = "initial"
+
+    def apply_state(self, payload: ScanStateResponse, *, source: str) -> None:
+        self.snapshot = payload
+        self.status = payload.status
+        self.stage = payload.stage
+        self.progress = payload.progress
+        self.current_step = payload.message or payload.current_operation
+        self.error_message = payload.error_message
+        self.ai_status = payload.ai_status
+        self.source = source
 
     def apply_status(self, payload: ScanStatusResponse, *, source: str) -> None:
         self.status = payload.status
         self.progress = payload.progress
         self.current_step = payload.current_step
-        if payload.logs:
-            self.logs = payload.logs[-20:]
         self.error_message = payload.error_message
         self.source = source
 
     def apply_ws(self, msg_type: str, data: dict[str, Any]) -> None:
         self.source = "websocket"
-        if msg_type in {"progress_update", "scan_complete", "scan_failed"}:
+        if msg_type in {"progress_update", "scan_progress", "scan_stage", "stage_transition"}:
             self.status = str(data.get("status", self.status))
-            self.progress = int(data.get("progress", self.progress))
-            self.current_step = data.get("current_step") or self.current_step
+            if data.get("progress") is not None:
+                self.progress = int(data["progress"])
+            self.stage = data.get("stage") or data.get("lifecycle_stage") or self.stage
+            self.current_step = data.get("message") or data.get("current_step") or self.current_step
             self.error_message = data.get("error_message") or self.error_message
-        elif msg_type == "log_message":
-            message = data.get("message")
-            if message:
-                self.logs.append(str(message))
-                self.logs = self.logs[-20:]
-        elif msg_type == "scan_complete":
+        elif msg_type in {"scan_complete", "scan_completed"}:
             self.status = "completed"
+            self.stage = "scan_completed"
             self.progress = 100
-        elif msg_type == "scan_failed":
-            self.status = "failed"
+        elif msg_type in {"scan_failed", "scan_cancelled"}:
+            self.status = "failed" if msg_type == "scan_failed" else "cancelled"
             self.error_message = data.get("error_message") or self.error_message
+        elif msg_type in {"ai_started", "ai.analysis.started"}:
+            self.ai_status = "processing"
+        elif msg_type in {"ai_completed", "ai.analysis.completed"}:
+            self.ai_status = "completed"
+        elif msg_type == "ai.analysis.failed":
+            self.ai_status = "failed"
+        elif msg_type == "scan_state" and isinstance(data, dict):
+            try:
+                self.apply_state(ScanStateResponse.model_validate(data), source="websocket")
+            except Exception:
+                pass
 
     @property
-    def is_terminal(self) -> bool:
+    def is_scan_terminal(self) -> bool:
+        if self.snapshot and self.snapshot.is_terminal:
+            return True
         return self.status.lower() in {"completed", "failed", "cancelled"}
+
+    @property
+    def is_failed(self) -> bool:
+        return self.status.lower() in {"failed", "cancelled"}
 
 
 def _ws_url(config: Config, scan_id: str, token: str) -> str:
@@ -67,20 +92,25 @@ def _ws_url(config: Config, scan_id: str, token: str) -> str:
     scheme = "wss" if parsed.scheme == "https" else "ws"
     netloc = parsed.netloc
     path = f"/ws/scan/{scan_id}"
-    query = f"token={token}"
+    if token.startswith(("sk-", "dk_")):
+        query = f"api_key={quote(token, safe='')}"
+    else:
+        query = f"token={quote(token, safe='')}"
     return urlunparse((scheme, netloc, path, "", query, ""))
 
 
 def _can_use_websocket(config: Config) -> bool:
-    """WebSocket auth accepts JWT bearer tokens, not API keys."""
-    token = config.token
-    if not token:
+    if config._env.get("DEVSEC_DISABLE_WEBSOCKET", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
         return False
-    return not token.startswith(("sk-", "dk_"))
+    return bool(config.token)
 
 
 class ProgressTracker:
-    """Track scan progress using WebSocket when possible, else poll REST."""
+    """Track scan progress using WebSocket when possible, else poll REST state."""
 
     def __init__(
         self,
@@ -88,47 +118,86 @@ class ProgressTracker:
         scan_id: str,
         *,
         poll_interval: float = 2.0,
-        ws_timeout: float = 3600.0,
+        timeout: float = 3600.0,
+        wait_for_ai: bool = True,
+        ai_timeout: float = 600.0,
     ) -> None:
         self._client = client
         self._config = client._config  # noqa: SLF001
         self._scan_id = scan_id
         self._poll_interval = poll_interval
-        self._ws_timeout = ws_timeout
+        self._timeout = timeout
+        self._wait_for_ai = wait_for_ai
+        self._ai_timeout = ai_timeout
         self.state = ProgressState(scan_id=scan_id)
+        self.renderer = LifecycleProgressRenderer()
 
     def wait(
         self,
         *,
         on_update: Callable[[ProgressState], None] | None = None,
-    ) -> ScanStatusResponse:
-        """Block until the scan reaches a terminal state."""
+    ) -> ScanStateResponse:
+        """Block until infrastructure scan completes (and optionally AI)."""
         if _can_use_websocket(self._config):
             try:
-                return self._wait_with_websocket(on_update=on_update)
+                final = self._wait_with_websocket(on_update=on_update)
             except Exception:
-                pass  # noqa: S110
-        return self._wait_with_polling(on_update=on_update)
+                final = self._wait_with_polling(on_update=on_update)
+        else:
+            final = self._wait_with_polling(on_update=on_update)
+
+        if final.status.lower() == "failed" or final.stage == "failed":
+            raise ScanError(
+                f"Scan {self._scan_id} failed.",
+                hint=_scan_failure_hint(final.error_message),
+            )
+        if final.status.lower() == "cancelled":
+            raise ScanError(f"Scan {self._scan_id} was cancelled.")
+
+        if self._wait_for_ai and not final.ai_terminal:
+            final = self._wait_for_ai_completion(final, on_update=on_update)
+        return final
 
     def _emit(self, on_update: Callable[[ProgressState], None] | None) -> None:
+        self.renderer.render()
         if on_update:
             on_update(self.state)
+
+    def _apply_and_emit(
+        self,
+        snapshot: ScanStateResponse,
+        *,
+        source: str,
+        on_update: Callable[[ProgressState], None] | None,
+    ) -> None:
+        self.state.apply_state(snapshot, source=source)
+        self.renderer.apply_state(snapshot)
+        self._emit(on_update)
 
     def _wait_with_polling(
         self,
         *,
         on_update: Callable[[ProgressState], None] | None,
-    ) -> ScanStatusResponse:
-        deadline = time.monotonic() + self._ws_timeout
-        last_progress = -1
+    ) -> ScanStateResponse:
+        deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
-            status = get_scan_status(self._client, self._scan_id)
-            self.state.apply_status(status, source="polling")
-            if status.progress != last_progress or status.is_terminal:
-                last_progress = status.progress
-                self._emit(on_update)
-            if status.is_terminal:
-                return status
+            try:
+                snapshot = get_scan_state(self._client, self._scan_id)
+            except Exception:
+                status = get_scan_status(self._client, self._scan_id)
+                snapshot = ScanStateResponse(
+                    scan_id=self._scan_id,
+                    status=status.status,
+                    progress=status.progress,
+                    message=status.current_step,
+                    is_terminal=status.is_terminal,
+                    error_message=status.error_message,
+                )
+            self._apply_and_emit(snapshot, source="polling", on_update=on_update)
+            if snapshot.is_terminal and snapshot.scan_complete:
+                return snapshot
+            if snapshot.status.lower() in {"failed", "cancelled"}:
+                return snapshot
             time.sleep(self._poll_interval)
         raise TimeoutError(f"Scan {self._scan_id} did not complete within the timeout.")
 
@@ -136,7 +205,7 @@ class ProgressTracker:
         self,
         *,
         on_update: Callable[[ProgressState], None] | None,
-    ) -> ScanStatusResponse:
+    ) -> ScanStateResponse:
         import asyncio
 
         return asyncio.run(self._async_wait(on_update=on_update))
@@ -145,7 +214,7 @@ class ProgressTracker:
         self,
         *,
         on_update: Callable[[ProgressState], None] | None,
-    ) -> ScanStatusResponse:
+    ) -> ScanStateResponse:
         import websockets
 
         token = self._config.token
@@ -155,7 +224,7 @@ class ProgressTracker:
         ws_url = _ws_url(self._config, self._scan_id, token)
         reconnects = 0
         max_reconnects = 5
-        deadline = time.monotonic() + self._ws_timeout
+        deadline = time.monotonic() + self._timeout
 
         while time.monotonic() < deadline:
             try:
@@ -164,17 +233,19 @@ class ProgressTracker:
                     ping_interval=20,
                     ping_timeout=20,
                     close_timeout=5,
+                    open_timeout=5,
                 ) as websocket:
                     reconnects = 0
                     while time.monotonic() < deadline:
                         try:
                             raw = await asyncio_wait(websocket.recv(), timeout=self._poll_interval)
                         except TimeoutError:
-                            status = get_scan_status(self._client, self._scan_id)
-                            self.state.apply_status(status, source="polling")
-                            self._emit(on_update)
-                            if status.is_terminal:
-                                return status
+                            snapshot = get_scan_state(self._client, self._scan_id)
+                            self._apply_and_emit(snapshot, source="polling", on_update=on_update)
+                            if snapshot.is_terminal and snapshot.scan_complete:
+                                return snapshot
+                            if snapshot.status.lower() in {"failed", "cancelled"}:
+                                return snapshot
                             continue
 
                         if raw == "ping":
@@ -188,18 +259,36 @@ class ProgressTracker:
 
                         msg_type = message.get("type", "")
                         data = message.get("data") or {}
+                        if msg_type == "scan_state":
+                            try:
+                                snapshot = ScanStateResponse.model_validate(data)
+                                self._apply_and_emit(snapshot, source="websocket", on_update=on_update)
+                                if snapshot.is_terminal and snapshot.scan_complete:
+                                    return snapshot
+                                if snapshot.status.lower() in {"failed", "cancelled"}:
+                                    return snapshot
+                                continue
+                            except Exception:
+                                pass
+
                         self.state.apply_ws(msg_type, data)
+                        self.renderer.apply_ws(msg_type, data)
                         self._emit(on_update)
 
-                        if self.state.is_terminal:
-                            return ScanStatusResponse(
+                        if self.state.is_failed:
+                            return ScanStateResponse(
                                 scan_id=self._scan_id,
                                 status=self.state.status,
+                                stage="failed",
                                 progress=self.state.progress,
-                                current_step=self.state.current_step,
-                                logs=self.state.logs,
+                                message=self.state.current_step,
                                 error_message=self.state.error_message,
+                                is_terminal=True,
                             )
+                        if self.state.is_scan_terminal:
+                            snapshot = get_scan_state(self._client, self._scan_id)
+                            self._apply_and_emit(snapshot, source="websocket", on_update=on_update)
+                            return snapshot
             except Exception:
                 reconnects += 1
                 if reconnects > max_reconnects:
@@ -207,6 +296,24 @@ class ProgressTracker:
                 await asyncio_sleep(min(2**reconnects, 30))
 
         return self._wait_with_polling(on_update=on_update)
+
+    def _wait_for_ai_completion(
+        self,
+        snapshot: ScanStateResponse,
+        *,
+        on_update: Callable[[ProgressState], None] | None,
+    ) -> ScanStateResponse:
+        deadline = time.monotonic() + self._ai_timeout
+        current = snapshot
+        while time.monotonic() < deadline:
+            if current.ai_terminal:
+                self.renderer.apply_state(current)
+                self._emit(on_update)
+                return current
+            time.sleep(self._poll_interval)
+            current = get_scan_state(self._client, self._scan_id)
+            self._apply_and_emit(current, source="polling", on_update=on_update)
+        return current
 
 
 async def asyncio_wait(coro: Any, *, timeout: float) -> Any:
@@ -222,13 +329,8 @@ async def asyncio_sleep(seconds: float) -> None:
 
 
 def render_progress(state: ProgressState) -> None:
-    """Render a single progress line to stderr (safe for --json mode)."""
-    if is_quiet():
-        return
-    step = state.current_step or state.status
-    line = f"[{state.progress:3d}%] {step}"
-    if is_no_color():
-        print(line, file=sys.stderr)
-        return
-    console = get_console(stderr=True)
-    console.print(f"[info]{line}[/info]")
+    """Render progress to stderr (safe for --json mode)."""
+    renderer = LifecycleProgressRenderer()
+    if state.snapshot:
+        renderer.apply_state(state.snapshot)
+    renderer.render()

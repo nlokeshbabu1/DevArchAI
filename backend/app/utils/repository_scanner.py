@@ -78,33 +78,16 @@ class RepositoryScanner:
         """
         import uuid
 
-        import httpx
+        from app.utils.github_branch import resolve_repository_branch
 
         # Extract repo name
         repo_name = self._extract_repo_name(repo_url)
 
-        # Try to get default branch from GitHub API if branch is "main" or "master"
-        effective_branch = branch
-        if branch in ["main", "master"]:
-            try:
-                # Extract owner and repo from URL
-                url_parts = repo_url.rstrip("/").split("/")
-                if len(url_parts) >= 2:
-                    owner = url_parts[-2]
-                    repo = url_parts[-1].replace(".git", "")
-
-                    # Try to get default branch from GitHub API
-                    with httpx.Client(timeout=5.0) as client:
-                        api_url = f"https://api.github.com/repos/{owner}/{repo}"
-                        response = client.get(api_url)
-                        if response.status_code == 200:
-                            repo_data = response.json()
-                            default_branch = repo_data.get("default_branch", "main")
-                            if default_branch != branch:
-                                logger.info(f"Using default branch from GitHub API: {default_branch}")
-                                effective_branch = default_branch
-            except Exception as e:
-                logger.warning(f"Could not detect default branch from GitHub API: {e}")
+        effective_branch = resolve_repository_branch(
+            repo_url,
+            branch,
+            github_token=github_token,
+        )
 
         # Create unique directory for this scan
         scan_id = str(uuid.uuid4())[:8]

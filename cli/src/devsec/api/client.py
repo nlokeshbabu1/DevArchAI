@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from devsec._version import __version__
-from devsec.config import Config
+from devsec.config import Config, api_url_misconfiguration_hint
 from devsec.utils.errors import ApiError, AuthError, ConfigError
 
 # All CLI calls go through the versioned API root.
@@ -83,8 +83,11 @@ def _extract_detail(payload: dict[str, Any], status_code: int) -> str:
     return f"HTTP {status_code}"
 
 
-def _hint_for_status(status_code: int, request_id: str | None = None) -> str | None:
+def _hint_for_status(status_code: int, request_id: str | None = None, *, api_url: str | None = None) -> str | None:
     if status_code in _AUTH_STATUS:
+        misconfig = api_url_misconfiguration_hint(api_url) if api_url else None
+        if misconfig:
+            return misconfig
         return "Run 'devsec auth login' to authenticate."
     if status_code == 404:
         return "The resource may have been deleted or the ID is wrong."
@@ -210,7 +213,7 @@ class ApiClient:
         if not isinstance(payload, dict):
             payload = {}
         message = _extract_detail(payload, status)
-        hint = _hint_for_status(status, request_id)
+        hint = _hint_for_status(status, request_id, api_url=self.api_url)
 
         if status in _AUTH_STATUS:
             message = message or "Authentication failed."
@@ -252,6 +255,9 @@ class ApiClient:
     def post(self, path: str, **kwargs: Any) -> httpx.Response:
         return self._request("POST", path, retry=False, **kwargs)
 
+    def put(self, path: str, **kwargs: Any) -> httpx.Response:
+        return self._request("PUT", path, retry=False, **kwargs)
+
     def delete(self, path: str, **kwargs: Any) -> httpx.Response:
         return self._request("DELETE", path, **kwargs)
 
@@ -260,6 +266,9 @@ class ApiClient:
 
     def post_json(self, path: str, payload: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         return self._request("POST", path, retry=False, json=payload, **kwargs).json()
+
+    def put_json(self, path: str, payload: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        return self._request("PUT", path, retry=False, json=payload, **kwargs).json()
 
     def close(self) -> None:
         self._client.close()

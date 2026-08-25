@@ -77,7 +77,7 @@ def test_git_metadata_require_remote_no_remote():
     try:
         meta.require_remote()
     except Exception as exc:
-        assert "No git remote" in str(exc)
+            assert "No Git remote" in str(exc)
     else:
         raise AssertionError("expected error")
 

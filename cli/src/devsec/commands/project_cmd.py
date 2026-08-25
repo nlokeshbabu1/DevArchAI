@@ -8,7 +8,7 @@ from typing import Any
 import typer
 from rich.table import Table
 
-from devsec.api.projects import create_project, get_project, list_projects, resolve_project
+from devsec.api.projects import create_project, get_project, list_projects, resolve_project, set_project_branch
 from devsec.commands.base import command, make_client
 from devsec.models.project import Project
 from devsec.output.console import get_console, print_muted, print_success
@@ -50,9 +50,9 @@ def project_list(
                     f"{result.total} total - page {result.page} of "
                     f"{(result.total + result.page_size - 1) // result.page_size or 1}"
                 )
+                example = result.projects[0].id[:8]
                 print_muted(
-                    "Tip: pass an ID prefix to select (e.g. devsec project select ae8f8620) "
-                    "or use --json for full UUIDs."
+                    f'Tip: devsec project select {example}  (or use --json for full UUIDs)'
                 )
             else:
                 print_muted("No projects found.")
@@ -122,6 +122,28 @@ def project_current(
         data = {"selected": project.id, "project": project.model_dump()}
         if not json:
             _render_project(project)
+        return data
+    finally:
+        client.close()
+
+
+@app.command("set-branch")
+@command
+def project_set_branch(
+    project_id: str = typer.Argument(..., help="Project ID or prefix."),
+    branch: str = typer.Argument(..., help="Default branch name for scans."),
+    *,
+    json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+) -> dict:
+    """Set the default branch used when ``devsec scan`` omits ``--branch``."""
+    _, client = make_client()
+    try:
+        project = set_project_branch(client, project_id, branch)
+        data = project.model_dump()
+        if not json:
+            print_success(
+                f"Default branch for {project.name}: {project.default_branch}"
+            )
         return data
     finally:
         client.close()

@@ -895,9 +895,11 @@ async def _authenticate_websocket(
     scan_id: str,
 ) -> bool:
     """
-    Validate JWT token OR session_token from query params and verify scan ownership.
+    Validate JWT token, API key, or session_token from query params and verify scan ownership.
     Returns True if authenticated and authorized, False otherwise.
     """
+    from uuid import UUID
+
     from sqlalchemy import select
 
     from app.core.security import decode_token
@@ -905,7 +907,66 @@ async def _authenticate_websocket(
     from app.models.scan import Scan
 
     token = websocket.query_params.get("token", "")
+    api_key = websocket.query_params.get("api_key", "")
     session_token = websocket.query_params.get("session_token", "")
+
+    def _verify_scan_owner(user_id: UUID) -> bool:
+        sync_db = get_sync_session_factory()()
+        try:
+            try:
+                scan_uuid = UUID(scan_id)
+            except ValueError:
+                return False
+            result = sync_db.execute(
+                select(Scan).where(Scan.id == scan_uuid, Scan.user_id == user_id)
+            )
+            return result.scalar_one_or_none() is not None
+        finally:
+            sync_db.close()
+
+    def _user_from_api_key(key: str):
+        from app.models.user import User
+
+        if key.startswith("sk-"):
+            from app.core.api_key_store import lookup_user_id_by_key
+
+            uid = lookup_user_id_by_key(key)
+            if not uid:
+                return None
+            sync_db = get_sync_session_factory()()
+            try:
+                result = sync_db.execute(
+                    select(User).where(User.id == UUID(uid), User.is_active.is_(True))
+                )
+                return result.scalar_one_or_none()
+            finally:
+                sync_db.close()
+
+        if "_" not in key or not key.startswith("dk_"):
+            return None
+
+        prefix = key.rsplit("_", 1)[0]
+        sync_db = get_sync_session_factory()()
+        try:
+            from app.models.user import User
+
+            result = sync_db.execute(
+                select(User).where(User.api_key_prefix == prefix, User.is_active.is_(True))
+            )
+            user = result.scalar_one_or_none()
+            if user and user.api_key == key:
+                return user
+        finally:
+            sync_db.close()
+        return None
+
+    # API key authentication (CLI uses sk- keys via ?api_key=)
+    if api_key:
+        user = _user_from_api_key(api_key)
+        if user and _verify_scan_owner(user.id):
+            return True
+        await websocket.close(code=4001, reason="Invalid API key or access denied")
+        return False
 
     # Try JWT authentication first
     if token:
@@ -913,7 +974,6 @@ async def _authenticate_websocket(
         if payload:
             user_id = payload.get("sub")
             if user_id:
-                from uuid import UUID
                 try:
                     user_uuid = UUID(user_id)
                 except ValueError:
@@ -923,9 +983,8 @@ async def _authenticate_websocket(
                 # Verify scan ownership
                 sync_db = get_sync_session_factory()()
                 try:
-                    from uuid import UUID as ScanUUID
                     try:
-                        scan_uuid = ScanUUID(scan_id)
+                        scan_uuid = UUID(scan_id)
                     except ValueError:
                         await websocket.close(code=4001, reason="Invalid scan identifier")
                         return False

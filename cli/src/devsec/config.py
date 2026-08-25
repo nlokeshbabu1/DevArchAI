@@ -22,13 +22,14 @@ import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from devsec.utils.errors import ConfigError, UsageError
 
 APP_NAME = "devsec"
 
-DEFAULT_API_URL = "http://localhost:8000"
-DEFAULT_FRONTEND_URL = "http://localhost:5174"
+DEFAULT_API_URL = "https://backend.devarchai.xyz"
+DEFAULT_FRONTEND_URL = "https://www.devarchai.xyz"
 
 ENV_API_URL = "DEVSEC_API_URL"
 ENV_FRONTEND_URL = "DEVSEC_FRONTEND_URL"
@@ -43,6 +44,30 @@ CONFIG_KEYS: dict[str, str] = {
     "api-url": "api_url",
     "frontend-url": "frontend_url",
 }
+
+PRODUCTION_API_URL = DEFAULT_API_URL
+PRODUCTION_FRONTEND_URL = DEFAULT_FRONTEND_URL
+
+
+def api_url_misconfiguration_hint(url: str) -> str | None:
+    """Return a hint when ``api-url`` looks like the frontend app, not the backend API."""
+    parsed = urlparse(url.strip().rstrip("/"))
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+
+    if port == 5174:
+        return (
+            f"{url} looks like the frontend dev server (port 5174), not the backend API. "
+            f"Run: devsec config set api-url {PRODUCTION_API_URL} "
+            f"(or http://localhost:8000 for local backend)."
+        )
+    if host in {"www.devarchai.xyz", "devarchai.xyz"}:
+        return (
+            f"{url} is the web app URL, not the API. "
+            f"Run: devsec config set api-url {PRODUCTION_API_URL}"
+        )
+    return None
+
 
 # Non-secret keys shown by `devsec config list`.
 _NON_SECRET_KEYS = ("api_url", "frontend_url")
@@ -232,6 +257,13 @@ class Config:
             )
         if not value.strip():
             raise UsageError(f"Value for '{key}' cannot be empty")
+        if key == "api-url":
+            hint = api_url_misconfiguration_hint(value.strip())
+            if hint:
+                raise UsageError(
+                    "Invalid api-url — this is not the backend API.",
+                    hint=hint,
+                )
         data = self._load_file()
         data[mapped] = value.strip()
         self._save_file(data)

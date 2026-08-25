@@ -52,9 +52,7 @@ class GitMetadata(BaseModel):
             )
         if not self.remote_url:
             raise UsageError(
-                "No git remote detected.",
-                hint="Add a remote first: 'git remote add origin <url>' and "
-                "push. Local-only repositories require archive upload, which "
-                "is not available yet.",
+                "No Git remote found.",
+                hint="Add a remote or use:\n  devsec scan --repo <repository-url>",
             )
         return self.remote_url

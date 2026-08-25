@@ -20,6 +20,7 @@ from app.schemas.repository import (
     RepositoryResponse,
     RepositoryUpdate,
 )
+from app.utils.github_branch import resolve_repository_branch
 from app.utils.repo_downloader import RepoDownloader
 from app.workers.tasks.scan_repository import scan_repository_task
 
@@ -82,11 +83,12 @@ async def create_repository(
         return existing
 
     # Create repository
+    default_branch = await downloader.get_default_branch(repo_data.url)
     repository = Repository(
         user_id=current_user.id,
         name=name,
         url=repo_data.url,
-        default_branch="main",
+        default_branch=default_branch,
     )
 
     db.add(repository)
@@ -260,6 +262,8 @@ async def update_repository(
         repository.name = repo_data.name
     if repo_data.description is not None:
         repository.description = repo_data.description
+    if repo_data.default_branch is not None:
+        repository.default_branch = repo_data.default_branch.strip() or repository.default_branch
     if repo_data.is_active is not None:
         repository.is_active = repo_data.is_active
 
