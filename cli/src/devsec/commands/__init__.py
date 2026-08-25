@@ -3,6 +3,7 @@
 from devsec.commands.auth_cmd import app as auth_app
 from devsec.commands.config_cmd import app as config_app
 from devsec.commands.project_cmd import app as project_app
+from devsec.commands.scan_cmd import app as scan_app
 from devsec.commands.version import version_cmd
 
-__all__ = ["auth_app", "config_app", "project_app", "version_cmd"]
+__all__ = ["auth_app", "config_app", "project_app", "scan_app", "version_cmd"]

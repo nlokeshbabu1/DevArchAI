@@ -44,7 +44,10 @@ def command(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        ctx = kwargs.get("ctx")
         json_mode = bool(kwargs.get("json"))
+        if not json_mode and ctx is not None:
+            json_mode = bool((getattr(ctx, "obj", None) or {}).get("json"))
         try:
             result = fn(*args, **kwargs)
             if json_mode and result is not None:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import typer
 
-from devsec.commands import auth_app, config_app, project_app
+from devsec.commands import auth_app, config_app, project_app, scan_app
 from devsec.commands.base import command, set_debug
 from devsec.commands.version import version_cmd
+from devsec.output.console import is_ci, set_output_mode
 
 app = typer.Typer(
     name="devsec",
@@ -25,6 +26,7 @@ def _version_flag(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -37,9 +39,19 @@ def main(
         "--debug",
         help="Show full tracebacks on errors (never logs credentials).",
     ),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Minimal output (implies --json in CI)."
+    ),
+    no_color: bool = typer.Option(False, "--no-color", help="Disable colored output."),
 ) -> None:
     """DevArchAI CLI."""
     set_debug(debug)
+    auto_quiet = quiet or is_ci()
+    auto_no_color = no_color or auto_quiet or is_ci()
+    set_output_mode(quiet=auto_quiet, no_color=auto_no_color)
+    ctx.ensure_object(dict)
+    ctx.obj["quiet"] = auto_quiet
+    ctx.obj["no_color"] = auto_no_color
 
 
 @app.command("version")
@@ -55,6 +67,7 @@ def version_command(
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
 app.add_typer(project_app, name="project")
+app.add_typer(scan_app, name="scan")
 
 
 def entrypoint() -> None:

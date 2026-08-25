@@ -20,7 +20,7 @@ def config(tmp_path: Path) -> Config:
 def env_config(tmp_path: Path) -> dict[str, str]:
     """Default environment for Config construction in tests."""
     return {
-        "DEVSEC_API_URL": "http://test-backend:8000",
+        "DEVSEC_API_URL": "http://127.0.0.1:8000",
         "DEVSEC_API_TOKEN": "",
         "XDG_CONFIG_HOME": str(tmp_path),
     }

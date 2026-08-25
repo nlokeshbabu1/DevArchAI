@@ -11,6 +11,7 @@ Rules:
 
 from __future__ import annotations
 
+import os
 import sys
 
 from rich.console import Console
@@ -39,14 +40,56 @@ THEME = Theme(
 # Rich UI is disabled automatically when stdout is not a TTY. To force JSON
 # mode, commands gate on their ``--json`` flag before calling render helpers.
 _FORCE_PLAIN = False
+_QUIET = False
+_NO_COLOR = False
 
 
-def get_console() -> Console:
+def set_output_mode(*, quiet: bool = False, no_color: bool = False) -> None:
+    """Configure global output behaviour for CI and scripting."""
+    global _QUIET, _NO_COLOR, console
+    _QUIET = bool(quiet)
+    _NO_COLOR = bool(no_color) or _QUIET
+    console = None
+
+
+def is_quiet() -> bool:
+    return _QUIET
+
+
+def is_no_color() -> bool:
+    return _NO_COLOR or not sys.stdout.isatty()
+
+
+def is_ci() -> bool:
+    """True when running in a known CI environment."""
+    markers = (
+        "CI",
+        "GITHUB_ACTIONS",
+        "GITLAB_CI",
+        "JENKINS_URL",
+        "BUILDKITE",
+        "CIRCLECI",
+        "TF_BUILD",
+    )
+    return any(os.environ.get(key) for key in markers)
+
+
+def get_console(*, stderr: bool = False) -> Console:
     """Return the shared, themed console instance."""
     global console
-    if console is None:
-        width: int | None = _NON_TTY_WIDTH if not sys.stdout.isatty() else None
-        console = Console(theme=THEME, highlight=False, width=width)
+    if console is None or stderr:
+        stream = sys.stderr if stderr else sys.stdout
+        width: int | None = _NON_TTY_WIDTH if not stream.isatty() else None
+        instance = Console(
+            theme=THEME,
+            highlight=False,
+            width=width,
+            stderr=stderr,
+            no_color=is_no_color(),
+        )
+        if stderr:
+            return instance
+        console = instance
     return console
 
 
