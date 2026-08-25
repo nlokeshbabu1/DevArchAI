@@ -173,24 +173,23 @@ def detect_technology_stack(files: list[str]) -> TechnologyStack:
                 stack.has_kubernetes = True
                 stack.kubernetes_files.append(file_path)
 
-        # Helm charts (Chart.yaml, values.yaml in charts/ or helm/ directories)
-        if "chart.yaml" in file_name or "values.yaml" in file_name:
+        # Helm charts: Chart.yaml anywhere (some repos don't follow standard
+        # structure); values.yaml only within chart directories
+        if "chart.yaml" in file_name:
+            stack.has_helm = True
+            stack.helm_files.append(file_path)
+        elif "values.yaml" in file_name:
             if "charts/" in file_path or "helm/" in file_path or "/chart/" in file_lower:
                 stack.has_helm = True
                 stack.helm_files.append(file_path)
-
-        # Also check for Chart.yaml anywhere (some repos don't follow standard structure)
-        if file_name == "chart.yaml":
-            stack.has_helm = True
-            stack.helm_files.append(file_path)
 
         # GitHub Actions (.github/workflows/*.yml)
         if ".github/workflows/" in file_path and file_path.endswith((".yml", ".yaml")):
             stack.has_github_actions = True
             stack.github_actions_files.append(file_path)
 
-        # GitLab CI (.gitlab-ci.yml)
-        if file_name == ".gitlab-ci.yml" or "/.gitlab-ci.yml" in file_path:
+        # GitLab CI (.gitlab-ci.yml / .gitlab-ci.yaml)
+        if file_name.startswith(".gitlab-ci."):
             stack.has_gitlab_ci = True
             stack.gitlab_ci_files.append(file_path)
 

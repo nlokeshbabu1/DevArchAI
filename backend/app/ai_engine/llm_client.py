@@ -1078,13 +1078,9 @@ def get_llm_provider() -> BaseLLMProvider:
         )
     elif provider == "mistral" and settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider")
-        # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
-        mistral_model = "mistral-large-latest"
-        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
-            mistral_model = settings.LLM_MODEL
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
-            model=mistral_model,
+            model=settings.MISTRAL_MODEL,
         )
     elif provider == "ollama":
         logger.info("Using Ollama local LLM provider")
@@ -1105,11 +1101,7 @@ def get_llm_provider() -> BaseLLMProvider:
             return GeminiProvider(api_key=settings.GEMINI_API_KEY)
         elif settings.MISTRAL_API_KEY:
             logger.info("Using Mistral LLM provider (fallback)")
-            # Use correct Mistral model, not the configured LLM_MODEL which might be for another provider
-            mistral_model = "mistral-large-latest"
-            if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
-                mistral_model = settings.LLM_MODEL
-            return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=mistral_model)
+            return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=settings.MISTRAL_MODEL)
         else:
             logger.warning("No LLM API keys configured, using Mock provider")
             return MockLLMProvider()

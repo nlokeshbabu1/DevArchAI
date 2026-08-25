@@ -89,7 +89,7 @@ class CICDParser(BaseParser):
                 docs = list(yaml.safe_load_all(content))
                 for doc in docs:
                     if doc and isinstance(doc, dict):
-                        parsed_data = self._parse_yaml_cicd(doc, parsed_data, file_path)
+                        parsed_data = self._parse_yaml_cicd(doc, parsed_data)
 
         except yaml.YAMLError as e:
             parse_errors.append(f"YAML parsing error: {str(e)}")
@@ -211,17 +211,33 @@ class CICDParser(BaseParser):
 
         # Security features
         parsed_data["security_features"] = {
-            "has_permissions": bool(doc.get("permissions")),
+            "has_permissions": bool(doc.get("permissions"))
+            or any(job.get("permissions") for job in parsed_data["jobs"]),
             "has_environment_protection": any(
                 job.get("environment") for job in parsed_data["jobs"]
             ),
-            "uses_oidc": any(
-                "id-token: write" in str(job.get("permissions", ""))
+            "uses_oidc": self._permissions_grant_oidc(doc.get("permissions"))
+            or any(
+                self._permissions_grant_oidc(job.get("permissions"))
                 for job in parsed_data["jobs"]
             ),
         }
 
         return parsed_data
+
+    @staticmethod
+    def _permissions_grant_oidc(permissions: Any) -> bool:
+        """Check whether a permissions block grants id-token: write (OIDC)."""
+        if not permissions:
+            return False
+        if isinstance(permissions, dict):
+            return any(
+                str(key).lower().replace("_", "-") == "id-token"
+                and str(value).lower() == "write"
+                for key, value in permissions.items()
+            )
+        text = str(permissions).lower()
+        return "id-token" in text and "write" in text
 
     def _parse_gitlab_ci(self, doc: dict, parsed_data: dict) -> dict:
         """Parse GitLab CI configuration."""

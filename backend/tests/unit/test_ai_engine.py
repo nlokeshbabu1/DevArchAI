@@ -244,6 +244,7 @@ class TestGetLLMProviderConfigured:
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": "mkey",
             "LLM_MODEL": "mistral-embed",
+            "MISTRAL_MODEL": "mistral-embed",
         }
         provider = get_llm_provider()
         assert isinstance(provider, MistralProvider)
@@ -258,6 +259,7 @@ class TestGetLLMProviderConfigured:
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": "mkey",
             "LLM_MODEL": "gpt-4-turbo-preview",
+            "MISTRAL_MODEL": "mistral-large-latest",
         }
         provider = get_llm_provider()
         assert provider.model == "mistral-large-latest"
@@ -271,6 +273,7 @@ class TestGetLLMProviderConfigured:
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": "mkey",
             "LLM_MODEL": "gemini-pro",
+            "MISTRAL_MODEL": "mistral-large-latest",
         }
         provider = get_llm_provider()
         assert provider.model == "mistral-large-latest"
@@ -348,6 +351,7 @@ class TestGetLLMProviderFallback:
             "ANTHROPIC_API_KEY": None,
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": "mkey",
+            "MISTRAL_MODEL": "mistral-large-latest",
             "LLM_MODEL": None,
         }
         provider = get_llm_provider()
@@ -448,6 +452,7 @@ class TestGetLLMProviderFallbackChain:
             "ANTHROPIC_API_KEY": None,
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": "mkey",
+            "MISTRAL_MODEL": "mistral-large-latest",
             "LLM_MODEL": None,
         }
         provider = get_llm_provider()

@@ -8,7 +8,13 @@ from typing import Any
 
 import structlog
 
-from app.ai.engine import BaseLLMProvider, get_llm_provider
+from app.ai.engine import (
+    AnthropicProvider,
+    BaseLLMProvider,
+    MistralProvider,
+    OpenAIProvider,
+    get_llm_provider,
+)
 from app.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -666,11 +672,11 @@ Respond ONLY with valid JSON, no other text."""
 
         # Terraform fixes
         if tech == "terraform":
-            return self._generate_terraform_fix(rule_id, title, description, file_content)
+            return self._generate_terraform_fix(rule_id, title, description, file_content, file_path)
 
         # Dockerfile fixes
         if tech == "dockerfile":
-            return self._generate_dockerfile_fix(rule_id, title, description, file_content)
+            return self._generate_dockerfile_fix(rule_id, title, description, file_content, file_path)
 
         # Kubernetes fixes
         if tech == "kubernetes":
@@ -678,7 +684,7 @@ Respond ONLY with valid JSON, no other text."""
 
         # CI/CD fixes
         if tech == "ci_cd":
-            return self._generate_cicd_fix(rule_id, title, description, file_content)
+            return self._generate_cicd_fix(rule_id, title, description, file_content, file_path)
 
         # Default fallback
         return self._get_default_fix(rule_id, title, description)
@@ -688,7 +694,8 @@ Respond ONLY with valid JSON, no other text."""
         rule_id: str,
         title: str,
         description: str,
-        file_content: str
+        file_content: str,
+        file_path: str = ""
     ) -> dict[str, Any]:
         """Generate Terraform-specific fix."""
         desc_lower = description.lower()
@@ -1156,7 +1163,8 @@ provider "aws" {{
         rule_id: str,
         title: str,
         description: str,
-        file_content: str
+        file_content: str,
+        file_path: str = ""
     ) -> dict[str, Any]:
         """Generate Dockerfile-specific fix."""
         desc_lower = description.lower()
@@ -1756,7 +1764,8 @@ spec:
         rule_id: str,
         title: str,
         description: str,
-        file_content: str
+        file_content: str,
+        file_path: str = ""
     ) -> dict[str, Any]:
         """Generate CI/CD-specific fix."""
         desc_lower = description.lower()

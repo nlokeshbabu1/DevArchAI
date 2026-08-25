@@ -825,6 +825,7 @@ async def get_scan_results(
                 or f.confidence_score
                 or 0.8,
                 "documentation_url": f.documentation_url,
+                "ai_generated": bool(f.ai_generated),
                 "scanner_name": f.scanner_name,
                 "scanner_rule_id": f.scanner_rule_id,
                 "package": f.package,

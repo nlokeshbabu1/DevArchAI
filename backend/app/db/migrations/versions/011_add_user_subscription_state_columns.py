@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "011_add_user_subscription_state_columns"
-down_revision: str | None = "010_add_billing_country_gateway_columns"
+revision = "011"
+down_revision = "010"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

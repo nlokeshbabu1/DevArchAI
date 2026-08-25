@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = Field(default=None, env="ANTHROPIC_API_KEY")
     GEMINI_API_KEY: str | None = Field(default=None, env="GEMINI_API_KEY")
     MISTRAL_API_KEY: str | None = Field(default=None, env="MISTRAL_API_KEY")
+    MISTRAL_MODEL: str = Field(default="mistral-large-latest", env="MISTRAL_MODEL")
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
     LLM_MAX_TOKENS: int = Field(default=4096, env="LLM_MAX_TOKENS")
     LLM_TEMPERATURE: float = Field(default=0.3, env="LLM_TEMPERATURE")

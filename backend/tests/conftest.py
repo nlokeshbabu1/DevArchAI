@@ -253,6 +253,34 @@ async def db_session():
     await engine.dispose()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _flush_rate_limit_keys():
+    """Clear persisted rate-limiter counters around the whole session.
+
+    The auth/general limiters keep sliding-window counters in Redis keyed
+    by client id ("testclient").  Without this, counters left over from a
+    previous full-suite run trip HTTP 429s in every later run until the
+    window TTL expires.
+    """
+    import redis as redis_lib
+
+    from app.config import settings
+
+    try:
+        client = redis_lib.Redis.from_url(
+            settings.REDIS_URL, socket_connect_timeout=2, socket_timeout=2
+        )
+        keys = list(client.scan_iter("ratelimit:*"))
+        if keys:
+            client.delete(*keys)
+        yield
+        keys = list(client.scan_iter("ratelimit:*"))
+        if keys:
+            client.delete(*keys)
+    except Exception:
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_redis_singleton():
     """Reset Redis cache singleton before each test.

@@ -358,7 +358,7 @@ describe('ScanProgressPage', () => {
     )
     await waitFor(() => {
       expect(screen.getByText('AI Analysis')).toBeInTheDocument()
-      expect(screen.getByText('Analyzing findings')).toBeInTheDocument()
+      expect(screen.getByText('Analyzing 5 of 10 findings')).toBeInTheDocument()
     })
   })
 

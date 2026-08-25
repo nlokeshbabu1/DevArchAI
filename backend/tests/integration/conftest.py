@@ -5,6 +5,7 @@ so connections are established in the current event loop, not a stale one.
 """
 
 import pytest
+import pytest_asyncio
 
 
 @pytest.fixture(autouse=True)
@@ -35,3 +36,38 @@ def _reset_app_singletons():
     redis_mod._cache_instance = orig_cache
     session_mod._engine = orig_engine
     session_mod._session_factory = orig_session_factory
+
+
+@pytest_asyncio.fixture
+async def client():
+    """Async HTTP client bound to the FastAPI ASGI app."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def test_db():
+    """Async DB session using the same engine as the application's get_db."""
+    from app.db.session import get_session_factory
+
+    session = get_session_factory()()
+    try:
+        yield session
+    finally:
+        await session.rollback()
+        await session.close()
+
+
+@pytest.fixture
+def sample_repo_data():
+    """Minimal repository metadata for scan API requests."""
+    return {
+        "repository_url": "https://github.com/test/sample-repo",
+        "branch": "main",
+        "include_ai_explanations": True,
+    }

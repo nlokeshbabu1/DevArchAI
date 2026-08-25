@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import { Landing } from '../Landing'
@@ -23,62 +23,80 @@ describe('Landing Page', () => {
 
   it('renders hero section with main heading', () => {
     renderLanding()
-    expect(screen.getByText(/Secure Your DevOps/i)).toBeInTheDocument()
-    expect(screen.getByText(/Before Production/i)).toBeInTheDocument()
+    const heroHeading = screen.getByRole('heading', { level: 1 })
+    expect(heroHeading.textContent).toMatch(/secure your devops stack before production/i)
   })
 
   it('renders CTA buttons', () => {
     renderLanding()
-    expect(screen.getByText(/Start Free Scan/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Start Free Scan/i).length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText(/Watch Demo/i)).toBeInTheDocument()
   })
 
-  it('renders stats section', () => {
+  it('renders hero trust markers', () => {
     renderLanding()
-    expect(screen.getByText(/10,000\+/i)).toBeInTheDocument()
-    expect(screen.getByText(/500\+/i)).toBeInTheDocument()
-    expect(screen.getByText(/< 30s/i)).toBeInTheDocument()
-    expect(screen.getByText(/99\.9%/i)).toBeInTheDocument()
+    expect(screen.getByText('No credit card required')).toBeInTheDocument()
+    expect(screen.getByText('Free tier available')).toBeInTheDocument()
+    expect(screen.getByText('Instant results')).toBeInTheDocument()
   })
 
-  it('renders how it works section with 5 steps', () => {
+  it('renders architecture section with pipeline steps', () => {
     renderLanding()
-    expect(screen.getByText(/How DevArchAI Works/i)).toBeInTheDocument()
-    expect(screen.getAllByRole('heading', { level: 3 }).length).toBeGreaterThanOrEqual(5)
+    const sectionHeading = screen.getAllByRole('heading', { level: 2 })
+      .find(h => /from repository to production readiness/i.test(h.textContent || ''))
+    expect(sectionHeading).toBeDefined()
+    // Six pipeline steps are rendered as level-3 headings
+    expect(screen.getAllByRole('heading', { level: 3 }).length).toBeGreaterThanOrEqual(6)
+    expect(screen.getByText('Connect Your Repository')).toBeInTheDocument()
+    expect(screen.getByText('Technology Detection')).toBeInTheDocument()
+    expect(screen.getByText('AI Security Scan')).toBeInTheDocument()
   })
 
   it('renders supported technologies section', () => {
     renderLanding()
-    expect(screen.getByText(/Docker/i)).toBeInTheDocument()
-    expect(screen.getByText(/Kubernetes/i)).toBeInTheDocument()
-    expect(screen.getByText(/Terraform/i)).toBeInTheDocument()
-    expect(screen.getByText(/GitHub Actions/i)).toBeInTheDocument()
+    expect(screen.getAllByText('Docker').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Kubernetes').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Terraform').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('GitHub Actions').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders pricing plans', () => {
     renderLanding()
-    expect(screen.getByText(/Free/i)).toBeInTheDocument()
-    expect(screen.getByText(/Pro/i)).toBeInTheDocument()
-    expect(screen.getByText(/Team/i)).toBeInTheDocument()
-    expect(screen.getByText(/\$29/i)).toBeInTheDocument()
-    expect(screen.getByText(/\$99/i)).toBeInTheDocument()
+    const pricing = within(document.getElementById('pricing') as HTMLElement)
+    expect(pricing.getByText('Free')).toBeInTheDocument()
+    expect(pricing.getByText('$0')).toBeInTheDocument()
+    expect(pricing.getByText('Plus')).toBeInTheDocument()
+    expect(pricing.getByText('$12')).toBeInTheDocument()
+    expect(pricing.getByText('Pro')).toBeInTheDocument()
+    expect(pricing.getByText('$29')).toBeInTheDocument()
+    expect(pricing.getAllByText('Enterprise').length).toBeGreaterThanOrEqual(1)
+    expect(pricing.getByText('Custom')).toBeInTheDocument()
   })
 
-  it('renders testimonials section', () => {
+  it('renders final call-to-action section', () => {
     renderLanding()
-    expect(screen.getByText(/Loved by DevOps Teams/i)).toBeInTheDocument()
+    const ctaHeading = screen.getAllByRole('heading', { level: 2 })
+      .find(h => /secure your pipeline/i.test(h.textContent || ''))
+    expect(ctaHeading).toBeDefined()
+    expect(screen.getByText(/See How It Works/i)).toBeInTheDocument()
   })
 
   it('has proper navigation header', () => {
     renderLanding()
-    expect(screen.getByText(/DevArchAI/i)).toBeInTheDocument()
-    expect(screen.getByText(/Login/i)).toBeInTheDocument()
-    expect(screen.getByText(/Get Started/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/DevArchAI/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/Log In/i)).toBeInTheDocument()
   })
 
   it('renders live analysis demo', () => {
     renderLanding()
     expect(screen.getByText(/See It In Action/i)).toBeInTheDocument()
-    expect(screen.getByText(/Live Analysis Demo/i)).toBeInTheDocument()
+    expect(screen.getByText(/Live Product Demo/i)).toBeInTheDocument()
+  })
+
+  it('has a footer with compliance links', () => {
+    renderLanding()
+    expect(screen.getByText(/All rights reserved/i)).toBeInTheDocument()
+    expect(screen.getByText('Documentation')).toBeInTheDocument()
+    expect(screen.getByText('Privacy Policy')).toBeInTheDocument()
   })
 })

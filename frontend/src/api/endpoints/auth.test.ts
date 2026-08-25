@@ -2,13 +2,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { authApi } from './auth'
 import axios from 'axios'
 
-// Mock axios
-vi.mock('axios')
+// Mock axios with a working create(): lib/api.ts calls axios.create() and
+// attaches interceptors at module scope, so an empty auto-mock crashes on import
+vi.mock('axios', () => {
+  const instance = {
+    post: vi.fn(),
+    get: vi.fn(),
+    put: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+    interceptors: {
+      request: { use: vi.fn() },
+      response: { use: vi.fn() },
+    },
+    defaults: { headers: { common: {} } },
+  }
+  return {
+    default: {
+      ...instance,
+      create: vi.fn(() => instance),
+    },
+  }
+})
 const mockedAxios = vi.mocked(axios, true)
 
 describe('Auth API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // clearAllMocks resets implementations? No — but re-wire defensively
+    mockedAxios.create.mockReturnValue(mockedAxios)
   })
 
   describe('login', () => {

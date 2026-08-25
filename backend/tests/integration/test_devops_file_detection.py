@@ -27,7 +27,7 @@ class TestMultiFileDetection:
         stack = detect_technology_stack(files)
         
         assert stack.has_docker == True
-        assert len(stack.docker_files) == 2  # Dockerfile, Containerfile
+        assert len(stack.docker_files) == 3  # Dockerfile, services/api/Dockerfile, Containerfile
         
         assert stack.has_docker_compose == True
         assert len(stack.docker_compose_files) == 1
@@ -191,6 +191,7 @@ class TestMultiFileDetection:
         
         # All should be detected
         assert "docker" in detected
+        assert "docker_compose" in detected
         assert "kubernetes" in detected
         assert "terraform" in detected
         assert "github_actions" in detected
@@ -202,8 +203,8 @@ class TestMultiFileDetection:
         assert "travis" in detected
         assert "drone" in detected
         
-        # Count should match
-        assert len(detected) == 11
+        # Count should match (12 technologies: fixture also has docker-compose.yml)
+        assert len(detected) == 12
 
 
 class TestCICDParser:
@@ -469,7 +470,7 @@ class TestRuleApplicationByFileType:
 class TestDevOpsScanIntegration:
     """Integration test for complete DevOps scan flow."""
 
-    def test_full_scan_with_all_file_types(self, sample_repo_data):
+    def test_full_scan_with_all_file_types(self):
         """
         Test complete scan with all DevOps file types.
         

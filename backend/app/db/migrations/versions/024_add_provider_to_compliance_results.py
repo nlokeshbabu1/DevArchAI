@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "024"
-down_revision: str | None = "023_cloud_integration_tables"
+revision = "024"
+down_revision = "023"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

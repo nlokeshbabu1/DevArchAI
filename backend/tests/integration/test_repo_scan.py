@@ -174,24 +174,29 @@ class TestSecurityRuleCoverage:
     def test_terraform_security_rules(self):
         """Test Terraform security rules detect issues."""
         from app.rule_engine.rules.terraform_rules import (
+            TerraformBackendEncryptionRule,
             TerraformLocalBackendRule,
-            TerraformNoEncryptionRule,
         )
 
         # Test local backend detection
         rule = TerraformLocalBackendRule()
         assert rule is not None
-        assert rule.rule_id == "TF-STATE-001"
+        assert rule.rule.id == "TF-STATE-001"
+
+        # Encryption-at-rest rule
+        enc_rule = TerraformBackendEncryptionRule()
+        assert enc_rule is not None
+        assert enc_rule.rule.id.startswith("TF-")
 
     def test_kubernetes_security_rules(self):
         """Test Kubernetes security rules detect issues."""
         from app.rule_engine.rules.kubernetes_rules import (
-            KubernetesPodSecurityRule,
+            KubernetesMissingPodSecurityContextRule,
         )
 
-        rule = KubernetesPodSecurityRule()
+        rule = KubernetesMissingPodSecurityContextRule()
         assert rule is not None
-        assert rule.rule_id.startswith("K8S-SEC")
+        assert rule.rule.id.startswith("K8S-SEC")
 
     def test_docker_security_rules(self):
         """Test Docker security rules detect issues."""
@@ -201,17 +206,17 @@ class TestSecurityRuleCoverage:
 
         rule = DockerRootUserRule()
         assert rule is not None
-        assert rule.rule_id.startswith("DKR-SEC") or rule.rule_id.startswith("DOCKER")
+        assert rule.rule.id.startswith("DKR-SEC") or rule.rule.id.startswith("DOCKER")
 
     def test_cicd_security_rules(self):
         """Test CI/CD security rules detect issues."""
         from app.rule_engine.rules.cicd_rules import (
-            CICDSecretsInEnvRule,
+            CICDMissingSecurityScanningRule,
         )
 
-        rule = CICDSecretsInEnvRule()
+        rule = CICDMissingSecurityScanningRule()
         assert rule is not None
-        assert rule.rule_id.startswith("CI-SEC")
+        assert rule.rule.id.startswith("CI-SEC")
 
 
 # ============================================================================
@@ -302,7 +307,9 @@ class TestMultiTechnologyDetection:
         assert stack.has_github_actions is True
 
         technologies = stack.get_detected_technologies()
-        assert len(technologies) == 4
+        # docker-compose.yml is detected as its own "docker_compose" technology
+        assert "docker_compose" in technologies
+        assert len(technologies) == 5
 
 
 # ============================================================================

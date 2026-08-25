@@ -894,7 +894,7 @@ echo "username={git_username}"
 echo "password={self.github_token}"
 ''')
 
-            os.chmod(cred_helper_script, 0o755)
+            os.chmod(cred_helper_script, 0o700)
 
             # Configure git to use the credential helper
             with self.local_repo.config_writer() as writer:

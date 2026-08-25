@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
+from app.models.subscription import PlanTier
 from app.models.user import User
 from app.services.organization_provisioning import ensure_user_organization_membership
 from app.services.payment_clients import RazorpayClient, StripeClient

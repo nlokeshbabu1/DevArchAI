@@ -53,6 +53,14 @@ const defaultProps = {
   onComplete: vi.fn(),
 }
 
+// Production callers (InlineScanPanel) pass stage metadata from the scans API
+const defaultStages = [
+  { id: 'cloning', label: 'Cloning Repository', icon: 'download', order: 1 },
+  { id: 'technology_detection', label: 'Detecting Technologies', icon: 'layers', order: 2 },
+  { id: 'scanning', label: 'Running Docker Rules', icon: 'shield', order: 3 },
+  { id: 'normalization', label: 'Saving Findings', icon: 'file-text', order: 4 },
+] as const
+
 describe('ScanProgressOverlay', () => {
   test('renders progress percentage', () => {
     render(<ScanProgressOverlay {...defaultProps} />)
@@ -86,8 +94,7 @@ describe('ScanProgressOverlay', () => {
       />
     )
     expect(screen.getAllByText('Scan Complete').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Close')).toBeInTheDocument()
-    expect(screen.getByText('Dismiss')).toBeInTheDocument()
+    expect(screen.getByText('View Results')).toBeInTheDocument()
   })
 
   test('shows score comparison when previousScore is provided', () => {
@@ -131,7 +138,7 @@ describe('ScanProgressOverlay', () => {
   })
 
   test('shows scan stages timeline', () => {
-    render(<ScanProgressOverlay {...defaultProps} />)
+    render(<ScanProgressOverlay {...defaultProps} stages={[...defaultStages]} />)
     expect(screen.getByText('Scan Stages')).toBeInTheDocument()
     expect(screen.getByText('Cloning Repository')).toBeInTheDocument()
     expect(screen.getByText('Detecting Technologies')).toBeInTheDocument()

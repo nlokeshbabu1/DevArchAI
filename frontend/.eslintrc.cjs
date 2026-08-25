@@ -94,5 +94,8 @@ module.exports = {
     'build/',
     '*.config.js',
     '*.config.ts',
+    // Playwright specs run under Playwright's own TS transform,
+    // outside the app tsconfig project used by the parser
+    'tests/e2e/',
   ],
 }

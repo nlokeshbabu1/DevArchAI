@@ -43,10 +43,10 @@ CMD ["./app"]
 
             # Check for specific findings
             finding_ids = [f["rule_id"] for f in result["findings"]]
-            assert "DKR-SEC-001" in finding_ids  # Root user
-            assert "DKR-SEC-002" in finding_ids  # Latest tag (ubuntu is large)
-            assert "DKR-SEC-003" in finding_ids  # Secrets
-            assert "DKR-SEC-009" in finding_ids  # Large image
+            assert "DKR-SEC-001" in finding_ids  # Root user (no USER instruction)
+            assert "DKR-SEC-003" in finding_ids  # Secrets (API_KEY / PASSWORD ENVs)
+            assert "DKR-SEC-009" in finding_ids  # Large base image
+            assert "DKR-SEC-010" in finding_ids  # SSH server installed
 
     def test_scan_secure_dockerfile(self):
         """Scan Dockerfile with security best practices."""

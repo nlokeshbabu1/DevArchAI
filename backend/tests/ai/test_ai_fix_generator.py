@@ -143,7 +143,8 @@ class TestAIFixGenerator:
         """Test AI handles invalid JSON gracefully."""
         # Arrange
         ai_service = AIFixEnrichmentService()
-        
+        finding = {"rule_id": "TF-STATE-001", "severity": "high", "description": "Test"}
+
         invalid_responses = [
             "Not JSON at all",
             "{ invalid json }",
@@ -151,23 +152,14 @@ class TestAIFixGenerator:
             "",
             None
         ]
-        
+
         for invalid_response in invalid_responses:
-            with patch.object(ai_service, '_parse_ai_response',
-                            return_value=ai_service._generate_mock_fix(
-                                {"rule_id": "TF-STATE-001"}
-                            )):
-                
-                # Act - Should not raise
-                result = await ai_service.generate_fix({
-                    "rule_id": "TF-STATE-001",
-                    "severity": "high",
-                    "description": "Test"
-                })
-                
-                # Assert - Should have fallback data
-                assert result is not None
-                assert "risk" in result
+            # Act - parse must never raise and always yield usable fallback data
+            result = ai_service._parse_ai_response(invalid_response, finding)
+
+            # Assert - Should have fallback data
+            assert result is not None
+            assert "risk" in result
 
 
 @pytest.mark.asyncio
@@ -392,7 +384,11 @@ class TestAIEdgeCases:
         }
         
         # Act with empty file content
-        result = await ai_service.generate_fix(finding, file_content="")
+        # Patch the network seam: ambient .env credentials would otherwise
+        # trigger real LLM calls in tests.
+        with patch.object(ai_service, "_generate_ai_fix", new_callable=AsyncMock) as mock_ai:
+            mock_ai.return_value = {"summary": "Fix", "risk": "low", "confidence": 0.5}
+            result = await ai_service.generate_fix(finding, file_content="")
         
         # Assert - Should not raise
         assert result is not None
@@ -413,7 +409,11 @@ class TestAIEdgeCases:
         long_content = "terraform {\n" + ("# Comment line\n" * 1000) + "}"
         
         # Act
-        result = await ai_service.generate_fix(finding, file_content=long_content)
+        # Patch the network seam: ambient .env credentials would otherwise
+        # trigger real LLM calls in tests.
+        with patch.object(ai_service, "_generate_ai_fix", new_callable=AsyncMock) as mock_ai:
+            mock_ai.return_value = {"summary": "Fix", "risk": "low", "confidence": 0.5}
+            result = await ai_service.generate_fix(finding, file_content=long_content)
         
         # Assert - Should not raise
         assert result is not None
@@ -430,8 +430,12 @@ class TestAIEdgeCases:
         }
         
         # Act
-        result = await ai_service.generate_fix(finding)
-        
+        # Patch the network seam: ambient .env credentials would otherwise
+        # trigger real LLM calls in tests.
+        with patch.object(ai_service, "_generate_ai_fix", new_callable=AsyncMock) as mock_ai:
+            mock_ai.return_value = {"summary": "Fix", "risk": "low", "confidence": 0.5}
+            result = await ai_service.generate_fix(finding)
+
         # Assert - Should not raise
         assert result is not None
 
@@ -447,7 +451,11 @@ class TestAIEdgeCases:
         }
         
         # Act
-        result = await ai_service.generate_fix(finding)
-        
+        # Patch the network seam: ambient .env credentials would otherwise
+        # trigger real LLM calls in tests.
+        with patch.object(ai_service, "_generate_ai_fix", new_callable=AsyncMock) as mock_ai:
+            mock_ai.return_value = {"summary": "Fix", "risk": "low", "confidence": 0.5}
+            result = await ai_service.generate_fix(finding)
+
         # Assert - Should not raise
         assert result is not None

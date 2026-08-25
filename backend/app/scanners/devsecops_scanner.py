@@ -178,15 +178,131 @@ class DevSecOpsScanner:
                 if file_path.is_file():
                     self._scan_dockerfile_file(file_path)
 
+    def _legacy_dockerfile_resources(self, parsed_data: dict, raw_content: str) -> list[dict[str, Any]]:
+        """Build resources in the shape expected by app.rules.devsecops docker rules."""
+        instructions: list[dict[str, Any]] = []
+        for idx, line in enumerate(raw_content.splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split(None, 1)
+            instructions.append({
+                "instruction": parts[0].upper(),
+                "arguments": parts[1] if len(parts) > 1 else "",
+                "line_number": idx,
+            })
+
+        return [{
+            "file_type": "dockerfile",
+            "user": parsed_data.get("user"),
+            "base_image": parsed_data.get("base_image") or {},
+            "env_vars": parsed_data.get("env_vars") or {},
+            "exposed_ports": parsed_data.get("exposed_ports") or [],
+            "instructions": instructions,
+        }]
+
+    def _legacy_kubernetes_resources(self, parsed_data: dict) -> list[dict[str, Any]]:
+        """Build resources in the shape expected by app.rules.devsecops kubernetes rules."""
+        resources: list[dict[str, Any]] = []
+
+        def normalize_volumes(volumes: list) -> list:
+            normalized = []
+            for volume in volumes or []:
+                if not isinstance(volume, dict):
+                    continue
+                entry = {"name": volume.get("name")}
+                if "hostPath" in volume:
+                    entry["host_path"] = volume["hostPath"]
+                elif "host_path" in volume:
+                    entry["host_path"] = volume["host_path"]
+                normalized.append(entry)
+            return normalized
+
+        for dep in parsed_data.get("deployments", []):
+            resources.append({
+                "file_type": "kubernetes",
+                "kind": "Deployment",
+                "name": dep.get("name"),
+                "properties": {
+                    "containers": dep.get("containers", []),
+                    "init_containers": dep.get("init_containers", []),
+                    "volumes": normalize_volumes(dep.get("volumes", [])),
+                },
+            })
+
+        # Other workload kinds (Pod, Service, ...) from the generic resource list
+        for res in parsed_data.get("resources", []):
+            kind = res.get("kind") or res.get("_kind")
+            if not kind:
+                continue
+            if any(r.get("name") == res.get("name") and r.get("kind") == kind for r in resources):
+                continue
+            spec_pod = (res.get("spec") or {}).get("template", {}).get("spec", {}) \
+                if kind in ["Deployment", "StatefulSet", "DaemonSet", "Job"] else (res.get("spec") or {})
+            containers = []
+            for container in spec_pod.get("containers", []):
+                containers.append({
+                    "name": container.get("name", ""),
+                    "image": container.get("image", ""),
+                    "resources": container.get("resources", {}),
+                    "liveness_probe": "livenessProbe" in container,
+                    "readiness_probe": "readinessProbe" in container,
+                    "security_context": container.get("securityContext", {}),
+                })
+            resources.append({
+                "file_type": "kubernetes",
+                "kind": kind,
+                "name": res.get("metadata", {}).get("name"),
+                "properties": {
+                    "containers": containers,
+                    "init_containers": [],
+                    "volumes": normalize_volumes(spec_pod.get("volumes", [])),
+                },
+            })
+
+        return resources
+
+    def _legacy_terraform_resources(self, parsed_data: dict) -> list[dict[str, Any]]:
+        """Build resources in the shape expected by app.rules.devsecops terraform rules."""
+        resources: list[dict[str, Any]] = []
+        for resource in parsed_data.get("resources", []):
+            if isinstance(resource, dict):
+                entry = dict(resource)
+                entry.setdefault("file_type", "terraform")
+                resources.append(entry)
+        for backend in parsed_data.get("backends", []) or []:
+            resources.append({
+                "file_type": "terraform",
+                "resource_type": "backend",
+                "properties": backend,
+            })
+        return resources
+
+    def _legacy_cicd_resources(self, parsed_data: dict, raw_content: str) -> list[dict[str, Any]]:
+        """Build resources in the shape expected by app.rules.devsecops cicd rules."""
+        return [{
+            "file_type": "cicd",
+            "ci_type": parsed_data.get("ci_type", "unknown"),
+            "raw_content": raw_content,
+            "properties": {
+                "jobs": parsed_data.get("jobs", []),
+                "stages": parsed_data.get("stages", []),
+                "triggers": parsed_data.get("triggers", []),
+                "environments": parsed_data.get("environments", []),
+            },
+        }]
+
     def _scan_dockerfile_file(self, file_path: Path) -> None:
         """Scan a single Dockerfile."""
-        from app.parsers.dockerfile import parse_dockerfile
+        from app.parsers.dockerfile import DockerfileParser
 
         try:
             content = file_path.read_text()
             relative_path = str(file_path)
 
-            resources = parse_dockerfile(content, relative_path)
+            parser = DockerfileParser()
+            parsed = parser.parse(file_path, content)
+            resources = self._legacy_dockerfile_resources(parsed.parsed_data, content)
             self._parsed_resources.extend(resources)
             self._files_scanned.append(relative_path)
 
@@ -230,13 +346,15 @@ class DevSecOpsScanner:
 
     def _scan_kubernetes_file(self, file_path: Path) -> None:
         """Scan a single Kubernetes manifest."""
-        from app.parsers.kubernetes import parse_kubernetes_manifest
+        from app.parsers.kubernetes import KubernetesParser
 
         try:
             content = file_path.read_text()
             relative_path = str(file_path)
 
-            resources = parse_kubernetes_manifest(content, relative_path)
+            parser = KubernetesParser()
+            parsed = parser.parse(file_path, content)
+            resources = self._legacy_kubernetes_resources(parsed.parsed_data)
             self._parsed_resources.extend(resources)
             self._files_scanned.append(relative_path)
 
@@ -262,13 +380,15 @@ class DevSecOpsScanner:
 
     def _scan_terraform_file(self, file_path: Path) -> None:
         """Scan a single Terraform file."""
-        from app.parsers.terraform import parse_terraform
+        from app.parsers.terraform import TerraformParser
 
         try:
             content = file_path.read_text()
             relative_path = str(file_path)
 
-            resources = parse_terraform(content, relative_path)
+            parser = TerraformParser()
+            parsed = parser.parse(file_path, content)
+            resources = self._legacy_terraform_resources(parsed.parsed_data)
             self._parsed_resources.extend(resources)
             self._files_scanned.append(relative_path)
 
@@ -302,35 +422,32 @@ class DevSecOpsScanner:
 
     def _scan_cicd_file(self, file_path: Path) -> None:
         """Scan a single CI/CD file."""
-        from app.parsers.cicd import parse_cicd_pipeline
+        from app.parsers.cicd import CICDParser
 
         try:
             content = file_path.read_text()
             relative_path = str(file_path)
-            file_name = file_path.name.lower()
 
-            # Determine CI/CD type
-            cicd_type = "github_actions"
-            if "gitlab" in file_name:
-                cicd_type = "gitlab_ci"
-            elif "azure" in file_name:
-                cicd_type = "azure_pipelines"
-            elif "circle" in file_name:
-                cicd_type = "circleci"
-            elif "jenkins" in file_name.lower():
-                cicd_type = "jenkins"
-
-            resources = parse_cicd_pipeline(content, relative_path, cicd_type)
+            parser = CICDParser()
+            parsed = parser.parse(file_path, content)
+            resources = self._legacy_cicd_resources(parsed.parsed_data, content)
             self._parsed_resources.extend(resources)
             self._files_scanned.append(relative_path)
 
-            # Check if terraform exists in repo for CI/CD rules
-            has_terraform = len(list(repo_path.glob("**/*.tf"))) > 0
-
-            # Run rules
-            findings = self.registry.evaluate_all(
-                resources, relative_path, file_type="cicd", has_terraform=has_terraform
+            # Check if terraform exists in the repo for CI/CD rules
+            has_terraform = any(
+                list(dir_path.glob("*.tf"))
+                for dir_path in [file_path.parent, *file_path.parents]
             )
+
+            # Run rules — rules that accept has_terraform get the context
+            findings: list[RuleFinding] = []
+            for rule in self.registry.get_rules_by_file_type("cicd"):
+                try:
+                    rule_findings = rule.evaluate(resources, relative_path, has_terraform=has_terraform)
+                except TypeError:
+                    rule_findings = rule.evaluate(resources, relative_path)
+                findings.extend(rule_findings)
             self._findings.extend(findings)
 
             logger.debug("CI/CD pipeline scanned", file=relative_path, findings=len(findings))

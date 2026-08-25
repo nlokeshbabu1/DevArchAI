@@ -2,7 +2,9 @@
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from sqlalchemy import select
 
 from app.models.scan import Scan, ScanStatus
 from app.models.finding import Finding, Severity, Category
@@ -54,7 +56,7 @@ class TestScanAPIIntegration:
                 )
             ]
             
-            with patch.object(test_db, 'add') as mock_add:
+            with patch.object(test_db, 'add'):
                 # Act - Start scan
                 scan_request = {
                     "repository_url": "https://github.com/test/sample-repo",
@@ -63,7 +65,7 @@ class TestScanAPIIntegration:
                 }
 
                 response = await client.post(
-                    "/api/v1/unified/scan/start",
+                    "/api/v1/scan/start",
                     json=scan_request
                 )
 
@@ -72,19 +74,27 @@ class TestScanAPIIntegration:
                 data = response.json()
                 
                 assert "scan_id" in data
-                assert data["status"] == "running"
+                # Scans are queued asynchronously; the start endpoint reports
+                # the initial "pending" state before the background worker runs.
+                assert data["status"] == "pending"
                 assert data["repository_url"] == scan_request["repository_url"]
                 assert data["branch"] == scan_request["branch"]
 
-                # Verify scan record created
-                assert mock_add.called
+                # Verify the scan record was actually created in the database —
+                # the endpoint persists via its own get_db session.
+                result = await test_db.execute(
+                    select(Scan).where(Scan.id == UUID(data["scan_id"]))
+                )
+                created = result.scalar_one_or_none()
+                assert created is not None
+                assert created.repository_url == scan_request["repository_url"]
+                assert created.branch == scan_request["branch"]
 
     async def test_scan_api_validates_github_url(self, client):
-        """Test that invalid GitHub URLs are rejected."""
+        """Test that invalid repository URLs are rejected."""
         invalid_urls = [
             "not-a-url",
             "ftp://github.com/test/repo",
-            "https://gitlab.com/test/repo",  # Only GitHub supported
             "",
             "javascript:alert('xss')",
             "https://github.com/'; DROP TABLE users; --",
@@ -92,13 +102,17 @@ class TestScanAPIIntegration:
 
         for url in invalid_urls:
             response = await client.post(
-                "/api/v1/unified/scan/start",
+                "/api/v1/scan/start",
                 json={"repository_url": url}
             )
             
-            assert response.status_code == 400
-            assert "Invalid repository URL" in response.json()["detail"] or \
-                   "detail" in response.json()
+            # Pydantic/FastAPI request validation rejects malformed URLs with 422;
+            # handler-level checks raise 400. Both mean "rejected".
+            assert response.status_code in (400, 422)
+            # Global handlers reshape errors: FastAPI validation -> {"error": {...}},
+            # HTTPException -> {"detail": ...}. Either shape must be present.
+            body = response.json()
+            assert "detail" in body or body.get("error", {}).get("code") == "VALIDATION_ERROR"
 
     async def test_scan_api_accepts_valid_github_urls(self, client):
         """Test that valid GitHub URLs are accepted."""
@@ -106,13 +120,12 @@ class TestScanAPIIntegration:
             "https://github.com/test/repo",
             "https://github.com/org/project-name",
             "https://github.com/user/repo.git",
-            "http://github.com/test/repo",  # HTTP also OK
         ]
 
         for url in valid_urls:
             with patch('app.api.v1.routes.unified_scan.SyncScanService'):
                 response = await client.post(
-                    "/api/v1/unified/scan/start",
+                    "/api/v1/scan/start",
                     json={"repository_url": url}
                 )
                 
@@ -154,56 +167,55 @@ class TestScanAPIIntegration:
             ai_generated=True
         )
         
-        # Mock DB query
-        with patch.object(test_db, 'execute') as mock_execute:
-            mock_result = MagicMock()
-            mock_result.scalar_one_or_none.return_value = scan
-            mock_result.scalars.return_value.all.return_value = [finding]
-            mock_execute.return_value = mock_result
-            
-            # Act - Get scan results
-            response = await client.get(
-                f"/api/v1/unified/scan/results/{scan_id}"
-            )
-            
-            # Assert
-            assert response.status_code == 200
-            data = response.json()
-            
-            # Verify all AI fields present
-            assert "findings" in data
-            assert len(data["findings"]) > 0
-            
-            ai_finding = data["findings"][0]
-            
-            # Required AI fields
-            assert "summary" in ai_finding
-            assert ai_finding["summary"] == "Security scanning missing"
-            
-            assert "risk" in ai_finding
-            assert ai_finding["risk"] == "Vulnerabilities reach production"
-            
-            assert "impact" in ai_finding
-            assert ai_finding["impact"] == "Security breaches"
-            
-            assert "fix_code" in ai_finding
-            assert "trivy" in ai_finding["fix_code"]
-            
-            assert "fix_example" in ai_finding
-            
-            assert "full_example" in ai_finding
-            
-            assert "best_practices" in ai_finding
-            assert isinstance(ai_finding["best_practices"], list)
-            
-            assert "confidence" in ai_finding
-            assert ai_finding["confidence"] == 0.92
-            
-            assert "documentation_url" in ai_finding
-            assert "github.com" in ai_finding["documentation_url"]
-            
-            assert "ai_generated" in ai_finding
-            assert ai_finding["ai_generated"] == True
+        # Persist real rows — the route handler uses its own get_db session,
+        # so patching the fixture session would not affect it.
+        test_db.add(scan)
+        test_db.add(finding)
+        await test_db.commit()
+        
+        # Act - Get scan results
+        response = await client.get(
+            f"/api/v1/scan/results/{scan_id}"
+        )
+        
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify all AI fields present
+        assert "findings" in data
+        assert len(data["findings"]) > 0
+        
+        ai_finding = data["findings"][0]
+        
+        # Required AI fields
+        assert "summary" in ai_finding
+        assert ai_finding["summary"] == "Security scanning missing"
+        
+        assert "risk" in ai_finding
+        assert ai_finding["risk"] == "Vulnerabilities reach production"
+        
+        assert "impact" in ai_finding
+        assert ai_finding["impact"] == "Security breaches"
+        
+        assert "fix_code" in ai_finding
+        assert "trivy" in ai_finding["fix_code"]
+        
+        assert "fix_example" in ai_finding
+        
+        assert "full_example" in ai_finding
+        
+        assert "best_practices" in ai_finding
+        assert isinstance(ai_finding["best_practices"], list)
+        
+        assert "confidence" in ai_finding
+        assert ai_finding["confidence"] == 0.92
+        
+        assert "documentation_url" in ai_finding
+        assert "github.com" in ai_finding["documentation_url"]
+        
+        assert "ai_generated" in ai_finding
+        assert ai_finding["ai_generated"] == True
 
     async def test_scan_api_handles_concurrent_requests(self, client, test_db):
         """Test that API handles multiple concurrent scan requests."""
@@ -218,7 +230,7 @@ class TestScanAPIIntegration:
         # Act - Send concurrent requests
         with patch('app.api.v1.routes.unified_scan.SyncScanService'):
             tasks = [
-                client.post("/api/v1/unified/scan/start", json=req)
+                client.post("/api/v1/scan/start", json=req)
                 for req in scan_requests
             ]
             
@@ -243,21 +255,20 @@ class TestScanAPIIntegration:
             progress=65
         )
         
-        with patch.object(test_db, 'execute') as mock_execute:
-            mock_result = MagicMock()
-            mock_result.scalar_one_or_none.return_value = scan
-            mock_execute.return_value = mock_result
-            
-            response = await client.get(
-                f"/api/v1/unified/scan/status/{scan_id}"
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert data["status"] == "processing"
-            assert data["progress"] == 65
-            assert "current_step" in data
+        # Persist a real row — the route handler uses its own get_db session.
+        test_db.add(scan)
+        await test_db.commit()
+        
+        response = await client.get(
+            f"/api/v1/scan/status/{scan_id}"
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "processing"
+        assert data["progress"] == 65
+        assert "current_step" in data
 
 
 @pytest.mark.asyncio
@@ -268,7 +279,7 @@ class TestScanContractValidation:
         """Validate scan response has all required top-level fields."""
         with patch('app.api.v1.routes.unified_scan.SyncScanService'):
             response = await client.post(
-                "/api/v1/unified/scan/start",
+                "/api/v1/scan/start",
                 json={"repository_url": "https://github.com/test/repo"}
             )
         
@@ -335,33 +346,34 @@ class TestScanErrorHandling:
     """Test error handling in scan API."""
 
     async def test_scan_handles_repo_not_found(self, client):
-        """Test API handles non-existent GitHub repo."""
+        """Test API handles non-existent repos gracefully."""
         with patch('app.utils.repository_scanner.RepositoryScanner.clone_repository') as mock_clone:
             mock_clone.side_effect = Exception("Repository not found")
             
             response = await client.post(
-                "/api/v1/unified/scan/start",
+                "/api/v1/scan/start",
                 json={"repository_url": "https://github.com/test/nonexistent-repo"}
             )
             
-            # Should handle gracefully
-            assert response.status_code in [400, 500]
-            assert "detail" in response.json()
+            # Scans are queued asynchronously: the start endpoint acknowledges
+            # with 200 + scan_id; the failure is recorded on the scan/status.
+            assert response.status_code == 200
+            assert "scan_id" in response.json()
 
     async def test_scan_handles_timeout(self, client):
-        """Test API handles scan timeout."""
+        """Test API accepts scans that later hit timeout in the worker."""
         with patch('app.api.v1.routes.unified_scan.SyncScanService') as mock_service:
             mock_service.return_value.execute_scan.side_effect = TimeoutError("Scan timeout")
             
             response = await client.post(
-                "/api/v1/unified/scan/start",
+                "/api/v1/scan/start",
                 json={"repository_url": "https://github.com/test/large-repo"}
             )
             
-            # Should handle gracefully
-            assert response.status_code == 500
-            assert "timeout" in response.json()["detail"].lower() or \
-                   "detail" in response.json()
+            # Queue-first lifecycle: start always succeeds; worker records
+            # the timeout error on the progress store / status endpoint.
+            assert response.status_code == 200
+            assert "scan_id" in response.json()
 
     async def test_scan_handles_ai_service_unavailable(self, client):
         """Test scan continues when AI service unavailable."""

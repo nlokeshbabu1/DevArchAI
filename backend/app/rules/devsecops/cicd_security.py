@@ -160,6 +160,10 @@ class CICDHardcodedSecretsRule(BaseRule):
             (r'(?i)(credential|cred)\s*[=:]\s*["\']?[^\s"\']{8,}["\']?', "Credential"),
             (r'(?i)(private[_-]?key|priv[_-]?key)\s*[=:]\s*["\']?[^\s"\']{20,}["\']?', "Private Key"),
             (r'(?i)(aws[_-]?access|aws[_-]?secret)\s*[=:]\s*["\']?[A-Za-z0-9/+=]{20,}["\']?', "AWS Credential"),
+            # Well-known token formats embedded anywhere (high confidence)
+            (r'\bghp_[A-Za-z0-9]{30,}|\bgho_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{20,}', "GitHub Token"),
+            (r'\bxox[baprs]-[A-Za-z0-9-]{10,}', "Slack Token"),
+            (r'(?i)bearer\s+[A-Za-z0-9_\-\.=/+]{24,}', "Bearer Token"),
         ]
         # Patterns that indicate proper secret management
         safe_patterns = [

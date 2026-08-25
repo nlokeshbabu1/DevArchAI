@@ -4,8 +4,9 @@
 # Using latest stable versions with all security fixes
 # Security upgrade: FastAPI 0.115.12 -> 0.116.2 to allow starlette 0.47.2 (fixes CVE-2025-54121)
 # Pydantic upgrade: 2.10.6 -> 2.11.2+ required by mistralai 2.1.3
-fastapi==0.116.2
-starlette==0.47.2
+fastapi==0.141.1
+# Security fix: starlette 0.47.2 has PYSEC-2026-161, PYSEC-2026-248
+starlette==0.49.3
 uvicorn[standard]==0.34.2
 pydantic==2.11.7
 pydantic-settings==2.7.1
@@ -28,15 +29,15 @@ pgvector==0.4.0
 python-terraform==0.10.1
 pyyaml==6.0.2
 dockerfile-parse==2.0.1
-GitPython==3.1.43
+GitPython==3.1.59
 
 # ===========================================
 # AI/LLM
 # ===========================================
 # Security fix: langchain-core 0.3.80 has CVE-2025-68664 (serialization injection)
-langchain==0.3.27
+langchain==0.3.30
 langchain-openai==0.3.7
-langchain-core==0.3.81
+langchain-core==0.3.85
 langchain-community==0.3.27
 langchain-text-splitters==0.3.9
 
@@ -55,11 +56,12 @@ python-jose[cryptography]==3.5.0
 # Security fix: ecdsa 0.19.1 has CVE-2026-33936 (DoS via malformed DER)
 ecdsa==0.19.2
 # JWT library for GitHub App authentication
-PyJWT[crypto]==2.9.0
+# Security fix: PyJWT 2.9.0 has PYSEC-2026-120/-176..-179 (algorithm confusion / partial verification bypasses)
+PyJWT[crypto]==2.13.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 # Security fix: cryptography 46.0.5 has CVE-2026-34073 (name constraint bypass)
-cryptography==46.0.6
+cryptography==50.0.0
 
 # ===========================================
 # Cache & Task Queue
@@ -83,12 +85,17 @@ boto3==1.36.10
 openpyxl==3.1.5
 xlsxwriter==3.2.2
 reportlab==4.3.1
+# ACCEPTED RISK: pillow capped <12 by google-genai==0.1.0 (requires pillow>=10,<12).
+# pillow 11.3.0 carries PYSEC-2026-2249..-2257/-2874/-3451..-3496; attack surface is limited to
+# reportlab PDF image embedding (no direct PIL usage in app code). Remediation requires a
+# coordinated google-genai 2.x + pydantic 2.12+ modernization with AI-provider regression testing.
+pillow==11.3.0
 
 # ===========================================
 # Utilities
 # ===========================================
 # Security fix: 0.0.6 has vulnerabilities CVE-2024-53981, CVE-2026-24486
-python-multipart==0.0.22
+python-multipart==0.0.32
 httpx==0.28.1
 aiofiles==24.1.0
 
@@ -113,15 +120,18 @@ mypy==1.15.0
 # ===========================================
 # Testing
 # ===========================================
-pytest==8.3.5
+pytest==8.4.2
 pytest-asyncio==0.25.3
 pytest-cov==6.0.0
+pytest-env==0.8.2
+pytest-timeout==2.4.0
+fakeredis==2.37.0
 
 # ===========================================
 # Security Auditing (for CI/CD)
 # ===========================================
-pip-audit==2.7.3
-safety==3.2.9
+pip-audit==2.10.1
+safety==3.8.1
 
 # ===========================================
 # embedding provider

@@ -67,6 +67,11 @@ class HelmScanner:
                         chart_root = str(Path(*path_parts[:i]))
                         break
 
+                if not chart_root:
+                    # Fallback: treat the file's directory as the chart root
+                    # so standalone values.yaml / template files are still scanned.
+                    chart_root = str(Path(*path_parts[:-1])) or "."
+
                 if chart_root:
                     if chart_root not in charts:
                         charts[chart_root] = []
@@ -79,6 +84,8 @@ class HelmScanner:
         chart_yaml = None
         values_yaml = None
         templates = []
+        chart_yaml_path = ""
+        values_yaml_path = ""
 
         for file_info in files:
             file_path = file_info.get("file_path", "")
@@ -86,17 +93,19 @@ class HelmScanner:
 
             if "Chart.yaml" in file_path:
                 chart_yaml = self._parse_yaml(content, file_path)
+                chart_yaml_path = file_path
             elif "values.yaml" in file_path:
                 values_yaml = self._parse_yaml(content, file_path)
+                values_yaml_path = file_path
             elif "/templates/" in file_path:
                 templates.append(self._parse_yaml(content, file_path))
 
         # Run checks
         if chart_yaml:
-            self._check_chart_yaml(chart_yaml, file_path)
+            self._check_chart_yaml(chart_yaml, chart_yaml_path)
 
         if values_yaml:
-            self._check_values_yaml(values_yaml, file_path)
+            self._check_values_yaml(values_yaml, values_yaml_path)
 
         for template in templates:
             if template:

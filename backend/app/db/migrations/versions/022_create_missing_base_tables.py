@@ -19,7 +19,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "022"
-down_revision: str | None = "021"
+down_revision: str | None = "015"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -39,60 +39,72 @@ def _has_column(conn, table: str, column: str) -> bool:
 
 
 def upgrade() -> None:
+    # Deterministically ensure enum types exist (idempotent; earlier
+    # revisions may already have created some of them).
+    bind = op.get_bind()
+    _ENUMS = [
+        ('plantype', ['FREE', 'PRO', 'ENTERPRISE']),
+        ('membershiprole', ['owner', 'admin', 'member', 'viewer']),
+        ('plan_interval', ['monthly', 'yearly']),
+        ('subscriptionstatus', ['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'EXPIRED']),
+        ('payment_type', ['initial', 'renewal', 'upgrade', 'downgrade', 'refund', 'one_time']),
+        ('payment_status', ['pending', 'processing', 'completed', 'failed', 'refunded', 'partially_refunded', 'disputed']),
+        ('payment_provider', ['stripe', 'razorpay', 'paypal']),
+        ('invoice_status', ['draft', 'open', 'paid', 'uncollectible', 'void', 'pending']),
+        ('coupon_type', ['percent', 'fixed', 'trial']),
+        ('fixtype', ['terraform', 'dockerfile', 'kubernetes', 'ci_cd', 'general']),
+        ('suggestionstatus', ['open', 'in_progress', 'fixed', 'ignored']),
+    ]
+    for _name, _vals in _ENUMS:
+        _exists = bind.execute(
+            sa.text('SELECT 1 FROM pg_type WHERE typname = :n'), {'n': _name},
+        ).scalar()
+        if not _exists:
+            _joined = ', '.join(f"'{v}'" for v in _vals)
+            bind.execute(sa.text(f'CREATE TYPE {_name} AS ENUM ({_joined})'))
     conn = op.get_bind()
 
     # ── Enum types used by multiple tables ──────────────────────────────
-    plan_type_enum = sa.Enum("free", "pro", "enterprise", name="plantype")
-    plan_type_enum.create(conn, checkfirst=True)
+    plan_type_enum = postgresql.ENUM("FREE", "PRO", "ENTERPRISE", name="plantype", create_type=False,)
 
-    membership_role_enum = sa.Enum("owner", "admin", "member", "viewer", name="membershiprole")
-    membership_role_enum.create(conn, checkfirst=True)
+    membership_role_enum = postgresql.ENUM("owner", "admin", "member", "viewer", name="membershiprole", create_type=False,)
 
-    plan_interval_enum = sa.Enum("monthly", "yearly", name="plan_interval")
-    plan_interval_enum.create(conn, checkfirst=True)
+    plan_interval_enum = postgresql.ENUM("monthly", "yearly", name="plan_interval", create_type=False,)
 
-    subscription_status_enum = sa.Enum(
+    subscription_status_enum = postgresql.ENUM(
         "TRIAL", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED",
-        name="subscriptionstatus",
+        name="subscriptionstatus", create_type=False,
     )
-    subscription_status_enum.create(conn, checkfirst=True)
 
-    payment_type_enum = sa.Enum(
+    payment_type_enum = postgresql.ENUM(
         "initial", "renewal", "upgrade", "downgrade", "refund", "one_time",
-        name="payment_type",
+        name="payment_type", create_type=False,
     )
-    payment_type_enum.create(conn, checkfirst=True)
 
-    payment_status_enum = sa.Enum(
+    payment_status_enum = postgresql.ENUM(
         "pending", "processing", "completed", "failed",
         "refunded", "partially_refunded", "disputed",
-        name="payment_status",
+        name="payment_status", create_type=False,
     )
-    payment_status_enum.create(conn, checkfirst=True)
 
-    payment_provider_enum = sa.Enum("stripe", "razorpay", "paypal", name="payment_provider")
-    payment_provider_enum.create(conn, checkfirst=True)
+    payment_provider_enum = postgresql.ENUM("stripe", "razorpay", "paypal", name="payment_provider", create_type=False,)
 
-    invoice_status_enum = sa.Enum(
+    invoice_status_enum = postgresql.ENUM(
         "draft", "open", "paid", "uncollectible", "void", "pending",
-        name="invoice_status",
+        name="invoice_status", create_type=False,
     )
-    invoice_status_enum.create(conn, checkfirst=True)
 
-    coupon_type_enum = sa.Enum("percent", "fixed", "trial", name="coupon_type")
-    coupon_type_enum.create(conn, checkfirst=True)
+    coupon_type_enum = postgresql.ENUM("percent", "fixed", "trial", name="coupon_type", create_type=False,)
 
-    fix_type_enum = sa.Enum(
+    fix_type_enum = postgresql.ENUM(
         "terraform", "dockerfile", "kubernetes", "ci_cd", "general",
-        name="fixtype",
+        name="fixtype", create_type=False,
     )
-    fix_type_enum.create(conn, checkfirst=True)
 
-    suggestion_status_enum = sa.Enum(
+    suggestion_status_enum = postgresql.ENUM(
         "open", "in_progress", "fixed", "ignored",
-        name="suggestionstatus",
+        name="suggestionstatus", create_type=False,
     )
-    suggestion_status_enum.create(conn, checkfirst=True)
 
     # ── 1. organizations ────────────────────────────────────────────────
     if not _has_table(conn, "organizations"):
@@ -102,7 +114,7 @@ def upgrade() -> None:
             sa.Column("name", sa.String(255), nullable=False, index=True),
             sa.Column("slug", sa.String(100), unique=True, nullable=False, index=True),
             sa.Column("description", sa.Text, nullable=True),
-            sa.Column("plan", plan_type_enum, nullable=False, server_default="free"),
+            sa.Column("plan", plan_type_enum, nullable=False, server_default="FREE"),
             sa.Column("stripe_customer_id", sa.String(255), unique=True, nullable=True, index=True),
             sa.Column("stripe_subscription_id", sa.String(255), nullable=True),
             sa.Column("scans_this_month", sa.Integer, nullable=False, server_default="0"),
@@ -445,4 +457,4 @@ def downgrade() -> None:
         "plan_interval", "subscriptionstatus", "membershiprole", "plantype",
     ]
     for name in enum_names:
-        sa.Enum(name=name).drop(conn, checkfirst=True)
+        postgresql.ENUM(name=name, create_type=False,).drop(conn, checkfirst=True)

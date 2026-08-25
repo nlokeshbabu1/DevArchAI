@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "013_add_report_storage_columns"
-down_revision: str | None = "012_add_ai_status_to_scans"
+revision = "013"
+down_revision = "012"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

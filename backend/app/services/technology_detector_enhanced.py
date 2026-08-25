@@ -376,7 +376,7 @@ def _is_kubernetes_file(file_path: str, file_name: str) -> bool:
 
     # Check directory indicators
     k8s_indicators = ["kubernetes", "k8s", "manifests", "deployments", "helm", "charts"]
-    if any(ind in file_lower for ind in k8s_indicators):
+    if any(ind in file_path.lower() for ind in k8s_indicators):
         return True
 
     # Check file name patterns

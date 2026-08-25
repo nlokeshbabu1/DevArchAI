@@ -732,6 +732,33 @@ Write a 3-paragraph executive summary. Respond ONLY with the summary text."""
             raise
 
 
+
+def _ollama_is_available() -> bool:
+    """Probe the local Ollama server (short timeout; never raise)."""
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(  # nosec B310 - fixed localhost probe, no user input
+            "http://localhost:11434/api/tags", timeout=1
+        ):
+            return True
+    except Exception:
+        return False
+
+
+def _gpt4all_is_available() -> bool:
+    """Probe the local GPT4All API server (short timeout; never raise)."""
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(  # nosec B310 - fixed localhost probe, no user input
+            "http://localhost:4891/v1/models", timeout=1
+        ):
+            return True
+    except Exception:
+        return False
+
+
 def get_llm_provider() -> BaseLLMProvider:
     """Factory function to get configured LLM provider with automatic fallback.
 
@@ -763,12 +790,9 @@ def get_llm_provider() -> BaseLLMProvider:
         )
     if provider == "mistral" and settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider (configured)")
-        mistral_model = "mistral-large-latest"
-        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
-            mistral_model = settings.LLM_MODEL
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
-            model=mistral_model,
+            model=settings.MISTRAL_MODEL,
         )
     if provider == "ollama":
         logger.info("Using Ollama local LLM provider (configured)")
@@ -798,12 +822,9 @@ def get_llm_provider() -> BaseLLMProvider:
         )
     if settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider (fallback)")
-        mistral_model = "mistral-large-latest"
-        if settings.LLM_MODEL and settings.LLM_MODEL not in ["gpt-4-turbo-preview", "gemini-pro"]:
-            mistral_model = settings.LLM_MODEL
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
-            model=mistral_model,
+            model=settings.MISTRAL_MODEL,
         )
 
     # Try local providers before falling back to Mock

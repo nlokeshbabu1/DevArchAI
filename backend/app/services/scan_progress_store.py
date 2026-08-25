@@ -19,11 +19,26 @@ class ScanProgressStore:
 
     def __init__(self):
         self._store: dict[str, ScanProgressResponse] = {}
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+        self._lock_loop_id: int | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Get an asyncio.Lock bound to the *current* running loop.
+
+        The store is a module-level singleton accessed from multiple event
+        loops (the main API loop and the background scan worker loop), and
+        asyncio primitives are loop-bound — reusing one created elsewhere
+        raises ``RuntimeError ... is bound to a different event loop``.
+        """
+        loop_id = id(asyncio.get_running_loop())
+        if self._lock is None or self._lock_loop_id != loop_id:
+            self._lock = asyncio.Lock()
+            self._lock_loop_id = loop_id
+        return self._lock
 
     async def create_scan(self, scan_id: str) -> ScanProgressResponse:
         """Create a new scan progress entry."""
-        async with self._lock:
+        async with self._get_lock():
             progress = ScanProgressResponse(
                 scan_id=scan_id,
                 status="pending",
@@ -39,7 +54,7 @@ class ScanProgressStore:
 
     async def update_status(self, scan_id: str, status: str, progress: int, current_step: str | None = None):
         """Update scan status and progress."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 logger.warning(f"[LIFECYCLE] scan={scan_id} event=UPDATE_SKIP reason=not_in_store")
                 return
@@ -60,7 +75,7 @@ class ScanProgressStore:
 
     async def update_step(self, scan_id: str, step_name: str, status: StepStatus, progress: int = 0, error: str | None = None):
         """Update individual step status."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 return
 
@@ -79,7 +94,7 @@ class ScanProgressStore:
 
     async def add_log(self, scan_id: str, message: str):
         """Add a log message."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 return
 
@@ -93,7 +108,7 @@ class ScanProgressStore:
 
     async def update_detected_stack(self, scan_id: str, stack: list[str]):
         """Update detected technology stack."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 return
 
@@ -102,7 +117,7 @@ class ScanProgressStore:
 
     async def update_stage(self, scan_id: str, stage: str, files_scanned: int = 0, total_files: int = 0):
         """Update scan stage and file counts."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 return
 
@@ -113,7 +128,7 @@ class ScanProgressStore:
 
     async def update_files_list(self, scan_id: str, file_paths: list[str]):
         """Update the list of files being scanned."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 return
 
@@ -122,7 +137,7 @@ class ScanProgressStore:
 
     async def get_progress(self, scan_id: str) -> ScanProgressResponse | None:
         """Get current scan progress."""
-        async with self._lock:
+        async with self._get_lock():
             entry = self._store.get(scan_id)
             if entry:
                 # Track previous progress for staleness detection
@@ -131,13 +146,13 @@ class ScanProgressStore:
 
     async def cleanup_scan(self, scan_id: str):
         """Remove a scan entry from the progress store (used when DB has authoritative terminal state)."""
-        async with self._lock:
+        async with self._get_lock():
             self._store.pop(scan_id, None)
             logger.info(f"Scan progress entry cleaned up: {scan_id}")
 
     async def complete_scan(self, scan_id: str):
         """Mark scan as completed."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 logger.warning(f"[LIFECYCLE] scan={scan_id} event=COMPLETE_SKIP reason=not_in_store")
                 return
@@ -161,7 +176,7 @@ class ScanProgressStore:
 
     async def fail_scan(self, scan_id: str, error_message: str):
         """Mark scan as failed."""
-        async with self._lock:
+        async with self._get_lock():
             if scan_id not in self._store:
                 logger.warning(f"[LIFECYCLE] scan={scan_id} event=FAIL_SKIP reason=not_in_store")
                 return
@@ -185,7 +200,7 @@ class ScanProgressStore:
 
     async def cleanup_old_scans(self, max_age_hours: int = 24):
         """Remove old scan progress entries."""
-        async with self._lock:
+        async with self._get_lock():
             now = datetime.utcnow()
             to_remove = []
 

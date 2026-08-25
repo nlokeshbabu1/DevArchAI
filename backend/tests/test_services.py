@@ -18,8 +18,10 @@ class TestFindingsDeduplicator:
 
     def test_deduplicate_empty_list(self):
         """Test deduplication with empty list."""
-        result = self.deduplicator.deduplicate([])
-        assert result == []
+        findings, stats = self.deduplicator.deduplicate([])
+        assert findings == []
+        assert stats.original_count == 0
+        assert stats.duplicates_removed == 0
 
     def test_deduplicate_single_finding(self):
         """Test deduplication with single finding."""
@@ -32,9 +34,10 @@ class TestFindingsDeduplicator:
             recommendation="Test recommendation",
             file_path="test.tf",
         )
-        result = self.deduplicator.deduplicate([finding])
-        assert len(result) == 1
-        assert result[0].rule_id == "TEST-001"
+        findings, stats = self.deduplicator.deduplicate([finding])
+        assert len(findings) == 1
+        assert findings[0].rule_id == "TEST-001"
+        assert stats.deduplicated_count == 1
 
     def test_deduplicate_identical_findings(self):
         """Test deduplication removes identical findings."""
@@ -56,8 +59,9 @@ class TestFindingsDeduplicator:
             recommendation="Test",
             file_path="test.tf",
         )
-        result = self.deduplicator.deduplicate([finding1, finding2])
-        assert len(result) == 1
+        findings, stats = self.deduplicator.deduplicate([finding1, finding2])
+        assert len(findings) == 1
+        assert stats.duplicates_removed == 1
 
     def test_deduplicate_different_files(self):
         """Test findings in different files are not merged."""
@@ -79,8 +83,9 @@ class TestFindingsDeduplicator:
             recommendation="Test",
             file_path="file2.tf",
         )
-        result = self.deduplicator.deduplicate([finding1, finding2])
-        assert len(result) == 2
+        findings, stats = self.deduplicator.deduplicate([finding1, finding2])
+        assert len(findings) == 2
+        assert stats.duplicates_removed == 0
 
 
 class TestFindingsEnricher:
@@ -163,8 +168,9 @@ class TestConvenienceFunctions:
             recommendation="Test",
             file_path="test.tf",
         )
-        result = deduplicate_findings([finding])
-        assert len(result) == 1
+        findings, stats = deduplicate_findings([finding])
+        assert len(findings) == 1
+        assert stats.deduplicated_count == 1
 
     def test_enrich_findings_function(self):
         """Test enrich_findings convenience function."""

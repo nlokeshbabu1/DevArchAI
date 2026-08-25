@@ -8,6 +8,7 @@ applied/reverted cleanly.  Requires a running PostgreSQL instance
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse, urlunparse
 
 import alembic.command
 import alembic.config
@@ -28,7 +29,9 @@ if _SYNC_URL.startswith("postgresql+asyncpg://"):
 
 def _alembic_cfg() -> alembic.config.Config:
     cfg = alembic.config.Config("alembic.ini")
-    cfg.set_main_option("sqlalchemy.url", _SYNC_URL)
+    # env.py ignores alembic.ini's placeholder URL; the programmatic
+    # override in attributes is the supported way to target a database.
+    cfg.attributes["sqlalchemy_url"] = _SYNC_URL
     return cfg
 
 
@@ -45,6 +48,44 @@ def engine():
     engine.dispose()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def scratch_database():
+    """Run all migration tests against an isolated, disposable database.
+
+    Migrations run ``base -> head`` and ``downgrade``, which is destructive.
+    Pointing them at a shared database destroys its data and leaves seed rows
+    that break FK constraints on downgrade.  Each session therefore gets a
+    dedicated scratch database (dropped afterwards).
+    """
+    global _SYNC_URL
+
+    parsed = urlparse(_SYNC_URL)
+    scratch_name = f"{parsed.path.lstrip('/')}_migrations"
+    admin_url = urlunparse(parsed._replace(path="/postgres"))
+    scratch_url = urlunparse(parsed._replace(path=f"/{scratch_name}"))
+
+    def _admin_exec(statement: str) -> None:
+        eng = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+        try:
+            with eng.connect() as conn:
+                conn.execute(text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :db AND pid <> pg_backend_pid()"
+                ), {"db": scratch_name})
+                conn.execute(text(statement))
+        finally:
+            eng.dispose()
+
+    _admin_exec(f'DROP DATABASE IF EXISTS "{scratch_name}"')
+    _admin_exec(f'CREATE DATABASE "{scratch_name}"')
+
+    original_url = _SYNC_URL
+    _SYNC_URL = scratch_url
+    yield
+    _SYNC_URL = original_url
+    _admin_exec(f'DROP DATABASE IF EXISTS "{scratch_name}"')
+
+
 # ---------------------------------------------------------------------------
 # Expected schema (tables & key columns)
 # ---------------------------------------------------------------------------
@@ -57,26 +98,23 @@ EXPECTED_TABLES = {
     "github_installations",
     "subscriptions",
     "reports",
-    "aws_integrations",
-    "audit_logs",
-    "settings",
+    "enterprise_audit_logs",
     "repo_analysis",
-    "scanner_executions",
+    "scanner_execution_records",
     "ai_suggestions",
     "organizations",
 }
 
 # table → set of columns that must exist
 EXPECTED_COLUMNS: dict[str, set[str]] = {
-    "users": {"id", "email", "hashed_password", "is_active", "github_login"},
+    # User stores encrypted email (email_encrypted + SHA256 email_hash), not plaintext email
+    "users": {"id", "hashed_password", "is_active", "github_login", "email_encrypted", "email_hash"},
     "scans": {
         "id",
-        "repo_url",
+        "repository_url",
         "status",
         "current_stage",
         "ai_status",
-        "report_s3_key",
-        "report_gcs_path",
     },
     "findings": {
         "id",
@@ -86,11 +124,9 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
         "category",
         "description",
         "ai_generated",
-        "ai_fix_suggestion",
-        "scanner_metadata",
     },
-    "pull_requests": {"id", "scan_id", "pr_url", "branch_name"},
-    "github_installations": {"id", "installation_id", "github_app_id", "account_login"},
+    "pull_requests": {"id", "scan_id", "github_pr_url", "branch_name"},
+    "github_installations": {"id", "installation_id", "user_id", "repo_full_name"},
     "repo_analysis": {"id", "user_id", "repo_url", "detected_stack"},
 }
 

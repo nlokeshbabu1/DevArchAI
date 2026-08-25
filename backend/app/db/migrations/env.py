@@ -32,13 +32,15 @@ from app.db.base import Base
 # this is the Alembic Config object
 alembic_config = context.config
 
-# Set the database URL from settings
-# Convert asyncpg URL to psycopg2 for Alembic CLI
-db_url = settings.DATABASE_URL
+# Resolve the target database URL.
+# Precedence: programmatic override (Config.attributes["sqlalchemy_url"], set by
+# tests/tools targeting an isolated database) -> application settings.
+# The static sqlalchemy.url in alembic.ini is a placeholder and is ignored,
+# otherwise every invocation silently mutates whatever that file points at.
+db_url = alembic_config.attributes.get("sqlalchemy_url") or settings.DATABASE_URL
+# Alembic runs synchronous migrations; force the sync driver regardless of source.
 if db_url.startswith("postgresql+asyncpg://"):
     db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
-elif db_url.startswith("postgresql://"):
-    pass  # Already sync driver
 alembic_config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging

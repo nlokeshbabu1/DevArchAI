@@ -13,8 +13,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '007_add_pull_request_table'
-down_revision: str | None = '006'
+revision = "007"
+down_revision = "006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -52,8 +52,8 @@ def upgrade() -> None:
     )
 
     # Create indexes
-    op.create_index('ix_pull_requests_scan_id', 'pull_requests', ['scan_id'])
-    op.create_index('ix_pull_requests_user_id', 'pull_requests', ['user_id'])
+    # NOTE: ix_pull_requests_scan_id / ix_pull_requests_user_id are already
+    # created by create_table() via index=True on the FK columns above.
     op.create_index('ix_pull_requests_status', 'pull_requests', ['status'])
     op.create_index('ix_pull_requests_created_at', 'pull_requests', ['created_at'])
 

@@ -33,7 +33,7 @@ describe('AIGenerationPanel', () => {
 
   it('should show AI phases', () => {
     const aiProgress: AIGenerationProgress = {
-      phase: 'analyzing',
+      phase: 'llm',
       message: 'Grouping findings by category',
       progress: 30,
       findings_processed: 5,
@@ -44,12 +44,12 @@ describe('AIGenerationPanel', () => {
     render(<AIGenerationPanel aiProgress={aiProgress} isGenerating={true} />)
 
     expect(screen.getByText('AI Analysis')).toBeInTheDocument()
-    expect(screen.getByText('Analyzing findings')).toBeInTheDocument()
-    expect(screen.getByText('Finding root causes')).toBeInTheDocument()
-    expect(screen.getByText('Generating remediations')).toBeInTheDocument()
-    expect(screen.getByText('Calculating security score')).toBeInTheDocument()
-    expect(screen.getByText('Generating executive summary')).toBeInTheDocument()
-    expect(screen.getByText('Generating PR fixes')).toBeInTheDocument()
+    expect(screen.getByText('Loading DevArchAI knowledge')).toBeInTheDocument()
+    expect(screen.getByText('Checking documentation needs')).toBeInTheDocument()
+    expect(screen.getByText('Fetching current documentation')).toBeInTheDocument()
+    expect(screen.getByText('Generating AI recommendation')).toBeInTheDocument()
+    expect(screen.getByText('AI recommendation ready')).toBeInTheDocument()
+    expect(screen.getByText('Using cached recommendation')).toBeInTheDocument()
   })
 
   it('should show progress bar', () => {

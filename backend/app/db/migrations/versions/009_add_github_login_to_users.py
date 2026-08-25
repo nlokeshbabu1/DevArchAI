@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "009_add_github_login_to_users"
-down_revision: str | None = "008_add_github_installations_table"
+revision = "009"
+down_revision = "008"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

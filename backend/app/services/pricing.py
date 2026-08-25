@@ -6,7 +6,7 @@ Defines features, limits, and pricing for each subscription tier.
 
 from typing import Any
 
-from app.models.subscription import Currency, PlanTier
+from app.models.subscription import COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY, Currency, PlanTier
 
 # =============================================================================
 # PRICING CONFIGURATION
@@ -76,72 +76,6 @@ PRICING: dict[PlanTier, dict[str, Any]] = {
             "show_detected_technologies": True,
             "blur_ai_code": True,
             "show_upgrade_prompt": True,
-        },
-    },
-
-    PlanTier.PLUS: {
-        "name": "Plus",
-        "description": "For individual developers",
-        "monthly_price": {
-            Currency.USD: 12,
-            Currency.INR: 999,
-            Currency.EUR: 11,
-            Currency.GBP: 10,
-            Currency.SGD: 16,
-            Currency.AUD: 18,
-        },
-        "features": {
-            # Scan limits
-            "max_scans_per_month": 50,
-            "max_repositories": 5,
-            "max_reports_per_month": 10,
-
-            # AI features
-            "ai_suggestions": True,
-            "ai_suggestions_blurred": False,
-            "ai_code_fixes": True,
-
-            # Export features
-            "export_json": True,
-            "export_pdf": True,
-            "export_excel": False,
-            "export_sarif": False,
-            "download_patch": False,
-
-            # GitHub integration
-            "github_pr_automation": False,
-            "github_app_integration": False,
-
-            # Team features
-            "team_members": 1,
-            "team_collaboration": False,
-            "organization_scanning": False,
-
-            # CI/CD
-            "cicd_integration": False,
-            "cicd_automation": False,
-
-            # Compliance
-            "compliance_reporting": False,
-            "custom_rules": False,
-
-            # API access
-            "api_access": False,
-            "api_rate_limit": 0,
-
-            # Support
-            "priority_support": False,
-            "dedicated_support": False,
-            "sla_guarantee": False,
-        },
-        "ui_features": {
-            "show_security_score": True,
-            "show_issue_titles": True,
-            "show_issue_descriptions": True,
-            "show_severity_counts": True,
-            "show_detected_technologies": True,
-            "blur_ai_code": False,
-            "show_upgrade_prompt": False,
         },
     },
 

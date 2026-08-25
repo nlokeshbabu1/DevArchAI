@@ -12,8 +12,8 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
-revision: str = "014_add_settings_tables"
-down_revision: str | None = "013_add_report_storage_columns"
+revision = "014"
+down_revision = "013"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

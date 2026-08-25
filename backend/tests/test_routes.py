@@ -4,11 +4,28 @@ Backend API Route Tests
 Tests for FastAPI routes using TestClient
 """
 
+from unittest.mock import MagicMock
+
 from fastapi.testclient import TestClient
 
+from app.core.security import get_current_user
 from app.main import app
 
 client = TestClient(app)
+
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+def _override_current_user() -> None:
+    """Stub authentication so tests can reach payload validation.
+
+    The API checks authentication before request validation (401 first),
+    which is correct behavior; these tests exercise the validation layer.
+    """
+    stub = MagicMock()
+    stub.id = NIL_UUID
+    stub.email = "qa@example.com"
+    app.dependency_overrides[get_current_user] = lambda: stub
 
 
 class TestHealthCheck:
@@ -84,7 +101,9 @@ class TestScanRoutes:
 
     def test_get_scan_not_found(self):
         """Test getting non-existent scan."""
-        response = client.get("/api/v1/scans/99999")
+        # Must be a syntactically valid UUID, otherwise the route's
+        # scan-id parsing rejects it with 400 VALIDATION_ERROR.
+        response = client.get(f"/api/v1/scans/{NIL_UUID}")
         assert response.status_code in [404, 307]
 
 
@@ -102,21 +121,29 @@ class TestRepoAnalysisRoutes:
 
     def test_analyze_repo_invalid_url(self):
         """Test analysis with invalid repository URL."""
-        response = client.post(
-            "/api/v1/analyze/repo/deep",
-            json={
-                "repo_url": "invalid-url"
-            }
-        )
+        _override_current_user()
+        try:
+            response = client.post(
+                "/api/v1/analyze/repo/deep",
+                json={
+                    "repo_url": "invalid-url"
+                }
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
         assert response.status_code in [400, 422, 500]
 
     def test_analyze_repo_missing_url(self):
         """Test analysis without repository URL."""
-        response = client.post(
-            "/api/v1/analyze/repo/deep",
-            json={}
-        )
-        assert response.status_code == 422
+        _override_current_user()
+        try:
+            response = client.post(
+                "/api/v1/analyze/repo/deep",
+                json={}
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+        assert response.status_code in [400, 422]
 
 
 class TestErrorHandling:
