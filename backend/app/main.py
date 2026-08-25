@@ -63,14 +63,34 @@ async def lifespan(app: FastAPI):
     # PHASE 1: Initialize RAG knowledge layer (seed from technology inventory)
     try:
         if settings.RAG_ENABLED:
+            import asyncio
+
             from app.rag.service import get_rag_service
             from app.services.metrics import set_knowledge_version
 
             rag = get_rag_service()
             set_knowledge_version(rag.knowledge_version)
             if settings.RAG_SEED_ON_STARTUP:
-                seeded = await rag.seed_from_inventory()
-                logger.info("RAG knowledge layer ready", knowledge_version=rag.knowledge_version, seeded=seeded)
+                # Seeding embeds the whole rule inventory through the embedding
+                # provider and can take minutes (or stall on provider issues).
+                # It must never block startup: uvicorn has to bind its port
+                # first, otherwise platform health checks kill the service.
+                async def _seed_rag_background() -> None:
+                    try:
+                        seeded = await rag.seed_from_inventory()
+                        logger.info(
+                            "RAG knowledge layer ready",
+                            knowledge_version=rag.knowledge_version,
+                            seeded=seeded,
+                        )
+                    except Exception as e:
+                        logger.warning(f"RAG background seeding failed (non-fatal): {e}")
+
+                asyncio.create_task(_seed_rag_background())
+                logger.info(
+                    "RAG knowledge layer seeding started in background",
+                    knowledge_version=rag.knowledge_version,
+                )
             else:
                 logger.info("RAG knowledge layer ready (seeding skipped)", knowledge_version=rag.knowledge_version)
         else:

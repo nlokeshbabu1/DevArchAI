@@ -43,13 +43,18 @@ class KnowledgeCache:
         self._cleanup_task: asyncio.Task | None = None
 
     def _get_redis(self) -> Any:
-        """Lazy-load Redis connection."""
+        """Lazy-load Redis connection.
+
+        Peeks at the global cache singleton without connecting: this runs in
+        sync contexts, so awaiting the async ``get_cache()`` factory here is
+        impossible (and would produce un-awaited coroutine warnings).
+        """
         if self._redis is None:
             try:
-                from app.cache.redis_cache import get_cache
+                from app.cache import redis_cache as redis_mod
 
-                cache = get_cache()
-                if cache._connected:
+                cache = redis_mod._cache_instance
+                if cache is not None and cache._connected:
                     self._redis = cache
             except Exception:
                 pass
