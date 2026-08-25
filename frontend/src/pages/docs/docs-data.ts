@@ -297,6 +297,32 @@ export const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    label: 'CLI',
+    pages: [
+      {
+        slug: 'cli',
+        title: 'CLI (devsec)',
+        subtitle: 'Install and configure the devsec command-line client for scans and CI/CD',
+        icon: 'Terminal',
+        section: 'CLI',
+        headings: [
+          HEADING('overview', 'Overview'),
+          HEADING('prerequisites', 'Prerequisites'),
+          HEADING('step-1-install', 'Step 1: Install the CLI'),
+          HEADING('step-2-configure-api', 'Step 2: Configure the API URL'),
+          HEADING('step-3-authenticate', 'Step 3: Authenticate'),
+          HEADING('step-4-select-project', 'Step 4: Select a Project'),
+          HEADING('step-5-run-scan', 'Step 5: Run a Scan'),
+          HEADING('step-6-ci-pipeline', 'Step 6: Use in CI/CD'),
+          HEADING('configuration-reference', 'Configuration Reference'),
+          HEADING('commands-reference', 'Commands Reference'),
+          HEADING('exit-codes', 'Exit Codes'),
+          HEADING('troubleshooting', 'Troubleshooting'),
+        ],
+      },
+    ],
+  },
+  {
     label: 'Support',
     pages: [
       {
