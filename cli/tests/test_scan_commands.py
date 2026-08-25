@@ -61,7 +61,17 @@ def _mock_http(handler):
 def test_scan_requires_project(isolated_env):
     cfg = isolated_env / "devsec" / "config.toml"
     cfg.write_text("", encoding="utf-8")
-    result = runner.invoke(app, ["scan", "--json"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url.path).endswith("/repositories"):
+            return httpx.Response(
+                200,
+                json={"repositories": [], "total": 0, "page": 1, "page_size": 100},
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    with _mock_http(handler):
+        result = runner.invoke(app, ["scan", "--json"])
     assert result.exit_code == 2
     assert "No project selected" in result.stderr or "No project selected" in result.stdout
 
