@@ -6,7 +6,7 @@ import {
   Shield, Menu, X, Search, ChevronRight, ChevronDown,
   BookOpen, ExternalLink, Github, Gitlab, Cloud, Server,
   AlertTriangle, Brain, FileText, HelpCircle, Bug, Zap,
-  Container, FileCode, FolderGit2, Rocket, ArrowLeft, ArrowRight,
+  Container, FileCode, FolderGit2, Rocket, ArrowLeft, ArrowRight, Terminal,
 } from 'lucide-react'
 import {
   DOC_SECTIONS,
@@ -20,7 +20,7 @@ import {
 const ICON_MAP: Record<string, React.ElementType> = {
   Rocket, FolderGit2, Cloud, Server, Github, Gitlab,
   Container, FileCode, Zap, Brain, AlertTriangle, FileText,
-  BookOpen, HelpCircle, Bug,
+  BookOpen, HelpCircle, Bug, Terminal,
 }
 
 interface DocsLayoutProps {
