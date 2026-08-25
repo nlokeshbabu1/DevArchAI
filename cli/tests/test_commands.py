@@ -479,14 +479,44 @@ def test_project_select_and_current(isolated_env, tmp_path):
     assert json.loads(result.stdout)["selected"] == project["id"]
 
 
-def test_project_select_unknown_id_exit_4(isolated_env):
+def test_project_select_by_prefix(isolated_env, tmp_path):
+    project = {
+        "id": "ae8f8620-1234-5678-9abc-def012345678",
+        "name": "acme/infra",
+        "url": "https://github.com/acme/infra",
+        "default_branch": "main",
+        "is_private": False,
+        "is_active": True,
+        "created_at": "2026-01-15T08:30:00Z",
+    }
+
     def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url.path).endswith("/repositories"):
+            return httpx.Response(
+                200,
+                json={"repositories": [project], "total": 1, "page": 1, "page_size": 20},
+            )
+        return httpx.Response(200, json=project)
+
+    with _mock_http(handler):
+        result = runner.invoke(app, ["project", "select", "ae8f8620", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["id"] == project["id"]
+
+
+def test_project_select_unknown_id_exit_2(isolated_env):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url.path).endswith("/repositories"):
+            return httpx.Response(
+                200,
+                json={"repositories": [], "total": 0, "page": 1, "page_size": 100},
+            )
         return httpx.Response(404, json={"detail": "Repository not found"})
 
     with _mock_http(handler):
         result = runner.invoke(app, ["project", "select", "0000", "--json"])
-    assert result.exit_code == 4, result.output
-    assert json.loads(result.stdout)["error"] == "api_error"
+    assert result.exit_code == 2, result.output
+    assert json.loads(result.stdout)["exit_code"] == 2
 
 
 def test_project_select_forbidden(isolated_env):

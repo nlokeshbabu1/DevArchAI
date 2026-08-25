@@ -83,6 +83,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["S101", "S105", "S106", "S108", "S607"]
+"src/devsec/api/progress.py" = ["S110"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["devsec"]

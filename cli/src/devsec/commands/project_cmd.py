@@ -8,7 +8,7 @@ from typing import Any
 import typer
 from rich.table import Table
 
-from devsec.api.projects import create_project, get_project, list_projects
+from devsec.api.projects import create_project, get_project, list_projects, resolve_project
 from devsec.commands.base import command, make_client
 from devsec.models.project import Project
 from devsec.output.console import get_console, print_muted, print_success
@@ -50,6 +50,10 @@ def project_list(
                     f"{result.total} total - page {result.page} of "
                     f"{(result.total + result.page_size - 1) // result.page_size or 1}"
                 )
+                print_muted(
+                    "Tip: pass an ID prefix to select (e.g. devsec project select ae8f8620) "
+                    "or use --json for full UUIDs."
+                )
             else:
                 print_muted("No projects found.")
         return data
@@ -67,7 +71,7 @@ def project_show(
     """Show a single project by ID."""
     _, client = make_client()
     try:
-        project = get_project(client, project_id)
+        project = resolve_project(client, project_id)
         data = project.model_dump()
         if not json:
             _render_project(project)
@@ -86,7 +90,7 @@ def project_select(
     """Select a project as the current project (stored locally)."""
     config, client = make_client()
     try:
-        project = get_project(client, project_id)
+        project = resolve_project(client, project_id)
         config.set_selected_project(project.id)
         data = project.model_dump()
         if not json:

@@ -7,7 +7,7 @@ from typing import Any
 import typer
 
 from devsec.api.progress import ProgressTracker, render_progress
-from devsec.api.projects import get_project
+from devsec.api.projects import resolve_project_for_command
 from devsec.api.scans import (
     ensure_scan_completed,
     evaluate_scan_outcome,
@@ -20,7 +20,7 @@ from devsec.models.scan import ScanResultsResponse, ScanStatusResponse
 from devsec.output.console import get_console, is_ci, print_error, print_muted, print_success
 from devsec.output.json import emit
 from devsec.output.tables import findings_table, scan_summary_table
-from devsec.utils.errors import DevSecError, ExitCode, PolicyViolationError, UsageError
+from devsec.utils.errors import DevSecError, ExitCode, PolicyViolationError
 
 app = typer.Typer(
     help="Run security scans and inspect results.",
@@ -99,13 +99,12 @@ def scan_group(
 
 
 def _resolve_project(config, client, project_id: str | None):
-    selected = (project_id or config.selected_project or "").strip()
-    if not selected:
-        raise UsageError(
-            "No project selected.",
-            hint='Run "devsec project select <id>" or pass --project <id>.',
-        )
-    return get_project(client, selected)
+    return resolve_project_for_command(
+        client,
+        project_id,
+        selected_project=config.selected_project,
+        auto_single=True,
+    )
 
 
 def _run_scan(
