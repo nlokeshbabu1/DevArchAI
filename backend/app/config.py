@@ -2,13 +2,16 @@
 Application Configuration
 """
 
+import logging
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
+
+_config_logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -152,6 +155,63 @@ class Settings(BaseSettings):
     GPT4ALL_MODEL_PATH: str | None = Field(default=None, env="GPT4ALL_MODEL_PATH")
     GPT4ALL_THREADS: int | None = Field(default=None, env="GPT4ALL_THREADS")
     GPT4ALL_MAX_TOKENS: int = Field(default=1500, env="GPT4ALL_MAX_TOKENS")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_provider_env(cls, data: Any) -> Any:
+        """Accept common misconfiguration: model name set as LLM_PROVIDER on Render/etc."""
+        if not isinstance(data, dict):
+            return data
+
+        raw = data.get("LLM_PROVIDER") or data.get("llm_provider")
+        if not raw or not isinstance(raw, str):
+            return data
+
+        value = raw.strip()
+        lowered = value.lower()
+
+        valid_providers = {
+            "openai", "anthropic", "gemini", "mistral", "ollama", "gpt4all", "mock",
+        }
+        if lowered in valid_providers:
+            return data
+
+        if lowered.startswith("mistral") or lowered.startswith("open-mistral"):
+            if not data.get("MISTRAL_MODEL") and not data.get("mistral_model"):
+                data["MISTRAL_MODEL"] = value
+            data["LLM_PROVIDER"] = "mistral"
+            _config_logger.warning(
+                "LLM_PROVIDER was set to a Mistral model name (%r); using LLM_PROVIDER=mistral "
+                "and MISTRAL_MODEL=%r. Set LLM_PROVIDER=mistral explicitly in production.",
+                value,
+                data["MISTRAL_MODEL"],
+            )
+        elif lowered.startswith("gpt-"):
+            if not data.get("LLM_MODEL") and not data.get("llm_model"):
+                data["LLM_MODEL"] = value
+            data["LLM_PROVIDER"] = "openai"
+            _config_logger.warning(
+                "LLM_PROVIDER was set to an OpenAI model name (%r); using LLM_PROVIDER=openai",
+                value,
+            )
+        elif lowered.startswith("claude"):
+            if not data.get("LLM_MODEL") and not data.get("llm_model"):
+                data["LLM_MODEL"] = value
+            data["LLM_PROVIDER"] = "anthropic"
+            _config_logger.warning(
+                "LLM_PROVIDER was set to an Anthropic model name (%r); using LLM_PROVIDER=anthropic",
+                value,
+            )
+        elif lowered.startswith("gemini"):
+            if not data.get("LLM_MODEL") and not data.get("llm_model"):
+                data["LLM_MODEL"] = value
+            data["LLM_PROVIDER"] = "gemini"
+            _config_logger.warning(
+                "LLM_PROVIDER was set to a Gemini model name (%r); using LLM_PROVIDER=gemini",
+                value,
+            )
+
+        return data
 
     # Knowledge Retrieval
     KNOWLEDGE_CACHE_TTL_SECONDS: int = Field(default=3600, env="KNOWLEDGE_CACHE_TTL_SECONDS")

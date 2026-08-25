@@ -26,7 +26,7 @@ const CARD_STATUS: Record<string, { label: string; icon: typeof Shield; color: s
   FAILED: { label: "Failed", icon: AlertCircle, color: "text-red-400", border: "border-red-500/10 bg-red-500/[0.02]" },
 }
 
-const SEVERITY_LABELS = ["critical", "high", "medium", "low"] as const
+const SEVERITY_LABELS = ["critical", "high", "medium", "low", "info"] as const
 
 interface TechInfo {
   key: string
@@ -243,6 +243,11 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
         }
       }
 
+      // Findings count: trust the backend aggregate when present so the card
+      // total always equals sum(severity_counts.values()); otherwise derive
+      // from the findings we matched client-side.
+      const findingsCount = backendDetails ? backendDetails.findings_count : techFindings.length
+
       // Determine status: prefer backend, fallback to client-side
       let scannerStatus: string
       if (backendDetails?.status) {
@@ -266,6 +271,7 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
         label,
         icon,
         filesCount,
+        findingsCount,
         techFindings,
         sevCounts,
         scannerCount: scanners.length,
@@ -275,7 +281,7 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
       }
     }).filter(card =>
       // Only show cards that have scanner executions, findings, or backend details
-      card.scannerCount > 0 || card.techFindings.length > 0 || card.filesCount > 0
+      card.scannerCount > 0 || card.findingsCount > 0 || card.filesCount > 0
     )
   }, [scannerExecutions, findings, detectedTechnologies, technologyDetails])
 
@@ -392,13 +398,14 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
                 )}
 
                 <div className="flex items-center gap-3 text-[10px]">
-                  {card.filesCount > 0 ? (
+                  {card.filesCount > 0 && (
                     <span className="font-mono font-bold text-indigo-400/80">
                       {card.filesCount} file{card.filesCount !== 1 ? "s" : ""}
                     </span>
-                  ) : card.techFindings.length > 0 ? (
+                  )}
+                  {card.findingsCount > 0 ? (
                     <span className="font-mono font-bold text-orange-400/80">
-                      {card.techFindings.length} finding{card.techFindings.length !== 1 ? "s" : ""}
+                      {card.findingsCount} finding{card.findingsCount !== 1 ? "s" : ""}
                     </span>
                   ) : (
                     <span className="text-emerald-400/50">No security issues</span>
