@@ -18,7 +18,7 @@ import { Button, Card } from '../../components/ui-animated'
 import { Badge } from '../../components/ui'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/auth-store'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
@@ -27,6 +27,9 @@ import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
 import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
+import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import { useScanWebSocket } from '../../hooks/useScanWebSocket'
+import type { StageMetadata } from '../../types'
 import { EmptyState } from '@/components/ui/empty-state'
 
 type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
@@ -125,8 +128,52 @@ export function RepositoriesPage() {
   const [scanningRepoIds, setScanningRepoIds] = useState<Set<string>>(new Set())
   const [scanStartPendingIds, setScanStartPendingIds] = useState<Set<string>>(new Set())
   const [activeScan, setActiveScan] = useState<ActiveRepositoryScan | null>(null)
-  const [activeScanStatus, setActiveScanStatus] = useState<UnifiedScanStatus | null>(null)
   const [activeScanError, setActiveScanError] = useState<string | null>(null)
+
+  const { data: stagesData } = useQuery({
+    queryKey: ['scan-stages'],
+    queryFn: () => scansApi.getStages(),
+    staleTime: Infinity,
+  })
+  const stages: StageMetadata[] = stagesData || []
+
+  const {
+    scanState: wsScanState,
+    completedStages,
+    stageMessages,
+    failedStage,
+  } = useScanWebSocket({
+    scanId: activeScan?.scanId ?? null,
+    enabled: !!activeScan?.scanId,
+    onComplete: () => {
+      if (!activeScan) return
+      setScanningRepoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(activeScan.repoId)
+        return next
+      })
+      void queryClient.invalidateQueries({ queryKey: ['repositories'] })
+      void queryClient.invalidateQueries({ queryKey: ['scans'] })
+      window.setTimeout(() => {
+        const repoId = activeScan.repoId
+        setActiveScan(null)
+        setActiveScanError(null)
+        navigate(`/repositories/${repoId}/results`, { replace: true })
+      }, 1200)
+    },
+    onFailed: (data) => {
+      setActiveScanError(data?.error_message || data?.error || 'Scan failed')
+      if (activeScan) {
+        setScanningRepoIds((prev) => {
+          const next = new Set(prev)
+          next.delete(activeScan.repoId)
+          return next
+        })
+      }
+      void queryClient.invalidateQueries({ queryKey: ['repositories'] })
+      void queryClient.invalidateQueries({ queryKey: ['scans'] })
+    },
+  })
 
   const { data: repositoriesResponse, isLoading } = useQuery({
     queryKey: ['repositories'],
@@ -287,16 +334,6 @@ export function RepositoriesPage() {
         repoUrl: variables.repoUrl,
         branch: response.branch || variables.branch,
       })
-      setActiveScanStatus({
-        scan_id: response.scan_id,
-        status: response.status || 'running',
-        progress: 5,
-        current_step: 'Initializing scan...',
-        steps: [],
-        detected_stack: [],
-        logs: [response.message || `Preparing scan for ${variables.repoName}`],
-        files_list: [],
-      })
       queryClient.invalidateQueries({ queryKey: ['repositories'] })
       queryClient.invalidateQueries({ queryKey: ['scans'] })
     },
@@ -320,91 +357,6 @@ export function RepositoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['repositories'] })
     },
   })
-
-  useEffect(() => {
-    if (!activeScan?.scanId) {
-      return
-    }
-
-    let isCancelled = false
-    let intervalId: number | undefined
-    let redirectTimer: number | undefined
-
-    const stopPolling = () => {
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId)
-        intervalId = undefined
-      }
-    }
-
-    const clearLocalScanningState = () => {
-      setScanningRepoIds((prev) => {
-        const next = new Set(prev)
-        next.delete(activeScan.repoId)
-        return next
-      })
-    }
-
-    const pollScanStatus = async () => {
-      try {
-        const response = await apiClient.get<UnifiedScanStatus>(`/scan/status/${activeScan.scanId}`)
-
-        if (isCancelled) {
-          return
-        }
-
-        const statusData = response.data
-        setActiveScanStatus(statusData)
-        setActiveScanError(null)
-
-        if (statusData.status === 'completed') {
-          stopPolling()
-          clearLocalScanningState()
-          queryClient.invalidateQueries({ queryKey: ['repositories'] })
-          queryClient.invalidateQueries({ queryKey: ['scans'] })
-
-          redirectTimer = window.setTimeout(() => {
-            if (isCancelled) {
-              return
-            }
-
-            setActiveScan(null)
-            setActiveScanStatus(null)
-            navigate(`/repositories/${activeScan.repoId}/results`, { replace: true })
-          }, 900)
-
-          return
-        }
-
-        if (statusData.status === 'failed') {
-          stopPolling()
-          clearLocalScanningState()
-          queryClient.invalidateQueries({ queryKey: ['repositories'] })
-          queryClient.invalidateQueries({ queryKey: ['scans'] })
-          setActiveScanError(statusData.error_message || 'Scan failed')
-        }
-      } catch (error: any) {
-        if (isCancelled) {
-          return
-        }
-
-        stopPolling()
-        clearLocalScanningState()
-        setActiveScanError(error.response?.data?.detail || 'Failed to load scan progress')
-      }
-    }
-
-    pollScanStatus()
-    intervalId = window.setInterval(pollScanStatus, 1000)
-
-    return () => {
-      isCancelled = true
-      stopPolling()
-      if (redirectTimer !== undefined) {
-        window.clearTimeout(redirectTimer)
-      }
-    }
-  }, [activeScan?.repoId, activeScan?.scanId, navigate, queryClient])
 
   const handleAddRepository = async (url: string) => {
     await addRepositoryMutation.mutateAsync(url)
@@ -444,7 +396,8 @@ export function RepositoriesPage() {
   }
 
   const closeProgressModal = () => {
-    if (activeScanStatus && !['completed', 'failed'].includes(activeScanStatus.status)) {
+    const terminal = wsScanState?.isTerminal || ['completed', 'failed', 'cancelled'].includes(wsScanState?.status || '')
+    if (activeScan && !terminal) {
       return
     }
 
@@ -457,8 +410,16 @@ export function RepositoriesPage() {
     }
 
     setActiveScan(null)
-    setActiveScanStatus(null)
     setActiveScanError(null)
+  }
+
+  const handleCancelActiveScan = async () => {
+    if (!activeScan?.scanId) return
+    try {
+      await scansApi.cancelScan(activeScan.scanId)
+    } catch {
+      // cancellation will surface via WebSocket
+    }
   }
 
   const displayRepos: DisplayRepository[] = allRepos.map((repo) => {
@@ -887,19 +848,34 @@ export function RepositoriesPage() {
         slideIn
         isOpen={!!activeScan}
         onClose={closeProgressModal}
+        onCancel={() => { void handleCancelActiveScan() }}
         repositoryName={activeScan?.repoName || ''}
         branch={activeScan?.branch || ''}
+        stages={stages}
+        currentStage={normalizeLifecycleStage(wsScanState?.currentStage ?? null)}
+        completedStages={completedStages}
+        failedStage={failedStage}
+        stageMessages={stageMessages}
+        technologies={wsScanState?.technologies}
+        startedAt={wsScanState?.startedAt}
         progressData={{
-          progress: activeScanStatus?.progress || 0,
-          currentStep: activeScanStatus?.current_step,
-          error: activeScanError ?? undefined,
+          progress: wsScanState?.progress ?? undefined,
+          currentStep: wsScanState?.currentStep || wsScanState?.currentOperation,
+          findingsCount: wsScanState
+            ? Object.values(wsScanState.severityCounts).reduce((a, b) => a + b, 0)
+            : undefined,
+          error: activeScanError ?? wsScanState?.errorMessage ?? undefined,
         }}
-        isComplete={activeScanStatus?.status === 'completed'}
-        hasFailed={activeScanStatus?.status === 'failed' || !!activeScanError}
+        showProgressPercent={typeof wsScanState?.progress === 'number'}
+        isComplete={wsScanState?.isTerminal === true && wsScanState.status === 'completed'}
+        hasFailed={
+          !!activeScanError ||
+          (wsScanState?.isTerminal === true && (wsScanState.status === 'failed' || wsScanState.status === 'cancelled'))
+        }
         onComplete={() => {
           if (activeScan) {
             setActiveScan(null)
-            setActiveScanStatus(null)
+            setActiveScanError(null)
             navigate(`/repositories/${activeScan.repoId}/results`, { replace: true })
           }
         }}

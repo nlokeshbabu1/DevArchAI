@@ -1053,58 +1053,94 @@ class MockLLMProvider(BaseLLMProvider):
         return [f.get("recommendation") for f in findings[:5]]
 
 
-def get_llm_provider() -> BaseLLMProvider:
-    """Factory function to get configured LLM provider with fallback chain."""
-    provider = settings.LLM_PROVIDER.lower()
-
-    # Try configured provider first
-    if provider == "openai" and settings.OPENAI_API_KEY:
+def _try_cloud_providers() -> BaseLLMProvider | None:
+    """Return the first configured cloud LLM provider, or None."""
+    if settings.OPENAI_API_KEY:
         logger.info("Using OpenAI LLM provider")
         return OpenAIProvider(
             api_key=settings.OPENAI_API_KEY,
             model=settings.LLM_MODEL,
         )
-    elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+    if settings.ANTHROPIC_API_KEY:
         logger.info("Using Anthropic LLM provider")
         return AnthropicProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model=settings.LLM_MODEL,
         )
-    elif provider == "gemini" and settings.GEMINI_API_KEY:
+    if settings.GEMINI_API_KEY:
         logger.info("Using Gemini LLM provider")
         return GeminiProvider(
             api_key=settings.GEMINI_API_KEY,
             model=settings.LLM_MODEL if settings.LLM_MODEL != "gpt-4-turbo-preview" else "gemini-pro",
         )
-    elif provider == "mistral" and settings.MISTRAL_API_KEY:
+    if settings.MISTRAL_API_KEY:
         logger.info("Using Mistral LLM provider")
         return MistralProvider(
             api_key=settings.MISTRAL_API_KEY,
             model=settings.MISTRAL_MODEL,
         )
-    elif provider == "ollama":
-        logger.info("Using Ollama local LLM provider")
+    return None
+
+
+def get_llm_provider() -> BaseLLMProvider:
+    """Factory function to get configured LLM provider with fallback chain."""
+    from app.ai.engine import _gpt4all_is_available, _ollama_is_available
+
+    provider = settings.LLM_PROVIDER.lower()
+
+    if provider == "openai" and settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider")
+        return OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=settings.LLM_MODEL)
+    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider")
+        return AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY, model=settings.LLM_MODEL)
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider")
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model=settings.LLM_MODEL if settings.LLM_MODEL != "gpt-4-turbo-preview" else "gemini-pro",
+        )
+    if provider == "mistral" and settings.MISTRAL_API_KEY:
+        logger.info("Using Mistral LLM provider")
+        return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=settings.MISTRAL_MODEL)
+
+    if provider == "ollama":
+        if _ollama_is_available():
+            logger.info("Using Ollama local LLM provider")
+            return OllamaProvider()
+        logger.warning("LLM_PROVIDER=ollama but Ollama is not reachable; falling back to cloud providers")
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            return cloud
+
+    if provider == "gpt4all":
+        if _gpt4all_is_available():
+            logger.info("Using GPT4All local LLM provider")
+            return GPT4AllProvider()
+        logger.warning("LLM_PROVIDER=gpt4all but GPT4All is not reachable; falling back to cloud providers")
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            return cloud
+
+    if provider in ("openai", "anthropic", "gemini", "mistral"):
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            logger.info("Configured LLM provider unavailable, using alternate cloud provider", configured=provider)
+            return cloud
+
+    cloud = _try_cloud_providers()
+    if cloud is not None:
+        return cloud
+
+    if _ollama_is_available():
+        logger.info("Using Ollama local LLM provider (fallback)")
         return OllamaProvider()
-    elif provider == "gpt4all":
-        logger.info("Using GPT4All local LLM provider")
+    if _gpt4all_is_available():
+        logger.info("Using GPT4All local LLM provider (fallback)")
         return GPT4AllProvider()
-    else:
-        # Fallback chain: try available providers in order
-        if settings.OPENAI_API_KEY:
-            logger.info("Using OpenAI LLM provider (fallback)")
-            return OpenAIProvider(api_key=settings.OPENAI_API_KEY)
-        elif settings.ANTHROPIC_API_KEY:
-            logger.info("Using Anthropic LLM provider (fallback)")
-            return AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
-        elif settings.GEMINI_API_KEY:
-            logger.info("Using Gemini LLM provider (fallback)")
-            return GeminiProvider(api_key=settings.GEMINI_API_KEY)
-        elif settings.MISTRAL_API_KEY:
-            logger.info("Using Mistral LLM provider (fallback)")
-            return MistralProvider(api_key=settings.MISTRAL_API_KEY, model=settings.MISTRAL_MODEL)
-        else:
-            logger.warning("No LLM API keys configured, using Mock provider")
-            return MockLLMProvider()
+
+    logger.warning("No LLM API keys configured, using Mock provider")
+    return MockLLMProvider()
 
 
 # ---------------------------------------------------------------------------

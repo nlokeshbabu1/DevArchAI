@@ -13,7 +13,7 @@ from typing import Any
 
 import structlog
 
-from app.ai.engine import BaseLLMProvider, get_llm_provider
+from app.ai.engine import BaseLLMProvider, _gpt4all_is_available, _ollama_is_available, get_llm_provider
 from app.config import settings
 from app.rule_engine.base import RuleFinding
 from app.services.devops_documentation import get_documentation_url
@@ -3465,6 +3465,20 @@ class AIFixEnrichmentService:
             self._use_mock = not settings.ANTHROPIC_API_KEY
         elif provider == "mistral":
             self._use_mock = not settings.MISTRAL_API_KEY
+        elif provider == "ollama":
+            self._use_mock = not _ollama_is_available() and not any([
+                settings.GEMINI_API_KEY,
+                settings.OPENAI_API_KEY,
+                settings.ANTHROPIC_API_KEY,
+                settings.MISTRAL_API_KEY,
+            ])
+        elif provider == "gpt4all":
+            self._use_mock = not _gpt4all_is_available() and not any([
+                settings.GEMINI_API_KEY,
+                settings.OPENAI_API_KEY,
+                settings.ANTHROPIC_API_KEY,
+                settings.MISTRAL_API_KEY,
+            ])
         else:
             # Auto-detect: use mock only if NO API keys are available
             self._use_mock = not any([

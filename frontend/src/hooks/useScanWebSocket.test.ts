@@ -57,6 +57,14 @@ class MockWebSocket {
 }
 
 describe('useScanWebSocket', () => {
+  async function flushConnect() {
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      vi.advanceTimersByTime(1)
+    })
+  }
+
   beforeEach(() => {
     MockWebSocket.reset()
     vi.useFakeTimers()
@@ -89,9 +97,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     expect(result.current.lifecycleState).toBe('running')
 
@@ -122,9 +128,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -152,9 +156,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
 
@@ -189,9 +191,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -223,9 +223,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -257,9 +255,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -289,9 +285,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -315,9 +309,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
 
@@ -348,9 +340,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123', onComplete })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -370,9 +360,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123', onFailed })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -396,9 +384,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123' })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     expect(result.current.lifecycleState).toBe('running')
 
@@ -427,23 +413,28 @@ describe('useScanWebSocket', () => {
     MockWebSocket.defaultAutoOpen = false
 
     renderHook(() => useScanWebSocket({ scanId: 'scan-123' }))
+    await flushConnect()
 
     for (let i = 0; i < 55; i++) {
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
+      if (!ws) break
       await act(async () => {
         ws.simulateClose()
       })
       await act(async () => {
         vi.advanceTimersByTime(60000)
+        await Promise.resolve()
       })
     }
 
     const countAfterExhausted = MockWebSocket.instances.length
 
     const lastWs = MockWebSocket.instances[MockWebSocket.instances.length - 1]
-    await act(async () => {
-      lastWs.simulateClose()
-    })
+    if (lastWs) {
+      await act(async () => {
+        lastWs.simulateClose()
+      })
+    }
     await act(async () => {
       vi.advanceTimersByTime(60000)
     })
@@ -458,9 +449,7 @@ describe('useScanWebSocket', () => {
 
     renderHook(() => useScanWebSocket({ scanId: 'scan-123' }))
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -493,9 +482,7 @@ describe('useScanWebSocket', () => {
       useScanWebSocket({ scanId: 'scan-123', onComplete })
     )
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
     await act(async () => {
@@ -515,15 +502,14 @@ describe('useScanWebSocket', () => {
   it('should send heartbeat ping', async () => {
     renderHook(() => useScanWebSocket({ scanId: 'scan-123' }))
 
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
+    await flushConnect()
 
     const ws = MockWebSocket.instances[0]
+    expect(ws.readyState).toBe(1)
     const sendSpy = vi.spyOn(ws, 'send')
 
     await act(async () => {
-      vi.advanceTimersByTime(15000)
+      vi.advanceTimersByTime(15001)
     })
 
     expect(sendSpy).toHaveBeenCalledWith(

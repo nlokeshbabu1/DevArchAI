@@ -78,6 +78,16 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    REDIS_CONNECT_TIMEOUT_SECONDS: float = Field(
+        default=3.0,
+        env="REDIS_CONNECT_TIMEOUT_SECONDS",
+        description="Max seconds to wait when connecting to Redis at startup.",
+    )
+    REDIS_SOCKET_TIMEOUT_SECONDS: float = Field(
+        default=3.0,
+        env="REDIS_SOCKET_TIMEOUT_SECONDS",
+        description="Socket read/write timeout for Redis operations.",
+    )
 
     # Celery
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/1", env="CELERY_BROKER_URL")

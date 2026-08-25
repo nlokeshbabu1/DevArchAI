@@ -759,17 +759,50 @@ def _gpt4all_is_available() -> bool:
         return False
 
 
+def _try_cloud_providers() -> BaseLLMProvider | None:
+    """Return the first configured cloud LLM provider, or None."""
+    if settings.OPENAI_API_KEY:
+        logger.info("Using OpenAI LLM provider")
+        return OpenAIProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.LLM_MODEL or "gpt-4-turbo-preview",
+        )
+    if settings.ANTHROPIC_API_KEY:
+        logger.info("Using Anthropic LLM provider")
+        return AnthropicProvider(
+            api_key=settings.ANTHROPIC_API_KEY,
+            model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
+        )
+    if settings.GEMINI_API_KEY:
+        logger.info("Using Gemini LLM provider")
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model=settings.LLM_MODEL or "gemini-1.5-flash",
+        )
+    if settings.MISTRAL_API_KEY:
+        logger.info("Using Mistral LLM provider")
+        return MistralProvider(
+            api_key=settings.MISTRAL_API_KEY,
+            model=settings.MISTRAL_MODEL,
+        )
+    return None
+
+
 def get_llm_provider() -> BaseLLMProvider:
     """Factory function to get configured LLM provider with automatic fallback.
 
     Priority order:
-    1. Read LLM_PROVIDER from settings (e.g., "mistral", "openai", "gemini", "anthropic", "mock")
-    2. If the configured provider's API key exists -> use it
-    3. If not -> fallback chain: OpenAI -> Anthropic -> Gemini -> Mistral -> Mock
+    1. Explicit LLM_PROVIDER when that provider is available (API key or local server)
+    2. Cloud fallback chain: OpenAI -> Anthropic -> Gemini -> Mistral
+    3. Local fallback: Ollama -> GPT4All (only when reachable)
+    4. Mock (static examples)
+
+    If LLM_PROVIDER is ``ollama``/``gpt4all`` but the local server is not running,
+    cloud providers (including Mistral when MISTRAL_API_KEY is set) are used instead.
     """
     provider = settings.LLM_PROVIDER.lower()
 
-    # Try configured provider first
+    # Try configured cloud provider first (requires matching API key)
     if provider == "gemini" and settings.GEMINI_API_KEY:
         logger.info("Using Gemini LLM provider (configured)")
         return GeminiProvider(
@@ -794,40 +827,46 @@ def get_llm_provider() -> BaseLLMProvider:
             api_key=settings.MISTRAL_API_KEY,
             model=settings.MISTRAL_MODEL,
         )
+
+    # Local providers — only when the server/process is actually reachable
     if provider == "ollama":
-        logger.info("Using Ollama local LLM provider (configured)")
-        return OllamaProvider()
+        if _ollama_is_available():
+            logger.info("Using Ollama local LLM provider (configured)")
+            return OllamaProvider()
+        logger.warning(
+            "LLM_PROVIDER=ollama but Ollama is not reachable; falling back to cloud providers",
+            base_url=settings.OLLAMA_BASE_URL,
+        )
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            return cloud
+
     if provider == "gpt4all":
-        logger.info("Using GPT4All local LLM provider (configured)")
-        return GPT4AllProvider()
+        if _gpt4all_is_available():
+            logger.info("Using GPT4All local LLM provider (configured)")
+            return GPT4AllProvider()
+        logger.warning(
+            "LLM_PROVIDER=gpt4all but GPT4All is not reachable; falling back to cloud providers",
+        )
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            return cloud
 
-    # Fallback chain: try available providers in order
-    if settings.OPENAI_API_KEY:
-        logger.info("Using OpenAI LLM provider (fallback)")
-        return OpenAIProvider(
-            api_key=settings.OPENAI_API_KEY,
-            model=settings.LLM_MODEL or "gpt-4-turbo-preview",
-        )
-    if settings.ANTHROPIC_API_KEY:
-        logger.info("Using Anthropic LLM provider (fallback)")
-        return AnthropicProvider(
-            api_key=settings.ANTHROPIC_API_KEY,
-            model=settings.LLM_MODEL or "claude-3-sonnet-20240229",
-        )
-    if settings.GEMINI_API_KEY:
-        logger.info("Using Gemini LLM provider (fallback)")
-        return GeminiProvider(
-            api_key=settings.GEMINI_API_KEY,
-            model=settings.LLM_MODEL or "gemini-1.5-flash",
-        )
-    if settings.MISTRAL_API_KEY:
-        logger.info("Using Mistral LLM provider (fallback)")
-        return MistralProvider(
-            api_key=settings.MISTRAL_API_KEY,
-            model=settings.MISTRAL_MODEL,
-        )
+    # Configured cloud provider missing its API key — try any available cloud provider
+    if provider in ("openai", "anthropic", "gemini", "mistral"):
+        cloud = _try_cloud_providers()
+        if cloud is not None:
+            logger.info(
+                "Configured LLM provider unavailable, using alternate cloud provider",
+                configured=provider,
+            )
+            return cloud
 
-    # Try local providers before falling back to Mock
+    # Explicit mock, or no configured provider matched — cloud chain then local
+    cloud = _try_cloud_providers()
+    if cloud is not None:
+        return cloud
+
     if _ollama_is_available():
         logger.info("Using Ollama local LLM provider (fallback)")
         return OllamaProvider()
@@ -835,6 +874,5 @@ def get_llm_provider() -> BaseLLMProvider:
         logger.info("Using GPT4All local LLM provider (fallback)")
         return GPT4AllProvider()
 
-    # Fallback to Mock provider (static examples)
-    logger.info("No LLM API keys configured, using static fallback (Mock provider)")
+    logger.info("No LLM API keys or local providers available, using static fallback (Mock provider)")
     return MockLLMProvider()

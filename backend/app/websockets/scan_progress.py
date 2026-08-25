@@ -61,6 +61,18 @@ class WSMessageType:
     AI_CACHE_HIT = "ai.cache.hit"
     # Stage transition (richer than progress_update)
     STAGE_TRANSITION = "stage_transition"
+    # User-facing lifecycle events
+    SCAN_STAGE = "scan_stage"
+    TECHNOLOGY_DETECTED = "technology_detected"
+    SCAN_CANCELLED = "scan_cancelled"
+    SCAN_STATE = "scan_state"
+    SCAN_STARTED = "scan_started"
+    SCAN_PROGRESS = "scan_progress"
+    TECHNOLOGY_SCAN_STARTED = "technology_scan_started"
+    TECHNOLOGY_SCAN_COMPLETED = "technology_scan_completed"
+    FINDING_DETECTED = "finding_detected"
+    AI_STARTED = "ai_started"
+    SCAN_COMPLETED = "scan_completed"
 
 
 def _make_message(
@@ -370,19 +382,6 @@ class ScanProgressWebSocketManager:
         message = _make_message(WSMessageType.SCANNER_COMPLETE, data)
         return await self._broadcast(scan_id, message)
 
-    async def broadcast_finding_added(
-        self,
-        scan_id: str,
-        finding: dict[str, Any],
-    ) -> int:
-        """Broadcast a newly discovered finding in real-time."""
-        data = {
-            "scan_id": scan_id,
-            "finding": finding,
-        }
-        message = _make_message(WSMessageType.FINDING_ADDED, data)
-        return await self._broadcast(scan_id, message)
-
     async def broadcast_ai_progress(
         self,
         scan_id: str,
@@ -618,6 +617,218 @@ class ScanProgressWebSocketManager:
         message = _make_message(WSMessageType.STAGE_TRANSITION, data)
         return await self._broadcast(scan_id, message)
 
+    async def broadcast_scan_stage(
+        self,
+        scan_id: str,
+        stage: str,
+        status: str = "running",
+        message: str = "",
+        progress: int | None = None,
+        error_message: str | None = None,
+    ) -> int:
+        """Broadcast a user-facing lifecycle stage event."""
+        data: dict[str, Any] = {
+            "event": "scan_stage",
+            "scan_id": scan_id,
+            "stage": stage,
+            "status": status,
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        if progress is not None:
+            data["progress"] = progress
+        if error_message:
+            data["error_message"] = error_message
+        ws_message = _make_message(WSMessageType.SCAN_STAGE, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_scan_progress(
+        self,
+        scan_id: str,
+        stage: str,
+        message: str,
+        *,
+        status: str = "running",
+        progress: int | None = None,
+    ) -> int:
+        """Broadcast canonical scan_progress event (also emits scan_stage for compat)."""
+        data: dict[str, Any] = {
+            "event": "scan_progress",
+            "scan_id": scan_id,
+            "stage": stage,
+            "status": status,
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        if progress is not None:
+            data["progress"] = progress
+        await self._broadcast(scan_id, _make_message(WSMessageType.SCAN_PROGRESS, data))
+        return await self.broadcast_scan_stage(
+            scan_id, stage, status=status, message=message, progress=progress
+        )
+
+    async def broadcast_scan_state(self, scan_id: str, state: dict[str, Any]) -> int:
+        """Broadcast full persisted scan state (WebSocket reconnect / page refresh)."""
+        payload = {**state, "event": "scan_state", "scan_id": scan_id}
+        return await self._broadcast(scan_id, _make_message(WSMessageType.SCAN_STATE, payload))
+
+    async def broadcast_scan_started(self, scan_id: str, message: str = "Scan started") -> int:
+        data = {
+            "event": "scan_started",
+            "scan_id": scan_id,
+            "status": "running",
+            "stage": "connecting_repository",
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._broadcast(scan_id, _make_message(WSMessageType.SCAN_STARTED, data))
+
+    async def broadcast_scan_completed(
+        self,
+        scan_id: str,
+        *,
+        findings_count: int = 0,
+        technologies_count: int = 0,
+        message: str = "Security scan completed",
+    ) -> int:
+        data = {
+            "event": "scan_completed",
+            "scan_id": scan_id,
+            "stage": "scan_completed",
+            "status": "completed",
+            "progress": 100,
+            "message": message,
+            "findings_count": findings_count,
+            "technologies_count": technologies_count,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._broadcast(scan_id, _make_message(WSMessageType.SCAN_COMPLETED, data))
+
+    async def broadcast_technology_detected(
+        self,
+        scan_id: str,
+        technology: str,
+        *,
+        tech_id: str | None = None,
+        detected: bool = True,
+        findings: int = 0,
+        severity_counts: dict[str, int] | None = None,
+    ) -> int:
+        """Broadcast that a technology was detected during the scan."""
+        from app.services.scan_lifecycle import format_technology_label
+
+        tid = tech_id or technology.lower().replace(" ", "_")
+        tech_obj = {
+            "id": tid,
+            "name": format_technology_label(tid) if tid == technology.lower().replace(" ", "_") else technology,
+            "icon": tid.replace("_", "-"),
+            "status": "detected" if detected else "failed",
+            "findings": findings,
+        }
+        data = {
+            "event": "technology_detected",
+            "scan_id": scan_id,
+            "technology": tech_obj,
+            "detected": detected,
+            "findings": findings,
+            "severity_counts": severity_counts or {},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.TECHNOLOGY_DETECTED, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_technology_scan_started(
+        self,
+        scan_id: str,
+        technology: str,
+        message: str,
+    ) -> int:
+        data = {
+            "event": "technology_scan_started",
+            "scan_id": scan_id,
+            "technology": technology,
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._broadcast(scan_id, _make_message(WSMessageType.TECHNOLOGY_SCAN_STARTED, data))
+
+    async def broadcast_technology_scan_completed(
+        self,
+        scan_id: str,
+        technology: str,
+        findings_count: int,
+        *,
+        status: str = "completed",
+        error: str | None = None,
+    ) -> int:
+        data: dict[str, Any] = {
+            "event": "technology_scan_completed",
+            "scan_id": scan_id,
+            "technology": technology,
+            "findings_count": findings_count,
+            "status": status,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        if error:
+            data["error"] = error
+        return await self._broadcast(scan_id, _make_message(WSMessageType.TECHNOLOGY_SCAN_COMPLETED, data))
+
+    async def broadcast_finding_added(
+        self,
+        scan_id: str,
+        finding: dict[str, Any],
+        *,
+        technology: str | None = None,
+        total_findings: int | None = None,
+    ) -> int:
+        """Broadcast a newly discovered finding in real-time."""
+        data = {
+            "scan_id": scan_id,
+            "finding": finding,
+        }
+        message = _make_message(WSMessageType.FINDING_ADDED, data)
+        sent = await self._broadcast(scan_id, message)
+
+        detected_data: dict[str, Any] = {
+            "event": "finding_detected",
+            "scan_id": scan_id,
+            "finding": finding,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        if technology:
+            detected_data["technology"] = technology
+        if total_findings is not None:
+            detected_data["total_findings"] = total_findings
+        await self._broadcast(scan_id, _make_message(WSMessageType.FINDING_DETECTED, detected_data))
+        return sent
+
+    async def broadcast_ai_started(self, scan_id: str, message: str, findings_total: int = 0) -> int:
+        data = {
+            "event": "ai_started",
+            "scan_id": scan_id,
+            "status": "running",
+            "message": message,
+            "findings_total": findings_total,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._broadcast(scan_id, _make_message(WSMessageType.AI_STARTED, data))
+
+    async def broadcast_scan_cancelled(
+        self,
+        scan_id: str,
+        message: str = "Scan cancelled",
+    ) -> int:
+        """Broadcast that a scan was cancelled."""
+        data = {
+            "event": "scan_cancelled",
+            "scan_id": scan_id,
+            "status": "cancelled",
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.SCAN_CANCELLED, data)
+        return await self._broadcast(scan_id, ws_message)
+
     async def _broadcast(self, scan_id: str, message: str) -> int:
         """
         Send a message to all active connections for a scan_id.
@@ -828,76 +1039,40 @@ async def scan_progress_websocket(
     heartbeat_task = asyncio.create_task(_send_heartbeat())
 
     try:
-        # 2. Send initial progress snapshot from the in-memory store + DB fallback
+        # 2. Send authoritative persisted state snapshot (PostgreSQL is source of truth)
+        try:
+            from sqlalchemy import select as sa_select
+
+            from app.db.session import get_sync_session_factory
+            from app.models.finding import Finding as FindingModel
+            from app.models.scan import Scan as ScanModel
+            from app.services.scan_state_service import build_scan_state_snapshot_sync
+
+            SessionLocal = get_sync_session_factory()
+            sync_db = SessionLocal()
+            try:
+                db_scan = sync_db.execute(
+                    sa_select(ScanModel).where(ScanModel.id == scan_id)
+                ).scalar_one_or_none()
+                if db_scan:
+                    findings = sync_db.execute(
+                        sa_select(FindingModel).where(FindingModel.scan_id == scan_id)
+                    ).scalars().all()
+                    snapshot = build_scan_state_snapshot_sync(db_scan, list(findings))
+                    await scan_progress_manager.broadcast_scan_state(scan_id, snapshot)
+                    # Also send directly to this client (broadcast may include others)
+                    await websocket.send_text(
+                        _make_message(WSMessageType.SCAN_STATE, snapshot)
+                    )
+            finally:
+                sync_db.close()
+        except Exception as e:
+            logger.warning(f"Failed to send scan_state snapshot on connect: {e}")
+
+        # Legacy: in-memory progress store fallback for clients expecting progress_update
         from app.services.scan_progress_store import scan_progress_store
 
         progress = await scan_progress_store.get_progress(scan_id)
-
-        # If no in-memory progress, try to load from DB (survives server restart)
-        if not progress:
-            try:
-                from sqlalchemy import select as sa_select  # noqa: I001
-
-                from app.db.session import get_sync_session_factory  # noqa: I001
-                from app.models.scan import Scan as ScanModel, ScanStatus  # noqa: I001
-
-                SessionLocal = get_sync_session_factory()
-                sync_db = SessionLocal()
-                try:
-                    result = sync_db.execute(
-                        sa_select(ScanModel).where(ScanModel.id == scan_id)
-                    )
-                    db_scan = result.scalar_one_or_none()
-                    if db_scan:
-                        from app.schemas.scan_progress import ScanProgressResponse, ScanStep, StepStatus  # noqa: I001
-                        from app.models.scan import ScanStage  # noqa: I001
-                        initial_step = db_scan.current_stage.value if db_scan.current_stage else "Initializing"
-
-                        # Build steps from ordered stage list — use DB stage as source of truth
-                        stage_metadata = ScanStage.metadata()
-                        ordered_stages = ScanStage.ordered()
-                        steps = []
-                        current_stage_seen = False
-                        for stage in ordered_stages:
-                            meta = stage_metadata[stage]
-                            if db_scan.current_stage and stage == db_scan.current_stage:
-                                current_stage_seen = True
-                                step_status = StepStatus.RUNNING
-                            elif current_stage_seen:
-                                step_status = StepStatus.PENDING
-                            else:
-                                step_status = StepStatus.COMPLETED
-                            steps.append(ScanStep(name=meta["label"], status=step_status, progress=100 if step_status == StepStatus.COMPLETED else 0))
-
-                        progress = ScanProgressResponse(
-                            scan_id=scan_id,
-                            status=db_scan.status.value if db_scan.status else "pending",
-                            progress=db_scan.progress or 0,
-                            current_step=initial_step,
-                            steps=steps,
-                            detected_stack=[],
-                            logs=[f"Scan {db_scan.status.value} - progress {db_scan.progress}%"],
-                        )
-                        # If scan is terminal, send it immediately and return
-                        if db_scan.status in (ScanStatus.COMPLETED, ScanStatus.FAILED, ScanStatus.CANCELLED):
-                            initial_data = {
-                                "scan_id": scan_id,
-                                "progress": 100 if db_scan.status == ScanStatus.COMPLETED else db_scan.progress or 0,
-                                "status": db_scan.status.value,
-                                "current_step": "Scan completed" if db_scan.status == ScanStatus.COMPLETED else db_scan.status.value,
-                                "steps": [],
-                                "detected_stack": [],
-                                "logs": [f"Scan {db_scan.status.value} at {db_scan.created_at}"],
-                            }
-                            msg_type = WSMessageType.SCAN_COMPLETE if db_scan.status == ScanStatus.COMPLETED else WSMessageType.SCAN_FAILED
-                            message = _make_message(msg_type, initial_data)
-                            await websocket.send_text(message)
-                            return
-                finally:
-                    sync_db.close()
-            except Exception as e:
-                logger.warning(f"Failed to load scan state from DB for reconnect: {e}")
-
         if progress:
             initial_data = {
                 "scan_id": progress.scan_id,

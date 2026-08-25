@@ -287,12 +287,36 @@ class TestGetLLMProviderConfigured:
             "GEMINI_API_KEY": None,
             "MISTRAL_API_KEY": None,
             "LLM_MODEL": None,
+            "OLLAMA_BASE_URL": "http://localhost:11434",
         }
-        with patch.dict("app.ai.engine.__dict__", _local_patches):
+        with patch.dict(
+            "app.ai.engine.__dict__",
+            {**_local_patches, "_ollama_is_available": MagicMock(return_value=True)},
+        ):
             with patch("app.ai.engine.OllamaProvider") as MockOP:
                 MockOP.return_value = MagicMock()
                 provider = get_llm_provider()
                 MockOP.assert_called_once()
+
+    @patch("app.ai.engine.settings")
+    def test_ollama_unavailable_falls_to_mistral(self, mock_settings):
+        mock_settings.__dict__ = {
+            "LLM_PROVIDER": "ollama",
+            "OPENAI_API_KEY": None,
+            "ANTHROPIC_API_KEY": None,
+            "GEMINI_API_KEY": None,
+            "MISTRAL_API_KEY": "mkey",
+            "MISTRAL_MODEL": "mistral-small-latest",
+            "LLM_MODEL": None,
+            "OLLAMA_BASE_URL": "http://localhost:11434",
+        }
+        with patch.dict(
+            "app.ai.engine.__dict__",
+            {**_local_patches, "_ollama_is_available": MagicMock(return_value=False)},
+        ):
+            provider = get_llm_provider()
+            assert isinstance(provider, MistralProvider)
+            assert provider.model == "mistral-small-latest"
 
     @patch("app.ai.engine.settings")
     def test_gpt4all(self, mock_settings):
@@ -304,7 +328,10 @@ class TestGetLLMProviderConfigured:
             "MISTRAL_API_KEY": None,
             "LLM_MODEL": None,
         }
-        with patch.dict("app.ai.engine.__dict__", _local_patches):
+        with patch.dict(
+            "app.ai.engine.__dict__",
+            {**_local_patches, "_gpt4all_is_available": MagicMock(return_value=True)},
+        ):
             with patch("app.ai.engine.GPT4AllProvider") as MockGP:
                 MockGP.return_value = MagicMock()
                 provider = get_llm_provider()

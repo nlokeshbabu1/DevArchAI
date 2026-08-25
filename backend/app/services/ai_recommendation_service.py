@@ -107,7 +107,8 @@ class AIRecommendationService:
         scan.ai_error_message = None
         scan.ai_completed_at = None
         await self.session.commit()
-        await self._broadcast_started(str(scan_uuid))
+        findings_total = len(getattr(scan, "findings", None) or [])
+        await self._broadcast_started(str(scan_uuid), findings_total=findings_total)
 
         try:
             result = await self._run_pipeline(scan)
@@ -415,10 +416,17 @@ class AIRecommendationService:
     # WebSocket / metrics
     # ------------------------------------------------------------------
 
-    async def _broadcast_started(self, scan_id: str) -> None:
+    async def _broadcast_started(self, scan_id: str, findings_total: int = 0) -> None:
         try:
             from app.websockets.scan_progress import scan_progress_manager
-            await scan_progress_manager.broadcast_ai_analysis_started(scan_id)
+            await scan_progress_manager.broadcast_ai_started(
+                scan_id,
+                "Generating AI remediation suggestions",
+                findings_total=findings_total,
+            )
+            await scan_progress_manager.broadcast_ai_analysis_started(
+                scan_id, findings_total=findings_total
+            )
             await scan_progress_manager.broadcast_ai_progress(
                 scan_id, phase="building_context", message_text="Building AI recommendations…", progress=0
             )

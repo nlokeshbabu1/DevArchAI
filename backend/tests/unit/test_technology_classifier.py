@@ -137,6 +137,36 @@ class TestKubernetesOwnership:
         _assert("manifests/notes.yaml", CODE)
 
 
+class TestDirectoryKindRescue:
+    """Manifests with non-standard filenames are rescued by their directory.
+
+    A YAML/JSON file living in a Kubernetes/Helm directory whose filename
+    references a workload kind (deploy*, stateful*, ...) belongs to that
+    technology even when the exact filename is misspelled or suffixed.
+    """
+
+    def test_misspelled_workload_manifests_in_kubernetes_dir(self):
+        _assert("kubernetes/Backend/backend-deployemt.yaml", KUBERNETES)
+        _assert("/kubernetes/Backend/backend-deployemt.yaml", KUBERNETES)
+        _assert("kubernetes/DB-Service/statefullset.yaml", KUBERNETES)
+        _assert("k8s/prod/web-deploy.yaml", KUBERNETES)
+
+    def test_helm_directory_with_kind_stem(self):
+        _assert("helm-chart/backend-deployemt.yaml", HELM)
+        _assert("helm-charts/app/statefullset.yaml", HELM)
+
+    def test_random_config_stays_code(self):
+        # No workload-kind stem: directory alone must not claim the file.
+        _assert("kubernetes/Backend/random-config.yml", CODE)
+        _assert("k8s/notes.txt", CODE)
+
+    def test_exact_filenames_still_win_over_directories(self):
+        # A native manifest name beats an ambiguous directory hint.
+        _assert("/helm-chart/ingress.yaml", KUBERNETES)
+        # And Helm filenames beat a kubernetes directory.
+        _assert("kubernetes/Backend/values.yaml", HELM)
+
+
 class TestOtherTechnologies:
     def test_ci_platforms(self):
         _assert(".gitlab-ci.yml", GITLAB_CI)

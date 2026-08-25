@@ -115,21 +115,47 @@ export interface AnalysisJob {
 }
 
 export type ScanStage =
-  | 'connecting'
+  | 'queued'
+  | 'connecting_repository'
   | 'cloning'
+  | 'cloned'
+  | 'scanning'
+  | 'detecting_technologies'
+  | 'analyzing'
+  | 'scan_completed'
+  | 'failed'
+  | 'cancelled'
+  | `tech:${string}`
+  // Legacy aliases
+  | 'repository_connection'
+  | 'security_scan'
+  | 'analyze_findings'
+  | 'connecting'
   | 'technology_detection'
   | 'scanner_selection'
-  | 'scanning'
   | 'normalization'
   | 'deduplication'
   | 'ai_generation'
   | 'report_generation'
+
+export interface TechnologyResult {
+  id?: string
+  technology: string
+  name?: string
+  icon?: string
+  status?: 'detected' | 'scanning' | 'completed' | 'failed'
+  detected: boolean
+  findings: number
+  severity_counts?: Partial<SeverityCounts>
+}
 
 export interface StageMetadata {
   id: ScanStage
   label: string
   icon: string
   order: number
+  kind?: 'base' | 'technology'
+  technology_id?: string
 }
 
 export interface ScanState {
@@ -254,6 +280,16 @@ export type ScanEventType =
   | 'ai_analysis_completed'
   | 'ai_analysis_failed'
   | 'stage_transition'
+  | 'scan_stage'
+  | 'technology_detected'
+  | 'scan_cancelled'
+  | 'scan_state'
+  | 'scan_started'
+  | 'scan_progress'
+  | 'technology_scan_started'
+  | 'technology_scan_completed'
+  | 'finding_detected'
+  | 'ai_started'
   | 'connection_ack'
   | 'unknown'
 
@@ -271,9 +307,11 @@ export interface ScanProgressSnapshot {
   scanId: string
   status: string
   currentStage: ScanStage | null
-  progress: number
+  progress: number | null
+  currentOperation?: string
   currentStep?: string
   detectedStack: string[]
+  technologies: Record<string, TechnologyResult>
   isTerminal: boolean
   errorMessage?: string
   startedAt?: string

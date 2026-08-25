@@ -74,9 +74,37 @@ else:
 "
 echo -e "${INFO}[3/4] Validation complete${NC}"
 
+# Migrations already ran in this entrypoint — skip the duplicate pass inside
+# FastAPI lifespan (saves ~5-10s on cold start; schema was validated above).
+export DB_MIGRATE_ON_STARTUP=false
+
+# ──────────────────────────────────────────────
+# 3b. Optional: quick Redis reachability check (non-blocking)
+# ──────────────────────────────────────────────
+if [ -n "${REDIS_URL:-}" ]; then
+    echo -e "${INFO}[3b/4] Checking Redis...${NC}"
+    python3 -c "
+import os, sys
+url = os.environ.get('REDIS_URL', '')
+if not url:
+    sys.exit(0)
+try:
+    import redis
+    client = redis.from_url(
+        url,
+        socket_connect_timeout=float(os.environ.get('REDIS_CONNECT_TIMEOUT_SECONDS', '3')),
+        socket_timeout=float(os.environ.get('REDIS_SOCKET_TIMEOUT_SECONDS', '3')),
+    )
+    client.ping()
+    print('Redis is ready')
+except Exception as exc:
+    print(f'Redis not reachable ({exc}) — app will start without cache', flush=True)
+" || true
+fi
+
 # ──────────────────────────────────────────────
 # 4. Start the application
 # ──────────────────────────────────────────────
-echo -e "${INFO}[4/4] Starting application...${NC}"
+echo -e "${INFO}[4/4] Starting application on port ${PORT:-8000}...${NC}"
 
 exec "$@"

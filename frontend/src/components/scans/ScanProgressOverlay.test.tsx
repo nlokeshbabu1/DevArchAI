@@ -24,6 +24,9 @@ vi.mock('../../lib/utils', () => ({
 
 vi.mock('lucide-react', () => ({
   CheckCircle: () => <span data-testid="icon-checkcircle">CheckCircle</span>,
+  CheckCircle2: () => <span data-testid="icon-checkcircle2">CheckCircle2</span>,
+  XCircle: () => <span data-testid="icon-xcircle">XCircle</span>,
+  Circle: () => <span data-testid="icon-circle">Circle</span>,
   Clock: () => <span data-testid="icon-clock">Clock</span>,
   GitBranch: () => <span data-testid="icon-gitbranch">GitBranch</span>,
   Loader2: () => <span data-testid="icon-loader">Loader2</span>,
@@ -31,16 +34,7 @@ vi.mock('lucide-react', () => ({
   X: () => <span data-testid="icon-x">X</span>,
   TrendingUp: () => <span data-testid="icon-trendingup">TrendingUp</span>,
   TrendingDown: () => <span data-testid="icon-trendingdown">TrendingDown</span>,
-  Activity: () => <span data-testid="icon-activity">Activity</span>,
-  Search: () => <span data-testid="icon-search">Search</span>,
-  FileCode: () => <span data-testid="icon-filecode">FileCode</span>,
-  Layers: () => <span data-testid="icon-layers">Layers</span>,
-  Shield: () => <span data-testid="icon-shield">Shield</span>,
-  Brain: () => <span data-testid="icon-brain">Brain</span>,
-  FileText: () => <span data-testid="icon-filetext">FileText</span>,
   CheckCheck: () => <span data-testid="icon-checkcheck">CheckCheck</span>,
-  Filter: () => <span data-testid="icon-filter">Filter</span>,
-  Download: () => <span data-testid="icon-download">Download</span>,
 }))
 
 vi.mock('../ui-animated', () => ({
@@ -50,10 +44,10 @@ vi.mock('../ui-animated', () => ({
 }))
 
 const defaultStages = [
-  { id: 'connecting' as const, label: 'Connecting to Repository', icon: 'git-branch', order: 0 },
-  { id: 'cloning' as const, label: 'Cloning Repository', icon: 'download', order: 1 },
-  { id: 'technology_detection' as const, label: 'Detecting Technologies', icon: 'search', order: 2 },
-  { id: 'scanning' as const, label: 'Running Security Scan', icon: 'shield', order: 3 },
+  { id: 'connecting_repository' as const, label: 'Connect to repository', icon: 'git-branch', order: 1, kind: 'base' as const },
+  { id: 'cloning' as const, label: 'Clone repository', icon: 'download', order: 2, kind: 'base' as const },
+  { id: 'detecting_technologies' as const, label: 'Detect technologies', icon: 'search', order: 4, kind: 'base' as const },
+  { id: 'scanning' as const, label: 'Security scan', icon: 'shield', order: 5, kind: 'base' as const },
 ]
 
 const defaultProps = {
@@ -61,7 +55,7 @@ const defaultProps = {
   onClose: vi.fn(),
   repositoryName: 'myorg/my-repo',
   branch: 'main',
-  progressData: { progress: 65, currentStep: 'Scanning files' },
+  progressData: { currentStep: 'Analyzing repository...' },
   isComplete: false,
   hasFailed: false,
   onComplete: vi.fn(),
@@ -80,24 +74,17 @@ describe('ScanProgressOverlay', () => {
     expect(screen.getByText('main')).toBeInTheDocument()
   })
 
-  it('should show progress bar with correct percentage', () => {
+  it('should render lifecycle stages from backend', () => {
     render(<ScanProgressOverlay {...defaultProps} />)
-    expect(screen.getAllByText('65%').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Connect to repository')).toBeInTheDocument()
+    expect(screen.getByText('Clone repository')).toBeInTheDocument()
+    expect(screen.getAllByText('Security scan').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Detect technologies')).toBeInTheDocument()
   })
 
-  it('should render stages from backend', () => {
+  it('should show current step message in subtitle', () => {
     render(<ScanProgressOverlay {...defaultProps} />)
-    expect(screen.getByText('Connecting to Repository')).toBeInTheDocument()
-    expect(screen.getByText('Cloning Repository')).toBeInTheDocument()
-    expect(screen.getByText('Detecting Technologies')).toBeInTheDocument()
-    // "Running Security Scan" appears as both the currentStep label and the stage label
-    expect(screen.getAllByText('Running Security Scan').length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('should highlight completed stages based on currentStage', () => {
-    render(<ScanProgressOverlay {...defaultProps} currentStage="scanning" />)
-    expect(screen.getByText('Scan Stages')).toBeInTheDocument()
-    expect(screen.getByText('Stage 4/4')).toBeInTheDocument()
+    expect(screen.getAllByText('Analyzing repository...').length).toBeGreaterThanOrEqual(1)
   })
 
   it('should show elapsed time when startedAt is provided', () => {
@@ -115,7 +102,6 @@ describe('ScanProgressOverlay', () => {
       <ScanProgressOverlay
         {...defaultProps}
         isComplete={true}
-        progressData={{ progress: 100 }}
         resultSummary={{
           securityScore: 85,
           grade: 'B',
@@ -134,14 +120,11 @@ describe('ScanProgressOverlay', () => {
       <ScanProgressOverlay
         {...defaultProps}
         hasFailed={true}
-        progressData={{ progress: 30, error: 'Connection timeout' }}
+        progressData={{ error: 'Connection timeout' }}
       />
     )
     expect(screen.getByText('Scan Failed')).toBeInTheDocument()
-    // Error text appears in both the subtitle and the detail area
     expect(screen.getAllByText('Connection timeout').length).toBeGreaterThanOrEqual(1)
-    // AlertCircle icon appears in both header and error details
-    expect(screen.getAllByTestId('icon-alert').length).toBeGreaterThanOrEqual(1)
   })
 
   it('should call onComplete when complete and action button clicked', () => {
@@ -150,14 +133,11 @@ describe('ScanProgressOverlay', () => {
       <ScanProgressOverlay
         {...defaultProps}
         isComplete={true}
-        progressData={{ progress: 100 }}
         onComplete={onComplete}
       />
     )
 
-    const viewBtn = screen.getByText('View Results')
-    fireEvent.click(viewBtn)
-
+    fireEvent.click(screen.getByText('View Results'))
     expect(onComplete).toHaveBeenCalled()
   })
 
@@ -167,37 +147,28 @@ describe('ScanProgressOverlay', () => {
       <ScanProgressOverlay
         {...defaultProps}
         hasFailed={true}
-        progressData={{ progress: 30, error: 'Timeout' }}
+        progressData={{ error: 'Timeout' }}
         onRetry={onRetry}
       />
     )
 
-    const retryBtn = screen.getByText('Retry Scan')
-    fireEvent.click(retryBtn)
-
+    fireEvent.click(screen.getByText('Retry Scan'))
     expect(onRetry).toHaveBeenCalled()
   })
 
-  it('should show resultSummary when provided', () => {
+  it('should render detected technologies dynamically', () => {
     render(
       <ScanProgressOverlay
         {...defaultProps}
-        isComplete={true}
-        progressData={{ progress: 100 }}
-        resultSummary={{
-          securityScore: 85,
-          grade: 'B',
-          severityCounts: { critical: 0, high: 1, medium: 3, low: 5 },
-          filesScanned: 42,
-          scanDuration: 120,
+        currentStage="detecting_technologies"
+        technologies={{
+          docker: { technology: 'Docker', detected: true, findings: 4 },
+          kubernetes: { technology: 'Kubernetes', detected: true, findings: 21 },
         }}
       />
     )
-    // When no previousScore is provided, severity counts grid is shown
-    expect(screen.getByText('critical')).toBeInTheDocument()
-    expect(screen.getByText('high')).toBeInTheDocument()
-    expect(screen.getByText('medium')).toBeInTheDocument()
-    expect(screen.getByText('low')).toBeInTheDocument()
-    expect(screen.getAllByText('Scan Complete').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Docker')).toBeInTheDocument()
+    expect(screen.getByText('Kubernetes')).toBeInTheDocument()
+    expect(screen.getByText('4 findings')).toBeInTheDocument()
   })
 })

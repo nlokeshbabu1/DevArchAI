@@ -12,7 +12,8 @@ interface ScanPipelineProps {
   currentStage: ScanStage | null
   completedStages: ScanStage[]
   failedStages: ScanStage[]
-  progress: number
+  progress?: number
+  showProgressBar?: boolean
   isComplete: boolean
   hasFailed: boolean
 }
@@ -136,7 +137,8 @@ function ConnectorLine({ state }: { state: 'completed' | 'running' | 'failed' | 
 }
 
 export const ScanPipeline = React.memo(function ScanPipeline({
-  stages, currentStage, completedStages, failedStages, progress, isComplete, hasFailed,
+  stages, currentStage, completedStages, failedStages, progress = 0, isComplete, hasFailed,
+  showProgressBar = false,
 }: ScanPipelineProps) {
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.order - b.order),
@@ -169,6 +171,7 @@ export const ScanPipeline = React.memo(function ScanPipeline({
         })}
       </div>
 
+      {showProgressBar && (
       <div className="mt-5 flex items-center gap-3">
         <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
           <motion.div
@@ -189,6 +192,7 @@ export const ScanPipeline = React.memo(function ScanPipeline({
           {clampedProgress}%
         </span>
       </div>
+      )}
     </motion.div>
   )
 })

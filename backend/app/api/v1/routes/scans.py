@@ -338,6 +338,20 @@ async def cancel_scan(
     scan.error_message = "Scan cancelled by user"
     await db.commit()
 
+    try:
+        from app.websockets.scan_progress import scan_progress_manager
+
+        await scan_progress_manager.broadcast_scan_cancelled(str(scan.id))
+        await scan_progress_manager.broadcast_progress(
+            scan_id=str(scan.id),
+            progress=0,
+            status="failed",
+            current_step="Scan cancelled",
+            error_message="Scan cancelled by user",
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to broadcast scan cancellation: {exc}")
+
     return ScanCancelResponse(
         id=str(scan.id),
         status="cancelled",

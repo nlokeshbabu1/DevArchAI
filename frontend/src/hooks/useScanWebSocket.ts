@@ -11,7 +11,9 @@ import type {
   SeverityCounts,
   ScanEvent,
   ScanEventType,
+  TechnologyResult,
 } from '../types'
+import { normalizeLifecycleStage } from '../lib/scanLifecycle'
 
 export interface WSMessage {
   type: string
@@ -45,6 +47,9 @@ export function useScanWebSocket({
 }: UseScanWebSocketOptions) {
   const [lifecycleState, setLifecycleState] = useState<ScanLifecycleState>('idle')
   const [scanState, setScanState] = useState<ScanProgressSnapshot | null>(null)
+  const [completedStages, setCompletedStages] = useState<ScanStage[]>([])
+  const [stageMessages, setStageMessages] = useState<Partial<Record<ScanStage, string>>>({})
+  const [failedStage, setFailedStage] = useState<ScanStage | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -90,8 +95,9 @@ export function useScanWebSocket({
       scanId: scanIdRef.current || '',
       status: 'running',
       currentStage: null,
-      progress: 0,
+      progress: null,
       detectedStack: [],
+      technologies: {},
       isTerminal: false,
       scanners: {},
       liveFindings: [],
@@ -106,6 +112,85 @@ export function useScanWebSocket({
     }),
     [],
   )
+
+  const mergeTechnology = useCallback((tech: TechnologyResult & { id?: string; name?: string }) => {
+    const key = (tech.id || tech.technology).toLowerCase().replace(/\s+/g, '_')
+    const normalized: TechnologyResult = {
+      id: tech.id || key,
+      technology: tech.name || tech.technology,
+      name: tech.name || tech.technology,
+      icon: tech.icon,
+      status: tech.status || 'detected',
+      detected: tech.detected ?? true,
+      findings: tech.findings ?? 0,
+      severity_counts: tech.severity_counts,
+    }
+    setScanState(prev => {
+      const base = prev ?? buildInitialSnapshot()
+      return {
+        ...base,
+        technologies: {
+          ...base.technologies,
+          [key]: { ...base.technologies[key], ...normalized },
+        },
+      }
+    })
+  }, [buildInitialSnapshot])
+
+  const technologiesFromPayload = useCallback((items: any[]): Record<string, TechnologyResult> => {
+    return items.reduce((acc: Record<string, TechnologyResult>, raw: any) => {
+      const id = raw.id || raw.technology
+      const key = String(id).toLowerCase().replace(/\s+/g, '_')
+      acc[key] = {
+        id: key,
+        technology: raw.name || raw.technology || key,
+        name: raw.name || raw.technology || key,
+        icon: raw.icon,
+        status: raw.status || 'detected',
+        detected: raw.detected ?? true,
+        findings: raw.findings ?? 0,
+        severity_counts: raw.severity_counts,
+      }
+      return acc
+    }, {})
+  }, [])
+
+  const applyServerState = useCallback((state: Record<string, any>) => {
+    if (!mountedRef.current) return
+    const lifecycleStage = normalizeLifecycleStage(state.stage || state.current_stage)
+    const techList = state.technologies || state.technology_results || []
+    setScanState({
+      scanId: state.scan_id,
+      status: state.status,
+      currentStage: lifecycleStage,
+      progress: state.progress ?? null,
+      currentStep: state.message || state.current_operation || state.stage || state.status,
+      currentOperation: state.message || state.current_operation,
+      detectedStack: state.detected_stack || [],
+      technologies: technologiesFromPayload(techList),
+      isTerminal: state.is_terminal,
+      errorMessage: state.error_message,
+      startedAt: state.started_at,
+      completedAt: state.completed_at,
+      scanners: {},
+      liveFindings: [],
+      aiProgress: null,
+      stageTransitions: [],
+      filesScanned: state.files_scanned || 0,
+      totalFiles: state.total_files || 0,
+      severityCounts: state.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      logs: state.logs || [],
+      events: [],
+    })
+    if (state.message && lifecycleStage) {
+      setStageMessages(prev => ({ ...prev, [lifecycleStage]: state.message }))
+    }
+    if (state.is_terminal) {
+      setLifecycleState(state.status === 'completed' ? 'completed' : state.status === 'cancelled' ? 'cancelled' : 'failed')
+    } else {
+      setLifecycleState('running')
+    }
+  }, [technologiesFromPayload])
 
   const fetchScanState = useCallback(async (id: string) => {
     try {
@@ -123,8 +208,13 @@ export function useScanWebSocket({
     }
   }, [])
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!scanIdRef.current || !enabledRef.current) return
+
+    const existing = await fetchScanState(scanIdRef.current)
+    if (existing && mountedRef.current) {
+      applyServerState(existing)
+    }
 
     const token = localStorage.getItem('access_token') || ''
     const st = sessionTokenRef.current || ''
@@ -195,6 +285,7 @@ export function useScanWebSocket({
             ai_suggestion_generation: 'ai_suggestion_generation',
             creating_pull_request: 'creating_pull_request',
             uploading_report: 'uploading_report',
+            scan_completed: 'scan_completed',
             scan_complete: 'scan_completed',
             scan_failed: 'scan_failed',
             progress_update: 'progress_update',
@@ -203,6 +294,7 @@ export function useScanWebSocket({
             stack_detected: 'stack_detected',
             log_message: 'log_message',
             ai_progress: 'ai_progress',
+            ai_started: 'ai_analysis_started',
             ai_completed: 'ai_completed',
             'ai.analysis.started': 'ai_analysis_started',
             'ai.finding.completed': 'ai_finding_completed',
@@ -263,19 +355,29 @@ export function useScanWebSocket({
             break
           }
 
+          case 'scan_completed':
           case 'scan_complete': {
+            const completedStage = normalizeLifecycleStage('scan_completed')
+            setCompletedStages(prev =>
+              completedStage && !prev.includes(completedStage) ? [...prev, completedStage] : prev,
+            )
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
               return {
                 ...base,
                 scanId: data.scan_id || base.scanId,
                 status: 'completed',
-                progress: 100,
+                currentStage: completedStage,
+                progress: data.progress ?? 100,
                 isTerminal: true,
                 completedAt: data.completed_at || new Date().toISOString(),
               }
             })
-            pushEvent(type, { progress: 100, stage: 'completed', message: 'Scan completed successfully' })
+            pushEvent(type, {
+              progress: data.progress ?? 100,
+              stage: 'scan_completed',
+              message: data.message || 'Scan completed successfully',
+            })
             setLifecycleState('completed')
             onCompleteRef.current?.(data || {})
             break
@@ -350,15 +452,16 @@ export function useScanWebSocket({
             break
           }
 
-          case 'finding_added': {
+          case 'finding_added':
+          case 'finding_detected': {
             const finding: LiveFinding = {
-              rule_id: data.rule_id || '',
-              rule_name: data.rule_name || '',
-              severity: data.severity || 'info',
-              category: data.category || '',
-              file_path: data.file_path,
-              line_number: data.line_number,
-              description: data.description || '',
+              rule_id: data.finding?.rule_id || data.rule_id || '',
+              rule_name: data.finding?.rule_name || data.rule_name || '',
+              severity: data.finding?.severity || data.severity || 'info',
+              category: data.finding?.category || data.category || '',
+              file_path: data.finding?.file_path || data.file_path,
+              line_number: data.finding?.line_number || data.line_number,
+              description: data.finding?.description || data.description || '',
               timestamp: data.timestamp || new Date().toISOString(),
             }
             setScanState(prev => {
@@ -372,11 +475,25 @@ export function useScanWebSocket({
               if (sev in counts) {
                 counts[sev as keyof SeverityCounts]++
               }
-              return { ...base, liveFindings: updatedFindings, severityCounts: counts }
+              return {
+                ...base,
+                liveFindings: updatedFindings,
+                severityCounts: counts,
+              }
             })
+            if (data.technology) {
+              const key = String(data.technology).toLowerCase().replace(/\s+/g, '_')
+              mergeTechnology({
+                id: key,
+                technology: data.technology,
+                name: data.technology,
+                detected: true,
+                findings: data.total_findings ?? 0,
+              })
+            }
             pushEvent(type, {
               stage: 'finding',
-              message: `[${data.severity?.toUpperCase() || 'INFO'}] ${data.rule_name || data.rule_id || 'Unknown rule'}`,
+              message: `[${finding.severity?.toUpperCase() || 'INFO'}] ${finding.rule_name || finding.rule_id}`,
             })
             break
           }
@@ -424,6 +541,7 @@ export function useScanWebSocket({
             break
           }
 
+          case 'ai_started':
           case 'ai.analysis.started': {
             const progress: AIGenerationProgress = {
               phase: data.phase || 'started',
@@ -638,26 +756,172 @@ export function useScanWebSocket({
             break
           }
 
-          case 'stage_transition': {
-            const transition: StageTransition = {
-              stage: data.stage as ScanStage,
-              stage_label: data.stage_label || data.stage || '',
-              progress: data.progress ?? 0,
-              status: data.status || 'running',
-              timestamp: data.timestamp || new Date().toISOString(),
+          case 'scan_state': {
+            applyServerState(data)
+            pushEvent(type, { message: data.message || 'Scan state synchronized' })
+            if (data.is_terminal && data.status === 'completed') {
+              setLifecycleState('completed')
+              onCompleteRef.current?.(data)
+            } else if (data.is_terminal && data.status === 'failed') {
+              setLifecycleState('failed')
+              onFailedRef.current?.(data)
+            }
+            break
+          }
+
+          case 'scan_started':
+          case 'scan_progress': {
+            const rawStage = (data.stage || data.current_step) as ScanStage
+            const lifecycleStage = normalizeLifecycleStage(rawStage)
+            const message = data.message || ''
+            if (lifecycleStage) {
+              currentStageRef.current = lifecycleStage
+              onStageChangeRef.current?.(lifecycleStage)
+              if (message) setStageMessages(prev => ({ ...prev, [lifecycleStage]: message }))
             }
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
               return {
                 ...base,
-                stageTransitions: [...base.stageTransitions, transition],
+                currentStage: lifecycleStage || base.currentStage,
+                progress: data.progress ?? base.progress,
+                currentStep: message || base.currentStep,
+                currentOperation: message,
+              }
+            })
+            pushEvent(type, { stage: lifecycleStage || rawStage, message, progress: data.progress ?? 0 })
+            break
+          }
+
+          case 'stage_transition':
+          case 'scan_stage': {
+            const rawStage = (data.stage || data.current_step) as ScanStage
+            const lifecycleStage = normalizeLifecycleStage(rawStage)
+            const stageStatus = data.status || 'running'
+            const message = data.message || data.stage_label || ''
+
+            if (lifecycleStage) {
+              if (stageStatus === 'completed') {
+                setCompletedStages(prev =>
+                  prev.includes(lifecycleStage) ? prev : [...prev, lifecycleStage],
+                )
+              } else if (stageStatus === 'failed') {
+                setFailedStage(lifecycleStage)
+              } else {
+                currentStageRef.current = lifecycleStage
+                onStageChangeRef.current?.(lifecycleStage)
+              }
+              if (message) {
+                setStageMessages(prev => ({ ...prev, [lifecycleStage]: message }))
+              }
+            }
+
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return {
+                ...base,
+                currentStage: lifecycleStage || base.currentStage,
+                progress: data.progress ?? base.progress,
+                currentStep: message || base.currentStep,
+                stageTransitions: type === 'stage_transition'
+                  ? [...base.stageTransitions, {
+                      stage: rawStage,
+                      stage_label: message,
+                      progress: data.progress ?? 0,
+                      status: stageStatus,
+                      timestamp: data.timestamp || new Date().toISOString(),
+                    }]
+                  : base.stageTransitions,
               }
             })
             pushEvent(type, {
-              stage: data.stage || '',
+              stage: lifecycleStage || rawStage,
               progress: data.progress ?? 0,
-              message: data.stage_label || data.stage || '',
+              message,
             })
+            break
+          }
+
+          case 'technology_detected': {
+            const techObj = data.technology
+            if (techObj && typeof techObj === 'object') {
+              mergeTechnology({
+                id: techObj.id,
+                technology: techObj.name || techObj.id,
+                name: techObj.name,
+                icon: techObj.icon,
+                status: techObj.status || 'detected',
+                detected: data.detected ?? true,
+                findings: data.findings ?? techObj.findings ?? 0,
+                severity_counts: data.severity_counts,
+              })
+            } else if (data.technology) {
+              mergeTechnology({
+                technology: data.technology,
+                detected: data.detected ?? true,
+                findings: data.findings ?? 0,
+                severity_counts: data.severity_counts,
+              })
+            }
+            pushEvent(type, {
+              stage: 'detecting_technologies',
+              message: `${data.technology?.name || data.technology}: detected`,
+            })
+            break
+          }
+
+          case 'technology_scan_started': {
+            const name = data.technology
+            const key = String(name).toLowerCase().replace(/\s+/g, '_')
+            mergeTechnology({
+              id: key,
+              technology: name,
+              name,
+              status: 'scanning',
+              detected: true,
+              findings: 0,
+            })
+            const techStage = `tech:${key}` as ScanStage
+            currentStageRef.current = techStage
+            if (data.message) setStageMessages(prev => ({ ...prev, [techStage]: data.message }))
+            pushEvent(type, { stage: techStage, message: data.message || `Analyzing ${name}` })
+            break
+          }
+
+          case 'technology_scan_completed': {
+            const name = data.technology
+            const key = String(name).toLowerCase().replace(/\s+/g, '_')
+            mergeTechnology({
+              id: key,
+              technology: name,
+              name,
+              status: data.status === 'failed' ? 'failed' : 'completed',
+              detected: true,
+              findings: data.findings_count ?? 0,
+            })
+            setCompletedStages(prev => {
+              const techStage = `tech:${key}` as ScanStage
+              return prev.includes(techStage) ? prev : [...prev, techStage]
+            })
+            pushEvent(type, {
+              stage: `tech:${key}` as ScanStage,
+              message: `${name}: ${data.findings_count ?? 0} findings`,
+            })
+            break
+          }
+
+          case 'scan_cancelled': {
+            setLifecycleState('cancelled')
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              return {
+                ...base,
+                status: 'cancelled',
+                isTerminal: true,
+                errorMessage: data.message || 'Scan cancelled',
+              }
+            })
+            pushEvent(type, { stage: 'cancelled', message: data.message || 'Scan cancelled' })
             break
           }
 
@@ -713,30 +977,9 @@ export function useScanWebSocket({
 
         const state = await fetchScanState(id)
         if (state && mountedRef.current) {
-          setScanState({
-            scanId: state.scan_id,
-            status: state.status,
-            currentStage: state.current_stage,
-            progress: state.progress,
-            currentStep: state.current_stage || state.status,
-            detectedStack: state.detected_stack || [],
-            isTerminal: state.is_terminal,
-            errorMessage: state.error_message,
-            startedAt: state.started_at,
-            completedAt: state.completed_at,
-            scanners: {},
-            liveFindings: [],
-            aiProgress: null,
-            stageTransitions: [],
-            filesScanned: state.files_scanned || 0,
-            totalFiles: state.total_files || 0,
-            severityCounts: state.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-            logs: state.logs || [],
-            events: [],
-          })
+          applyServerState(state)
 
           if (state.is_terminal) {
-            setLifecycleState(state.status === 'completed' ? 'completed' : 'failed')
             if (state.status === 'completed') {
               onCompleteRef.current?.(state as Record<string, any>)
             } else if (state.status === 'failed') {
@@ -761,7 +1004,7 @@ export function useScanWebSocket({
 
       syncAndReconnect()
     }
-  }, [cleanup, fetchScanState, buildInitialSnapshot])
+  }, [cleanup, fetchScanState, buildInitialSnapshot, applyServerState, mergeTechnology])
 
   useEffect(() => {
     mountedRef.current = true
@@ -780,5 +1023,13 @@ export function useScanWebSocket({
     lifecycleState === 'reconnecting' ? 'connecting' :
     'disconnected'
 
-  return { lifecycleState, scanState, error, connectionStatus }
+  return {
+    lifecycleState,
+    scanState,
+    completedStages,
+    stageMessages,
+    failedStage,
+    error,
+    connectionStatus,
+  }
 }

@@ -17,6 +17,9 @@ import { AIProgressBanner } from '../../components/scans/AIProgressBanner'
 import apiClient from '../../api/endpoints/client'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
 import { useRepositoryScan } from '../../hooks/useRepositoryScan'
+import { scansApi } from '../../api/endpoints/scans'
+import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import type { ScanStage, StageMetadata } from '../../types'
 import { getFindingsCount, sanitizePath, cn, copyToClipboard } from '../../lib/utils'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
@@ -79,8 +82,15 @@ export function RepositoryResultsPage() {
   const isAiReady = scanResult?.ai_status === 'completed'
   const score = scanResult?.overall_score ?? scanResult?.security_score ?? 0
 
+  const { data: stagesData } = useQuery({
+    queryKey: ['scan-stages'],
+    queryFn: () => scansApi.getStages(),
+    staleTime: Infinity,
+  })
+  const stages: StageMetadata[] = stagesData || []
+
   // Scan management hook
-  const { state: scanState, startScan, retry: retryScan, handleProgressUpdate, handleScanComplete, handleScanFailed, handleAIComplete, handleLog } = useRepositoryScan({
+  const { state: scanState, startScan, retry: retryScan, cancelScan, handleScanComplete, handleScanFailed, handleAIComplete } = useRepositoryScan({
     repositoryUrl: repoUrl,
     repositoryId,
     branch: defaultBranch,
@@ -88,7 +98,7 @@ export function RepositoryResultsPage() {
   })
 
   // WebSocket for real-time updates during scan
-  const { scanState: wsState } = useScanWebSocket({
+  const { scanState: wsState, completedStages, stageMessages, failedStage } = useScanWebSocket({
     scanId: scanState.scanId,
     enabled: scanState.isScanning || isAiPending,
     onComplete: (data) => {
@@ -96,9 +106,6 @@ export function RepositoryResultsPage() {
     },
     onFailed: (data) => {
       handleScanFailed(data)
-    },
-    onStageChange: (stage) => {
-      handleProgressUpdate({ currentStage: stage })
     },
     onAIComplete: () => {
       void handleAIComplete()
@@ -425,15 +432,22 @@ export function RepositoryResultsPage() {
         <ScanProgressOverlay
           isOpen={scanState.isActive || scanStarted || scanState.isFailed}
           onClose={handleCloseOverlay}
+          onCancel={() => { void cancelScan() }}
           repositoryName={repoName}
           branch={defaultBranch}
+          stages={stages}
+          currentStage={normalizeLifecycleStage(wsState?.currentStage ?? null)}
+          completedStages={completedStages}
+          failedStage={failedStage}
+          stageMessages={stageMessages}
+          technologies={wsState?.technologies}
+          startedAt={wsState?.startedAt}
           progressData={{
-            progress: scanState.progress.progress,
-            currentStep: scanState.progress.currentStep,
-            error: scanState.error || undefined,
+            currentStep: wsState?.currentStep,
+            error: scanState.error || wsState?.errorMessage || undefined,
           }}
-          isComplete={scanState.isComplete}
-          hasFailed={scanState.isFailed}
+          isComplete={!!(scanState.isComplete || (wsState?.isTerminal && wsState.status === 'completed'))}
+          hasFailed={!!(scanState.isFailed || (wsState?.isTerminal && wsState.status === 'failed'))}
           onComplete={() => {
             void refetch()
             handleCloseOverlay()
@@ -554,15 +568,22 @@ export function RepositoryResultsPage() {
         slideIn
         isOpen={scanState.isActive || scanStarted || scanState.isFailed}
         onClose={handleCloseOverlay}
+        onCancel={() => { void cancelScan() }}
         repositoryName={repoName}
         branch={defaultBranch}
+        stages={stages}
+        currentStage={normalizeLifecycleStage(wsState?.currentStage ?? null)}
+        completedStages={completedStages}
+        failedStage={failedStage}
+        stageMessages={stageMessages}
+        technologies={wsState?.technologies}
+        startedAt={wsState?.startedAt}
         progressData={{
-          progress: scanState.progress.progress,
-          currentStep: scanState.progress.currentStep,
-          error: scanState.error || undefined,
+          currentStep: wsState?.currentStep,
+          error: scanState.error || wsState?.errorMessage || undefined,
         }}
-        isComplete={scanState.isComplete}
-        hasFailed={scanState.isFailed}
+        isComplete={!!(scanState.isComplete || (wsState?.isTerminal && wsState.status === 'completed'))}
+        hasFailed={!!(scanState.isFailed || (wsState?.isTerminal && wsState.status === 'failed'))}
         onComplete={() => {
           void refetch()
           handleCloseOverlay()

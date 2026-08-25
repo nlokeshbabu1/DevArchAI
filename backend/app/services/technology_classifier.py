@@ -14,8 +14,13 @@ Classification priority:
                      statefulset.yaml, configmap.yaml, secret.yaml, cronjob.yaml,
                      namespace.yaml, kustomization.yaml)
     6. Other CI / config file families (unambiguous, no overlap with 1-5)
-    7. Scanner-based fallbacks (secrets, dependencies)
-    8. code        - anything that does not own a technology
+    7. Directory + resource-kind rescue: a YAML/JSON manifest that lives in a
+       Kubernetes/Helm directory and whose filename references a known
+       workload kind (deploy*, stateful*, ingress*, ...) belongs to that
+       technology even when the exact filename is non-standard (e.g. the
+       typo "backend-deployemt.yaml"). Exact filenames always win first.
+    8. Scanner-based fallbacks (secrets, dependencies)
+    9. code        - anything that does not own a technology
 
 A Helm chart file (Chart.yaml / values.yaml / templates/* / charts/*) is
 NEVER counted again as Kubernetes. Ownership is exclusive.
@@ -84,6 +89,30 @@ _DOCKER_COMPOSE_NAMES = (
 _TRAVIS_NAMES = (".travis.yml", ".travis.yaml")
 
 _DRONE_NAMES = (".drone.yml", ".drone.yaml")
+
+# Directory names that mark a Kubernetes manifests directory.
+_KUBERNETES_DIR_SEGMENTS = ("kubernetes", "k8s", "kube")
+
+# Directory names that mark a Helm charts directory ("charts" is already
+# owned by the exact-filename Helm rules above).
+_HELM_DIR_SEGMENTS = ("helm", "helm-chart", "helm-charts", "chart")
+
+# Filename stems that identify a Kubernetes workload/resource manifest even
+# when the full filename is misspelled or suffixed (backend-deployemt.yaml,
+# statefullset.yaml, prod-ingress.yaml, ...).
+_KIND_STEMS = (
+    "deploy",
+    "stateful",
+    "daemonset",
+    "ingress",
+    "service",
+    "configmap",
+    "cronjob",
+    "namespace",
+    "kustomization",
+)
+
+_MANIFEST_SUFFIXES = (".yaml", ".yml", ".json")
 
 _DEPENDENCY_SCANNERS = (
     "npm_audit",
@@ -203,6 +232,16 @@ def classify_technology(file_path: str | None = None, scanner_name: str | None =
         return AZURE
     if "gcp" in path or "gke" in path or "google" in path:
         return GCP
+
+    # 6b) Directory + resource-kind rescue. A manifest file whose exact
+    #     filename is non-standard (typos, env suffixes) still belongs to the
+    #     technology that owns its directory when the filename references a
+    #     known workload kind. Exact-filename rules above always win first.
+    if path.endswith(_MANIFEST_SUFFIXES) and any(stem in name for stem in _KIND_STEMS):
+        if any(_segment(path, seg) for seg in _HELM_DIR_SEGMENTS):
+            return HELM
+        if any(_segment(path, seg) for seg in _KUBERNETES_DIR_SEGMENTS):
+            return KUBERNETES
 
     # 7) Scanner-based fallbacks (secret/dependency scanners are not
     #    technology files themselves).

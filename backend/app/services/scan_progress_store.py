@@ -215,14 +215,13 @@ class ScanProgressStore:
                 logger.debug(f"Cleaned up old scan: {scan_id}")
 
     def _get_default_steps(self) -> list[ScanStep]:
-        """Get default scan steps."""
+        """Get default scan steps aligned with user-facing lifecycle."""
         return [
-            ScanStep(name="Connecting to GitHub", status=StepStatus.PENDING),
-            ScanStep(name="Fetching repository", status=StepStatus.PENDING),
-            ScanStep(name="Detecting technologies", status=StepStatus.PENDING),
-            ScanStep(name="Running security rules", status=StepStatus.PENDING),
-            ScanStep(name="Generating AI suggestions", status=StepStatus.PENDING),
-            ScanStep(name="Calculating score", status=StepStatus.PENDING),
+            ScanStep(name="Connect to repository", status=StepStatus.PENDING),
+            ScanStep(name="Clone repository", status=StepStatus.PENDING),
+            ScanStep(name="Security scan", status=StepStatus.PENDING),
+            ScanStep(name="Detect technologies", status=StepStatus.PENDING),
+            ScanStep(name="Analyze findings", status=StepStatus.PENDING),
         ]
 
 

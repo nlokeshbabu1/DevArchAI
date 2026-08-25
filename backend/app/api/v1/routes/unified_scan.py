@@ -351,23 +351,14 @@ async def start_unified_scan(
 @router.get("/stages", response_model=dict[str, Any])
 async def get_scan_stages():
     """
-    Get scan stage metadata for the frontend.
+    Get user-facing scan lifecycle stage metadata for the frontend.
 
-    Returns the ordered list of stages with display labels and icons.
+    Returns the ordered list of lifecycle steps with display labels and icons.
     The frontend renders these directly — no hardcoded stage definitions.
     """
-    from app.models.scan import ScanStage
+    from app.services.scan_lifecycle import lifecycle_stages_payload
 
-    stages = []
-    for stage in ScanStage.ordered():
-        meta = ScanStage.metadata()[stage]
-        stages.append({
-            "id": stage.value,
-            "label": meta["label"],
-            "icon": meta["icon"],
-            "order": meta["order"],
-        })
-    return {"stages": stages}
+    return {"stages": lifecycle_stages_payload()}
 
 
 @router.get("/status/{scan_id}", response_model=dict[str, Any])
@@ -506,6 +497,15 @@ async def get_scan_status(
     }
 
 
+def _severity_key(finding: Any) -> str:
+    """Return the normalized lowercase severity bucket for a finding."""
+    sev = finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity)
+    return (sev or "info").lower()
+
+
+SEVERITY_BUCKETS = ("critical", "high", "medium", "low", "info")
+
+
 def _finding_matches_tech(finding: Any, tech: str) -> bool:
     """Check if a finding belongs to a specific technology.
 
@@ -569,11 +569,11 @@ async def get_scan_results(
     findings_result = await db.execute(select(Finding).where(Finding.scan_id == scan_id))
     findings = findings_result.scalars().all()
 
-    # Count by severity
-    severity_counts = {}
+    # Count by severity. All five buckets are always present (zero-filled) so
+    # consumers can rely on total == sum(severity_counts.values()).
+    severity_counts = {bucket: 0 for bucket in SEVERITY_BUCKETS}
     for f in findings:
-        severity = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
-        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        severity_counts[_severity_key(f)] = severity_counts.get(_severity_key(f), 0) + 1
 
     # Get AI suggestions
     from app.models.ai_suggestion import AISuggestion
@@ -711,35 +711,37 @@ async def get_scan_results(
                 tech = classify_technology(fp)
                 canonical_file_counts[tech] = canonical_file_counts.get(tech, 0) + 1
 
+        # Technologies with detected files are reportable even when they
+        # produced no findings (e.g. Helm charts in a clean repo), keeping
+        # detected_technologies aligned with the coverage cards below.
+        for tech, files in tech_file_map.items():
+            if files and tech not in detected_technologies:
+                detected_technologies.append(tech)
+
         # Report an entry for every detected technology so the frontend always
         # partitions findings by the canonical `technology` field (never by
         # fuzzy substring matching that could double-count a finding).
         techs_to_report = set(detected_technologies) | set(tech_file_map.keys())
         for tech in sorted(techs_to_report):
             tech_findings = [f for f in findings if _finding_matches_tech(f, tech)]
-            tech_sev: dict[str, int] = {}
+            tech_sev: dict[str, int] = {bucket: 0 for bucket in SEVERITY_BUCKETS}
             for tf in tech_findings:
-                sev = tf.severity.value if hasattr(tf.severity, "value") else str(tf.severity)
-                tech_sev[sev] = tech_sev.get(sev, 0) + 1
+                tech_sev[_severity_key(tf)] = tech_sev.get(_severity_key(tf), 0) + 1
             tech_files_count = canonical_file_counts.get(tech, 0)
             technology_details.append({
                 "technology": tech,
                 "files_count": tech_files_count,
                 "findings_count": len(tech_findings),
+                "total_findings": len(tech_findings),
                 "severity_counts": tech_sev,
                 "status": "DETECTED"
                 if tech_files_count
                 else ("HAS_FINDINGS" if tech_findings else "CLEAN"),
             })
 
-    # Build risk_distribution (just counts, no duplication with technology_details)
-    risk_distribution = {
-        "critical": severity_counts.get("CRITICAL", 0) or severity_counts.get("critical", 0),
-        "high": severity_counts.get("HIGH", 0) or severity_counts.get("high", 0),
-        "medium": severity_counts.get("MEDIUM", 0) or severity_counts.get("medium", 0),
-        "low": severity_counts.get("LOW", 0) or severity_counts.get("low", 0),
-        "info": severity_counts.get("INFO", 0) or severity_counts.get("info", 0),
-    }
+    # Build risk_distribution from the normalized severity counts (just
+    # counts, no duplication with technology_details).
+    risk_distribution = {bucket: severity_counts.get(bucket, 0) for bucket in SEVERITY_BUCKETS}
 
     # Build top_files (files sorted by findings count, deduplicated)
     file_findings_map: dict[str, dict] = {}
@@ -868,55 +870,28 @@ async def get_scan_state(
     - Whether the scan is in a terminal state
     """
     parse_uuid(scan_id, "scan_id")
-    # Get scan from DB (single source of truth)
-    result = await db.execute(select(Scan).where(Scan.id == scan_id))
-    scan = result.scalar_one_or_none()
+    from app.services.scan_state_service import build_scan_state_snapshot_async
 
-    if not scan:
+    snapshot = await build_scan_state_snapshot_async(db, scan_id)
+    if not snapshot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scan not found",
         )
 
-    # Check access for authenticated scans
+    # Access check
+    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    scan = result.scalar_one_or_none()
+    if not scan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     if scan.user_id and not current_user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication required",
-        )
-
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication required")
     if scan.user_id and current_user and scan.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
-        )
-
-    is_terminal = scan.status in (ScanStatus.COMPLETED, ScanStatus.FAILED, ScanStatus.CANCELLED)
-
-    # Get detected technologies from detected_stack
-    detected_techs = []
-    if scan.detected_stack:
-        if isinstance(scan.detected_stack, dict):
-            detected_techs = scan.detected_stack.get("detected_stack", [])
-        elif isinstance(scan.detected_stack, list):
-            detected_techs = scan.detected_stack
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     logger.info(
-        f"[RECONNECT] scan={scan_id} status={scan.status.value} "
-        f"current_stage={scan.current_stage.value if scan.current_stage else None} "
-        f"progress={scan.progress} is_terminal={is_terminal}"
+        f"[RECONNECT] scan={scan_id} status={snapshot.get('status')} "
+        f"stage={snapshot.get('stage')} progress={snapshot.get('progress')} "
+        f"is_terminal={snapshot.get('is_terminal')}"
     )
-
-    return {
-        "scan_id": str(scan.id),
-        "status": scan.status.value,
-        "current_stage": scan.current_stage.value if scan.current_stage else None,
-        "progress": scan.progress,
-        "is_terminal": is_terminal,
-        "error_message": scan.error_message,
-        "detected_stack": detected_techs,
-        "started_at": scan.started_at.isoformat() if scan.started_at else None,
-        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
-        "overall_score": scan.overall_score,
-        "created_at": scan.created_at.isoformat(),
-    }
+    return snapshot

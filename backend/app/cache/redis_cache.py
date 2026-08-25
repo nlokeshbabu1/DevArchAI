@@ -91,15 +91,22 @@ class RedisCache(CacheBackend):
             return
 
         try:
+            import asyncio
+
             import redis.asyncio as redis
 
             self._redis = redis.from_url(
                 settings.REDIS_URL,
                 encoding="utf-8",
                 decode_responses=True,
+                socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=settings.REDIS_SOCKET_TIMEOUT_SECONDS,
             )
-            # Ping to verify connectivity
-            await self._redis.ping()
+            # Ping to verify connectivity (bounded wait — never block startup indefinitely)
+            await asyncio.wait_for(
+                self._redis.ping(),
+                timeout=settings.REDIS_CONNECT_TIMEOUT_SECONDS,
+            )
             self._connected = True
             logger.info("Redis cache connected", url=settings.REDIS_URL)
         except ImportError:
