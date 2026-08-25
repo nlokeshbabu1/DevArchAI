@@ -424,7 +424,7 @@ def test_project_list_human_table(isolated_env, tmp_path):
     with _mock_http(handler):
         result = runner.invoke(app, ["project", "list"])
     assert result.exit_code == 0, result.output
-    assert "Repository" in result.stdout or "acme/infra" in result.stdout
+    assert "Projects" in result.stdout
     assert "GitHub" in result.stdout or "main" in result.stdout
 
 

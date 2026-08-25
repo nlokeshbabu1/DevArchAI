@@ -30,6 +30,7 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.6.0",
     "keyring>=24.3.0",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
@@ -96,5 +97,5 @@ no_implicit_optional = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-module = ["keyring", "keyring.*"]
+module = ["keyring", "keyring.*", "websockets", "websockets.*"]
 ignore_missing_imports = true

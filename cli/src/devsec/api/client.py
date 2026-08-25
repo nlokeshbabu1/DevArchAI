@@ -36,6 +36,21 @@ _AUTH_STATUS = {401, 403}
 _USER_AGENT = f"devsec-cli/{__version__}"
 
 
+def _require_https(api_url: str, env: dict[str, str]) -> None:
+    """Enforce HTTPS for non-local API URLs unless explicitly overridden."""
+    if api_url.startswith("https://"):
+        return
+    if env.get("DEVSEC_ALLOW_HTTP", "").strip().lower() in {"1", "true", "yes"}:
+        return
+    host = httpx.URL(api_url).host or ""
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return
+    raise ConfigError(
+        f"API URL must use HTTPS in production: {api_url}",
+        hint="Set DEVSEC_API_URL to an https:// URL or DEVSEC_ALLOW_HTTP=1 for local dev.",
+    )
+
+
 def _extract_detail(payload: dict[str, Any], status_code: int) -> str:
     """Pull a human-readable message out of a backend error body.
 
@@ -106,6 +121,7 @@ class ApiClient:
                 f"Invalid API URL: {api_url}",
                 hint="Set DEVSEC_API_URL or run 'devsec config set api-url <url>'.",
             )
+        _require_https(api_url, config._env)
         self.api_url = api_url
         self._client = httpx.Client(
             base_url=api_url,

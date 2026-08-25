@@ -14,7 +14,7 @@ def _config(tmp_path, token: str = "") -> Config:
     return Config(
         config_file=tmp_path / "config.toml",
         env={
-            "DEVSEC_API_URL": "http://test-backend:8000",
+            "DEVSEC_API_URL": "http://127.0.0.1:8000",
             "DEVSEC_API_TOKEN": token,
         },
     )
