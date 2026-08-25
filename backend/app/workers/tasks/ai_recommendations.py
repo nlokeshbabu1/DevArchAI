@@ -63,36 +63,69 @@ def enqueue_ai_analysis(
         raise
 
 
+def _make_fresh_session_factory():
+    """Create a fresh async engine + session factory for the current event loop.
+
+    The global ``get_session_factory()`` returns an engine that was bound to the
+    uvicorn event loop.  Celery tasks use ``asyncio.run()`` which creates a
+    *different* loop, so asyncpg futures fail with "attached to a different
+    loop".  Building a fresh engine per task avoids the problem.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=2,
+        max_overflow=2,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    return engine, factory
+
+
 def _run_pipeline_sync(scan_id: str, force: bool = False) -> None:
     """Run the async pipeline inside a fresh event loop + DB session."""
     from app.services.ai_recommendation_service import run_ai_recommendations_for_scan
 
     async def _runner():
-        if not force:
-            from app.models.scan import Scan
-            from sqlalchemy import select
-            from app.db.session import get_session_factory
-            from sqlalchemy.orm import selectinload
+        engine, session_factory = _make_fresh_session_factory()
+        try:
+            if not force:
+                from app.models.scan import Scan
+                from sqlalchemy import select
+                from sqlalchemy.orm import selectinload
 
-            # Load the scan first to apply the idempotency guard cheaply.
-            async with get_session_factory()() as session:
-                scan = (
-                    await session.execute(
-                        select(Scan)
-                        .where(Scan.id == uuid_mod.UUID(scan_id))
-                        .options(selectinload(Scan.findings))
-                    )
-                ).scalar_one_or_none()
-                if scan is None:
-                    raise ValueError(f"Scan not found: {scan_id}")
-                if scan.ai_status == "completed":
-                    logger.info(
-                        "AI_RECOMMENDATION_SKIP_ALREADY_DONE",
-                        scan_id=scan_id,
-                        ai_status=scan.ai_status,
-                    )
-                    return None
-        return await run_ai_recommendations_for_scan(scan_id)
+                async with session_factory() as session:
+                    scan = (
+                        await session.execute(
+                            select(Scan)
+                            .where(Scan.id == uuid_mod.UUID(scan_id))
+                            .options(selectinload(Scan.findings))
+                        )
+                    ).scalar_one_or_none()
+                    if scan is None:
+                        raise ValueError(f"Scan not found: {scan_id}")
+                    if scan.ai_status == "completed":
+                        logger.info(
+                            "AI_RECOMMENDATION_SKIP_ALREADY_DONE",
+                            scan_id=scan_id,
+                            ai_status=scan.ai_status,
+                        )
+                        return None
+
+            async with session_factory() as session:
+                return await run_ai_recommendations_for_scan(
+                    scan_id, session=session,
+                )
+        finally:
+            await engine.dispose()
 
     asyncio.run(_runner())
 

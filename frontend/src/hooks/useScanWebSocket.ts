@@ -159,28 +159,42 @@ export function useScanWebSocket({
     if (!mountedRef.current) return
     const lifecycleStage = normalizeLifecycleStage(state.stage || state.current_stage)
     const techList = state.technologies || state.technology_results || []
-    setScanState({
-      scanId: state.scan_id,
-      status: state.status,
-      currentStage: lifecycleStage,
-      progress: state.progress ?? null,
-      currentStep: state.message || state.current_operation || state.stage || state.status,
-      currentOperation: state.message || state.current_operation,
-      detectedStack: state.detected_stack || [],
-      technologies: technologiesFromPayload(techList),
-      isTerminal: state.is_terminal,
-      errorMessage: state.error_message,
-      startedAt: state.started_at,
-      completedAt: state.completed_at,
-      scanners: {},
-      liveFindings: [],
-      aiProgress: null,
-      stageTransitions: [],
-      filesScanned: state.files_scanned || 0,
-      totalFiles: state.total_files || 0,
-      severityCounts: state.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-      logs: state.logs || [],
-      events: [],
+    const serverTechs = technologiesFromPayload(techList)
+
+    setScanState(prev => {
+      const base = prev ?? buildInitialSnapshot()
+      // Merge technologies additively: preserve individual technology_detected
+      // updates that arrived before this scan_state event
+      const mergedTechs = { ...base.technologies }
+      for (const [key, tech] of Object.entries(serverTechs)) {
+        const existing = mergedTechs[key]
+        if (!existing || (existing.status !== 'scanning' && existing.status !== 'completed')) {
+          mergedTechs[key] = tech
+        } else {
+          // Preserve richer in-flight state (scanning/completed) from individual events
+          mergedTechs[key] = { ...tech, status: existing.status, findings: existing.findings || tech.findings }
+        }
+      }
+
+      return {
+        ...base,
+        scanId: state.scan_id || base.scanId,
+        status: state.status || base.status,
+        currentStage: lifecycleStage || base.currentStage,
+        progress: state.progress ?? base.progress,
+        currentStep: state.message || state.current_operation || state.stage || state.status || base.currentStep,
+        currentOperation: state.message || state.current_operation || base.currentOperation,
+        detectedStack: state.detected_stack || base.detectedStack,
+        technologies: mergedTechs,
+        isTerminal: state.is_terminal ?? base.isTerminal,
+        errorMessage: state.error_message ?? base.errorMessage,
+        startedAt: state.started_at || base.startedAt,
+        completedAt: state.completed_at || base.completedAt,
+        filesScanned: state.files_scanned || base.filesScanned,
+        totalFiles: state.total_files || base.totalFiles,
+        severityCounts: state.severity_counts || base.severityCounts,
+        logs: state.logs || base.logs,
+      }
     })
     if (state.message && lifecycleStage) {
       setStageMessages(prev => ({ ...prev, [lifecycleStage]: state.message }))
@@ -190,7 +204,7 @@ export function useScanWebSocket({
     } else {
       setLifecycleState('running')
     }
-  }, [technologiesFromPayload])
+  }, [technologiesFromPayload, buildInitialSnapshot])
 
   const fetchScanState = useCallback(async (id: string) => {
     try {
@@ -775,6 +789,13 @@ export function useScanWebSocket({
             const lifecycleStage = normalizeLifecycleStage(rawStage)
             const message = data.message || ''
             if (lifecycleStage) {
+              // Mark previous stage as completed when a new stage starts
+              const prevStage = currentStageRef.current
+              if (prevStage && prevStage !== lifecycleStage) {
+                setCompletedStages(prev =>
+                  prev.includes(prevStage) ? prev : [...prev, prevStage],
+                )
+              }
               currentStageRef.current = lifecycleStage
               onStageChangeRef.current?.(lifecycleStage)
               if (message) setStageMessages(prev => ({ ...prev, [lifecycleStage]: message }))
@@ -808,6 +829,13 @@ export function useScanWebSocket({
               } else if (stageStatus === 'failed') {
                 setFailedStage(lifecycleStage)
               } else {
+                // When a new running stage starts, mark the previous stage as completed
+                const prevStage = currentStageRef.current
+                if (prevStage && prevStage !== lifecycleStage) {
+                  setCompletedStages(prev =>
+                    prev.includes(prevStage) ? prev : [...prev, prevStage],
+                  )
+                }
                 currentStageRef.current = lifecycleStage
                 onStageChangeRef.current?.(lifecycleStage)
               }

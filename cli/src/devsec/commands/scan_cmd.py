@@ -247,15 +247,19 @@ def _run_scan(
             include_ai=include_ai,
         )
 
+        repository_id = start.repository_id or project.id
         data: dict[str, Any] = {
             "scan_id": start.scan_id,
             "status": start.status,
-            "repository_id": start.repository_id or project.id,
+            "repository_id": repository_id,
             "repository_url": start.repository_url or project.url,
             "repository_name": project.repository,
             "branch": start.branch or scan_branch,
             "message": start.message,
-            "results_url": _results_url(config, project.id),
+            "scan_url": _scan_url(config, start.scan_id),
+            "history_url": _history_url(config),
+            "results_url": _scan_url(config, start.scan_id),
+            "repository_results_url": _repository_results_url(config, repository_id),
         }
 
         if not json_mode and not quiet_mode:
@@ -266,7 +270,7 @@ def _run_scan(
 
         if not wait:
             if not json_mode and not quiet_mode:
-                print_muted(f"View in DevArchAI: {data['results_url']}")
+                print_muted(f"View in DevArchAI: {data['scan_url']}")
             return data
 
         tracker = ProgressTracker(
@@ -306,6 +310,7 @@ def _run_scan(
                 results,
                 project=project,
                 scan_id=start.scan_id,
+                repository_id=repository_id,
                 config=config,
                 final_state=final_state,
                 passed=passed,
@@ -322,8 +327,21 @@ def _run_scan(
         client.close()
 
 
-def _results_url(config: Config, repository_id: str) -> str:
+def _scan_url(config: Config, scan_id: str) -> str:
+    return f"{config.frontend_url.rstrip('/')}/scans/{scan_id}"
+
+
+def _history_url(config: Config) -> str:
+    return f"{config.frontend_url.rstrip('/')}/history"
+
+
+def _repository_results_url(config: Config, repository_id: str) -> str:
     return f"{config.frontend_url.rstrip('/')}/repositories/{repository_id}/results"
+
+
+def _results_url(config: Config, repository_id: str) -> str:
+    """Deprecated alias — prefer _scan_url for per-scan links."""
+    return _repository_results_url(config, repository_id)
 
 
 @app.command("status")
@@ -380,6 +398,7 @@ def scan_results_cmd(
                 results,
                 project=None,
                 scan_id=scan_id,
+                repository_id=None,
                 config=config,
                 final_state=None,
                 passed=passed,
@@ -404,6 +423,7 @@ def _render_results(
     *,
     project: Project | None,
     scan_id: str,
+    repository_id: str | None,
     config: Config,
     final_state: ScanStateResponse | None,
     passed: bool,
@@ -443,15 +463,21 @@ def _render_results(
             if count:
                 print_muted(f"  {level.capitalize():<10} {count}")
 
-    repo_id = project.id if project else None
+    repo_id = repository_id or (project.id if project else None)
+    print_muted("")
+    print_muted("View scan:")
+    print_muted(_scan_url(config, scan_id))
     if repo_id:
-        url = _results_url(config, repo_id)
+        print_muted("Repository results:")
+        print_muted(_repository_results_url(config, repo_id))
+    print_muted("Scan history:")
+    print_muted(_history_url(config))
+    if final_state and (final_state.ai_status or "").lower() == "pending":
         print_muted("")
-        if final_state and final_state.ai_status == "completed":
-            print_muted("View recommendations:")
-        else:
-            print_muted("View full results:")
-        print_muted(url)
+        print_muted(
+            "AI recommendations are still queued on the server. "
+            "Open the scan URL above to refresh when ready."
+        )
 
     if results.overall_score is not None:
         print_muted(f"\nOverall score: {results.overall_score:.0f}")

@@ -5,7 +5,8 @@ import {
   Cpu, Search, Shield, FileCode, Zap, Brain, FileText,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { ScanStage, StageMetadata } from '../../types'
+import { buildDynamicScanSteps } from '../../lib/scanLifecycle'
+import type { ScanStage, StageMetadata, TechnologyResult } from '../../types'
 
 interface ScanPipelineProps {
   stages: StageMetadata[]
@@ -16,6 +17,7 @@ interface ScanPipelineProps {
   showProgressBar?: boolean
   isComplete: boolean
   hasFailed: boolean
+  technologies?: Record<string, TechnologyResult>
 }
 
 const STAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -44,7 +46,9 @@ function getStageState(
 function StageRow({
   stage, state, index,
 }: { stage: StageMetadata; state: 'completed' | 'running' | 'failed' | 'pending'; index: number }) {
-  const Icon = STAGE_ICONS[stage.id] ?? Circle
+  const Icon = stage.kind === 'technology'
+    ? (STAGE_ICONS[stage.id] ?? Cpu)
+    : (STAGE_ICONS[stage.id] ?? Circle)
   return (
     <motion.div
       role="listitem"
@@ -139,10 +143,14 @@ function ConnectorLine({ state }: { state: 'completed' | 'running' | 'failed' | 
 export const ScanPipeline = React.memo(function ScanPipeline({
   stages, currentStage, completedStages, failedStages, progress = 0, isComplete, hasFailed,
   showProgressBar = false,
+  technologies = {},
 }: ScanPipelineProps) {
   const sortedStages = useMemo(
-    () => [...stages].sort((a, b) => a.order - b.order),
-    [stages],
+    () => {
+      const dynamic = buildDynamicScanSteps(stages, technologies)
+      return dynamic.sort((a, b) => a.order - b.order)
+    },
+    [stages, technologies],
   )
 
   const clampedProgress = Math.max(0, Math.min(100, Math.round(progress)))

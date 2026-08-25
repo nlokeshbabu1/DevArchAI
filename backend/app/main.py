@@ -138,6 +138,16 @@ async def _run_application_startup(app: FastAPI) -> None:
         except Exception as e:
             logger.warning(f"Scan timeout detector failed to start: {e}")
 
+        # Resume AI analysis for scans left pending (e.g. after deploy or Celery-less runtime)
+        try:
+            from app.workers.tasks.ai_recommendations import recover_pending_ai_scans
+
+            recovered = recover_pending_ai_scans(limit=25)
+            if recovered:
+                logger.info("Recovered pending AI recommendation scans", count=recovered)
+        except Exception as e:
+            logger.warning("AI recommendation recovery failed", error=str(e))
+
         app.state.startup_complete = True
         logger.info("Application startup complete — ready to serve traffic")
     except Exception as exc:

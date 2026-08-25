@@ -794,75 +794,112 @@ export function CliContent() {
     <>
       <H2 id="overview">Overview</H2>
       <P>
-        The <code className="text-primary">devsec</code> CLI is a thin client for the DevArchAI platform.
-        It authenticates against the same backend as the web app, registers repositories as projects,
-        triggers scans, streams progress, and returns findings — without running a local scanning engine.
+        The <code className="text-primary">devsec</code> CLI is the production command-line client for DevArchAI.
+        Install it with <code className="text-primary">pip install devsec</code>, authenticate against the hosted
+        SaaS backend, register repositories as projects, and run scans from your terminal or CI — the same scans
+        you see in the web app under <a href="/history" className="text-primary hover:underline">Scan History</a>.
       </P>
       <Callout type="info" title="Thin client">
-        All scanning runs on the DevArchAI backend. The CLI only sends API requests and displays results.
+        All scanning runs on <code className="text-primary">https://backend.devarchai.xyz</code>. The CLI sends API
+        requests, streams backend-driven progress, and displays findings. It does not run scanners locally.
       </Callout>
+
+      <H2 id="production-quickstart">Production quickstart</H2>
+      <P>Complete setup from a fresh machine — no repository clone required:</P>
+      <CodeBlock lang="bash" code={`# 1. Install (Python 3.11+)
+pip install devsec
+devsec --version
+
+# 2. Confirm production defaults (no config file needed)
+devsec config show
+
+# 3. Authenticate — generate a key in the web app first (Settings → Security)
+devsec auth login
+devsec auth status
+
+# 4. Register and select a project
+devsec project create https://github.com/your-org/your-repo
+devsec project list
+devsec project select <project-id-prefix>
+devsec project set-branch <project-id-prefix> main
+
+# 5. Run a scan
+devsec scan --project <project-id-prefix> --branch main
+
+# 6. Open results in the web app (printed at the end of the scan)
+#    https://www.devarchai.xyz/scans/<scan-id>
+#    https://www.devarchai.xyz/history`} />
 
       <H2 id="prerequisites">Prerequisites</H2>
       <Ul>
-        <li><strong>Python 3.11+</strong> installed on your machine or CI runner</li>
-        <li>A DevArchAI account with at least one repository connected in the web app</li>
-        <li>The backend API reachable from your terminal (local or hosted)</li>
-        <li>An API key generated under <strong>Settings → Security</strong> in the web app</li>
+        <li><strong>Python 3.11+</strong> on your machine or CI runner</li>
+        <li>A DevArchAI account at <a href="https://www.devarchai.xyz" className="text-primary hover:underline">devarchai.xyz</a></li>
+        <li>An API key from <a href="/settings" className="text-primary hover:underline">Settings → Security</a></li>
+        <li>Network access to <code className="text-primary">https://backend.devarchai.xyz</code></li>
       </Ul>
 
       <Steps>
-        <Step number="1" title="Install the CLI">
-          <P>Install from PyPI — no repository clone required:</P>
+        <Step number="1" title="Install the production CLI">
+          <P>Install from PyPI — works globally on any machine with Python 3.11+:</P>
           <CodeBlock lang="bash" code={`pip install devsec
 
 # Verify installation (works from any directory)
 devsec --version
 devsec --help`} />
           <Callout type="success" title="Expected output">
-            <code className="text-primary">devsec 0.1.0</code> and commands including <code className="text-primary">auth</code>, <code className="text-primary">project</code>, and <code className="text-primary">scan</code>.
+            <code className="text-primary">devsec 0.1.2</code> (or newer) with API{' '}
+            <code className="text-primary">https://backend.devarchai.xyz</code> and commands{' '}
+            <code className="text-primary">auth</code>, <code className="text-primary">project</code>, and{' '}
+            <code className="text-primary">scan</code>.
           </Callout>
+          <P>
+            Upgrade an existing install: <code className="text-primary">pip install --upgrade devsec</code>
+          </P>
         </Step>
 
-        <Step number="2" title="Configure (optional)">
+        <Step number="2" title="Configure for production">
           <P>
-            Production defaults are preconfigured. Override only for local development or custom deployments.
+            Production URLs are built in — you do <strong>not</strong> need to create a config file for hosted SaaS.
+            Run <code className="text-primary">devsec config show</code> to confirm:
           </P>
           <Table
-            headers={['Environment', 'API URL', 'Frontend URL']}
+            headers={['Setting', 'Production default']}
             rows={[
-              ['Production (default)', 'https://backend.devarchai.xyz', 'https://www.devarchai.xyz'],
-              ['Local development', 'http://localhost:8000', 'http://localhost:5174'],
+              ['API URL', 'https://backend.devarchai.xyz'],
+              ['Frontend URL', 'https://www.devarchai.xyz'],
             ]}
           />
-          <CodeBlock lang="bash" code={`# Optional — only needed for local dev or custom API
-devsec config set api-url http://localhost:8000
-devsec config set frontend-url http://localhost:5174
-
-# Or use environment variables (recommended for CI)
-export DEVSEC_API_URL=https://backend.devarchai.xyz
-export DEVSEC_FRONTEND_URL=https://www.devarchai.xyz
-
-devsec config show`} />
-          <Callout type="warning" title="HTTPS in production">
-            Non-local API URLs must use <code className="text-primary">https://</code>. For local HTTP only, set{' '}
-            <code className="text-primary">DEVSEC_ALLOW_HTTP=1</code> if needed.
+          <CodeBlock lang="bash" code={`devsec config show`} />
+          <Callout type="warning" title="Use the backend API URL">
+            The API URL must be <code className="text-primary">https://backend.devarchai.xyz</code> — not the
+            marketing site (<code className="text-primary">www.devarchai.xyz</code>) and not a frontend dev port
+            like <code className="text-primary">5174</code>. The CLI rejects misconfigured URLs automatically.
           </Callout>
+          <P>Override only for local development or self-hosted deployments:</P>
+          <CodeBlock lang="bash" code={`# Local backend + frontend (development only)
+export DEVSEC_API_URL=http://localhost:8000
+export DEVSEC_FRONTEND_URL=http://localhost:5174
+export DEVSEC_ALLOW_HTTP=1
+
+# Or persist in config
+devsec config set api-url http://localhost:8000
+devsec config set frontend-url http://localhost:5174`} />
           <P>Configuration precedence (highest wins):</P>
           <Ol>
             <li>Environment variables (<code className="text-primary">DEVSEC_API_URL</code>, <code className="text-primary">DEVSEC_API_KEY</code>)</li>
             <li>Config file at <code className="text-primary">~/.config/devsec/config.toml</code></li>
-            <li>Built-in production defaults (<code className="text-primary">https://backend.devarchai.xyz</code>)</li>
+            <li>Built-in production defaults</li>
           </Ol>
         </Step>
 
         <Step number="3" title="Authenticate">
           <P>
-            Generate an API key in the web app, then store it securely with the CLI. Keys start with{' '}
-            <code className="text-primary">sk-</code> and are validated against{' '}
-            <code className="text-primary">GET /api/v1/auth/me</code> before being saved.
+            Generate an API key in the web app, then store it with the CLI. Keys start with{' '}
+            <code className="text-primary">sk-</code> and are validated against the backend before being saved.
           </P>
           <Ol>
-            <li>Open <a href="/settings" className="text-primary hover:underline">Settings → Security</a> in the web app.</li>
+            <li>Sign in at <a href="/login" className="text-primary hover:underline">devarchai.xyz</a>.</li>
+            <li>Open <a href="/settings" className="text-primary hover:underline">Settings → Security</a>.</li>
             <li>Create a new API key and copy it (shown once).</li>
             <li>Run <code className="text-primary">devsec auth login</code> and paste the key when prompted.</li>
           </Ol>
@@ -881,86 +918,112 @@ devsec auth status --json`} />
           <Callout type="info" title="Credential storage">
             API keys are stored in your OS keyring when available, or in{' '}
             <code className="text-primary">~/.config/devsec/credentials.json</code> with restricted permissions.
-            Tokens are never written to the config file and are never printed in logs.
+            Tokens are never written to <code className="text-primary">config.toml</code> and are never printed in logs.
           </Callout>
         </Step>
 
-        <Step number="4" title="Projects (optional)">
+        <Step number="4" title="Create and manage projects">
           <P>
-            Projects map to repositories in the backend. You can scan without selecting a project by using{' '}
-            <code className="text-primary">devsec scan</code> inside a git repo or passing <code className="text-primary">--repo</code>.
+            Projects map to repositories in the DevArchAI backend — the same records shown under{' '}
+            <a href="/repositories" className="text-primary hover:underline">Repositories</a> in the web app.
+            Register a repo from the CLI or select one you already connected in the UI.
           </P>
-          <CodeBlock lang="bash" code={`# List your projects
-devsec project list
+          <CodeBlock lang="bash" code={`# Register a new repository as a project
+devsec project create https://github.com/your-org/your-repo
 
-# Get full UUIDs (the table shows shortened IDs)
+# List projects (table shows shortened IDs; use --json for full UUIDs)
+devsec project list
 devsec project list --json
 
-# Select a project — you can use the ID prefix shown in the table
-devsec project select ae8f8620
+# Show details for one project
+devsec project show <project-id-prefix>
 
-# Or use the full UUID from --json output
-devsec project select ae8f8620-1234-5678-9abc-def012345678
+# Select the active project (stored locally in ~/.config/devsec/config.toml)
+devsec project select <project-id-prefix>
+devsec project current
 
-# Confirm selection
-devsec project current`} />
-          <Callout type="warning" title="Project ID format">
-            The project list table displays shortened UUIDs for readability. Use the prefix shown (e.g.{' '}
-            <code className="text-primary">ae8f8620</code>) or run <code className="text-primary">devsec project list --json</code>{' '}
-            for the full ID. Passing only a partial ID without a unique match will fail.
+# Set the default branch used when --branch is omitted
+devsec project set-branch <project-id-prefix> main`} />
+          <Callout type="warning" title="Branch is required">
+            The CLI does not hardcode <code className="text-primary">main</code> or{' '}
+            <code className="text-primary">master</code>. Pass <code className="text-primary">--branch</code> on each
+            scan, or set a default with <code className="text-primary">devsec project set-branch</code>. When scanning
+            from a local git repo, the current branch is used automatically.
           </Callout>
-          <P>If you have not registered a repository yet:</P>
-          <CodeBlock lang="bash" code={`devsec project create https://github.com/your-org/your-repo
-devsec project list`} />
+          <Callout type="info" title="Project ID format">
+            The list table shows shortened UUIDs (e.g. <code className="text-primary">badb6f14</code>). Use that
+            prefix or the full UUID from <code className="text-primary">devsec project list --json</code>.
+          </Callout>
         </Step>
 
-        <Step number="5" title="Run a Scan">
+        <Step number="5" title="Run a scan">
           <P>
             Start a scan from a git repository, an explicit URL, or a selected project. The CLI calls{' '}
             <code className="text-primary">POST /api/v1/scan/start</code> and streams backend-driven progress.
+            Completed scans appear in the web app immediately.
           </P>
           <CodeBlock lang="bash" code={`# From inside a git repo (uses origin/upstream + current branch)
 cd your-repo
 devsec scan
 
-# Scan any public/private repo URL (auto-registers if needed)
-devsec scan --repo https://github.com/your-org/your-repo
+# Scan any repository URL (auto-registers if needed)
+devsec scan --repo https://github.com/your-org/your-repo --branch main
 
-# Selected project or explicit project ID
-devsec project select ae8f8620
-devsec scan
-devsec scan --project ae8f8620 --branch develop
+# Explicit project + branch
+devsec scan --project badb6f14 --branch main
 
-# Start without waiting
+# Selected project (after devsec project select)
+devsec scan --branch main
+
+# Start without waiting for completion
 devsec scan --no-wait
 
 # Inspect later
 devsec scan status <scan-id>
 devsec scan results <scan-id>`} />
-          <P>Progress uses WebSocket (API keys supported) with HTTP polling fallback. Technologies are detected dynamically by the backend.</P>
+          <P>Progress uses WebSocket (with API-key auth) and HTTP polling fallback. Technologies are detected dynamically by the backend.</P>
           <CodeBlock lang="bash" code={`# Policy gate for CI (default: --fail-on high)
 devsec scan --fail-on high
 
-# JSON output
+# JSON output for scripting
 devsec scan --json --quiet
 
 # Skip waiting for AI recommendations
 devsec scan --no-ai`} />
         </Step>
 
-        <Step number="6" title="Scan lifecycle">
+        <Step number="6" title="View results in the web app">
+          <P>
+            CLI scans use the same backend as the web UI. When a scan finishes, the CLI prints links to open results
+            in your browser:
+          </P>
+          <Table
+            headers={['Link', 'URL pattern', 'Description']}
+            rows={[
+              ['Scan detail', 'https://www.devarchai.xyz/scans/<scan-id>', 'Full results for this scan (findings, AI recommendations)'],
+              ['Scan history', 'https://www.devarchai.xyz/history', 'All scans including CLI runs'],
+              ['Repository results', 'https://www.devarchai.xyz/repositories/<project-id>/results', 'Latest completed scan for a project'],
+            ]}
+          />
+          <Callout type="success" title="Same data as the UI">
+            Scans started from the CLI are listed under <a href="/history" className="text-primary hover:underline">Scan History</a>{' '}
+            and open on the same scan detail page as scans started from the dashboard.
+          </Callout>
+        </Step>
+
+        <Step number="7" title="Scan lifecycle">
           <P>The CLI and web app share the same backend scan model. A typical flow:</P>
           <CodeBlock code={`Connect → Clone → Detect technologies → Scan → Findings → AI analysis → Results`} />
           <P>Stages and technologies come from the backend — never hardcoded in the CLI.</P>
         </Step>
 
-        <Step number="7" title="Use in CI/CD">
+        <Step number="8" title="Use in CI/CD">
           <P>Use environment variables so the pipeline never prompts for input:</P>
           <CodeBlock lang="bash" code={`export DEVSEC_API_URL=https://backend.devarchai.xyz
 export DEVSEC_API_KEY=sk-your-ci-key
 
 devsec auth status --json
-devsec scan --repo https://github.com/your-org/your-repo --json --quiet --no-color --fail-on high`} />
+devsec scan --repo https://github.com/your-org/your-repo --branch main --json --quiet --no-color --fail-on high`} />
           <P>Example GitHub Actions step:</P>
           <CodeBlock lang="yaml" code={`- name: DevArchAI security scan
   env:
@@ -968,7 +1031,7 @@ devsec scan --repo https://github.com/your-org/your-repo --json --quiet --no-col
     DEVSEC_API_KEY: \${{ secrets.DEVSEC_API_KEY }}
   run: |
     pip install devsec
-    devsec scan --repo \${{ github.server_url }}/\${{ github.repository }} --json --quiet --no-color --fail-on high`} />
+    devsec scan --repo \${{ github.server_url }}/\${{ github.repository }} --branch \${{ github.ref_name }} --json --quiet --no-color --fail-on high`} />
           <Callout type="info" title="CI detection">
             The CLI detects CI environments (<code className="text-primary">GITHUB_ACTIONS</code>,{' '}
             <code className="text-primary">GITLAB_CI</code>, <code className="text-primary">JENKINS_URL</code>, etc.)
@@ -997,10 +1060,14 @@ devsec scan --repo https://github.com/your-org/your-repo --json --quiet --no-col
           ['devsec auth logout', 'Remove the locally stored credential'],
           ['devsec auth status', 'Show authentication state and current user'],
           ['devsec config show', 'Display non-secret configuration values'],
+          ['devsec project create <url>', 'Register a repository URL as a project'],
           ['devsec project list', 'List registered repositories'],
+          ['devsec project show <id>', 'Show project details'],
           ['devsec project select <id>', 'Set the current project (prefix or full UUID)'],
+          ['devsec project set-branch <id> <branch>', 'Set default branch for scans'],
           ['devsec project current', 'Show the selected project'],
           ['devsec scan', 'Start a scan (git repo, --repo, or selected project)'],
+          ['devsec scan --project <id> --branch <name>', 'Scan a specific project and branch'],
           ['devsec scan --repo <url>', 'Scan a repository URL directly'],
           ['devsec scan status <id>', 'Show scan progress'],
           ['devsec scan results <id>', 'Fetch findings for a completed scan'],
@@ -1040,6 +1107,22 @@ devsec scan --repo https://github.com/your-org/your-repo --json --quiet --no-col
       <Expandable title="Unable to reach the API">
         Confirm the backend is running and <code className="text-primary">DEVSEC_API_URL</code> is correct.
         Test with: <code className="text-primary">curl $DEVSEC_API_URL/api/v1/health</code>
+      </Expandable>
+      <Expandable title="Branch not specified">
+        Pass <code className="text-primary">--branch &lt;name&gt;</code> on the scan command, or run{' '}
+        <code className="text-primary">devsec project set-branch &lt;id&gt; &lt;branch&gt;</code> to
+        store a default. When scanning from a local git repo, the current branch is used automatically.
+      </Expandable>
+      <Expandable title="Could not validate credentials">
+        Regenerate an API key in <a href="/settings" className="text-primary hover:underline">Settings → Security</a>{' '}
+        and run <code className="text-primary">devsec auth login</code> again. Confirm{' '}
+        <code className="text-primary">devsec config show</code> points to{' '}
+        <code className="text-primary">https://backend.devarchai.xyz</code> (not the www frontend URL).
+      </Expandable>
+      <Expandable title="Scan not visible in the web app">
+        CLI scans appear under <a href="/history" className="text-primary hover:underline">Scan History</a> and at{' '}
+        <code className="text-primary">/scans/&lt;scan-id&gt;</code>. Ensure you are signed in with the same account
+        used for <code className="text-primary">devsec auth login</code>.
       </Expandable>
       <Expandable title="Authentication failed">
         Regenerate an API key in Settings → Security and run <code className="text-primary">devsec auth login</code> again,

@@ -41,7 +41,7 @@ export function DocPage() {
 
 const QUICK_START_CARDS = [
   { href: '/docs/getting-started', label: 'Getting Started', desc: 'Set up your account and run your first scan', icon: Rocket },
-  { href: '/docs/cli', label: 'CLI (devsec)', desc: 'Install and configure the command-line client', icon: Terminal },
+  { href: '/docs/cli', label: 'CLI (devsec)', desc: 'Install the production CLI, authenticate, and run scans', icon: Terminal },
   { href: '/docs/github-integration', label: 'GitHub Integration', desc: 'Connect GitHub repositories', icon: Github },
   { href: '/docs/gitlab-integration', label: 'GitLab Integration', desc: 'Connect GitLab repositories', icon: Gitlab },
   { href: '/docs/aws-integration', label: 'AWS Integration', desc: 'Connect your AWS account', icon: Cloud },

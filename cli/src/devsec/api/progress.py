@@ -66,10 +66,16 @@ class ProgressState:
             self.error_message = data.get("error_message") or self.error_message
         elif msg_type in {"ai_started", "ai.analysis.started"}:
             self.ai_status = "processing"
-        elif msg_type in {"ai_completed", "ai.analysis.completed"}:
+        elif msg_type in {
+            "ai_completed",
+            "ai.analysis.completed",
+            "ai_analysis_completed",
+        }:
             self.ai_status = "completed"
-        elif msg_type == "ai.analysis.failed":
+        elif msg_type in {"ai.analysis.failed", "ai_analysis_failed"}:
             self.ai_status = "failed"
+        elif msg_type == "ai_progress":
+            self.ai_status = "processing"
         elif msg_type == "scan_state" and isinstance(data, dict):
             try:
                 self.apply_state(ScanStateResponse.model_validate(data), source="websocket")
@@ -305,14 +311,34 @@ class ProgressTracker:
     ) -> ScanStateResponse:
         deadline = time.monotonic() + self._ai_timeout
         current = snapshot
+        last_status_print = 0.0
+        pending_since: float | None = (
+            time.monotonic() if (current.ai_status or "").lower() == "pending" else None
+        )
         while time.monotonic() < deadline:
             if current.ai_terminal:
                 self.renderer.apply_state(current)
                 self._emit(on_update)
                 return current
+            ai = (current.ai_status or "").lower()
+            if ai == "processing":
+                pending_since = None
+            elif ai == "pending":
+                if pending_since is None:
+                    pending_since = time.monotonic()
+                elif time.monotonic() - pending_since > 45:
+                    # Backend never picked up the AI job (e.g. Celery worker missing)
+                    return current
+            now = time.monotonic()
+            if now - last_status_print >= 15:
+                self.renderer.apply_state(current)
+                self._emit(on_update)
+                last_status_print = now
             time.sleep(self._poll_interval)
             current = get_scan_state(self._client, self._scan_id)
             self._apply_and_emit(current, source="polling", on_update=on_update)
+        self.renderer.apply_state(current)
+        self._emit(on_update)
         return current
 
 

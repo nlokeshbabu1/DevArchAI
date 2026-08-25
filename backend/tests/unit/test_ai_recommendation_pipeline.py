@@ -213,16 +213,25 @@ def test_enqueue_never_blocks_or_raises_when_celery_down():
         "app.workers.tasks.ai_recommendations.enqueue_ai_analysis"
     ) as mock_task:
         mock_task.delay.side_effect = ConnectionError("broker down")
-        # The fallback thread must not crash the process.
-        enqueue_ai_analysis_for_scan(uuid4())
+        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
+            enqueue_ai_analysis_for_scan(uuid4())
         mock_task.delay.assert_called_once()
         time.sleep(0.2)
 
 
-def test_enqueue_uses_celery_when_available():
+def test_enqueue_uses_thread_by_default():
     scan_id = uuid4()
     with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
-        enqueue_ai_analysis_for_scan(scan_id)
+        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", False):
+            enqueue_ai_analysis_for_scan(scan_id)
+        mock_task.delay.assert_not_called()
+
+
+def test_enqueue_uses_celery_when_enabled():
+    scan_id = uuid4()
+    with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
+        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
+            enqueue_ai_analysis_for_scan(scan_id)
         mock_task.delay.assert_called_once_with(str(scan_id))
 
 

@@ -111,7 +111,12 @@ def build_scan_state_snapshot_sync(scan: Scan, findings: list[Finding] | None = 
 
     is_terminal = scan.status in (ScanStatus.COMPLETED, ScanStatus.FAILED, ScanStatus.CANCELLED)
     stage = _map_public_stage(scan)
-    progress = scan.progress if scan.progress is not None else (100 if is_terminal and scan.status == ScanStatus.COMPLETED else None)
+    if is_terminal and scan.status == ScanStatus.COMPLETED:
+        progress = 100
+    elif scan.progress is not None:
+        progress = scan.progress
+    else:
+        progress = None
 
     return {
         "event": "scan_state",

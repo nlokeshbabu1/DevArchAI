@@ -919,6 +919,7 @@ class SyncScanService:
             scan.completed_at = datetime.utcnow()
             scan.analysis_duration_seconds = analysis_duration
             scan.current_stage = None  # Clear stage on completion
+            scan.progress = 100
             scan.overall_score = scores.score
             scan.security_score = next((cs.score for cs in scores.category_scores if cs.category == Category.SECURITY), None)
             scan.scalability_score = next((cs.score for cs in scores.category_scores if cs.category == Category.SCALABILITY), None)

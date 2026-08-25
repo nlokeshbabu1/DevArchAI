@@ -64,6 +64,7 @@ class LifecycleProgressRenderer:
     _printed_stage_lines: set[str] = field(default_factory=set)
     _printed_tech_lines: set[str] = field(default_factory=set)
     _ai_line_printed: str | None = None
+    _last_scan_bar: str | None = None
 
     def apply_state(self, state: ScanStateResponse) -> None:
         stage = state.stage or state.current_operation
@@ -87,6 +88,12 @@ class LifecycleProgressRenderer:
 
         if state.progress is not None:
             self.progress = state.progress
+
+        if state.stage == "scan_completed" or state.status.lower() == "completed":
+            for stage_id, _ in _BASE_STAGES:
+                self.completed_stages.add(stage_id)
+            self.current_stage = "scan_completed"
+            self.progress = 100
 
         for tech in state.technology_items:
             self.technologies[tech.id] = tech
@@ -152,32 +159,36 @@ class LifecycleProgressRenderer:
             "ai.analysis.completed",
             "AI_COMPLETED",
             "ai.analysis.completed",
+            "ai_analysis_completed",
         }:
             self.ai_status = "completed"
-        elif msg_type in {"ai.analysis.failed", "AI_ANALYSIS_FAILED"}:
+        elif msg_type in {"ai.analysis.failed", "AI_ANALYSIS_FAILED", "ai_analysis_failed"}:
             self.ai_status = "failed"
+        elif msg_type == "ai_progress":
+            self.ai_status = "processing"
 
     def render(self) -> None:
         if is_quiet():
             return
         console = get_console(stderr=True)
 
+        # Print each lifecycle stage once — only when completed (no duplicate in-progress lines).
         for stage_id, label in _BASE_STAGES:
             line_key = f"stage:{stage_id}"
             if stage_id in self.completed_stages and line_key not in self._printed_stage_lines:
                 self._print_line(console, f"✓ {label}")
                 self._printed_stage_lines.add(line_key)
-            elif (
-                stage_id == self.current_stage
-                and line_key not in self._printed_stage_lines
-                and stage_id not in self.completed_stages
-            ):
-                if stage_id == "scanning" and self.progress is not None:
-                    self._print_line(console, f"{label}\n    {_progress_bar(self.progress)}")
-                else:
-                    self._print_line(console, label)
-                if stage_id in {"cloned", "detecting_technologies", "analyzing", "scan_completed"}:
-                    self._printed_stage_lines.add(line_key)
+
+        # Active scanning: single updating progress line (not repeated stage labels).
+        if (
+            self.current_stage == "scanning"
+            and "scanning" not in self.completed_stages
+            and self.progress is not None
+        ):
+            bar_line = f"Scanning infrastructure\n    {_progress_bar(self.progress)}"
+            if bar_line != self._last_scan_bar:
+                self._print_line(console, bar_line)
+                self._last_scan_bar = bar_line
 
         for tech_id in sorted(self.technologies.keys(), key=lambda t: self.technologies[t].name or t):
             tech = self.technologies[tech_id]
@@ -200,7 +211,8 @@ class LifecycleProgressRenderer:
             self._print_line(console, f"✗ Scan failed\n    {self.error_message}")
             return
 
-        if self.ai_status:
+        scan_done = "scan_completed" in self.completed_stages or self.current_stage == "scan_completed"
+        if scan_done and self.ai_status:
             ai_line = self._ai_line()
             if ai_line and ai_line != self._ai_line_printed:
                 self._print_line(console, ai_line)
@@ -210,7 +222,9 @@ class LifecycleProgressRenderer:
         if not self.ai_status:
             return None
         status = self.ai_status.lower()
-        if status in {"pending", "processing", "running"}:
+        if status == "pending":
+            return "AI analysis\n    ⠋ Queued — starting recommendation engine..."
+        if status in {"processing", "running"}:
             return "AI analysis\n    ⠋ Generating remediation recommendations..."
         if status == "completed":
             return "✓ AI recommendations ready"

@@ -36,9 +36,21 @@ def test_renderer_tracks_technology_completion():
     assert renderer.tech_status["docker"] == "completed"
 
 
-def test_renderer_ai_status():
+def test_renderer_ai_status_after_scan_complete():
     renderer = LifecycleProgressRenderer()
     renderer.apply_ws("ai_started", {})
-    assert renderer.ai_status == "processing"
-    renderer.apply_ws("ai.analysis.completed", {})
-    assert renderer.ai_status == "completed"
+    renderer.render()
+    assert renderer._ai_line_printed is None
+
+    renderer.apply_state(
+        ScanStateResponse(
+            scan_id="abc",
+            status="completed",
+            stage="scan_completed",
+            progress=100,
+            is_terminal=True,
+        )
+    )
+    renderer.apply_ws("ai_started", {})
+    renderer.render()
+    assert renderer._ai_line_printed is not None

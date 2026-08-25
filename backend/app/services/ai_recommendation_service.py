@@ -79,10 +79,19 @@ class AIRecommendationService:
     # ------------------------------------------------------------------
 
     async def process_scan(self, scan_id: UUID | str) -> AIRecommendationRunResult:
+        from sqlalchemy.orm import selectinload
+
         from app.models.scan import Scan
 
         scan_uuid = scan_id if isinstance(scan_id, UUID) else UUID(str(scan_id))
-        scan = await self.session.get(Scan, scan_uuid)
+        from sqlalchemy import select
+        scan = (
+            await self.session.execute(
+                select(Scan)
+                .where(Scan.id == scan_uuid)
+                .options(selectinload(Scan.findings))
+            )
+        ).scalar_one_or_none()
         if scan is None:
             raise ValueError(f"Scan not found: {scan_id}")
 
@@ -627,23 +636,29 @@ async def run_ai_recommendations_for_scan(
 
 
 def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
-    """Enqueue AI analysis via Celery; fall back to a detached thread.
+    """Enqueue AI analysis; default is an in-process thread (no Celery worker required).
 
     Never blocks or raises: the scanner already committed ``COMPLETED`` before
     this is called, so AI analysis is strictly async and scan-independent.
     """
+    from app.config import settings
+
     scan_id_str = str(scan_id)
-    try:
-        from app.workers.tasks.ai_recommendations import enqueue_ai_analysis
-        enqueue_ai_analysis.delay(scan_id_str)
-        logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id_str, transport="celery")
-        return
-    except Exception as exc:
-        logger.warning(
-            "AI_RECOMMENDATION_CELERY_UNAVAILABLE",
-            scan_id=scan_id_str,
-            error=str(exc)[:300],
-        )
+    use_celery = bool(getattr(settings, "CELERY_AI_TASKS_ENABLED", False))
+
+    if use_celery:
+        try:
+            from app.workers.tasks.ai_recommendations import enqueue_ai_analysis
+
+            enqueue_ai_analysis.delay(scan_id_str)
+            logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id_str, transport="celery")
+            return
+        except Exception as exc:
+            logger.warning(
+                "AI_RECOMMENDATION_CELERY_UNAVAILABLE",
+                scan_id=scan_id_str,
+                error=str(exc)[:300],
+            )
 
     def _fallback_runner() -> None:
         try:
@@ -656,6 +671,7 @@ def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
             )
 
     import threading
+
     thread = threading.Thread(
         target=_fallback_runner,
         name=f"ai-recommendations-{scan_id_str[:8]}",

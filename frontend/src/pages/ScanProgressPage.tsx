@@ -345,7 +345,12 @@ export function ScanProgressPage() {
   const isComplete = scanState?.status === 'completed'
   const isFailed = scanState?.status === 'failed'
 
-  const handleScanComplete = useCallback(() => {}, [])
+  const handleScanComplete = useCallback(() => {
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: ['scan-state', id] })
+      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+    }
+  }, [queryClient, id])
   const handleScanFailed = useCallback(() => {}, [])
   const handleAIComplete = useCallback(() => {
     if (id) {
@@ -356,7 +361,7 @@ export function ScanProgressPage() {
   const aiStatus = result?.ai_status || null
   const aiStillPending = aiStatus === 'pending' || aiStatus === 'processing'
 
-  const { scanState: wsState } = useScanWebSocket({
+  const { scanState: wsState, completedStages } = useScanWebSocket({
     scanId: isValidScanId ? id! : null,
     enabled: isValidScanId && (!isTerminal || aiStillPending),
     onComplete: handleScanComplete, onFailed: handleScanFailed,
@@ -746,11 +751,12 @@ export function ScanProgressPage() {
           )}
         </motion.div>
 
-        {/* Pipeline — uses backend stages, not computed */}
+        {/* Pipeline — uses backend stages + detected technologies */}
         <ScanPipeline
           stages={stages} currentStage={currentStage}
-          completedStages={[]} failedStages={failedStages}
+          completedStages={completedStages} failedStages={failedStages}
           progress={progress} isComplete={wsComplete || isComplete} hasFailed={wsFailed || isFailed}
+          technologies={wsState?.technologies || {}}
         />
 
         {/* Live event timeline — renders every WebSocket event immediately */}
