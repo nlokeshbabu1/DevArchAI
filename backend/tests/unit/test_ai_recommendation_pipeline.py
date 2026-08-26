@@ -223,8 +223,26 @@ def test_enqueue_uses_thread_by_default():
     scan_id = uuid4()
     with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
         with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", False):
-            enqueue_ai_analysis_for_scan(scan_id)
+            with patch(
+                "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
+                return_value=False,
+            ):
+                with patch("threading.Thread") as mock_thread:
+                    enqueue_ai_analysis_for_scan(scan_id)
+                    mock_thread.assert_called_once()
         mock_task.delay.assert_not_called()
+
+
+def test_enqueue_uses_main_loop_when_available():
+    scan_id = uuid4()
+    with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", False):
+        with patch(
+            "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
+            return_value=True,
+        ):
+            with patch("threading.Thread") as mock_thread:
+                enqueue_ai_analysis_for_scan(scan_id)
+                mock_thread.assert_not_called()
 
 
 def test_enqueue_uses_celery_when_enabled():
@@ -471,14 +489,20 @@ async def test_websocket_finding_completed_broadcast(session_factory):
         with patch(
             "app.websockets.scan_progress.scan_progress_manager"
         ) as mock_manager:
+            mock_manager.broadcast_ai_started = AsyncMock()
             mock_manager.broadcast_ai_analysis_started = AsyncMock()
             mock_manager.broadcast_ai_progress = AsyncMock()
             mock_manager.broadcast_ai_finding_completed = AsyncMock()
             mock_manager.broadcast_ai_analysis_completed = AsyncMock()
             mock_manager.broadcast_ai_completed = AsyncMock()
+            mock_manager.broadcast_ai_rag_completed = AsyncMock()
+            mock_manager.broadcast_ai_llm_started = AsyncMock()
+            mock_manager.broadcast_ai_llm_completed = AsyncMock()
             await service.process_scan(scan.id)
 
-            mock_manager.broadcast_ai_analysis_started.assert_awaited_once_with(str(scan.id))
+            mock_manager.broadcast_ai_analysis_started.assert_awaited_once_with(
+                str(scan.id), findings_total=2
+            )
             assert mock_manager.broadcast_ai_finding_completed.await_count == 2
             call = mock_manager.broadcast_ai_finding_completed.await_args_list[1]
             assert call.args[1] == 2
@@ -564,19 +588,18 @@ async def test_recover_pending_ai_scans_re_enqueues():
     pending = [uuid4() for _ in range(2)]
     session = MagicMock()
     scalars = MagicMock()
-    mock_rows = [MagicMock(id=uuid_val) for uuid_val in pending]
-    scalars.all.return_value = mock_rows
+    scalars.all.return_value = pending
     result = MagicMock()
     result.scalars.return_value = scalars
     session.execute.return_value = result
 
     with patch("app.db.session.get_sync_session_factory", return_value=lambda: session), patch(
-        "app.workers.tasks.ai_recommendations.enqueue_ai_analysis"
-    ) as mock_task:
+        "app.services.ai_recommendation_service.enqueue_ai_analysis_for_scan"
+    ) as mock_enqueue:
         count = recover_pending_ai_scans()
         assert count == 2
-        assert mock_task.delay.call_count == 2
-        assert {c.args[0] for c in mock_task.delay.call_args_list} == {str(s) for s in pending}
+        assert mock_enqueue.call_count == 2
+        assert {c.args[0] for c in mock_enqueue.call_args_list} == {str(s) for s in pending}
 
 
 async def test_already_completed_scan_is_skipped(session_factory):

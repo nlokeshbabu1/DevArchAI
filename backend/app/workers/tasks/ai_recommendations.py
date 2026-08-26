@@ -192,12 +192,14 @@ def recover_pending_ai_scans(limit: int | None = None) -> int:
         )
         if limit:
             query = query.limit(limit)
-        pending_ids = [str(row.id) for row in session.execute(query).scalars().all()]
+        pending_ids = [str(row) for row in session.execute(query).scalars().all()]
     finally:
         session.close()
 
     for scan_id in pending_ids:
-        enqueue_ai_analysis.delay(scan_id)
+        from app.services.ai_recommendation_service import enqueue_ai_analysis_for_scan
+
+        enqueue_ai_analysis_for_scan(scan_id)
 
     if pending_ids:
         logger.info("AI_RECOMMENDATION_RECOVERED", count=len(pending_ids), scans=pending_ids)

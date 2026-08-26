@@ -137,6 +137,7 @@ def build_scan_state_snapshot_sync(scan: Scan, findings: list[Finding] | None = 
         "findings_count": sum(severity_counts.values()),
         "technologies_count": len(technology_results),
         "ai_status": scan.ai_status,
+        "ai_error_message": scan.ai_error_message,
         "started_at": scan.started_at.isoformat() if scan.started_at else None,
         "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
         "ai_completed_at": scan.ai_completed_at.isoformat() if scan.ai_completed_at else None,

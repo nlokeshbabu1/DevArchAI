@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.api.v1.routes.billing import create_checkout_session, get_billing_gateway, verify_payment
 from app.config import settings
+from app.core.event_loop import set_main_event_loop
 from app.core.exceptions import setup_exception_handlers
 from app.core.logging import setup_logging
 from app.db.session import close_db, init_db
@@ -194,6 +195,8 @@ async def lifespan(app: FastAPI):
     app.state.startup_complete = False
     app.state.startup_error = None
     app.state.db_engine = None
+
+    set_main_event_loop(asyncio.get_running_loop())
 
     logger.info(
         "Starting DevArchAI backend",

@@ -635,8 +635,38 @@ async def run_ai_recommendations_for_scan(
             await session.close()
 
 
+async def _run_ai_job(scan_id_str: str) -> None:
+    """Run AI recommendations on the main event loop (shared DB/Redis/WS clients)."""
+    from app.db.session import get_session_factory
+
+    session = get_session_factory()()
+    try:
+        await run_ai_recommendations_for_scan(scan_id_str, session=session)
+    finally:
+        await session.close()
+
+
+def _schedule_ai_on_main_loop(scan_id_str: str) -> bool:
+    from app.core.event_loop import schedule_coroutine
+    from app.workers.tasks.ai_recommendations import _mark_scan_ai_failed
+
+    def _on_error(exc: Exception) -> None:
+        logger.exception(
+            "AI_RECOMMENDATION_SCHEDULED_FAILED",
+            scan_id=scan_id_str,
+            error=str(exc),
+        )
+        _mark_scan_ai_failed(scan_id_str, str(exc))
+
+    scheduled = schedule_coroutine(_run_ai_job(scan_id_str), on_error=_on_error)
+    if scheduled is not None:
+        logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id_str, transport="main_loop")
+        return True
+    return False
+
+
 def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
-    """Enqueue AI analysis; default is an in-process thread (no Celery worker required).
+    """Enqueue AI analysis on the main event loop (default) or Celery/thread fallback.
 
     Never blocks or raises: the scanner already committed ``COMPLETED`` before
     this is called, so AI analysis is strictly async and scan-independent.
@@ -660,20 +690,26 @@ def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
                 error=str(exc)[:300],
             )
 
-    def _fallback_runner() -> None:
+    if _schedule_ai_on_main_loop(scan_id_str):
+        return
+
+    def _thread_runner() -> None:
+        from app.workers.tasks.ai_recommendations import _mark_scan_ai_failed, _run_pipeline_sync
+
         try:
-            asyncio.run(run_ai_recommendations_for_scan(scan_id_str))
+            _run_pipeline_sync(scan_id_str)
         except Exception as run_exc:  # pragma: no cover - defensive
             logger.exception(
                 "AI_RECOMMENDATION_FALLBACK_FAILED",
                 scan_id=scan_id_str,
                 error=str(run_exc),
             )
+            _mark_scan_ai_failed(scan_id_str, str(run_exc))
 
     import threading
 
     thread = threading.Thread(
-        target=_fallback_runner,
+        target=_thread_runner,
         name=f"ai-recommendations-{scan_id_str[:8]}",
         daemon=True,
     )

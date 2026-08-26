@@ -101,10 +101,10 @@ class Settings(BaseSettings):
     CELERY_TASK_TRACK_STARTED: bool = True
     CELERY_TASK_TIME_LIMIT: int = Field(default=30 * 60, env="CELERY_TASK_TIME_LIMIT")
     CELERY_AI_TASKS_ENABLED: bool = Field(
-        default=False,
+        default=True,
         env="CELERY_AI_TASKS_ENABLED",
         description=(
-            "Route AI recommendation jobs through Celery. Default false runs AI in a "
+            "Route AI recommendation jobs through Celery. Set false to run AI in a "
             "background thread on the API process (required when no Celery worker is deployed)."
         ),
     )
