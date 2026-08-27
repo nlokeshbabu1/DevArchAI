@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { api } from '../lib/api'
+import { setAccessToken, clearAuthMemory } from '../lib/auth-token'
 
 interface User {
   id: string
@@ -31,118 +31,97 @@ interface AuthState {
   serverLogout: () => Promise<void>
 }
 
-const API_URL = import.meta.env.VITE_API_URL
-
 export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isLoading: true,
+  (set, get) => ({
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    isLoading: true,
 
-      // ✅ FIXED: no direct localStorage access
-      checkAuth: () => {
-        const token = get().token
+    checkAuth: () => {
+      const token = get().token
 
-        if (!token) {
-          set({ isAuthenticated: false, isLoading: false })
-          return
+      if (!token) {
+        set({ isAuthenticated: false, isLoading: false })
+        return
+      }
+
+      set({ isAuthenticated: true, isLoading: true })
+      get().fetchUserInfo()
+    },
+
+    fetchUserInfo: async () => {
+      const token = get().token
+
+      if (!token) {
+        set({ isLoading: false })
+        return
+      }
+
+      try {
+        const response = await api.get('/auth/me')
+
+        const currentUser = get().user
+        set({
+          user: {
+            ...currentUser,
+            ...response.data,
+            provider: response.data.provider || currentUser?.provider || 'email',
+          } as User,
+          isAuthenticated: true,
+        })
+      } catch (error: any) {
+        if (error?.response) {
+          get().logout()
         }
+      } finally {
+        set({ isLoading: false })
+      }
+    },
 
-        set({ isAuthenticated: true, isLoading: true })
+    login: (token: string) => {
+      setAccessToken(token)
+
+      set({
+        token,
+        isAuthenticated: true,
+        isLoading: true,
+      })
+
+      setTimeout(() => {
         get().fetchUserInfo()
-      },
+      }, 0)
+    },
 
-      // ✅ FIXED: correct API base URL
-      fetchUserInfo: async () => {
-        const token = get().token
+    logout: () => {
+      clearAuthMemory()
 
-        if (!token) {
-          set({ isLoading: false })
-          return
-        }
+      set({
+        token: null,
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      })
 
-        try {
-          const response = await api.get('/auth/me', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
+      window.location.replace('/')
+    },
 
-          const currentUser = get().user
-          set({
-            user: {
-              ...currentUser,
-              ...response.data,
-              provider: response.data.provider || currentUser?.provider || 'email',
-            } as User,
-            isAuthenticated: true,
-          })
-        } catch (error: any) {
-          console.error('Failed to fetch user info:', error)
-          if (error?.response) {
-            get().logout()
-          }
-        } finally {
-          set({ isLoading: false })
-        }
-      },
+    setUser: (user: User) => {
+      set({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+      })
+    },
 
-      // ✅ FIXED: no localStorage manual handling
-      login: (token: string) => {
-        localStorage.setItem('access_token', token)
-
-        set({
-          token,
-          isAuthenticated: true,
-          isLoading: true,
-        })
-
-        setTimeout(() => {
-          get().fetchUserInfo()
-        }, 0)
-      },
-
-      // ✅ CLEAN logout
-      logout: () => {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-
-        set({
-          token: null,
-          user: null,
-          isAuthenticated: false,
-          isLoading: false,
-        })
-
-        window.location.replace('/')
-      },
-
-      setUser: (user: User) => {
-        set({
-          user,
-          isAuthenticated: true,
-          isLoading: false,
-        })
-      },
-
-      serverLogout: async () => {
-        try {
-          await api.post('/auth/logout')
-        } catch (error) {
-          console.error('Server logout failed:', error)
-        }
-        get().logout()
-      },
-    }),
-    {
-      name: 'auth-storage',
-      partialize: (state) => ({
-        token: state.token,
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
-    }
-  )
+    serverLogout: async () => {
+      try {
+        await api.post('/auth/logout')
+      } catch {
+        // Server logout may fail if token is already expired;
+        // we still clear client state below.
+      }
+      get().logout()
+    },
+  }),
 )

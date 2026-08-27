@@ -23,7 +23,7 @@ interface DiagnosticsProps {
   currentStep?: number
   totalScanners?: number
   completedScanners?: number
-  aiStatus?: "pending" | "processing" | "completed" | "failed"
+  aiStatus?: "pending" | "queued" | "processing" | "completed" | "failed"
   scanStatus?: string
 }
 

@@ -9,7 +9,7 @@ interface ScanTimelineProps {
   currentStep?: number
   totalScanners?: number
   completedScanners?: number
-  aiStatus?: "pending" | "processing" | "completed" | "failed"
+  aiStatus?: "pending" | "queued" | "processing" | "completed" | "failed"
   scanStatus?: string
 }
 
@@ -33,8 +33,8 @@ function getStepState(
   if (scanStatus === "failed") return "error"
   if (stepIndex < currentStep) return "done"
   if (stepIndex === currentStep) {
-    if (stepIndex === 5 && aiStatus === "failed") return "error"
-    if (stepIndex === 5 && aiStatus === "processing") return "current"
+    if (stepIndex === 5 && (aiStatus === "failed")) return "error"
+    if (stepIndex === 5 && (aiStatus === "processing" || aiStatus === "queued" || aiStatus === "pending")) return "current"
     return "current"
   }
   return "pending"

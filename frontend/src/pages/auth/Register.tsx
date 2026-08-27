@@ -80,10 +80,6 @@ export function Register() {
         password: formData.password,
       })
 
-      if (loginResponse.refresh_token) {
-        localStorage.setItem('refresh_token', loginResponse.refresh_token)
-      }
-
       login(loginResponse.access_token)
 
       try {

@@ -59,6 +59,7 @@ class WSMessageType:
     AI_LLM_STARTED = "ai.llm.started"
     AI_LLM_COMPLETED = "ai.llm.completed"
     AI_CACHE_HIT = "ai.cache.hit"
+    AI_RECOMMENDATION_UPDATED = "ai.recommendation.updated"
     # Stage transition (richer than progress_update)
     STAGE_TRANSITION = "stage_transition"
     # User-facing lifecycle events
@@ -595,6 +596,29 @@ class ScanProgressWebSocketManager:
             "timestamp": datetime.utcnow().isoformat(),
         }
         ws_message = _make_message(WSMessageType.AI_CACHE_HIT, data)
+        return await self._broadcast(scan_id, ws_message)
+
+    async def broadcast_ai_recommendation_updated(
+        self,
+        scan_id: str,
+        finding_id: str,
+        rule_id: str,
+        status: str,
+        source: str | None,
+        recommendation: dict[str, Any],
+    ) -> int:
+        """Broadcast that a finding's AI recommendation is ready (per-finding UI update)."""
+        data = {
+            "event": "ai.completed",
+            "scan_id": scan_id,
+            "finding_id": finding_id,
+            "rule_id": rule_id,
+            "status": status,
+            "source": source,
+            "recommendation": recommendation,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        ws_message = _make_message(WSMessageType.AI_RECOMMENDATION_UPDATED, data)
         return await self._broadcast(scan_id, ws_message)
 
     async def broadcast_stage_transition(

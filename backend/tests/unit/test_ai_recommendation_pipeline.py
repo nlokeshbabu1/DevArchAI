@@ -35,7 +35,7 @@ from app.ai.context_engine import AIRecommendation, AIContextEngine, StaticRecom
 from app.models.ai_suggestion import AISuggestion
 from app.models.finding import Category, Finding, Severity
 from app.models.scan import Scan, ScanStatus
-from app.models.scan_ai_recommendation import ScanAIRecommendation
+from app.models.finding_ai_job import FindingAIJob
 from app.services.ai_recommendation_cache import (
     RecommendationEntry,
     config_digest,
@@ -142,6 +142,7 @@ async def session_factory():
             Scan.__table__,
             Finding.__table__,
             AISuggestion.__table__,
+            FindingAIJob.__table__,
         ):
             await conn.run_sync(table.create, checkfirst=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -213,42 +214,15 @@ def test_enqueue_never_blocks_or_raises_when_celery_down():
         "app.workers.tasks.ai_recommendations.enqueue_ai_analysis"
     ) as mock_task:
         mock_task.delay.side_effect = ConnectionError("broker down")
-        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
-            enqueue_ai_analysis_for_scan(uuid4())
+        enqueue_ai_analysis_for_scan(uuid4())
         mock_task.delay.assert_called_once()
         time.sleep(0.2)
 
 
-def test_enqueue_uses_thread_by_default():
+def test_enqueue_uses_celery_when_available():
     scan_id = uuid4()
     with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
-        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", False):
-            with patch(
-                "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
-                return_value=False,
-            ):
-                with patch("threading.Thread") as mock_thread:
-                    enqueue_ai_analysis_for_scan(scan_id)
-                    mock_thread.assert_called_once()
-        mock_task.delay.assert_not_called()
-
-
-def test_enqueue_uses_main_loop_when_available():
-    scan_id = uuid4()
-    with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", False):
-        with patch(
-            "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
-            return_value=True,
-        ):
-            with patch("threading.Thread") as mock_thread:
-                enqueue_ai_analysis_for_scan(scan_id)
-                mock_thread.assert_not_called()
-
-
-def test_enqueue_uses_celery_when_enabled():
-    scan_id = uuid4()
-    with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
-        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
+        with patch("app.services.ai_recommendation_service._schedule_thread_fallback"):
             enqueue_ai_analysis_for_scan(scan_id)
         mock_task.delay.assert_called_once_with(str(scan_id))
 

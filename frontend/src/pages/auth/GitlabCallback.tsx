@@ -25,9 +25,6 @@ export function GitlabCallback() {
 
     gitlabAuthApi.exchangeCodeForToken(code, state || undefined)
       .then((response) => {
-        if (response.refresh_token) {
-          localStorage.setItem('refresh_token', response.refresh_token)
-        }
         login(response.access_token)
         if (response.user) {
           setUser({

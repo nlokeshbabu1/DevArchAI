@@ -308,6 +308,25 @@ class Settings(BaseSettings):
         description="Include a bounded snippet of the affected file in LLM prompts (secrets redacted).",
     )
     MCP_CONTEXT_VERSION: str = Field(default="1.0.0", env="MCP_CONTEXT_VERSION")
+    # Per-operation timeouts for the AI recommendation pipeline (seconds).
+    AI_RAG_TIMEOUT_SECONDS: int = Field(default=30, env="AI_RAG_TIMEOUT_SECONDS")
+    AI_MCP_TIMEOUT_SECONDS: int = Field(default=15, env="AI_MCP_TIMEOUT_SECONDS")
+    AI_REDIS_TIMEOUT_SECONDS: int = Field(default=5, env="AI_REDIS_TIMEOUT_SECONDS")
+    AI_DB_TIMEOUT_SECONDS: int = Field(default=10, env="AI_DB_TIMEOUT_SECONDS")
+    AI_TASK_MAX_SECONDS: int = Field(
+        default=600, env="AI_TASK_MAX_SECONDS",
+        description="Hard ceiling for a single finding-group AI Celery task.",
+    )
+    AI_JOB_STALE_SECONDS: int = Field(
+        default=900, env="AI_JOB_STALE_SECONDS",
+        description="Mark non-terminal AI jobs stale after this many seconds without progress.",
+    )
+    AI_JOB_QUEUED_STALE_SECONDS: int = Field(
+        default=120, env="AI_JOB_QUEUED_STALE_SECONDS",
+        description="Re-enqueue AI jobs stuck in queued/not_started longer than this.",
+    )
+    AI_JOB_MAX_RETRIES: int = Field(default=3, env="AI_JOB_MAX_RETRIES")
+    AI_JOB_RETRY_BACKOFF_SECONDS: int = Field(default=30, env="AI_JOB_RETRY_BACKOFF_SECONDS")
 
     # GitHub
     GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
@@ -348,7 +367,7 @@ class Settings(BaseSettings):
         env="ENCRYPTION_KEY",
         description="Optional Fernet-compatible key for encryption. If not set, derived from SECRET_KEY (less stable)."
     )
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, env="REFRESH_TOKEN_EXPIRE_DAYS")
 
     # Rate Limiting
@@ -359,7 +378,7 @@ class Settings(BaseSettings):
 
     # Refresh Token Storage Mode
     AUTH_REFRESH_TOKEN_STORAGE_MODE: Literal["legacy", "hybrid", "cookie_only"] = Field(
-        default="hybrid", env="AUTH_REFRESH_TOKEN_STORAGE_MODE",
+        default="cookie_only", env="AUTH_REFRESH_TOKEN_STORAGE_MODE",
         description="legacy=localStorage only, hybrid=cookie+localStorage, cookie_only=cookie only"
     )
 
@@ -369,9 +388,9 @@ class Settings(BaseSettings):
 
     # Cookie Security
     COOKIE_SECURE: bool = Field(default=False, env="COOKIE_SECURE")
-    COOKIE_SAMESITE: str = Field(default="Strict", env="COOKIE_SAMESITE")
+    COOKIE_SAMESITE: str = Field(default="Lax", env="COOKIE_SAMESITE")
     COOKIE_DOMAIN: str | None = Field(default=None, env="COOKIE_DOMAIN")
-    COOKIE_PATH: str = Field(default="/", env="COOKIE_PATH")
+    COOKIE_PATH: str = Field(default="/api/v1/auth/refresh", env="COOKIE_PATH")
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")

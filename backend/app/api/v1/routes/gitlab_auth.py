@@ -2,7 +2,7 @@
 
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.routes.auth import _parse_user_agent, _should_include_refresh_token_body
 from app.config import settings
 from app.core.security import (
     create_access_token,
@@ -18,8 +19,10 @@ from app.core.security import (
     decrypt_user_email,
     encrypt_user_email,
     hash_email,
+    hash_token,
 )
 from app.db.session import get_db
+from app.models.settings import UserSession
 from app.models.user import User
 from app.services.audit_logger import audit_logger
 from app.services.organization_provisioning import ensure_user_organization_membership
@@ -272,6 +275,25 @@ async def gitlab_callback(
             })
             refresh_token_jwt = create_refresh_token(data={"sub": str(user.id)})
 
+            # Create session with token family for reuse detection
+            token_family = str(uuid.uuid4())
+            user_agent_str = request.headers.get("User-Agent", "")
+            ip = request.client.host if request.client else "0.0.0.0"
+            browser, os_val, device = _parse_user_agent(user_agent_str)
+            session = UserSession(
+                user_id=user.id,
+                refresh_token_hash=hash_token(refresh_token_jwt),
+                token_family=token_family,
+                browser=browser,
+                os=os_val,
+                ip_address=ip,
+                user_agent=user_agent_str,
+                device_name=request.headers.get("Sec-Ch-UA-Platform", device),
+                is_current=True,
+                expires_at=datetime.now(UTC).replace(hour=0, minute=0, second=0)
+                + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            )
+            db.add(session)
             await db.commit()
             await db.refresh(user)
 
@@ -293,7 +315,6 @@ async def gitlab_callback(
                 "token_type": "bearer",
                 "user": user_to_response(user),
             }
-            from app.api.v1.routes.auth import _should_include_refresh_token_body
             if _should_include_refresh_token_body():
                 resp["refresh_token"] = refresh_token_jwt
             return resp

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { buildWebSocketUrl } from '../lib/api'
+import { getAccessToken } from '../lib/auth-token'
 import type {
   ScanStage,
   ScanLifecycleState,
@@ -208,7 +209,7 @@ export function useScanWebSocket({
 
   const fetchScanState = useCallback(async (id: string) => {
     try {
-      const token = localStorage.getItem('access_token') || ''
+      const token = getAccessToken() || ''
       const baseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || window.location.origin
       const url = `${baseUrl}/api/v1/scan/state/${id}`
       const headers: Record<string, string> = {}
@@ -225,12 +226,7 @@ export function useScanWebSocket({
   const connect = useCallback(async () => {
     if (!scanIdRef.current || !enabledRef.current) return
 
-    const existing = await fetchScanState(scanIdRef.current)
-    if (existing && mountedRef.current) {
-      applyServerState(existing)
-    }
-
-    const token = localStorage.getItem('access_token') || ''
+    const token = getAccessToken() || ''
     const st = sessionTokenRef.current || ''
     let wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
     const params = new URLSearchParams()
@@ -770,47 +766,37 @@ export function useScanWebSocket({
             break
           }
 
-          case 'scan_state': {
-            applyServerState(data)
-            pushEvent(type, { message: data.message || 'Scan state synchronized' })
-            if (data.is_terminal && data.status === 'completed') {
-              setLifecycleState('completed')
-              onCompleteRef.current?.(data)
-            } else if (data.is_terminal && data.status === 'failed') {
-              setLifecycleState('failed')
-              onFailedRef.current?.(data)
-            }
-            break
-          }
-
-          case 'scan_started':
-          case 'scan_progress': {
-            const rawStage = (data.stage || data.current_step) as ScanStage
-            const lifecycleStage = normalizeLifecycleStage(rawStage)
-            const message = data.message || ''
-            if (lifecycleStage) {
-              // Mark previous stage as completed when a new stage starts
-              const prevStage = currentStageRef.current
-              if (prevStage && prevStage !== lifecycleStage) {
-                setCompletedStages(prev =>
-                  prev.includes(prevStage) ? prev : [...prev, prevStage],
-                )
-              }
-              currentStageRef.current = lifecycleStage
-              onStageChangeRef.current?.(lifecycleStage)
-              if (message) setStageMessages(prev => ({ ...prev, [lifecycleStage]: message }))
-            }
+          case 'ai.recommendation.updated': {
+            const findingId = data.finding_id || ''
+            const recStatus = data.status || 'completed'
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
+              const updatedFindings = base.liveFindings.map((f) =>
+                f.rule_id === data.rule_id
+                  ? { ...f, ai_status: recStatus, ai_source: data.source }
+                  : f,
+              )
               return {
                 ...base,
-                currentStage: lifecycleStage || base.currentStage,
-                progress: data.progress ?? base.progress,
-                currentStep: message || base.currentStep,
-                currentOperation: message,
+                liveFindings: updatedFindings,
+                aiProgress: {
+                  phase: recStatus === 'completed' ? 'llm_done' : 'llm',
+                  message: data.source
+                    ? `Recommendation ready (${data.source})`
+                    : 'Recommendation ready',
+                  progress: base.aiProgress?.progress ?? 0,
+                  findings_processed: (base.aiProgress?.findings_processed ?? 0) + 1,
+                  findings_total: base.aiProgress?.findings_total ?? 0,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
               }
             })
-            pushEvent(type, { stage: lifecycleStage || rawStage, message, progress: data.progress ?? 0 })
+            pushEvent('ai_completed', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: `AI recommendation updated for finding ${findingId}`,
+            })
+            onAICompleteRef.current?.(data || {})
             break
           }
 

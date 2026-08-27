@@ -43,11 +43,8 @@ export function GithubCallback() {
         // Exchange code for token
         const tokenResponse = await githubAuthApi.exchangeCodeForToken(code)
 
-        // Update auth store (login() syncs token to localStorage)
+        // Update auth store (token stored in memory only)
         login(tokenResponse.access_token)
-        if (tokenResponse.refresh_token) {
-          localStorage.setItem('refresh_token', tokenResponse.refresh_token)
-        }
         setUser({
           ...tokenResponse.user,
           provider: 'github',

@@ -887,8 +887,15 @@ class SyncScanService:
                         confidence=getattr(f, 'confidence', None),
                     )
 
-            # Calculate scores (AI runs asynchronously after scan completes)
+            # Stage: ANALYZING_FINDINGS (static enrichment only — AI runs after COMPLETED)
+            self._transition_stage(scan, ScanStage.ANALYZING_FINDINGS, 88, "Analyzing findings...")
+
+            self._update_progress(progress_callback, 88, "Calculating scores...")
+
+            # Calculate scores
             scores = self.scoring_engine.calculate_scores(rule_findings)
+
+            self._update_progress(progress_callback, 92, f"Security score: {scores.score:.0f}%")
 
             # Stage: REPORT_GENERATION
             self._transition_stage(scan, ScanStage.REPORT_GENERATION, "Generating reports...")

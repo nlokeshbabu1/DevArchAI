@@ -19,7 +19,7 @@ import app.models.pull_request  # noqa: F401
 import app.models.repo_analysis  # noqa: F401
 import app.models.report  # noqa: F401
 import app.models.repository  # noqa: F401
-import app.models.scan  # noqa: F401
+from app.models.finding_ai_job import FindingAIJob  # noqa: F401
 import app.models.settings  # noqa: F401
 import app.models.subscription  # noqa: F401
 import app.models.user  # noqa: F401

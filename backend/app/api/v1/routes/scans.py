@@ -59,7 +59,11 @@ def _serialize_scan(
         "commit_hash": scan.commit_hash,
         "status": scan_status,
         "scan_status": scan_status,
-        "ai_status": scan.ai_status or "pending",
+        "ai_status": (
+            scan.ai_status.value
+            if hasattr(scan.ai_status, "value")
+            else (scan.ai_status or "pending")
+        ),
         "progress": scan.progress,
         "error_message": scan.error_message,
         "overall_score": scan.overall_score,

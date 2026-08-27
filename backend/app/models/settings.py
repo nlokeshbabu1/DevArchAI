@@ -56,6 +56,7 @@ class UserSession(Base):
     )
 
     refresh_token_hash = Column(String(255), nullable=True)
+    token_family = Column(String(64), nullable=True, index=True)
     device_name = Column(String(255), nullable=True)
     browser = Column(String(100), nullable=True)
     os = Column(String(100), nullable=True)

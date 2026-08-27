@@ -16,6 +16,7 @@ import { useScanWebSocket } from '../hooks/useScanWebSocket'
 import { ScanResultsDashboard } from '../components/scan-results/ScanResultsDashboard'
 import { ScanPipeline } from '../components/scans/ScanPipeline'
 import { LiveTerminal } from '../components/scans/LiveTerminal'
+import { AIProgressBanner } from '../components/scans/AIProgressBanner'
 import { cn, copyToClipboard } from '../lib/utils'
 import type { ScanStage, StageMetadata, SeverityCounts, ScanEvent } from '../types'
 
@@ -23,7 +24,7 @@ interface ScanResult {
   id?: string
   scan_id: string
   scan_status?: string
-  ai_status?: 'pending' | 'processing' | 'completed' | 'failed'
+  ai_status?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed'
   repository_url: string
   repository_name?: string
   security_score: number
@@ -329,12 +330,29 @@ export function ScanProgressPage() {
     retry: 3, staleTime: 5 * 60 * 1000,
     refetchInterval: (query) => {
       const data = query.state.data as ScanResult | undefined
-      if (data?.ai_status === 'pending' || data?.ai_status === 'processing') {
+      const status = data?.ai_status
+      if (status === 'pending' || status === 'queued' || status === 'processing') {
         return 4000
       }
       return false
     },
   })
+
+  const { data: aiJobStatus } = useQuery({
+    queryKey: ['scan-ai-status', id],
+    queryFn: () => scansApi.getAiStatus(id!),
+    enabled: isValidScanId && scanState?.is_terminal === true && scanState.status === 'completed',
+    refetchInterval: (query) => {
+      const status = query.state.data?.ai_status
+      if (status === 'pending' || status === 'queued' || status === 'processing') {
+        return 4000
+      }
+      return false
+    },
+  })
+
+  const effectiveAiStatus = (result?.ai_status ?? aiJobStatus?.ai_status ?? null) as ScanResult['ai_status'] | null
+  const isAiStillPending = effectiveAiStatus === 'pending' || effectiveAiStatus === 'queued' || effectiveAiStatus === 'processing'
 
   const repoName = result?.repository_name ||
     result?.repository_url?.split('/').slice(-2).join('/') ||
@@ -355,15 +373,19 @@ export function ScanProgressPage() {
   const handleAIComplete = useCallback(() => {
     if (id) {
       void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+      void queryClient.invalidateQueries({ queryKey: ['scan-ai-status', id] })
     }
   }, [queryClient, id])
 
-  const aiStatus = result?.ai_status || null
-  const aiStillPending = aiStatus === 'pending' || aiStatus === 'processing'
+  useEffect(() => {
+    if (aiJobStatus?.ai_status === 'completed' || aiJobStatus?.ai_status === 'failed') {
+      handleAIComplete()
+    }
+  }, [aiJobStatus?.ai_status, handleAIComplete])
 
   const { scanState: wsState, completedStages } = useScanWebSocket({
     scanId: isValidScanId ? id! : null,
-    enabled: isValidScanId && (!isTerminal || aiStillPending),
+    enabled: isValidScanId && (!isTerminal || isAiStillPending),
     onComplete: handleScanComplete, onFailed: handleScanFailed,
     onAIComplete: handleAIComplete,
   })
@@ -379,6 +401,22 @@ export function ScanProgressPage() {
   const scanners = wsState?.scanners || {}
   const liveFindings = wsState?.liveFindings || []
   const aiProgress = wsState?.aiProgress || null
+  const polledAiProgress = useMemo(() => {
+    if (!aiJobStatus?.total_jobs) return null
+    const by = aiJobStatus.by_status || {}
+    const completed = (by.completed || 0) + (by.failed || 0)
+    const total = aiJobStatus.total_jobs
+    if (total <= 0) return null
+    return {
+      phase: 'llm',
+      message: `Generating AI recommendations (${completed}/${total})`,
+      progress: Math.round((completed / total) * 100),
+      findings_processed: completed,
+      findings_total: total,
+      timestamp: new Date().toISOString(),
+    }
+  }, [aiJobStatus])
+  const bannerAiProgress = aiProgress || polledAiProgress
   const filesScanned = wsState?.filesScanned || 0
   const totalFiles = wsState?.totalFiles || 0
   const severityCounts = wsState?.severityCounts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
@@ -544,9 +582,9 @@ export function ScanProgressPage() {
       const sevCounts = result.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
 
       const topFixes = (result.findings || []).filter((f: any) => f.severity === 'critical' || f.severity === 'high').slice(0, 5)
-      const isAiPending = result.ai_status === 'pending' || result.ai_status === 'processing'
-      const isAiReady = result.ai_status === 'completed'
-      const aiConfidence = result.ai_status === 'completed' ? 94 : result.ai_status === 'processing' ? 72 : 0
+      const isAiPending = isAiStillPending
+      const isAiReady = effectiveAiStatus === 'completed'
+      const aiConfidence = effectiveAiStatus === 'completed' ? 94 : effectiveAiStatus === 'processing' ? 72 : 0
 
       const finalDuration = result.analysis_duration_seconds || elapsed
       const scoreColor = result.security_score >= 80 ? '#22c55e' : result.security_score >= 50 ? '#eab308' : '#ef4444'
@@ -633,6 +671,16 @@ export function ScanProgressPage() {
               </div>
             </div>
           </motion.div>
+
+          <AnimatePresence>
+            {isAiPending && (
+              <AIProgressBanner
+                aiStatus={effectiveAiStatus}
+                aiProgress={bannerAiProgress}
+                onAIComplete={handleAIComplete}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Full results dashboard */}
           <ScanResultsDashboard

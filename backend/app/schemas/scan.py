@@ -24,6 +24,7 @@ class AIScanStatus(str, Enum):
     """AI suggestion generation status."""
 
     PENDING = "pending"
+    QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

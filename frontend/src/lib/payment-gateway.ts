@@ -1,4 +1,5 @@
 import { buildBackendUrl } from './api'
+import { getAccessToken } from './auth-token'
 
 type BillingInterval = 'monthly' | 'yearly'
 
@@ -96,8 +97,8 @@ async function parseError(response: Response): Promise<string> {
   return response.statusText || 'Request failed'
 }
 
-function getAccessToken(explicitToken?: string): string {
-  const token = explicitToken || localStorage.getItem('access_token') || ''
+function getAccessTokenForPayment(explicitToken?: string): string {
+  const token = explicitToken || getAccessToken() || ''
   if (!token) {
     throw new Error('Authentication required for payment verification')
   }
@@ -105,7 +106,7 @@ function getAccessToken(explicitToken?: string): string {
 }
 
 function buildAuthHeaders(token?: string): HeadersInit {
-  const accessToken = getAccessToken(token)
+  const accessToken = getAccessTokenForPayment(token)
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${accessToken}`,
