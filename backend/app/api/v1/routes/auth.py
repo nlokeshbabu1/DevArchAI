@@ -245,7 +245,7 @@ def _warn_if_local_storage_used(request: Request) -> None:
 
 
 async def _create_session(
-    db: AsyncSession, user: User, request: Request, refresh_token: str
+    db: AsyncSession, user: User, request: Request, refresh_token: str, token_family: str | None = None
 ) -> UserSession:
     """Create a user session record."""
     user_agent = request.headers.get("User-Agent", "")
@@ -255,6 +255,7 @@ async def _create_session(
     session = UserSession(
         user_id=user.id,
         refresh_token_hash=hash_token(refresh_token),
+        token_family=token_family,
         browser=browser,
         os=os,
         ip_address=ip_address,
@@ -383,7 +384,7 @@ async def login(
             user_agent=request.headers.get("User-Agent"),
         )
 
-    session = await _create_session(db, user, request, refresh_token)
+    await _create_session(db, user, request, refresh_token, token_family=str(uuid.uuid4()))
     await db.commit()
 
     _set_refresh_cookie(response, refresh_token)
@@ -622,7 +623,7 @@ async def github_callback(
                     user_agent=request.headers.get("User-Agent"),
                 )
 
-            session = await _create_session(db, user, request, refresh_token_jwt)
+            await _create_session(db, user, request, refresh_token_jwt, token_family=str(uuid.uuid4()))
             await db.commit()
             await db.refresh(user)
 
@@ -955,10 +956,13 @@ async def refresh_token(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh access token using refresh token with rotation.
+    """Refresh access token using refresh token with rotation and reuse detection.
 
     Validates the refresh token, blacklists the old one,
     issues new tokens, and creates a new session.
+
+    If a revoked refresh token is reused, the entire token family
+    and all associated sessions are revoked (potential token theft).
     """
     # Try cookie first, then Authorization header (unless cookie_only mode)
     raw_token = request.cookies.get("refresh_token")
@@ -1021,7 +1025,53 @@ async def refresh_token(
     # Warn if reading from localStorage (Authorization header)
     _warn_if_local_storage_used(request)
 
-    email = decrypt_user_email(user.email_encrypted)
+    # ---- Reuse Detection ----
+    # Find the session that corresponds to this refresh token.
+    old_token_hash = hash_token(raw_token)
+    old_session_result = await db.execute(
+        select(UserSession).where(
+            UserSession.user_id == user.id,
+            UserSession.refresh_token_hash == old_token_hash,
+        )
+    )
+    old_session = old_session_result.scalar_one_or_none()
+
+    if old_session and old_session.revoked:
+        # REUSE DETECTED: a revoked token was presented.
+        # This likely means the token was stolen. Revoke the entire family.
+        if old_session.token_family:
+            logger.warning(
+                "refresh_token_reuse_detected",
+                user_id=str(user.id)[:8],
+                token_family=old_session.token_family,
+                ip_address=request.client.host if request.client else None,
+            )
+            await db.execute(
+                update(UserSession)
+                .where(
+                    UserSession.user_id == user.id,
+                    UserSession.token_family == old_session.token_family,
+                )
+                .values(revoked=True, is_current=False)
+            )
+            await db.commit()
+
+            await audit_logger.log(
+                actor_id=str(user.id),
+                action="auth.token.reuse_detected",
+                resource_type="session",
+                resource_id=str(user.id),
+                details={"token_family": old_session.token_family},
+                ip_address=request.client.host if request.client else None,
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+        )
+
+    # Preserve the token family across rotation
+    family = old_session.token_family if old_session else str(uuid.uuid4())
 
     # Enriched JWT claims
     claims = _enrich_jwt_claims(user)
@@ -1035,8 +1085,7 @@ async def refresh_token(
             expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         )
 
-    # Revoke old sessions with this token hash
-    old_token_hash = hash_token(raw_token)
+    # Revoke old session with this token hash
     await db.execute(
         update(UserSession)
         .where(
@@ -1046,8 +1095,8 @@ async def refresh_token(
         .values(revoked=True, is_current=False)
     )
 
-    # Create new session
-    new_session = await _create_session(db, user, request, new_refresh_token)
+    # Create new session (same family)
+    new_session = await _create_session(db, user, request, new_refresh_token, token_family=family)
     await db.commit()
 
     _set_refresh_cookie(response, new_refresh_token)

@@ -73,8 +73,12 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+JWT_ISSUER = "devarchai"
+JWT_AUDIENCE = "devarchai-api"
+
+
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
-    """Create a JWT access token with jti and iat."""
+    """Create a JWT access token with jti, iat, iss, and aud."""
     to_encode = data.copy()
     now = datetime.now(UTC)
     if expires_delta:
@@ -87,6 +91,8 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
         "iat": now,
         "type": "access",
         "jti": _generate_jti(),
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
     })
 
     encoded_jwt = jwt.encode(
@@ -98,7 +104,7 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
 
 
 def create_refresh_token(data: dict[str, Any]) -> str:
-    """Create a JWT refresh token with jti and iat."""
+    """Create a JWT refresh token with jti, iat, iss, and aud."""
     to_encode = data.copy()
     now = datetime.now(UTC)
     expire = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
@@ -107,6 +113,8 @@ def create_refresh_token(data: dict[str, Any]) -> str:
         "iat": now,
         "type": "refresh",
         "jti": _generate_jti(),
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
     })
 
     encoded_jwt = jwt.encode(
@@ -131,7 +139,9 @@ def decode_token(token: str | None) -> dict[str, Any] | None:
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
-            options={"require": ["exp", "iat", "jti", "sub"]},
+            audience=JWT_AUDIENCE,
+            issuer=JWT_ISSUER,
+            options={"require": ["exp", "iat", "jti", "sub", "iss", "aud"]},
         )
         if payload.get("jti") is None:
             logger.warning("Missing JWT JTI", payload_keys=list(payload.keys()))

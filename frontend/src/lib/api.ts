@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import { getAccessToken, setAccessToken, clearAuthMemory } from './auth-token'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -6,7 +7,7 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
 
 interface RefreshTokenResponse {
   access_token: string
-  refresh_token: string
+  refresh_token?: string | null
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -22,30 +23,46 @@ function getConfiguredBaseUrl(): string {
   return normalizeBaseUrl(configuredBaseUrl || getFallbackBaseUrl())
 }
 
-function getStorageItem(key: string): string | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  return window.localStorage.getItem(key)
-}
-
-function clearAuthStorage() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.removeItem('access_token')
-  window.localStorage.removeItem('refresh_token')
-  window.localStorage.removeItem('current_org_id')
-}
-
 function redirectToLogin() {
   if (typeof window === 'undefined') {
     return
   }
 
   window.location.href = '/login'
+}
+
+// ---------------------------------------------------------------------------
+// Refresh-lock: only ONE refresh request at a time.  All concurrent callers
+// that hit a 401 wait on the same Promise so they all get the new token.
+// ---------------------------------------------------------------------------
+let refreshPromise: Promise<string> | null = null
+
+function doRefresh(originalRequest: InternalAxiosRequestConfig): Promise<string> {
+  if (refreshPromise) {
+    return refreshPromise
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const refreshResponse = await axios.post<RefreshTokenResponse>(
+        `${API_V1_BASE_URL}/auth/refresh`,
+        null,
+        { withCredentials: true },
+      )
+
+      const { access_token } = refreshResponse.data
+      setAccessToken(access_token)
+      return access_token
+    } catch (err) {
+      clearAuthMemory()
+      redirectToLogin()
+      throw err
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
 }
 
 export const API_BASE_URL = getConfiguredBaseUrl()
@@ -63,22 +80,17 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+  withCredentials: true,
 })
 
 api.interceptors.request.use(
   (config) => {
-    const token = getStorageItem('access_token')
-    const orgId = getStorageItem('current_org_id')
+    const token = getAccessToken()
 
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
 
-    if (orgId && config.headers) {
-      config.headers['X-Organization-ID'] = orgId
-    }
-
-    console.debug('[api request]', (config.method || 'get').toUpperCase(), axios.getUri(config))
     return config
   },
   (error: AxiosError) => Promise.reject(error),
@@ -102,41 +114,17 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const refreshToken = getStorageItem('refresh_token')
-    if (!refreshToken) {
-      clearAuthStorage()
-      redirectToLogin()
-      return Promise.reject(error)
-    }
-
     originalRequest._retry = true
 
     try {
-      const refreshResponse = await axios.post<RefreshTokenResponse>(
-        `${API_V1_BASE_URL}/auth/refresh`,
-        null,
-        {
-          headers: {
-            Authorization: `Bearer ${refreshToken}`,
-          },
-        },
-      )
-
-      const { access_token, refresh_token } = refreshResponse.data
-
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('access_token', access_token)
-        window.localStorage.setItem('refresh_token', refresh_token)
-      }
+      const newToken = await doRefresh(originalRequest)
 
       if (originalRequest.headers) {
-        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
       }
 
       return api(originalRequest)
     } catch (refreshError) {
-      clearAuthStorage()
-      redirectToLogin()
       return Promise.reject(refreshError)
     }
   },

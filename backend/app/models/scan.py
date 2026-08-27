@@ -43,6 +43,7 @@ class ScanStage(str, enum.Enum):
     NORMALIZATION = "normalization"
     DEDUPLICATION = "deduplication"
     AI_GENERATION = "ai_generation"
+    ANALYZING_FINDINGS = "analyzing_findings"
     REPORT_GENERATION = "report_generation"
 
     @classmethod
@@ -56,8 +57,9 @@ class ScanStage(str, enum.Enum):
             cls.SCANNING: {"label": "Running security analysis", "icon": "shield", "order": 4},
             cls.NORMALIZATION: {"label": "Normalizing findings", "icon": "filter", "order": 5},
             cls.DEDUPLICATION: {"label": "Deduplicating results", "icon": "check-circle", "order": 6},
-            cls.AI_GENERATION: {"label": "Generating AI suggestions", "icon": "brain", "order": 7},
-            cls.REPORT_GENERATION: {"label": "Generating report", "icon": "file-text", "order": 8},
+            cls.ANALYZING_FINDINGS: {"label": "Analyzing findings", "icon": "search", "order": 7},
+            cls.AI_GENERATION: {"label": "Generating AI suggestions", "icon": "brain", "order": 8},
+            cls.REPORT_GENERATION: {"label": "Generating report", "icon": "file-text", "order": 9},
         }
 
     @classmethod
@@ -70,6 +72,7 @@ class AIScanStatus(str, enum.Enum):
     """AI suggestion generation status."""
 
     PENDING = "pending"
+    QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

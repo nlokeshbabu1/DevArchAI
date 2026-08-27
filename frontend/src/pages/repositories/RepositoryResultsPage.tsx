@@ -47,7 +47,7 @@ export function RepositoryResultsPage() {
     refetchInterval: (query) => {
       const data = query.state.data as any
       // Poll while AI is still running
-      if (data?.scan?.ai_status === 'pending' || data?.scan?.ai_status === 'processing') {
+      if (data?.scan?.ai_status === 'pending' || data?.scan?.ai_status === 'queued' || data?.scan?.ai_status === 'processing') {
         return 4000
       }
       return false
@@ -75,7 +75,7 @@ export function RepositoryResultsPage() {
       .slice(0, 5)
   }, [scanResult?.findings])
 
-  const isAiPending = scanResult?.ai_status === 'pending' || scanResult?.ai_status === 'processing'
+  const isAiPending = scanResult?.ai_status === 'pending' || scanResult?.ai_status === 'queued' || scanResult?.ai_status === 'processing'
   const isAiReady = scanResult?.ai_status === 'completed'
   const score = scanResult?.overall_score ?? scanResult?.security_score ?? 0
 

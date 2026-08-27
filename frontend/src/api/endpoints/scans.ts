@@ -9,7 +9,7 @@ export interface Scan {
   id: string;
   status: string;
   scan_status?: string;
-  ai_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  ai_status?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
   status_message?: string;
   error_message?: string;
@@ -95,33 +95,32 @@ export const scansApi = {
   },
 
   /**
-   * Get scan results (scan details + findings)
-   * Uses /scans/{id} endpoint which is more reliable
+   * Get scan results (scan details + findings + technology breakdown)
+   * Uses unified results endpoint for canonical technology_details and per-finding technology.
    */
   getScanResults: async (scanId: string): Promise<any> => {
-    // Add cache-busting to prevent stale data
     const timestamp = Date.now();
-    // Get scan details
-    const scanResponse = await apiClient.get(`/scans/${scanId}?t=${timestamp}`, {
+    const response = await apiClient.get(`/scan/results/${scanId}?t=${timestamp}`, {
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-      }
+      },
     });
-    // Get findings
-    const findingsResponse = await apiClient.get(`/scans/${scanId}/findings?t=${timestamp}`, {
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      }
-    });
+    return response.data;
+  },
 
-    return {
-      ...scanResponse.data,
-      findings: findingsResponse.data,
-    };
+  /**
+   * Aggregate AI recommendation job status for a scan.
+   */
+  getAiStatus: async (scanId: string): Promise<{
+    scan_id: string
+    ai_status: string
+    total_jobs: number
+    by_status: Record<string, number>
+  }> => {
+    const response = await apiClient.get(`/scans/${scanId}/ai/status`);
+    return response.data;
   },
 
   /**

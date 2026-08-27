@@ -72,10 +72,6 @@ export function Login() {
     try {
       const tokenResponse = await authApi.login(formData)
 
-      if (formData.rememberMe && tokenResponse.refresh_token) {
-        localStorage.setItem('refresh_token', tokenResponse.refresh_token)
-      }
-
       login(tokenResponse.access_token)
       setSuccess('Login successful! Redirecting...')
 

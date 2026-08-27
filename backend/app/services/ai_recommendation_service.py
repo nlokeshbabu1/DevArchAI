@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable
 from uuid import UUID
+import uuid as uuid_mod
 
 import structlog
 
@@ -36,7 +37,13 @@ from app.services.ai_recommendation_cache import (
     finding_fingerprint,
     recommendation_cache_key,
 )
+from app.services.ai_job_service import (
+    aggregate_scan_ai_status,
+    ensure_jobs_for_scan,
+    set_job_status,
+)
 from app.ai.context_engine import AIContextEngine, AIRecommendation
+from app.models.finding_ai_job import FindingAIJob, FindingAIJobStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -109,8 +116,17 @@ class AIRecommendationService:
         await self.session.commit()
         await self._broadcast_started(str(scan_uuid))
 
+        jobs = await ensure_jobs_for_scan(
+            self.session, scan_uuid, max_per_scan=self.max_per_scan, context_engine=self.context_engine
+        )
+        if not jobs:
+            scan.ai_status = "completed"
+            scan.ai_completed_at = datetime.now(UTC)
+            await self.session.commit()
+            return AIRecommendationRunResult(0, 0, 0, 0, 0, 0, 0, 0)
+
         try:
-            result = await self._run_pipeline(scan)
+            result = await self._run_pipeline(scan, jobs)
         except Exception as exc:
             await self.session.rollback()
             scan = await self.session.get(Scan, scan_uuid)
@@ -128,10 +144,12 @@ class AIRecommendationService:
 
         scan = await self.session.get(Scan, scan_uuid)
         if scan is not None:
-            scan.ai_status = "completed"
-            scan.ai_completed_at = datetime.now(UTC)
-            scan.ai_error_message = None
-            await self.session.commit()
+            await aggregate_scan_ai_status(self.session, scan_uuid)
+            scan = await self.session.get(Scan, scan_uuid)
+            if scan is not None and scan.ai_status not in ("failed",):
+                scan.ai_completed_at = datetime.now(UTC)
+                scan.ai_error_message = None
+                await self.session.commit()
         await self._broadcast_completed(str(scan_uuid), result)
 
         logger.info(
@@ -148,138 +166,60 @@ class AIRecommendationService:
         )
         return result
 
-    async def _run_pipeline(self, scan: Any) -> AIRecommendationRunResult:
-        from app.models.finding import Finding
-        from sqlalchemy import select
+    async def _try_claim_job(
+        self,
+        job_id: UUID,
+        *,
+        celery_task_id: str | None = None,
+    ) -> bool:
+        """Atomically claim a queued job (prevents duplicate Celery/thread workers)."""
+        from sqlalchemy import update
 
-        scan_uuid = scan.id
-        findings = (
-            (
-                await self.session.execute(
-                    select(Finding)
-                    .where(Finding.scan_id == scan_uuid)
-                    .order_by(Finding.created_at.asc())
-                )
+        now = datetime.now(UTC)
+        result = await self.session.execute(
+            update(FindingAIJob)
+            .where(
+                FindingAIJob.id == job_id,
+                FindingAIJob.status.in_(
+                    [
+                        FindingAIJobStatus.QUEUED.value,
+                        FindingAIJobStatus.NOT_STARTED.value,
+                        FindingAIJobStatus.RETRYING.value,
+                    ]
+                ),
             )
-            .scalars()
-            .all()
+            .values(
+                status=FindingAIJobStatus.CHECKING_CACHE.value,
+                started_at=now,
+                updated_at=now,
+                celery_task_id=celery_task_id,
+            )
         )
-        if not findings:
-            return AIRecommendationRunResult(0, 0, 0, 0, 0, 0, 0, 0)
+        if result.rowcount:
+            await self.session.commit()
+            return True
+        await self.session.rollback()
+        return False
 
-        findings = findings[: self.max_per_scan]
-        total = len(findings)
-
-        config_digest_value = config_digest(
-            (scan.detected_stack or []) if isinstance(scan.detected_stack, list) else None
-        )
-        versions = context_versions()
-
-        # Dedup by deterministic cache key.
-        groups: dict[str, list[Any]] = {}
-        for finding in findings:
-            tech = self.context_engine.technology_for_finding(finding)
-            fingerprint = finding_fingerprint(finding)
-            rule_id = str(getattr(finding, "rule_id", "") or "")
-            key = recommendation_cache_key(rule_id, tech, fingerprint, config_digest_value, versions)
-            groups.setdefault(key, []).append(finding)
-
+    async def _run_pipeline(
+        self, scan: Any, jobs: list[FindingAIJob]
+    ) -> AIRecommendationRunResult:
+        scan_uuid = scan.id
         cache_hits = 0
         llm_calls = 0
         rag_lookups = 0
         mcp_required = 0
         findings_updated = 0
         processed = 0
-        suggestions_upserted = 0
 
-        for index, (key, group) in enumerate(groups.items()):
-            representative = group[0]
-            fingerprint = finding_fingerprint(representative)
-            rule_id = str(getattr(representative, "rule_id", "") or "")
-            technology = self.context_engine.technology_for_finding(representative)
-
-            logger.info(
-                "AI_PIPELINE_FINDING_START",
-                scan_id=str(scan_uuid),
-                rule_id=rule_id,
-                technology=technology,
-                group_index=index + 1,
-                groups_total=len(groups),
-            )
-
-            entry = await self.cache.get(key)
-            if entry is not None:
-                cache_hits += 1
-                recommendation = self._recommendation_from_entry(entry, representative, fingerprint)
-                logger.info(
-                    "AI_PIPELINE_CACHE_HIT",
-                    scan_id=str(scan_uuid),
-                    rule_id=rule_id,
-                    layer=getattr(entry, "source", "unknown"),
-                )
-                await self._broadcast_cache_hit(str(scan_uuid), rule_id, entry)
-            else:
-                # RAG retrieval
-                context = await self.context_engine.build_context(
-                    representative,
-                    file_snippet=self.snippet_loader(scan, representative),
-                )
-                if context.rule_knowledge is not None:
-                    rag_lookups += 1
-                    docs_found = len(getattr(context.rule_knowledge, "documents", []) or [])
-                    logger.info(
-                        "AI_PIPELINE_RAG_COMPLETED",
-                        scan_id=str(scan_uuid),
-                        rule_id=rule_id,
-                        documents_found=docs_found,
-                        method=getattr(context.rule_knowledge, "method", "unknown"),
-                    )
-                    await self._broadcast_rag_completed(
-                        str(scan_uuid), rule_id, context
-                    )
-
-                # MCP decision + retrieval
-                if context.mcp_results:
-                    mcp_required += 1
-                    mcp_statuses = [getattr(r, "status", "unknown") for r in context.mcp_results]
-                    logger.info(
-                        "AI_PIPELINE_MCP_COMPLETED",
-                        scan_id=str(scan_uuid),
-                        rule_id=rule_id,
-                        technology=technology,
-                        results_count=len(context.mcp_results),
-                        statuses=mcp_statuses,
-                    )
-                    await self._broadcast_mcp_completed(
-                        str(scan_uuid), rule_id, technology, context
-                    )
-
-                # LLM generation
-                await self._broadcast_llm_started(str(scan_uuid), rule_id, technology)
-                recommendation = await self.context_engine.generate_recommendation(
-                    representative, context, fingerprint
-                )
-                if recommendation.ai_generated:
-                    llm_calls += 1
-                await self._broadcast_llm_completed(
-                    str(scan_uuid), rule_id, recommendation
-                )
-
-                await self._persist_recommendation(
-                    key, recommendation, representative, scan_uuid, versions, context
-                )
-                # Re-read from cache so the entry reflects the stored payload.
-                cached = await self.cache.get(key)
-                entry = cached if cached is not None else entry
-
-            updated = await self._apply_recommendation(group, recommendation, scan_uuid)
-            findings_updated += updated
-            suggestions_upserted += updated
-            processed += len(group)
-            await self.session.commit()
-
-            await self._broadcast_finding_completed(str(scan_uuid), index + 1, len(groups))
-            self._record_metrics(recommendation, entry, group, index, len(groups))
+        for index, job in enumerate(jobs):
+            group_result = await self.process_job(job.id, group_index=index + 1, groups_total=len(jobs))
+            cache_hits += group_result.get("cache_hits", 0)
+            llm_calls += group_result.get("llm_calls", 0)
+            rag_lookups += group_result.get("rag_lookups", 0)
+            mcp_required += group_result.get("mcp_required", 0)
+            findings_updated += group_result.get("findings_updated", 0)
+            processed += group_result.get("findings_processed", 0)
 
         return AIRecommendationRunResult(
             findings_processed=processed,
@@ -288,9 +228,228 @@ class AIRecommendationService:
             llm_calls=llm_calls,
             rag_lookups=rag_lookups,
             mcp_required=mcp_required,
-            suggestions_upserted=suggestions_upserted,
-            groups=len(groups),
+            suggestions_upserted=findings_updated,
+            groups=len(jobs),
         )
+
+    async def process_job(
+        self,
+        job_id: UUID | str,
+        *,
+        group_index: int = 1,
+        groups_total: int = 1,
+        celery_task_id: str | None = None,
+    ) -> dict[str, int]:
+        """Process one deduplicated finding-group AI job (idempotent)."""
+        from app.models.finding import Finding
+        from app.models.scan import Scan
+        from sqlalchemy import select
+
+        job_uuid = job_id if isinstance(job_id, UUID) else UUID(str(job_id))
+        job = await self.session.get(FindingAIJob, job_uuid)
+        if job is None:
+            raise ValueError(f"AI job not found: {job_id}")
+        if job.is_terminal:
+            return {
+                "cache_hits": 0,
+                "llm_calls": 0,
+                "rag_lookups": 0,
+                "mcp_required": 0,
+                "findings_updated": 0,
+                "findings_processed": len(job.finding_ids or []),
+            }
+
+        claimed = await self._try_claim_job(job_uuid, celery_task_id=celery_task_id)
+        if not claimed:
+            refreshed = await self.session.get(FindingAIJob, job_uuid)
+            return {
+                "cache_hits": 0,
+                "llm_calls": 0,
+                "rag_lookups": 0,
+                "mcp_required": 0,
+                "findings_updated": 0,
+                "findings_processed": len((refreshed.finding_ids if refreshed else []) or []),
+            }
+        job = await self.session.get(FindingAIJob, job_uuid)
+
+        scan_uuid = job.scan_id
+        scan = await self.session.get(Scan, scan_uuid)
+        if scan is None:
+            raise ValueError(f"Scan not found for job: {job_id}")
+
+        finding_ids = [UUID(str(fid)) for fid in (job.finding_ids or [])]
+        findings = (
+            await self.session.execute(select(Finding).where(Finding.id.in_(finding_ids)))
+        ).scalars().all()
+        if not findings:
+            await set_job_status(
+                self.session,
+                job.id,
+                FindingAIJobStatus.FAILED,
+                error_message="No findings found for AI job",
+            )
+            return {"findings_processed": 0, "findings_updated": 0, "cache_hits": 0, "llm_calls": 0, "rag_lookups": 0, "mcp_required": 0}
+
+        representative = next(
+            (f for f in findings if f.id == job.representative_finding_id),
+            findings[0],
+        )
+        key = job.cache_key
+        fingerprint = finding_fingerprint(representative)
+        rule_id = job.rule_id
+        technology = job.technology or self.context_engine.technology_for_finding(representative)
+        versions = context_versions()
+
+        scan.ai_status = "processing"
+        await self.session.commit()
+
+        logger.info(
+            "AI_PIPELINE_FINDING_START",
+            scan_id=str(scan_uuid),
+            finding_id=str(representative.id),
+            job_id=str(job.id),
+            rule_id=rule_id,
+            technology=technology,
+            group_index=group_index,
+            groups_total=groups_total,
+        )
+
+        cache_hits = 0
+        llm_calls = 0
+        rag_lookups = 0
+        mcp_required = 0
+        entry: RecommendationEntry | None = None
+
+        try:
+            entry = await self.cache.get(key)
+            if entry is not None:
+                cache_hits = 1
+                await set_job_status(self.session, job.id, FindingAIJobStatus.CACHE_HIT, source=entry.source)
+                recommendation = self._recommendation_from_entry(entry, representative, fingerprint)
+                logger.info(
+                    "AI_PIPELINE_CACHE_HIT",
+                    scan_id=str(scan_uuid),
+                    finding_id=str(representative.id),
+                    rule_id=rule_id,
+                    layer=getattr(entry, "source", "unknown"),
+                )
+                await self._broadcast_cache_hit(str(scan_uuid), rule_id, entry)
+            else:
+                await set_job_status(self.session, job.id, FindingAIJobStatus.RAG_RETRIEVING)
+                context = await self.context_engine.build_context(
+                    representative,
+                    file_snippet=self.snippet_loader(scan, representative),
+                )
+                if context.rule_knowledge is not None:
+                    rag_lookups = 1
+                    docs_found = len(getattr(context.rule_knowledge, "documents", []) or [])
+                    logger.info(
+                        "AI_PIPELINE_RAG_COMPLETED",
+                        scan_id=str(scan_uuid),
+                        finding_id=str(representative.id),
+                        rule_id=rule_id,
+                        documents_found=docs_found,
+                        method=getattr(context.rule_knowledge, "method", "unknown"),
+                    )
+                    await self._broadcast_rag_completed(str(scan_uuid), rule_id, context)
+
+                if context.mcp_results:
+                    mcp_required = 1
+                    await set_job_status(self.session, job.id, FindingAIJobStatus.MCP_RETRIEVING)
+                    mcp_statuses = [getattr(r, "status", "unknown") for r in context.mcp_results]
+                    logger.info(
+                        "AI_PIPELINE_MCP_COMPLETED",
+                        scan_id=str(scan_uuid),
+                        finding_id=str(representative.id),
+                        rule_id=rule_id,
+                        technology=technology,
+                        results_count=len(context.mcp_results),
+                        statuses=mcp_statuses,
+                    )
+                    await self._broadcast_mcp_completed(str(scan_uuid), rule_id, technology, context)
+
+                await set_job_status(self.session, job.id, FindingAIJobStatus.GENERATING)
+                await self._broadcast_llm_started(str(scan_uuid), rule_id, technology)
+                recommendation = await self.context_engine.generate_recommendation(
+                    representative, context, fingerprint
+                )
+                if recommendation.ai_generated:
+                    llm_calls = 1
+                await self._broadcast_llm_completed(str(scan_uuid), rule_id, recommendation)
+
+                await set_job_status(self.session, job.id, FindingAIJobStatus.SAVING)
+                await self._persist_recommendation(
+                    key, recommendation, representative, scan_uuid, versions, context
+                )
+                cached = await self.cache.get(key)
+                entry = cached if cached is not None else entry
+
+            updated = await self._apply_recommendation(findings, recommendation, scan_uuid)
+            await self.session.commit()
+
+            source = recommendation.source
+            if mcp_required and rag_lookups:
+                source = "rag_mcp"
+            elif mcp_required:
+                source = "mcp"
+            elif rag_lookups:
+                source = "rag"
+            elif cache_hits:
+                source = "cache"
+
+            await set_job_status(
+                self.session,
+                job.id,
+                FindingAIJobStatus.COMPLETED,
+                source=source,
+                recommendation=recommendation.to_dict(),
+            )
+            job = await self.session.get(FindingAIJob, job.id)
+            if job:
+                job.model = versions.get("model")
+                job.prompt_version = versions.get("prompt")
+                job.rag_context_version = versions.get("rag")
+                self.session.add(job)
+                await self.session.commit()
+
+            for finding in findings:
+                await self._broadcast_recommendation_updated(
+                    str(scan_uuid),
+                    str(finding.id),
+                    rule_id,
+                    FindingAIJobStatus.COMPLETED.value,
+                    source,
+                    recommendation.to_dict(),
+                )
+
+            await self._broadcast_finding_completed(str(scan_uuid), group_index, groups_total)
+            self._record_metrics(recommendation, entry, findings, group_index, groups_total)
+            await aggregate_scan_ai_status(self.session, scan_uuid)
+
+            return {
+                "cache_hits": cache_hits,
+                "llm_calls": llm_calls,
+                "rag_lookups": rag_lookups,
+                "mcp_required": mcp_required,
+                "findings_updated": updated,
+                "findings_processed": len(findings),
+            }
+        except Exception as exc:
+            logger.exception(
+                "AI_PIPELINE_JOB_FAILED",
+                scan_id=str(scan_uuid),
+                job_id=str(job.id),
+                rule_id=rule_id,
+                error=str(exc),
+            )
+            await set_job_status(
+                self.session,
+                job.id,
+                FindingAIJobStatus.FAILED,
+                error_message=str(exc),
+            )
+            await aggregate_scan_ai_status(self.session, scan_uuid)
+            raise
 
     # ------------------------------------------------------------------
     # Persistence
@@ -528,6 +687,28 @@ class AIRecommendationService:
         except Exception as exc:
             logger.debug("AI_RECOMMENDATION_WS_LLM_COMPLETED_ERROR", error=str(exc))
 
+    async def _broadcast_recommendation_updated(
+        self,
+        scan_id: str,
+        finding_id: str,
+        rule_id: str,
+        status: str,
+        source: str | None,
+        recommendation: dict[str, Any],
+    ) -> None:
+        try:
+            from app.websockets.scan_progress import scan_progress_manager
+            await scan_progress_manager.broadcast_ai_recommendation_updated(
+                scan_id,
+                finding_id,
+                rule_id,
+                status,
+                source,
+                recommendation,
+            )
+        except Exception as exc:
+            logger.debug("AI_RECOMMENDATION_WS_UPDATED_ERROR", error=str(exc))
+
     def _record_metrics(
         self,
         recommendation: AIRecommendation,
@@ -625,10 +806,12 @@ def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
     this is called, so AI analysis is strictly async and scan-independent.
     """
     scan_id_str = str(scan_id)
+    _mark_scan_ai_queued(scan_id_str)
     try:
         from app.workers.tasks.ai_recommendations import enqueue_ai_analysis
         enqueue_ai_analysis.delay(scan_id_str)
         logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id_str, transport="celery")
+        _schedule_thread_fallback(scan_id_str)
         return
     except Exception as exc:
         logger.warning(
@@ -637,21 +820,106 @@ def enqueue_ai_analysis_for_scan(scan_id: UUID | str) -> None:
             error=str(exc)[:300],
         )
 
+    _start_thread_fallback(scan_id_str)
+
+
+def _mark_scan_ai_queued(scan_id: str) -> None:
+    from app.models.scan import Scan
+    from sqlalchemy import select
+
+    from app.db.session import get_sync_session_factory
+
+    session = get_sync_session_factory()()
+    try:
+        scan = session.execute(
+            select(Scan).where(Scan.id == uuid_mod.UUID(scan_id))
+        ).scalar_one_or_none()
+        if scan and scan.ai_status in (None, "pending", "failed"):
+            scan.ai_status = "queued"
+            scan.ai_error_message = None
+            session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
+
+
+def _schedule_thread_fallback(scan_id: str, delay_seconds: int = 45) -> None:
+    """If Celery workers never pick up the job, run in-process as a safety net."""
+    import threading
+
+    def _watchdog() -> None:
+        import time
+        time.sleep(delay_seconds)
+        from app.models.scan import Scan
+        from sqlalchemy import select
+
+        from app.db.session import get_sync_session_factory
+
+        session = get_sync_session_factory()()
+        try:
+            scan = session.execute(
+                select(Scan).where(Scan.id == uuid_mod.UUID(scan_id))
+            ).scalar_one_or_none()
+            if scan and scan.ai_status in ("queued", "pending"):
+                logger.warning(
+                    "AI_RECOMMENDATION_CELERY_STALE_FALLBACK",
+                    scan_id=scan_id,
+                    ai_status=scan.ai_status,
+                )
+                _start_thread_fallback(scan_id)
+        finally:
+            session.close()
+
+    threading.Thread(
+        target=_watchdog,
+        name=f"ai-watchdog-{scan_id[:8]}",
+        daemon=True,
+    ).start()
+
+
+async def _run_ai_recommendations_in_isolated_loop(scan_id: str) -> None:
+    """Run AI pipeline on a dedicated engine/session (safe for background threads)."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.config import settings
+
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=1,
+        max_overflow=0,
+        pool_pre_ping=True,
+    )
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    try:
+        async with session_factory() as session:
+            await run_ai_recommendations_for_scan(scan_id, session=session)
+    finally:
+        await engine.dispose()
+
+
+def _start_thread_fallback(scan_id: str) -> None:
     def _fallback_runner() -> None:
         try:
-            asyncio.run(run_ai_recommendations_for_scan(scan_id_str))
+            asyncio.run(_run_ai_recommendations_in_isolated_loop(scan_id))
         except Exception as run_exc:  # pragma: no cover - defensive
             logger.exception(
                 "AI_RECOMMENDATION_FALLBACK_FAILED",
-                scan_id=scan_id_str,
+                scan_id=scan_id,
                 error=str(run_exc),
             )
 
     import threading
     thread = threading.Thread(
         target=_fallback_runner,
-        name=f"ai-recommendations-{scan_id_str[:8]}",
+        name=f"ai-recommendations-{scan_id[:8]}",
         daemon=True,
     )
     thread.start()
-    logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id_str, transport="thread")
+    logger.info("AI_RECOMMENDATION_ENQUEUED", scan_id=scan_id, transport="thread")

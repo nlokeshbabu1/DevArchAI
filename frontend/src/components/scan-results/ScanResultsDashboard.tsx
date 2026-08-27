@@ -16,7 +16,7 @@ import { getFileName, copyToClipboard } from "../../lib/utils"
 
 interface ScanResultData {
   id?: string
-  ai_status?: "pending" | "processing" | "completed" | "failed"
+  ai_status?: "pending" | "queued" | "processing" | "completed" | "failed"
   status?: string
   scan_id?: string
   overall_score?: number

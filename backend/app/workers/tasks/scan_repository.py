@@ -767,43 +767,15 @@ class SyncScanService:
                         confidence=getattr(f, 'confidence', None),
                     )
 
-            # Stage: AI_GENERATION
-            self._transition_stage(scan, ScanStage.AI_GENERATION, 90, "Generating AI suggestions...")
+            # Stage: ANALYZING_FINDINGS (static enrichment only — AI runs after COMPLETED)
+            self._transition_stage(scan, ScanStage.ANALYZING_FINDINGS, 88, "Analyzing findings...")
 
-            # Broadcast AI progress events
-            if self.progress_store and self.scan_id:
-                try:
-                    from app.websockets.scan_progress import scan_progress_manager
-                    self._exec_async(scan_progress_manager.broadcast_ai_progress(
-                        scan_id=self.scan_id,
-                        phase="analyzing",
-                        message_text="Analyzing findings and grouping by category...",
-                        progress=90,
-                        findings_total=len(rule_findings),
-                    ))
-                except Exception:
-                    pass
-
-            self._update_progress(progress_callback, 90, "Calculating scores...")
+            self._update_progress(progress_callback, 88, "Calculating scores...")
 
             # Calculate scores
             scores = self.scoring_engine.calculate_scores(rule_findings)
 
             self._update_progress(progress_callback, 92, f"Security score: {scores.score:.0f}%")
-
-            # Broadcast AI progress - scoring complete
-            if self.progress_store and self.scan_id:
-                try:
-                    from app.websockets.scan_progress import scan_progress_manager
-                    self._exec_async(scan_progress_manager.broadcast_ai_progress(
-                        scan_id=self.scan_id,
-                        phase="scoring",
-                        message_text=f"Security score calculated: {scores.score:.0f}%",
-                        progress=94,
-                        findings_total=len(rule_findings),
-                    ))
-                except Exception:
-                    pass
 
             # Stage: REPORT_GENERATION
             self._transition_stage(scan, ScanStage.REPORT_GENERATION, 96, "Generating reports...")

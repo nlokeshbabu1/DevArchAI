@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils'
 import type { AIGenerationProgress } from '../../types'
 
 interface AIProgressBannerProps {
-  aiStatus?: 'pending' | 'processing' | 'completed' | 'failed' | null
+  aiStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | null
   aiProgress?: AIGenerationProgress | null
   onAIComplete?: () => void
 }
@@ -32,6 +32,7 @@ export function AIProgressBanner({ aiStatus, aiProgress }: AIProgressBannerProps
       <div className={cn(
         'rounded-xl border p-4',
         status === 'processing' && 'border-indigo-500/30 bg-indigo-500/10',
+        status === 'queued' && 'border-indigo-500/20 bg-indigo-500/5',
         status === 'completed' && 'border-emerald-500/30 bg-emerald-500/10',
         status === 'failed' && 'border-red-500/30 bg-red-500/10',
         status === 'pending' && 'border-gray-500/30 bg-gray-500/10',
@@ -43,10 +44,22 @@ export function AIProgressBanner({ aiStatus, aiProgress }: AIProgressBannerProps
               <div className="flex-1">
                 <div className="text-sm font-semibold text-gray-300">Scan complete</div>
                 <div className="text-xs text-gray-300/60">
-                  AI recommendations will be generated shortly.
+                  Preparing AI analysis pipeline…
                 </div>
               </div>
               <Loader2 className="h-4 w-4 text-gray-400 animate-spin shrink-0" />
+            </>
+          )}
+          {status === 'queued' && (
+            <>
+              <Brain className="h-5 w-5 text-indigo-400" />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-indigo-300">AI analysis queued</div>
+                <div className="text-xs text-indigo-300/60">
+                  {aiProgress?.message || 'Waiting for background worker — checking knowledge cache next…'}
+                </div>
+              </div>
+              <Loader2 className="h-4 w-4 text-indigo-400 animate-spin shrink-0" />
             </>
           )}
           {status === 'processing' && (

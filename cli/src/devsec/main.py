@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from devsec.commands import auth_app, config_app, project_app
+from devsec.commands import auth_app, config_app, project_app, scan_app
 from devsec.commands.base import command, set_debug
 from devsec.commands.version import version_cmd
 
@@ -55,6 +55,7 @@ def version_command(
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
 app.add_typer(project_app, name="project")
+app.add_typer(scan_app, name="scan")
 
 
 def entrypoint() -> None:

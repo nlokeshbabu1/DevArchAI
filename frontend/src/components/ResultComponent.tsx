@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from './ui-animated'
 import { api } from '../lib/api'
+import { getAccessToken } from '../lib/auth-token'
 import { cn, sanitizePath, copyToClipboard } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
 
@@ -316,21 +317,18 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
     }
 
     try {
-      const token = localStorage.getItem('access_token')
+      const token = getAccessToken()
       
       // For authenticated users with PDF/Excel, try backend endpoint
       if (token && (format === 'pdf' || format === 'xlsx')) {
         try {
           // First get or create report
-          const reportResponse = await api.get(`/reports/scan/${result.scan_id}/latest`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          const reportResponse = await api.get(`/reports/scan/${result.scan_id}/latest`)
           
           const reportId = reportResponse.data.id
           
           // Download in requested format
           const downloadResponse = await api.get(`/reports/${reportId}/download?format=${format}`, {
-            headers: { Authorization: `Bearer ${token}` },
             responseType: 'blob',
           })
 
@@ -716,9 +714,6 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
 
                             {/* AI Suggestion Block - ALWAYS SHOW when AI data exists */}
                             <div className="space-y-4">
-                              {/* Debug log - AI DATA */}
-                              {(() => { console.log("AI DATA:", finding); return null })()}
-
                               {/* AI Content */}
                               {(() => {
                                 const hasAIData = finding.summary || finding.risk || finding.impact ||

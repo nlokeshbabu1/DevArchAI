@@ -91,7 +91,27 @@ function getStatusReason(exec: ScannerExecution): string {
   return ""
 }
 
+function isHelmPath(filePath: string): boolean {
+  const path = filePath.toLowerCase()
+  return (
+    path.includes("helm-chart")
+    || path.includes("/charts/")
+    || path.includes("/chart.yaml")
+    || path.includes("/values.yaml")
+    || path.includes("/templates/")
+  )
+}
+
+function normalizeTechKey(value: string): string {
+  return value.toLowerCase().replace(/[\s-]+/g, "_")
+}
+
 function matchFindingToTech(finding: Record<string, unknown>, techKey: string): boolean {
+  const findingTech = normalizeTechKey(String(finding.technology ?? ""))
+  if (findingTech) {
+    return findingTech === techKey
+  }
+
   const scannerName = ((finding.scanner_name as string) ?? "").toLowerCase()
   const filePath = ((finding.file_path as string) ?? "").toLowerCase()
   const category = ((finding.category as string) ?? "").toLowerCase()
@@ -103,11 +123,17 @@ function matchFindingToTech(finding: Record<string, unknown>, techKey: string): 
     case "terraform": {
       return scannerName.includes("tfsec") || filePath.endsWith(".tf") || filePath.includes("terraform") || category === "SCALABILITY"
     }
-    case "kubernetes": {
-      return scannerName.includes("kube_score") || filePath.includes("k8s") || filePath.includes("kubernetes") || filePath.includes("deployment")
-    }
     case "helm": {
-      return filePath.includes("chart.yaml") || filePath.includes("helm") || filePath.includes("values.yaml")
+      return isHelmPath(filePath) || filePath.includes("chart.yaml") || filePath.includes("values.yaml")
+    }
+    case "kubernetes": {
+      if (isHelmPath(filePath)) return false
+      return (
+        scannerName.includes("kube_score")
+        || filePath.includes("k8s")
+        || filePath.includes("kubernetes")
+        || /\/(deployment|service|ingress|statefulset|daemonset|configmap|secret)s?\.(ya?ml)$/.test(filePath)
+      )
     }
     case "github_actions": {
       return filePath.includes(".github/workflows")
@@ -215,10 +241,7 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
       // Find findings for this technology (use backend tech if available, else fallback to client-side)
       const typedFindings = findings as Record<string, unknown>[]
       const techFindings = backendDetails
-        ? typedFindings.filter(f => {
-            const fTech = ((f.technology as string) ?? "").toLowerCase()
-            return fTech === techKey || fTech === techKey.replace(/_/g, "")
-          })
+        ? typedFindings.filter(f => normalizeTechKey(String(f.technology ?? "")) === techKey)
         : typedFindings.filter(f => matchFindingToTech(f, techKey))
 
       // Build scanner info

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { buildWebSocketUrl } from '../lib/api'
+import { getAccessToken } from '../lib/auth-token'
 import type {
   ScanStage,
   ScanLifecycleState,
@@ -109,7 +110,7 @@ export function useScanWebSocket({
 
   const fetchScanState = useCallback(async (id: string) => {
     try {
-      const token = localStorage.getItem('access_token') || ''
+      const token = getAccessToken() || ''
       const baseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || window.location.origin
       const url = `${baseUrl}/api/v1/scan/state/${id}`
       const headers: Record<string, string> = {}
@@ -126,7 +127,7 @@ export function useScanWebSocket({
   const connect = useCallback(() => {
     if (!scanIdRef.current || !enabledRef.current) return
 
-    const token = localStorage.getItem('access_token') || ''
+    const token = getAccessToken() || ''
     const st = sessionTokenRef.current || ''
     let wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
     const params = new URLSearchParams()
@@ -635,6 +636,40 @@ export function useScanWebSocket({
               progress: 0,
               message: `Cache hit: ${data.rule_id}`,
             })
+            break
+          }
+
+          case 'ai.recommendation.updated': {
+            const findingId = data.finding_id || ''
+            const recStatus = data.status || 'completed'
+            setScanState(prev => {
+              const base = prev ?? buildInitialSnapshot()
+              const updatedFindings = base.liveFindings.map((f) =>
+                f.rule_id === data.rule_id
+                  ? { ...f, ai_status: recStatus, ai_source: data.source }
+                  : f,
+              )
+              return {
+                ...base,
+                liveFindings: updatedFindings,
+                aiProgress: {
+                  phase: recStatus === 'completed' ? 'llm_done' : 'llm',
+                  message: data.source
+                    ? `Recommendation ready (${data.source})`
+                    : 'Recommendation ready',
+                  progress: base.aiProgress?.progress ?? 0,
+                  findings_processed: (base.aiProgress?.findings_processed ?? 0) + 1,
+                  findings_total: base.aiProgress?.findings_total ?? 0,
+                  timestamp: data.timestamp || new Date().toISOString(),
+                },
+              }
+            })
+            pushEvent('ai_completed', {
+              stage: 'ai_generation',
+              progress: 0,
+              message: `AI recommendation updated for finding ${findingId}`,
+            })
+            onAICompleteRef.current?.(data || {})
             break
           }
 

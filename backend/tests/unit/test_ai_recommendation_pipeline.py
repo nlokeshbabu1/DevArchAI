@@ -35,7 +35,7 @@ from app.ai.context_engine import AIRecommendation, AIContextEngine, StaticRecom
 from app.models.ai_suggestion import AISuggestion
 from app.models.finding import Category, Finding, Severity
 from app.models.scan import Scan, ScanStatus
-from app.models.scan_ai_recommendation import ScanAIRecommendation
+from app.models.finding_ai_job import FindingAIJob
 from app.services.ai_recommendation_cache import (
     RecommendationEntry,
     config_digest,
@@ -142,6 +142,7 @@ async def session_factory():
             Scan.__table__,
             Finding.__table__,
             AISuggestion.__table__,
+            FindingAIJob.__table__,
         ):
             await conn.run_sync(table.create, checkfirst=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -555,8 +556,7 @@ async def test_recover_pending_ai_scans_re_enqueues():
     pending = [uuid4() for _ in range(2)]
     session = MagicMock()
     scalars = MagicMock()
-    mock_rows = [MagicMock(id=uuid_val) for uuid_val in pending]
-    scalars.all.return_value = mock_rows
+    scalars.all.return_value = pending
     result = MagicMock()
     result.scalars.return_value = scalars
     session.execute.return_value = result

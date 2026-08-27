@@ -24,6 +24,7 @@ from app.api.v1.routes import (
     reports,
     repositories,
     scans,
+    scan_ai,
     settings,
     unified_scan,
 )
@@ -47,6 +48,8 @@ api_router.include_router(integrations.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(pull_requests.router)
 api_router.include_router(scans.router)
+api_router.include_router(scan_ai.router)
+api_router.include_router(scan_ai.findings_router)
 api_router.include_router(repositories.router)
 api_router.include_router(reports.router)
 api_router.include_router(repo_analysis.router)
