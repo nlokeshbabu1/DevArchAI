@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { FolderGit2, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui-animated'
+import { SecurityScore } from '../ui/SecurityScore'
 import type { Repository } from '../../api/endpoints/repositories'
 
 interface RiskTableProps {
@@ -53,8 +54,9 @@ export const RiskTable = memo(function RiskTable({ repositories, isLoading, getS
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-1">
-          <table className="w-full min-w-[600px]">
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto pb-1">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-white/5">
                 <th className="px-5 py-2.5 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Repository</th>
@@ -103,25 +105,12 @@ export const RiskTable = memo(function RiskTable({ repositories, isLoading, getS
                       </td>
                       <td className="px-5 py-3">
                         {score !== null ? (
-                          <div className="flex items-center gap-2">
-                            <div className={cn(
-                              'h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold border',
-                              score >= 80 ? 'border-green-500/30 bg-green-500/10 text-green-400' :
-                              score >= 60 ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400' :
-                              'border-red-500/30 bg-red-500/10 text-red-400'
-                            )}>
-                              {score.toFixed(0)}
-                            </div>
-                            <div className="h-1 w-16 rounded-full bg-white/5 overflow-hidden">
-                              <div
-                                className={cn(
-                                  'h-full rounded-full transition-all duration-700',
-                                  score >= 80 ? 'bg-green-400' : score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
-                                )}
-                                style={{ width: `${score}%` }}
-                              />
-                            </div>
-                          </div>
+                          <SecurityScore
+                            data={{ overall_score: score }}
+                            size="xs"
+                            showGrade={false}
+                            animated={false}
+                          />
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -165,6 +154,92 @@ export const RiskTable = memo(function RiskTable({ repositories, isLoading, getS
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="md:hidden px-4 pb-4 space-y-3">
+          {isLoading ? (
+            <div className="py-12 flex justify-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          ) : sorted.length > 0 ? (
+            sorted.map((repo, i) => {
+              const score = getScore(repo)
+              const critical = getCritical(repo)
+              const high = getHigh(repo)
+
+              return (
+                <motion.button
+                  key={repo.id}
+                  type="button"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: i * 0.04 }}
+                  onClick={() => navigate(`/repositories?id=${repo.id}`)}
+                  className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3 hover:bg-white/[0.05] transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-1.5 rounded-lg bg-white/5 border border-white/10 shrink-0">
+                        <FolderGit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{repo.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{repo.default_branch || 'main'}</p>
+                      </div>
+                    </div>
+                    {score !== null ? (
+                      <SecurityScore
+                        data={{ overall_score: score }}
+                        size="xs"
+                        showGrade={false}
+                        animated={false}
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground">
+                        Critical{' '}
+                        <span className={cn(
+                          'inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded text-[10px] font-bold',
+                          critical > 0
+                            ? 'severity-glow-critical bg-red-500/15 text-red-400 border border-red-500/30'
+                            : 'bg-white/5 text-muted-foreground border border-white/10'
+                        )}>
+                          {critical}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        High{' '}
+                        <span className={cn(
+                          'inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded text-[10px] font-bold',
+                          high > 0
+                            ? 'severity-glow-high bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                            : 'bg-white/5 text-muted-foreground border border-white/10'
+                        )}>
+                          {high}
+                        </span>
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">{formatDate(repo.last_scan_at)}</span>
+                  </div>
+                </motion.button>
+              )
+            })
+          ) : (
+            <div className="py-12 text-center">
+              <div className="flex flex-col items-center gap-2">
+                <CheckCircle className="h-6 w-6 text-green-400" />
+                <p className="text-sm font-medium text-foreground">No risky repositories</p>
+                <p className="text-xs text-muted-foreground">Repositories with findings will appear here</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

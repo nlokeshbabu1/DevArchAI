@@ -17,6 +17,8 @@ import { ScanResultsDashboard } from '../components/scan-results/ScanResultsDash
 import { ScanPipeline } from '../components/scans/ScanPipeline'
 import { LiveTerminal } from '../components/scans/LiveTerminal'
 import { AIProgressBanner } from '../components/scans/AIProgressBanner'
+import { SecurityScore } from '../components/ui/SecurityScore'
+import { StatusBadge } from '../components/ui/StatusBadge'
 import { cn, copyToClipboard } from '../lib/utils'
 import type { ScanStage, StageMetadata, SeverityCounts, ScanEvent } from '../types'
 
@@ -584,10 +586,9 @@ export function ScanProgressPage() {
       const topFixes = (result.findings || []).filter((f: any) => f.severity === 'critical' || f.severity === 'high').slice(0, 5)
       const isAiPending = isAiStillPending
       const isAiReady = effectiveAiStatus === 'completed'
-      const aiConfidence = effectiveAiStatus === 'completed' ? 94 : effectiveAiStatus === 'processing' ? 72 : 0
 
       const finalDuration = result.analysis_duration_seconds || elapsed
-      const scoreColor = result.security_score >= 80 ? '#22c55e' : result.security_score >= 50 ? '#eab308' : '#ef4444'
+      const scoreData = { security_score: result.security_score, overall_score: result.overall_score }
 
       return (
         <>
@@ -639,33 +640,14 @@ export function ScanProgressPage() {
                   <h2 className="text-lg font-bold text-foreground mb-1">Scan Complete</h2>
                   <p className="text-sm text-muted-foreground">Repository infrastructure analyzed &mdash; {finalDuration}s duration, {result.files_analyzed} files scanned</p>
                   <div className="flex items-center gap-4 mt-3 flex-wrap">
-                    {result.security_score > 0 && (
-                      <div className="flex items-center gap-2">
-                        <div className="relative w-8 h-8 shrink-0">
-                          <svg className="w-8 h-8 -rotate-90" viewBox="0 0 48 48">
-                            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
-                            <circle cx="24" cy="24" r="20" fill="none" stroke={scoreColor}
-                              strokeWidth="4" strokeLinecap="round" strokeDasharray={125.66}
-                              style={{ strokeDashoffset: 125.66 * (1 - result.security_score / 100) }}
-                            />
-                          </svg>
-                          <span className={cn('absolute inset-0 flex items-center justify-center text-[10px] font-bold text-foreground', MONO)}>
-                            {result.security_score}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">Security Score</span>
-                      </div>
-                    )}
+                    <SecurityScore data={scoreData} size="sm" showGrade showLabel />
                     {(['critical', 'high', 'medium', 'low', 'info'] as const).map(s =>
                       sevCounts[s] > 0 && (
                         <span key={s} className={cn('text-xs tabular-nums', MONO, SEV[s].c)}>{sevCounts[s]} {s}</span>
                       )
                     )}
-                    {aiConfidence > 0 && (
-                      <span className="text-xs text-purple-300/60 flex items-center gap-1">
-                        <Brain className="w-3 h-3" />{aiConfidence}% confidence
-                      </span>
-                    )}
+                    {isAiPending && <StatusBadge status="processing" label="AI analyzing" dot />}
+                    {isAiReady && <StatusBadge status="completed" label="AI ready" dot />}
                   </div>
                 </div>
               </div>
@@ -775,7 +757,12 @@ export function ScanProgressPage() {
         </motion.div>
 
         {/* Progress bar — uses backend progress directly, never computed */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.05 }} className="space-y-2">
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.05 }} className="space-y-2"
+          aria-live="polite"
+          aria-busy={!wsComplete && !isComplete && !wsFailed && !isFailed}
+          aria-label="Scan progress"
+        >
           <div className="flex items-center justify-between text-xs text-white/50">
             <span>{currentStage ? stages.find(s => s.id === currentStage)?.label || currentStage : 'Initializing...'}</span>
             <span className={cn(MONO, 'tabular-nums')}>{progress}%</span>

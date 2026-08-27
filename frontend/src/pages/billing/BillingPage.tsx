@@ -7,6 +7,8 @@ import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 
 interface Subscription {
   id: string | null
@@ -166,8 +168,13 @@ export function BillingPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="space-y-8">
+        <div className="h-20 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-96 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
+          ))}
+        </div>
       </div>
     )
   }
@@ -176,15 +183,28 @@ export function BillingPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
+      <PageHeader
+        title="Billing"
+        description="Manage your subscription, usage limits, and plan upgrades"
+        actions={
+          subscription ? (
+            <StatusBadge
+              status={subscription.status === 'active' ? 'connected' : subscription.status === 'past_due' ? 'failed' : 'pending'}
+              label={`${subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)} plan`}
+              dot
+            />
+          ) : undefined
+        }
+      />
+
       <motion.div
         className="text-center max-w-2xl mx-auto"
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-3xl font-bold text-foreground">Choose Your Plan</h1>
-        <p className="text-muted-foreground mt-2">
-          Select the perfect plan for your DevSecOps needs
+        <h2 className="text-xl font-semibold text-foreground">Choose Your Plan</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Select the plan that matches your scanning and AI remediation needs
         </p>
         
         {/* Currency Toggle */}
@@ -210,14 +230,6 @@ export function BillingPage() {
           </button>
         </div>
 
-        {subscription && (
-          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/15 border border-primary/30">
-            <Zap className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">
-              Current Plan: {subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)}
-            </span>
-          </div>
-        )}
       </motion.div>
 
       {/* Pricing Grid */}

@@ -21,10 +21,8 @@ import {
   OnboardingView
 } from '../components/dashboard'
 
-const getValidScore = (score: number | null | undefined) => {
-  if (typeof score !== 'number' || Number.isNaN(score)) return null
-  return Math.min(100, Math.max(0, score))
-}
+import { resolveSecurityScore } from '../lib/security-score'
+import { PageHeader } from '../components/ui/PageHeader'
 
 const formatScore = (score: number) => Number(score.toFixed(1))
 
@@ -34,7 +32,11 @@ interface AISuggestion {
   confidence?: number; category?: string; file_path?: string; status?: string
 }
 
-const getRepositoryScore = (repo: Repository) => getValidScore(repo.overall_score)
+const getValidScore = (data: { security_score?: number | null; overall_score?: number | null }) =>
+  resolveSecurityScore(data)?.value ?? null
+
+const getRepositoryScore = (repo: Repository) =>
+  getValidScore({ overall_score: repo.overall_score, security_score: (repo as { security_score?: number }).security_score })
 const getRepositoryCriticalCount = (repo: Repository) => repo.issues?.critical ?? 0
 const getRepositoryHighCount = (repo: Repository) => repo.issues?.high ?? 0
 
@@ -112,9 +114,9 @@ export function Dashboard() {
     }
   }, [summary])
 
-  const summaryScore = getValidScore(summary?.average_score)
+  const summaryScore = getValidScore({ overall_score: summary?.average_score })
   const recentScoreValues = recentScans.reduce<number[]>((scores, scan) => {
-    const scanScore = getValidScore(scan.overall_score ?? scan.security_score)
+    const scanScore = getValidScore(scan)
     if (scanScore !== null) scores.push(scanScore)
     return scores
   }, [])
@@ -136,7 +138,7 @@ export function Dashboard() {
   }).length
 
   const sortedRecentScores = recentScans
-    .map((scan) => getValidScore(scan.overall_score ?? scan.security_score))
+    .map((scan) => getValidScore(scan))
     .filter((score): score is number => score !== null)
   const scoreDelta = sortedRecentScores.length >= 2
     ? formatScore(sortedRecentScores[0] - sortedRecentScores[1])
@@ -220,62 +222,48 @@ export function Dashboard() {
   return (
     <>
       <div className="space-y-6">
-        {/* Header */}
-        <motion.div
-          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Overview of your DevOps security posture
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowExportMenu(!showExportMenu)}
-                icon={<Download className="h-3.5 w-3.5" />}
-              >
-                Export
-              </Button>
-              {showExportMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="absolute right-0 top-full mt-1.5 w-44 rounded-xl bg-card/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40 overflow-hidden z-50"
+        <PageHeader
+          title="Dashboard"
+          description="Overview of your DevOps security posture"
+          actions={
+            <>
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  icon={<Download className="h-3.5 w-3.5" />}
                 >
-                  {[
-                    { label: 'Download PDF', icon: FileText, action: () => {} },
-                    { label: 'Export Excel', icon: FileSpreadsheet, action: () => {} },
-                    { label: 'Share Report', icon: ExternalLink, action: () => navigate('/reports') },
-                  ].map((opt) => (
+                  Export
+                </Button>
+                {showExportMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute right-0 top-full mt-1.5 w-44 rounded-xl bg-card/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40 overflow-hidden z-50"
+                  >
                     <button
-                      key={opt.label}
-                      onClick={() => { setShowExportMenu(false); opt.action() }}
+                      onClick={() => { setShowExportMenu(false); navigate('/reports') }}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
                     >
-                      <opt.icon className="h-4 w-4" />
-                      {opt.label}
+                      <ExternalLink className="h-4 w-4" />
+                      View Reports
                     </button>
-                  ))}
-                </motion.div>
-              )}
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowScanPanel(true)}
-              icon={<Play className="h-4 w-4" />}
-              glow
-            >
-              New Scan
-            </Button>
-          </div>
-        </motion.div>
+                  </motion.div>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowScanPanel(true)}
+                icon={<Play className="h-4 w-4" />}
+                glow
+              >
+                New Scan
+              </Button>
+            </>
+          }
+        />
 
         {/* Security Overview Section */}
         <div className="space-y-4">

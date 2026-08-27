@@ -11,6 +11,8 @@ import { AwsOnboardingWizard } from '@/components/integrations/AwsOnboardingWiza
 import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
 import { IntegrationCategory } from '@/components/integrations/IntegrationCategory'
 import { buildCategories } from '@/components/integrations/providers'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 
 type ViewMode = 'grid' | 'cloud-dashboard'
 
@@ -150,37 +152,32 @@ export function IntegrationsPage() {
         </motion.div>
       )}
 
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Integrations</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Connect your tools and infrastructure for automated scanning
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {view === 'cloud-dashboard' && (
+      <PageHeader
+        title="Integrations"
+        description="Connect source control, CI/CD, and cloud providers for automated security scanning"
+        actions={
+          <>
+            {view === 'cloud-dashboard' && (
+              <button
+                type="button"
+                onClick={() => setView('grid')}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
+              >
+                <Grid3x3 className="h-4 w-4" />
+                All Integrations
+              </button>
+            )}
             <button
-              onClick={() => setView('grid')}
+              type="button"
+              onClick={load}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
             >
-              <Grid3x3 className="h-4 w-4" />
-              All Integrations
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+              Refresh
             </button>
-          )}
-          <button
-            onClick={load}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
-          >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-            Refresh
-          </button>
-        </div>
-      </motion.div>
+          </>
+        }
+      />
 
       {/* Stats bar */}
       {view === 'grid' && !loading && (
@@ -193,7 +190,7 @@ export function IntegrationsPage() {
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-emerald-400" />
             <span className="text-xs text-muted-foreground">Connected</span>
-            <span className="text-sm font-semibold text-foreground">{totalConnected}</span>
+            <StatusBadge status="connected" label={`${totalConnected} active`} />
           </div>
           <div className="h-4 w-px bg-white/10" />
           <div className="flex items-center gap-2">

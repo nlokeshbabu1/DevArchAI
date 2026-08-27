@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { FolderGit2, CheckCircle, ArrowRight, Clock, Search, AlertTriangle, Brain, Download, Shield } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { resolveSecurityScore } from '../../lib/security-score'
 import { Button } from '../ui-animated'
 import type { RecentScan } from '../../api/endpoints/dashboard'
 import { useState, useDeferredValue, memo } from 'react'
@@ -96,8 +97,8 @@ export const ActivityFeed = memo(function ActivityFeed({ scans, searchQuery, onS
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-          <table className="w-full min-w-[650px]">
+        <div className="hidden md:block overflow-x-auto max-h-[480px] overflow-y-auto">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-white/5">
                 <th className="px-5 py-2.5 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Activity</th>
@@ -120,8 +121,7 @@ export const ActivityFeed = memo(function ActivityFeed({ scans, searchQuery, onS
                 </tr>
               ) : filteredScans.length > 0 ? (
                 filteredScans.map((scan, i) => {
-                  const scanScore = scan.overall_score ?? scan.security_score ?? null
-                  const validScore = scanScore !== null && !Number.isNaN(scanScore) ? Math.min(100, Math.max(0, scanScore)) : null
+                  const validScore = resolveSecurityScore(scan)?.value ?? null
                   const ActivityIcon = getActivityIcon(scan.status)
                   const activityColor = getActivityColor(scan.status)
 
@@ -200,6 +200,82 @@ export const ActivityFeed = memo(function ActivityFeed({ scans, searchQuery, onS
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="md:hidden max-h-[480px] overflow-y-auto px-4 pb-4 space-y-3">
+          {isLoading ? (
+            <div className="py-12 flex justify-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          ) : filteredScans.length > 0 ? (
+            filteredScans.map((scan, i) => {
+              const validScore = resolveSecurityScore(scan)?.value ?? null
+              const ActivityIcon = getActivityIcon(scan.status)
+              const activityColor = getActivityColor(scan.status)
+
+              return (
+                <motion.button
+                  key={scan.id}
+                  type="button"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: i * 0.03 }}
+                  onClick={() => navigate(`/scans/${scan.id}`)}
+                  className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3 hover:bg-white/[0.05] transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={cn('p-1.5 rounded-lg border shrink-0', activityColor)}>
+                        <ActivityIcon className="h-3 w-3" />
+                      </div>
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {scan.repository_name || scan.repository_url?.split('/').pop() || 'Unknown'}
+                      </span>
+                    </div>
+                    <span className={cn(
+                      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium capitalize shrink-0',
+                      activityColor
+                    )}>
+                      {scan.status === 'completed' && <CheckCircle className="h-2.5 w-2.5" />}
+                      {scan.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className={cn('font-semibold tabular-nums', validScore !== null ? getScoreColor(validScore) : '')}>
+                      {validScore !== null ? `${validScore.toFixed(1)} score` : 'No score'}
+                    </span>
+                    <span>
+                      {typeof scan.analysis_duration_seconds === 'number'
+                        ? `${scan.analysis_duration_seconds.toFixed(0)}s`
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>
+                      {new Date(scan.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </motion.button>
+              )
+            })
+          ) : (
+            <div className="py-12 text-center">
+              <div className="flex flex-col items-center gap-2">
+                <div className="p-2 rounded-full bg-white/5 border border-white/10">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium text-foreground">
+                  {localSearch ? 'No scans match this search' : 'No scans yet'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {localSearch ? 'Try a different keyword' : 'Recent scans will appear here'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

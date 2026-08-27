@@ -11,6 +11,7 @@ import { api } from '../lib/api'
 import { getAccessToken } from '../lib/auth-token'
 import { cn, sanitizePath, copyToClipboard } from '../lib/utils'
 import { TechStackDisplay } from './TechStackDisplay'
+import { SecurityScore } from './ui/SecurityScore'
 
 interface Finding {
   rule_id: string
@@ -70,6 +71,7 @@ interface ScanResult {
   success: boolean
   scan_id: string
   security_score: number
+  overall_score?: number
   severity_counts: SeverityCounts
   findings: Finding[]
   total_findings: number
@@ -162,21 +164,6 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [sortOption, setSortOption] = useState<SortOption>('severity')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 60) return 'text-yellow-400'
-    if (score >= 50) return 'text-orange-400'
-    return 'text-red-400'
-  }
-
-  const getScoreGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
-    return 'F'
-  }
 
   const severityIcons: Record<string, any> = {
     critical: AlertCircle,
@@ -489,16 +476,12 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
               </div>
             )}
           </div>
-          <div className="text-right">
-            <div className={cn('text-5xl font-bold', getScoreColor(result.security_score))}>
-              {result.security_score.toFixed(1)}
-            </div>
-            <div className="text-sm text-muted-foreground mt-1">
-              Grade: <span className={cn('font-bold', getScoreColor(result.security_score))}>
-                {getScoreGrade(result.security_score)}
-              </span>
-            </div>
-          </div>
+          <SecurityScore
+            data={{ security_score: result.security_score, overall_score: result.overall_score }}
+            size="lg"
+            showGrade
+            animated={false}
+          />
         </div>
 
         {/* Detected Technology Stack */}

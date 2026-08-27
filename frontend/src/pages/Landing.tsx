@@ -169,15 +169,13 @@ export function Landing() {
 
   return (
     <div className="min-h-screen overflow-x-hidden">
-      {/* Content layer — sections carry their own backgrounds */}
-      <div className="relative" style={{ zIndex: 1 }}>
+      <BackgroundVideo />
+      <div className="relative z-[1]">
         <MouseGlow />
         <Navbar />
 
         {/* ===== HERO ===== */}
         <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden">
-          {/* Animated background video — scoped to the Hero only, clipped at section bottom */}
-          <BackgroundVideo />
 
           <FloatingTechCards />
 
@@ -213,7 +211,7 @@ export function Landing() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
                     </span>
-                    <span className="text-xs font-medium text-slate-400">DevOps Security Scanner</span>
+                    <span className="text-xs font-medium text-slate-400">DevSecOps Security Platform</span>
                   </div>
                 </motion.div>
 
@@ -236,8 +234,8 @@ export function Landing() {
                   animate="visible"
                   className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-[600px] mx-auto"
                 >
-                  Scan repositories, Docker, Kubernetes, Terraform, and CI/CD pipelines.
-                  Get AI-powered fix recommendations in under 30 seconds.
+                  Scan Terraform, Kubernetes, Helm, Docker, GitHub Actions, GitLab CI, and Jenkins pipelines.
+                  Get AI-powered remediation with RAG security knowledge and live documentation when needed.
                 </motion.p>
 
                 <motion.div
@@ -282,26 +280,6 @@ export function Landing() {
                     </div>
                   ))}
                 </motion.div>
-
-                {/* Product showcase below the centered content */}
-                <motion.div
-                  custom={2}
-                  variants={fadeUp}
-                  initial="hidden"
-                  animate="visible"
-                  className="relative w-full max-w-[650px] mx-auto mt-14 lg:mt-16"
-                >
-                  <div className="absolute -inset-14 bg-primary/[0.06] rounded-3xl blur-[90px] pointer-events-none" />
-                  <div className="absolute -inset-8 bg-[#0a0f1e]/50 rounded-3xl blur-xl pointer-events-none" />
-                  {/* Soft 2px vertical float */}
-                  <div className="animate-float-subtle">
-                    <div className="glass-reflection relative rounded-2xl border border-white/[0.08] bg-[#0a0f1e]/80 backdrop-blur-md shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6),0_0_80px_-16px_rgba(124,92,255,0.18)] transition-all duration-500 hover:border-white/[0.12] hover:shadow-[0_40px_100px_-20px_rgba(0,0,0,0.65),0_0_100px_-12px_rgba(124,92,255,0.25)]">
-                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.12] to-transparent rounded-t-2xl" />
-                      <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-white/[0.08] to-transparent rounded-l-2xl" />
-                      <HeroVideo />
-                    </div>
-                  </div>
-                </motion.div>
             </div>
           </div>
 
@@ -320,44 +298,10 @@ export function Landing() {
               <ChevronDown className="h-4 w-4 text-slate-500" />
             </motion.div>
           </motion.div>
-
-          {/* Smooth blend into the next section — radial glow + blur fade */}
-          <div className="absolute bottom-0 left-0 right-0 h-48 lg:h-60 pointer-events-none z-[5]" aria-hidden="true">
-            <div
-              className="absolute inset-0"
-              style={{
-                background: 'radial-gradient(ellipse 75% 65% at 50% 100%, rgba(124, 92, 255, 0.08) 0%, rgba(5, 8, 22, 0.35) 55%, rgba(5, 8, 22, 0.9) 100%)',
-              }}
-            />
-            <div className="absolute inset-0 backdrop-blur-[3px]" />
-          </div>
         </section>
 
         {/* ===== LIVE PRODUCT DEMO ===== */}
         <section id="live-demo" className="relative py-12 lg:py-16 overflow-hidden">
-          {/* Premium static background — no animated video */}
-          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-            {/* Base dark gradient */}
-            <div className="absolute inset-0 bg-gradient-to-b from-[#040716] via-[#070b1e] to-[#050816]" />
-            {/* Subtle radial spotlight */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: 'radial-gradient(ellipse 60% 45% at 50% -5%, rgba(124, 92, 255, 0.08) 0%, transparent 60%)',
-              }}
-            />
-            {/* Static grid — fades out with distance from the top */}
-            <div
-              className="absolute inset-0 opacity-[0.5]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px)',
-                backgroundSize: '56px 56px',
-                maskImage: 'radial-gradient(ellipse 70% 55% at 50% 0%, black 15%, transparent 75%)',
-                WebkitMaskImage: 'radial-gradient(ellipse 70% 55% at 50% 0%, black 15%, transparent 75%)',
-              }}
-            />
-          </div>
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <motion.div
               className="text-center mb-10 space-y-3"
@@ -396,6 +340,42 @@ export function Landing() {
 
         {/* ===== TECHNOLOGY MARQUEE ===== */}
         <TechnologyMarquee />
+
+        {/* ===== TECHNOLOGY COVERAGE ===== */}
+        <section className="py-10 lg:py-14">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-4xl mx-auto text-center mb-8">
+              <h2 className="text-lg font-semibold text-white mb-2">What DevArchAI scans</h2>
+              <p className="text-sm text-slate-400">
+                Repository and infrastructure-as-code security — clearly separated from cloud posture (AWS available today).
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 max-w-4xl mx-auto">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-3">Available now</p>
+                <ul className="grid grid-cols-2 gap-2 text-sm text-slate-300">
+                  {['Terraform', 'Kubernetes', 'Helm', 'Docker', 'GitHub Actions', 'GitLab CI', 'Jenkins', 'AWS Cloud'].map((tech) => (
+                    <li key={tech} className="flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      {tech}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04] p-5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300 mb-3">Coming soon</p>
+                <ul className="grid grid-cols-2 gap-2 text-sm text-slate-400">
+                  {['Azure DevOps', 'Azure Cloud', 'GCP Cloud', 'Bitbucket', 'Pulumi', 'Ansible'].map((tech) => (
+                    <li key={tech} className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-indigo-400/60 shrink-0" />
+                      {tech}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
         <SectionDivider />
 
         {/* ===== FEATURES (Why DevArchAI) ===== */}
@@ -523,18 +503,16 @@ export function Landing() {
                 <h4 className="text-sm font-semibold text-white mb-3">Resources</h4>
                 <ul className="space-y-1 text-sm text-slate-400">
                   <li><a href="/docs" className="block py-1.5 hover:text-white transition-colors">Documentation</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">API Reference</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Blog</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Security</a></li>
+                  <li><a href="/docs/ai-recommendations" className="block py-1.5 hover:text-white transition-colors">AI Recommendations</a></li>
+                  <li><span className="block py-1.5 text-slate-500">Blog — Coming Soon</span></li>
                 </ul>
               </div>
               <div>
                 <h4 className="text-sm font-semibold text-white mb-3">Company</h4>
                 <ul className="space-y-1 text-sm text-slate-400">
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">About</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Privacy</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Terms</a></li>
-                  <li><a href="#" className="block py-1.5 hover:text-white transition-colors">Contact</a></li>
+                  <li><a href="mailto:support@devarchai.com" className="block py-1.5 hover:text-white transition-colors">Contact</a></li>
+                  <li><a href="/docs/getting-started" className="block py-1.5 hover:text-white transition-colors">Acceptable Use</a></li>
+                  <li><span className="block py-1.5 text-slate-500">About — Coming Soon</span></li>
                 </ul>
               </div>
             </div>
@@ -543,9 +521,8 @@ export function Landing() {
                 &copy; {new Date().getFullYear()} DevArchAI. All rights reserved.
               </p>
               <div className="flex items-center gap-4 text-xs text-slate-400">
-                <a href="#" className="hover:text-white transition-colors py-1">Privacy Policy</a>
-                <a href="#" className="hover:text-white transition-colors py-1">Terms of Service</a>
-                <a href="#" className="hover:text-white transition-colors py-1">Cookie Policy</a>
+                <a href="/docs/getting-started" className="hover:text-white transition-colors py-1">Acceptable Use</a>
+                <a href="mailto:support@devarchai.com" className="hover:text-white transition-colors py-1">Contact Support</a>
               </div>
             </div>
           </div>

@@ -40,6 +40,9 @@ vi.mock('lucide-react', () => ({
   CheckCheck: () => <span data-testid="icon-checkcheck">CheckCheck</span>,
   Download: () => <span data-testid="icon-download">Download</span>,
   Filter: () => <span data-testid="icon-filter">Filter</span>,
+  Circle: () => <span data-testid="icon-circle">Circle</span>,
+  CheckCircle2: () => <span data-testid="icon-checkcircle2">CheckCircle2</span>,
+  XCircle: () => <span data-testid="icon-xcircle">XCircle</span>,
 }))
 
 const defaultProps = {
@@ -51,14 +54,15 @@ const defaultProps = {
   isComplete: false,
   hasFailed: false,
   onComplete: vi.fn(),
+  showProgressPercent: true,
 }
 
 // Production callers (InlineScanPanel) pass stage metadata from the scans API
 const defaultStages = [
   { id: 'cloning', label: 'Cloning Repository', icon: 'download', order: 1 },
-  { id: 'technology_detection', label: 'Detecting Technologies', icon: 'layers', order: 2 },
+  { id: 'detecting_technologies', label: 'Detecting Technologies', icon: 'layers', order: 2 },
   { id: 'scanning', label: 'Running Docker Rules', icon: 'shield', order: 3 },
-  { id: 'normalization', label: 'Saving Findings', icon: 'file-text', order: 4 },
+  { id: 'analyzing', label: 'Saving Findings', icon: 'file-text', order: 4 },
 ] as const
 
 describe('ScanProgressOverlay', () => {
@@ -139,7 +143,7 @@ describe('ScanProgressOverlay', () => {
 
   test('shows scan stages timeline', () => {
     render(<ScanProgressOverlay {...defaultProps} stages={[...defaultStages]} />)
-    expect(screen.getByText('Scan Stages')).toBeInTheDocument()
+    expect(screen.getByLabelText('Scan lifecycle')).toBeInTheDocument()
     expect(screen.getByText('Cloning Repository')).toBeInTheDocument()
     expect(screen.getByText('Detecting Technologies')).toBeInTheDocument()
     expect(screen.getAllByText('Running Docker Rules').length).toBeGreaterThanOrEqual(1)

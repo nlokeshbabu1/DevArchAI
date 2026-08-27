@@ -147,7 +147,7 @@ export function RoadmapSection() {
         >
           <p className="text-sm text-muted-foreground">
             Have a feature request?{' '}
-            <a href="#" className="text-primary hover:underline underline-offset-2">Let us know</a>
+            <a href="mailto:support@devarchai.com?subject=DevArchAI%20Feature%20Request" className="text-primary hover:underline underline-offset-2">Let us know</a>
           </p>
         </motion.div>
       </div>

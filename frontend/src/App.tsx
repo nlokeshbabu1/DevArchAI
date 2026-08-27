@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { Layout } from './components/layout/DashboardLayout'
+import { ToastHost } from './components/ui/ToastHost'
 import { Landing } from './pages/Landing'
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
@@ -78,6 +79,7 @@ export default function App() {
         <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
       </div>
     }>
+    <ToastHost />
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />

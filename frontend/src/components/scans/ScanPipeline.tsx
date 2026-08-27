@@ -37,8 +37,10 @@ const EASE = [0.16, 1, 0.3, 1] as const
 function getStageState(
   id: ScanStage, props: Pick<ScanPipelineProps, 'currentStage' | 'completedStages' | 'failedStages' | 'isComplete'>
 ): 'completed' | 'running' | 'failed' | 'pending' {
-  if (props.completedStages.includes(id) || props.isComplete) return 'completed'
-  if (props.failedStages.includes(id)) return 'failed'
+  const completed = props.completedStages ?? []
+  const failed = props.failedStages ?? []
+  if (completed.includes(id) || props.isComplete) return 'completed'
+  if (failed.includes(id)) return 'failed'
   if (id === props.currentStage) return 'running'
   return 'pending'
 }
@@ -141,7 +143,7 @@ function ConnectorLine({ state }: { state: 'completed' | 'running' | 'failed' | 
 }
 
 export const ScanPipeline = React.memo(function ScanPipeline({
-  stages, currentStage, completedStages, failedStages, progress = 0, isComplete, hasFailed,
+  stages, currentStage, completedStages = [], failedStages = [], progress = 0, isComplete, hasFailed,
   showProgressBar = false,
   technologies = {},
 }: ScanPipelineProps) {
@@ -160,6 +162,8 @@ export const ScanPipeline = React.memo(function ScanPipeline({
     <motion.div
       aria-label="Scan pipeline progress"
       role="list"
+      aria-live="polite"
+      aria-busy={!isComplete && !hasFailed}
       className="w-full rounded-xl border border-white/[0.06] bg-[rgba(30,41,59,0.6)] p-4 sm:p-5"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}

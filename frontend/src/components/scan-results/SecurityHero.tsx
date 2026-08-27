@@ -1,12 +1,15 @@
 import { motion } from "framer-motion"
-import { Shield, GitBranch, Clock, AlertCircle, FileText, Tag, Files, List, Activity } from "lucide-react"
-import { ScoreCircle } from "../ui-animated"
-import { cn, formatDuration, getGrade, getGradeColor, getRelativeTime } from "../../lib/utils"
+import { GitBranch, Clock, FileText, Tag, Files, List } from "lucide-react"
+import { SecurityScore } from "../ui/SecurityScore"
+import { formatDuration, getRelativeTime } from "../../lib/utils"
+import type { ScoreSource } from "../../lib/security-score"
 
 interface SecurityHeroProps {
-  overallScore: number
+  /** Canonical score fields from API */
+  scoreData: ScoreSource
   repoName: string
   branch?: string
+  commitHash?: string
   completedAt?: string
   totalFindings: number
   filesAnalyzed: number
@@ -16,7 +19,7 @@ interface SecurityHeroProps {
 }
 
 export function SecurityHero({
-  overallScore, repoName, branch, completedAt,
+  scoreData, repoName, branch, commitHash, completedAt,
   totalFindings, filesAnalyzed, affectedFiles,
   analysisDuration, techStack
 }: SecurityHeroProps) {
@@ -42,6 +45,11 @@ export function SecurityHero({
                 <span className="font-mono px-1.5 py-0.5 rounded border border-white/[0.08] bg-white/[0.04] text-indigo-300/80">
                   {branch || 'main'}
                 </span>
+                {commitHash && (
+                  <span className="font-mono truncate max-w-[120px]" title={commitHash}>
+                    {commitHash.slice(0, 7)}
+                  </span>
+                )}
                 {completedAt && (
                   <span>{getRelativeTime(completedAt)}</span>
                 )}
@@ -49,24 +57,7 @@ export function SecurityHero({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <ScoreCircle score={overallScore} size="md" />
-            <div className="flex flex-col items-end">
-              <div className={cn("text-xl font-bold font-mono tabular-nums", getGradeColor(overallScore))}>
-                {overallScore}
-              </div>
-              <div className={cn(
-                "text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5",
-                getGrade(overallScore) === 'A' ? 'bg-emerald-500/15 text-emerald-400' :
-                getGrade(overallScore) === 'B' ? 'bg-emerald-500/10 text-emerald-300' :
-                getGrade(overallScore) === 'C' ? 'bg-yellow-500/10 text-yellow-400' :
-                getGrade(overallScore) === 'D' ? 'bg-orange-500/10 text-orange-400' :
-                'bg-red-500/10 text-red-400'
-              )}>
-                {getGrade(overallScore)}
-              </div>
-            </div>
-          </div>
+          <SecurityScore data={scoreData} size="md" showGrade showLabel />
         </div>
 
         {/* Bottom row: metadata pills */}

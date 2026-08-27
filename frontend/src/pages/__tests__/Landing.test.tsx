@@ -97,6 +97,7 @@ describe('Landing Page', () => {
     renderLanding()
     expect(screen.getByText(/All rights reserved/i)).toBeInTheDocument()
     expect(screen.getByText('Documentation')).toBeInTheDocument()
-    expect(screen.getByText('Privacy Policy')).toBeInTheDocument()
+    expect(screen.getAllByText('Acceptable Use').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Contact Support')).toBeInTheDocument()
   })
 })

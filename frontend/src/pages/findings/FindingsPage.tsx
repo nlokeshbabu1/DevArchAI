@@ -9,6 +9,9 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn, sanitizePath, copyToClipboard } from '../../lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { SeverityBadge } from '../../components/ui/severity-badge'
+import { AISourceBadge } from '../../components/ui/AISourceBadge'
 
 interface Finding {
   id: string
@@ -35,6 +38,7 @@ interface Finding {
   full_example?: string
   best_practices?: string[]
   confidence_score?: number
+  scanner_name?: string
   created_at: string
 }
 
@@ -252,15 +256,10 @@ export function Findings() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Security Findings</h1>
-          <p className="text-muted-foreground mt-1">
-            View and manage all detected issues across your repositories
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Security Issues"
+        description="View and manage detected issues across your repositories"
+      />
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -381,9 +380,14 @@ export function Findings() {
       {/* Findings List */}
       <div className="space-y-4">
         {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground mt-4">Loading findings...</p>
+          <div className="space-y-4">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} className="p-5 animate-pulse" hover={false}>
+                <div className="h-4 w-1/3 bg-white/10 rounded mb-3" />
+                <div className="h-3 w-2/3 bg-white/5 rounded mb-2" />
+                <div className="h-3 w-1/2 bg-white/5 rounded" />
+              </Card>
+            ))}
           </div>
         ) : findingsError || !isAuthenticated ? (
           <Card className="p-12 text-center">
@@ -434,14 +438,17 @@ export function Findings() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary" className={severityColors[finding.severity]}>
-                            {finding.severity.toUpperCase()}
-                          </Badge>
+                          <SeverityBadge severity={finding.severity} size="sm" />
                           <Badge variant="secondary" className="border-white/10 bg-white/5 text-muted-foreground">
                             <Shield className="mr-1 h-3 w-3" />
                             {finding.rule_id}
                           </Badge>
-                          <Badge variant="secondary" className="border-primary/20 bg-primary/10 text-primary">
+                          {finding.scanner_name && (
+                            <Badge variant="secondary" className="border-cyan-500/20 bg-cyan-500/10 text-cyan-300 capitalize">
+                              {finding.scanner_name}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="border-primary/20 bg-primary/10 text-primary capitalize">
                             {finding.category}
                           </Badge>
                           {finding.confidence_score && (
@@ -476,6 +483,16 @@ export function Findings() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                      {finding.scan_id && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/scans/${finding.scan_id}`)}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          View Scan
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -565,7 +582,15 @@ export function Findings() {
                         upgradePlan="plus"
                       />
                     ) : (
-                      <p className="text-sm leading-6 text-muted-foreground">{getAiExplanationText(finding)}</p>
+                      <>
+                        <p className="text-sm leading-6 text-muted-foreground">{getAiExplanationText(finding)}</p>
+                        <AISourceBadge
+                          className="mt-3"
+                          source={(finding as { ai_source?: string }).ai_source}
+                          sourceDisplay={(finding as { source_display?: string }).source_display}
+                          technology={finding.scanner_name}
+                        />
+                      </>
                     )}
                     {finding.best_practices && Array.isArray(finding.best_practices) && finding.best_practices.length > 0 && (
                       <div className="mt-4 rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3">

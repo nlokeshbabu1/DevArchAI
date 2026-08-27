@@ -7,6 +7,8 @@ import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SecurityScore } from '../../components/ui/SecurityScore'
+import { resolveSecurityScore } from '../../lib/security-score'
 
 interface Scan {
   id: string
@@ -107,13 +109,6 @@ export function ScansPage() {
     completed: 'bg-green-500/10 text-green-400 border-green-500/30',
     failed: 'bg-red-500/10 text-red-400 border-red-500/30',
     cancelled: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
-  }
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 60) return 'text-yellow-400'
-    if (score >= 50) return 'text-orange-400'
-    return 'text-red-400'
   }
 
   const filteredScans = (scans || []).filter((scan: Scan) => {
@@ -253,13 +248,8 @@ export function ScansPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-6">
-                          {scan.overall_score !== undefined && scan.overall_score !== null && (
-                            <div>
-                              <div className="text-sm text-muted-foreground">Score</div>
-                              <div className={`text-xl font-bold ${getScoreColor(scan.overall_score)}`}>
-                                {scan.overall_score.toFixed(1)}
-                              </div>
-                            </div>
+                          {resolveSecurityScore(scan) && (
+                            <SecurityScore data={scan} size="xs" showGrade animated={false} />
                           )}
                           {scan.analysis_duration_seconds !== null && scan.analysis_duration_seconds !== undefined && (
                             <div>
@@ -287,10 +277,7 @@ export function ScansPage() {
                           variant="primary"
                           size="sm"
                           className="w-full"
-                          onClick={() => {
-                            console.log('📊 View Report - redirecting to /history...')
-                            navigate('/history')
-                          }}
+                          onClick={() => navigate('/history')}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Report

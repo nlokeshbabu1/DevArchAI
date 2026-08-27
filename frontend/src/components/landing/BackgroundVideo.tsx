@@ -2,22 +2,9 @@ import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
 import { useReducedMotion } from 'framer-motion'
 import bgVideo from '@/assets/videos/Background_SaaS.mp4'
 
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`)
-    setIsMobile(mq.matches)
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [breakpoint])
-  return isMobile
-}
-
 export const BackgroundVideo = memo(function BackgroundVideo() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const prefersReducedMotion = useReducedMotion()
-  const isMobile = useIsMobile()
   const [canAutoplay, setCanAutoplay] = useState(true)
 
   useEffect(() => {
@@ -38,7 +25,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
 
   return (
     <div
-      className="absolute inset-0 w-full h-full overflow-hidden"
+      className="fixed inset-0 w-full h-full overflow-hidden pointer-events-none"
       style={{ zIndex: 0 }}
       aria-hidden="true"
     >
@@ -49,9 +36,10 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
           className="absolute inset-0 w-full h-full"
           style={{
             objectFit: 'cover',
-            opacity: 0.48,
+            objectPosition: 'center center',
+            opacity: 0.55,
             willChange: 'transform',
-            transform: 'translateZ(0) translateX(-5%) scale(1.1)',
+            transform: 'translateZ(0) scale(1.02)',
           }}
           autoPlay
           muted
@@ -172,11 +160,11 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
         }}
       />
 
-      {/* Bottom gradient for hero content readability */}
+      {/* Bottom gradient for content readability */}
       <div
-        className="absolute inset-x-0 bottom-0 h-[35%]"
+        className="absolute inset-x-0 bottom-0 h-[20%]"
         style={{
-          background: 'linear-gradient(to top, rgba(2, 0, 12, 0.6) 0%, transparent 100%)',
+          background: 'linear-gradient(to top, rgba(2, 0, 12, 0.35) 0%, transparent 100%)',
         }}
       />
 

@@ -24,6 +24,7 @@ vi.mock('framer-motion', () => {
   return {
     motion,
     AnimatePresence: ({ children }: any) => <>{children}</>,
+    useReducedMotion: () => false,
   }
 })
 
@@ -108,6 +109,19 @@ function renderPage(ui: React.ReactElement) {
   )
 }
 
+const defaultWsMock = {
+  lifecycleState: 'running' as const,
+  scanState: null,
+  error: null,
+  connectionStatus: 'connecting' as const,
+  completedStages: [] as const,
+  failedStages: [] as const,
+}
+
+function mockWs(overrides: Record<string, unknown> = {}) {
+  return { ...defaultWsMock, ...overrides }
+}
+
 const mockScanState = (overrides: Record<string, any> = {}) => ({
   scanId: 'test-scan-id',
   status: 'running',
@@ -131,23 +145,15 @@ describe('ScanProgressPage', () => {
     vi.clearAllMocks()
     vi.mocked(useParams).mockReturnValue({ id: 'test-scan-id' })
     vi.mocked(useNavigate).mockReturnValue(vi.fn())
-    vi.mocked(useScanWebSocket).mockReturnValue({
-      lifecycleState: 'running',
-      scanState: null,
-      error: null,
-      connectionStatus: 'connecting',
-    })
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs())
 
     mockGetStages.mockResolvedValue([
-      { id: 'connecting', label: 'Connecting to repository', icon: 'git-branch', order: 0 },
-      { id: 'cloning', label: 'Cloning repository', icon: 'download', order: 1 },
-      { id: 'technology_detection', label: 'Detecting technologies', icon: 'cpu', order: 2 },
-      { id: 'scanner_selection', label: 'Selecting scanners', icon: 'search', order: 3 },
-      { id: 'scanning', label: 'Running security rules', icon: 'shield', order: 4 },
-      { id: 'normalization', label: 'Normalizing findings', icon: 'file-code', order: 5 },
-      { id: 'deduplication', label: 'Deduplicating findings', icon: 'zap', order: 6 },
-      { id: 'ai_generation', label: 'Generating AI suggestions', icon: 'brain', order: 7 },
-      { id: 'report_generation', label: 'Generating reports', icon: 'file-text', order: 8 },
+      { id: 'connecting_repository', label: 'Connecting to repository', icon: 'git-branch', order: 0, kind: 'base' },
+      { id: 'cloning', label: 'Cloning repository', icon: 'download', order: 1, kind: 'base' },
+      { id: 'detecting_technologies', label: 'Detecting technologies', icon: 'cpu', order: 2, kind: 'base' },
+      { id: 'scanning', label: 'Running security rules', icon: 'shield', order: 3, kind: 'base' },
+      { id: 'analyzing', label: 'Analyzing findings', icon: 'brain', order: 4, kind: 'base' },
+      { id: 'scan_completed', label: 'Scan completed', icon: 'check', order: 5, kind: 'base' },
     ])
     mockGetScanState.mockResolvedValue({
       scan_id: 'test-scan-id',
@@ -185,12 +191,12 @@ describe('ScanProgressPage', () => {
   })
 
   it('should render stage timeline when scanning', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({ currentStage: 'scanning' }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -204,12 +210,12 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show progress percentage from backend', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({ progress: 75 }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -222,14 +228,14 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show elapsed time', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({
         startedAt: new Date(Date.now() - 65000).toISOString(),
       }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -241,12 +247,12 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show disabled Rescan button during scan', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState(),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -259,14 +265,14 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show detected technologies', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({
         detectedStack: ['Docker', 'Terraform', 'Kubernetes'],
       }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -280,12 +286,12 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show file scanning progress', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({ filesScanned: 245, totalFiles: 1380 }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -297,7 +303,7 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show scanner cards when scanners exist', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({
         scanners: {
@@ -306,7 +312,7 @@ describe('ScanProgressPage', () => {
       }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -319,7 +325,7 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show live findings with severity', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({
         liveFindings: [
@@ -329,7 +335,7 @@ describe('ScanProgressPage', () => {
       }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -342,7 +348,7 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show AI generation panel during ai_generation stage', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({
         currentStage: 'ai_generation',
@@ -350,7 +356,7 @@ describe('ScanProgressPage', () => {
       }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -385,7 +391,7 @@ describe('ScanProgressPage', () => {
       ai_suggestions_count: 5,
     })
 
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'completed',
       scanState: mockScanState({
         status: 'completed',
@@ -395,7 +401,7 @@ describe('ScanProgressPage', () => {
       }),
       error: null,
       connectionStatus: 'disconnected',
-    })
+    }))
 
     renderPage(
       <MemoryRouter>
@@ -422,7 +428,7 @@ describe('ScanProgressPage', () => {
       created_at: '2024-01-01T00:00:00Z',
     })
 
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'failed',
       scanState: mockScanState({
         status: 'failed',
@@ -433,7 +439,7 @@ describe('ScanProgressPage', () => {
       }),
       error: null,
       connectionStatus: 'disconnected',
-    })
+    }))
 
     renderPage(
       <MemoryRouter>
@@ -461,12 +467,12 @@ describe('ScanProgressPage', () => {
   })
 
   it('should show completed stages with checkmarks', async () => {
-    vi.mocked(useScanWebSocket).mockReturnValue({
+    vi.mocked(useScanWebSocket).mockReturnValue(mockWs({
       lifecycleState: 'running',
       scanState: mockScanState({ currentStage: 'scanning' }),
       error: null,
       connectionStatus: 'connected',
-    })
+    }))
     renderPage(
       <MemoryRouter>
         <ScanProgressPage />
@@ -476,7 +482,7 @@ describe('ScanProgressPage', () => {
       expect(screen.getByText('Connecting to repository')).toBeInTheDocument()
       expect(screen.getByText('Cloning repository')).toBeInTheDocument()
       expect(screen.getByText('Detecting technologies')).toBeInTheDocument()
-      expect(screen.getByText('Selecting scanners')).toBeInTheDocument()
+      expect(screen.getAllByText('Running security rules').length).toBeGreaterThanOrEqual(1)
     })
   })
 })

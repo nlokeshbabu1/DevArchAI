@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, AlertTriangle, TrendingUp, FolderGit2, Info } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { ScoreCircle } from '../ui-animated'
+import { SecurityScore } from '../ui/SecurityScore'
 import type { KpiData } from './KpiRow'
 
 interface SecurityOverviewProps {
@@ -89,11 +89,12 @@ export const SecurityOverview = memo(function SecurityOverview({
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground mb-3">
               Overall Security Score
             </p>
-            <ScoreCircle
-              score={securityScore}
+            <SecurityScore
+              data={hasSecurityScore ? { security_score: securityScore } : null}
               size="lg"
+              showGrade
+              showLabel
               animated
-              delay={200}
             />
             <p className="text-xs text-muted-foreground mt-4 text-center max-w-[200px] leading-relaxed">
               {!hasSecurityScore

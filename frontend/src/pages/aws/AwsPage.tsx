@@ -6,6 +6,8 @@ import { Button } from '../../components/ui'
 import { AwsDashboard, AwsDashboardSkeleton } from '../../components/aws/AwsDashboard'
 import { AwsAccountSummary } from '../../components/aws/AwsAccountSummary'
 import { AwsScanProgressModal } from '../../components/aws/AwsScanProgressModal'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 
 function apiErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -144,30 +146,30 @@ export function AwsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg border border-amber-300/30 bg-amber-400/10 p-2">
-              <Cloud className="h-6 w-6 text-amber-300" />
-            </div>
-            <h1 className="text-3xl font-bold text-foreground">AI Cloud Security & Cost Optimization</h1>
+      <PageHeader
+        title="AWS Cloud Security"
+        description="Cloud posture, IAM analysis, inventory, and cost optimization — separate from repository DevSecOps security scores."
+        actions={
+          <>
+            <StatusBadge status={connected ? 'connected' : 'not_connected'} label={connected ? 'AWS Connected' : 'Not Connected'} dot />
             <button
+              type="button"
               onClick={() => navigate('/docs/aws-integration')}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
               title="View AWS documentation"
+              aria-label="View AWS documentation"
             >
               <BookOpen className="h-4 w-4" />
             </button>
-          </div>
-          <p className="mt-2 text-muted-foreground">Operational AWS posture, AI recommendations, inventory risk, and savings workflows.</p>
-        </div>
-        {connected && (
-          <Button variant="secondary" onClick={() => setShowConnect((value) => !value)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {showConnect ? 'Hide connect' : 'Connect another account'}
-          </Button>
-        )}
-      </div>
+            {connected && (
+              <Button variant="secondary" onClick={() => setShowConnect((value) => !value)}>
+                <Plus className="mr-2 h-4 w-4" />
+                {showConnect ? 'Hide connect' : 'Connect another account'}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {success && <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-100">{success}</div>}
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>}

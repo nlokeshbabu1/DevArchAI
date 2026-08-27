@@ -4,28 +4,55 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
-  Brain, CreditCard, Settings, LogOut, Menu, X, Bell, Search,
-  Zap, Cloud, User, ChevronDown, Sparkles, BookOpen,
+  Brain, CreditCard, Settings, LogOut, Menu, X, Search,
+  Zap, Cloud, User, ChevronDown, BookOpen, Plug,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { Button } from '../ui'
+import { StatusBadge } from '../ui/StatusBadge'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Repositories', href: '/repositories', icon: FolderGit2 },
-  { name: 'Scan Results', href: '/scans', icon: FileSearch },
-  { name: 'Security Issues', href: '/findings', icon: AlertTriangle },
-  { name: 'AI Suggestions', href: '/ai-suggestions', icon: Brain },
-  { name: 'AWS Cloud', href: '/aws', icon: Cloud },
-  { name: 'Integrations', href: '/integrations', icon: Cloud },
-  { name: 'Documentation', href: '/docs', icon: BookOpen },
-  { name: 'Billing', href: '/billing', icon: CreditCard },
-  { name: 'Settings', href: '/settings', icon: Settings },
+type NavItem = {
+  name: string
+  href?: string
+  icon: typeof LayoutDashboard
+  status?: 'coming_soon' | 'beta' | 'enterprise'
+}
+
+const navigationGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Security',
+    items: [
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Repositories', href: '/repositories', icon: FolderGit2 },
+      { name: 'Scans', href: '/scans', icon: FileSearch },
+      { name: 'Security Issues', href: '/findings', icon: AlertTriangle },
+      { name: 'AI Recommendations', href: '/ai-suggestions', icon: Brain },
+    ],
+  },
+  {
+    label: 'Cloud',
+    items: [
+      { name: 'AWS', href: '/aws', icon: Cloud },
+      { name: 'Azure', icon: Cloud, status: 'coming_soon' },
+      { name: 'GCP', icon: Cloud, status: 'coming_soon' },
+    ],
+  },
+  {
+    label: 'Platform',
+    items: [
+      { name: 'Integrations', href: '/integrations', icon: Plug },
+      { name: 'Documentation', href: '/docs', icon: BookOpen },
+      { name: 'Billing', href: '/billing', icon: CreditCard },
+      { name: 'Settings', href: '/settings', icon: Settings },
+    ],
+  },
 ]
+
+const navigation = navigationGroups.flatMap((g) => g.items.filter((i) => i.href))
 
 export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
@@ -109,37 +136,59 @@ export function Layout({ children }: LayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navigation.map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname === item.href
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto" aria-label="Main navigation">
+          {navigationGroups.map((group) => (
+            <div key={group.label}>
+              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon
+                  const isDisabled = !item.href
+                  const isActive = !isDisabled && (
+                    location.pathname === item.href
+                    || (item.href !== '/dashboard' && location.pathname.startsWith(item.href + '/'))
+                  )
 
-            return (
-              <button
-                key={item.name}
-                onClick={() => {
-                  navigate(item.href)
-                  setSidebarOpen(false)
-                }}
-                className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
-                  isActive
-                    ? 'bg-primary/15 text-primary border border-primary/30'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-                )}
-              >
-                <Icon className={cn("h-5 w-5 flex-shrink-0", isActive ? 'text-primary' : '')} />
-                <span className="flex-1 text-left">{item.name}</span>
-                {isActive && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="w-1.5 h-1.5 rounded-full bg-primary"
-                  />
-                )}
-              </button>
-            )
-          })}
+                  if (isDisabled) {
+                    return (
+                      <div
+                        key={item.name}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+                        aria-disabled="true"
+                      >
+                        <Icon className="h-5 w-5 flex-shrink-0 opacity-50" />
+                        <span className="flex-1 text-left">{item.name}</span>
+                        {item.status && <StatusBadge status={item.status} />}
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <button
+                      key={item.name}
+                      type="button"
+                      onClick={() => {
+                        navigate(item.href!)
+                        setSidebarOpen(false)
+                      }}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                        isActive
+                          ? 'bg-primary/15 text-primary border border-primary/30'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                      )}
+                    >
+                      <Icon className={cn("h-5 w-5 flex-shrink-0", isActive ? 'text-primary' : '')} />
+                      <span className="flex-1 text-left">{item.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* User profile - sticky bottom */}
@@ -226,13 +275,9 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors" aria-label="Notifications">
-              <Bell className="h-5 w-5 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium text-primary">Pro Plan</span>
+              <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
+              <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
             </div>
           </div>
         </header>

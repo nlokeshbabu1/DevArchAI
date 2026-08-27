@@ -10,6 +10,8 @@ import { Card, Button } from '../components/ui-animated'
 import { Badge } from '../components/ui'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
+import { SecurityScore } from '../components/ui/SecurityScore'
+import { resolveSecurityScore } from '../lib/security-score'
 
 interface Scan {
   id: string
@@ -37,18 +39,12 @@ export function ScanHistoryPage() {
     queryKey: ['scans-history'],
     queryFn: async () => {
       try {
-        console.log('📊 Fetching scan history...')
-        // Fetch both authenticated and anonymous scans for demo
         const response = await scansApi.listScans(undefined, 1, 100)
-        console.log('📊 Scan history API response:', response)
-        // Ensure scans are sorted by created_at descending (latest first)
         const sortedScans = (response || []).sort((a, b) => {
           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
           return dateB - dateA
         })
-        console.log('📊 Sorted scan history (latest first):', sortedScans)
-        console.log('📊 Latest scan:', sortedScans[0])
         return sortedScans
       } catch (err) {
         console.error('❌ Failed to fetch scan history:', err)
@@ -75,7 +71,7 @@ export function ScanHistoryPage() {
         const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
         return dateB - dateA
       }
-      return (b.overall_score || 0) - (a.overall_score || 0)
+      return (resolveSecurityScore(b)?.value ?? 0) - (resolveSecurityScore(a)?.value ?? 0)
     })
 
   // Calculate stats
@@ -104,23 +100,7 @@ export function ScanHistoryPage() {
     cancelled: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
   }
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 60) return 'text-yellow-400'
-    if (score >= 50) return 'text-orange-400'
-    return 'text-red-400'
-  }
-
-  const getScoreGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
-    return 'F'
-  }
-
   const handleScanClick = (scanId: string) => {
-    console.log('🔍 Navigating to scan result:', scanId)
     navigate(`/scans/${scanId}`)
   }
 
@@ -348,18 +328,8 @@ export function ScanHistoryPage() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                      {scan.overall_score !== undefined && scan.overall_score !== null && (
-                        <div className="text-right">
-                          <div className={cn(
-                            'text-2xl font-bold',
-                            getScoreColor(scan.overall_score)
-                          )}>
-                            {scan.overall_score.toFixed(1)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Grade: {getScoreGrade(scan.overall_score)}
-                          </div>
-                        </div>
+                      {resolveSecurityScore(scan) && (
+                        <SecurityScore data={scan} size="sm" showGrade animated={false} />
                       )}
                       <ArrowRight className="h-5 w-5 text-muted-foreground" />
                     </div>

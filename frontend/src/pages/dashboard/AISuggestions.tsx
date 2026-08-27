@@ -4,7 +4,7 @@ import {
   Copy, GitPullRequest, Eye, X, AlertCircle, RefreshCw,
   Shield, Zap, BarChart3, DollarSign, BookOpen,
   FileCode, Info,
-  Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown
+  Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown, ExternalLink
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Skeleton, SkeletonCard } from '../../components/ui-animated'
@@ -17,10 +17,9 @@ import { useAuthStore } from '../../stores/auth-store'
 import { apiClient } from '../../api/client'
 import { cn, copyToClipboard } from '../../lib/utils'
 
-const toast = {
-  success: (msg: string) => console.log('✓', msg),
-  error: (msg: string) => console.error('✗', msg),
-}
+import { toast } from '../../hooks/useToast'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { StatusBadge, type ProductStatus } from '../../components/ui/StatusBadge'
 
 interface AISuggestion {
   id: string
@@ -72,6 +71,15 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: any; color: string 
   performance: { label: 'Performance', icon: Zap, color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
   cost: { label: 'Cost', icon: DollarSign, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
   'best-practices': { label: 'Best Practices', icon: BookOpen, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+}
+
+function suggestionStatusBadge(status: AISuggestion['status']): ProductStatus {
+  switch (status) {
+    case 'in_progress': return 'processing'
+    case 'fixed': return 'completed'
+    case 'ignored': return 'not_connected'
+    default: return 'pending'
+  }
 }
 
 function getCategoryColor(category: string): string {
@@ -316,6 +324,20 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
           </div>
           <h2 className="text-lg font-semibold text-white/90 leading-snug">{suggestion.title}</h2>
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            <StatusBadge status={suggestionStatusBadge(suggestion.status)} />
+            {suggestion.scan_id && (
+              <button
+                type="button"
+                onClick={() => window.open(`/scans/${suggestion.scan_id}`, '_self')}
+                className="flex items-center gap-1.5 text-xs text-indigo-300/80 hover:text-indigo-200 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View scan
+              </button>
+            )}
+            {suggestion.finding_id && (
+              <span className="text-xs font-mono text-white/30">Finding {suggestion.finding_id.slice(0, 8)}</span>
+            )}
             <div className="flex items-center gap-1.5 text-xs text-white/40">
               <FolderGit2 className="h-3 w-3" />
               <span>{repoName}</span>
@@ -824,40 +846,39 @@ export function AISuggestionsPage() {
   return (
     <div className="min-h-screen bg-[#0a0a10]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* === Header (real data only) === */}
-        <motion.div initial={shouldReduceMotion ? {} : { opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: shouldReduceMotion ? 0 : 0.4 }}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <div>
-                <h1 className="text-2xl font-bold text-white/90 tracking-tight">AI Suggestions</h1>
-                <p className="text-sm text-white/40 mt-1">
-                  {totalOpen > 0
-                    ? `${totalOpen} open recommendation${totalOpen !== 1 ? 's' : ''} across ${grouped.length} ${grouped.length === 1 ? 'group' : 'groups'}`
-                    : 'No open recommendations'}
-                </p>
-              </div>
+        <PageHeader
+          title="AI Recommendations"
+          description={
+            totalOpen > 0
+              ? `${totalOpen} open recommendation${totalOpen !== 1 ? 's' : ''} across ${grouped.length} ${grouped.length === 1 ? 'group' : 'groups'}`
+              : 'Actionable fixes from your security scans'
+          }
+          actions={
+            <>
               <button
                 onClick={() => navigate('/docs/ai-recommendations')}
-                className="p-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors flex-shrink-0"
+                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
                 title="View AI Recommendations documentation"
+                type="button"
               >
                 <BookOpen className="h-4 w-4" />
               </button>
-            </div>
-            <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">
                 <Brain className="h-4 w-4 text-indigo-400" />
-                <span className="text-sm font-medium text-white/70">{totalOpen} total</span>
+                <span className="text-sm font-medium text-white/70">{totalOpen} open</span>
               </div>
               <button
                 onClick={fetchAllSuggestions}
                 className="p-2 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
                 disabled={loading}
+                type="button"
+                aria-label="Refresh recommendations"
               >
                 <RefreshCw className={cn('h-4 w-4 text-white/40', loading && 'animate-spin')} />
               </button>
-            </div>
-          </div>
+            </>
+          }
+        />
 
           {/* Stats Banner — counts from backend data only; no synthetic metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -913,7 +934,6 @@ export function AISuggestionsPage() {
               </div>
             </div>
           </div>
-        </motion.div>
 
         {/* === Search + Filters === */}
         <motion.div

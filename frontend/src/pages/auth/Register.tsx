@@ -397,9 +397,8 @@ export function Register() {
             </div>
             <span className="text-[13px] text-slate-400 group-hover:text-slate-300 transition-colors leading-snug">
               I agree to the{' '}
-              <a href="#" className="text-primary hover:text-primary/80 transition-colors font-medium">Terms of Service</a>
-              {' '}and{' '}
-              <a href="#" className="text-primary hover:text-primary/80 transition-colors font-medium">Privacy Policy</a>
+              <Link to="/docs/getting-started" className="text-primary hover:text-primary/80 transition-colors font-medium">acceptable use terms</Link>
+              {' '}for DevArchAI security scanning.
             </span>
           </label>
 

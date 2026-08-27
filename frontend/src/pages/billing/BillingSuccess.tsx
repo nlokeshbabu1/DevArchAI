@@ -101,8 +101,8 @@ export function BillingSuccess() {
                 finishSuccess(response.data.plan)
                 return
               }
-            } catch (err) {
-              console.log('Subscription not yet activated by webhook')
+            } catch {
+              // Webhook may not have processed yet — fall through to optimistic success
             }
             
             // If webhook hasn't processed yet, show success anyway (will be activated soon)

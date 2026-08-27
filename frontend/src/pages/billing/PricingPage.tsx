@@ -173,8 +173,8 @@ export function PricingPage() {
         if (countryCode && COUNTRY_CURRENCY[countryCode]) {
           setCurrency(COUNTRY_CURRENCY[countryCode])
         }
-      } catch (error) {
-        console.log('Could not detect country, using default currency')
+      } catch {
+        // Default to USD when geo lookup is unavailable
       } finally {
         setLoading(false)
       }
@@ -231,7 +231,7 @@ export function PricingPage() {
             <span className="text-foreground">Choose Your Plan</span>
           </h1>
           <p className="text-lg text-muted-foreground">
-            Select the perfect plan for your DevSecOps needs. All plans include a 14-day free trial.
+            Start free with repository scanning. Upgrade when you need AI remediation, exports, and automation.
           </p>
         </motion.div>
 

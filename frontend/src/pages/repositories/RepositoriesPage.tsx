@@ -20,6 +20,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
+import { SecurityScore } from '../../components/ui/SecurityScore'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 import { useAuthStore } from '../../stores/auth-store'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
 import { scansApi } from '../../api/endpoints/scans'
@@ -158,7 +161,7 @@ export function RepositoriesPage() {
         const repoId = activeScan.repoId
         setActiveScan(null)
         setActiveScanError(null)
-        navigate(`/repositories/${repoId}/results`, { replace: true })
+        navigate(`/scans/${activeScan.scanId}`, { replace: true })
       }, 1200)
     },
     onFailed: (data) => {
@@ -385,7 +388,17 @@ export function RepositoriesPage() {
     })
   }
 
-  const handleViewResults = (repoId: string) => {
+  const handleViewResults = async (repoId: string) => {
+    try {
+      const response = await apiClient.get(`/repositories/${repoId}/results`)
+      const id = response.data?.scan?.id as string | undefined
+      if (id) {
+        navigate(`/scans/${id}`)
+        return
+      }
+    } catch {
+      // fall through to repository results page
+    }
     navigate(`/repositories/${repoId}/results`)
   }
 
@@ -464,36 +477,30 @@ export function RepositoriesPage() {
   return (
     <>
       <div className="space-y-8">
-        <motion.div
-          className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Repositories</h1>
-            <p className="mt-1 text-muted-foreground">
-              Manage and scan your connected repositories
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            {user?.provider !== 'password' && (
+        <PageHeader
+          title="Repositories"
+          description="Manage and scan your connected repositories"
+          actions={
+            <>
+              {user?.provider !== 'password' && (
+                <Button
+                  variant="secondary"
+                  icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
+                  onClick={() => setShowImportModal(true)}
+                >
+                  Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                </Button>
+              )}
               <Button
-                variant="secondary"
-                icon={activeProvider === 'github' ? <Github className="h-4 w-4" /> : <Gitlab className="h-4 w-4" />}
-                onClick={() => setShowImportModal(true)}
+                variant="primary"
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => setShowAddModal(true)}
               >
-                Import {activeProvider === 'gitlab' ? 'Projects' : 'Repository'}
+                Add Repository
               </Button>
-            )}
-            <Button
-              variant="primary"
-              icon={<Plus className="h-4 w-4" />}
-              onClick={() => setShowAddModal(true)}
-            >
-              Add Repository
-            </Button>
-          </div>
-        </motion.div>
+            </>
+          }
+        />
 
         <motion.div
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -502,10 +509,10 @@ export function RepositoriesPage() {
           transition={{ delay: 0.1 }}
         >
           {[
-            { name: 'GitHub', icon: Github, connected: githubConnected },
-            { name: 'GitLab', icon: Gitlab, connected: gitlabConnected },
-            { name: 'AWS', icon: Cloud, connected: false },
-            { name: 'Azure', icon: Server, connected: false },
+            { name: 'GitHub', icon: Github, status: githubConnected ? 'connected' as const : 'not_connected' as const },
+            { name: 'GitLab', icon: Gitlab, status: gitlabConnected ? 'connected' as const : 'not_connected' as const },
+            { name: 'AWS', icon: Cloud, status: 'not_connected' as const },
+            { name: 'Azure', icon: Server, status: 'coming_soon' as const },
           ].map((integration) => (
             <Card key={integration.name} className="p-4" hover>
               <div className="flex items-center justify-between gap-3">
@@ -513,23 +520,7 @@ export function RepositoriesPage() {
                   <integration.icon className="h-6 w-6 text-muted-foreground" />
                   <span className="font-medium">{integration.name}</span>
                 </div>
-                <div
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium',
-                    integration.connected
-                      ? 'border-green-500/30 bg-green-500/15 text-green-400'
-                      : 'border-white/10 bg-white/5 text-muted-foreground',
-                  )}
-                >
-                  {integration.connected ? (
-                    <>
-                      <CheckCircle className="h-3 w-3" />
-                      Connected
-                    </>
-                  ) : (
-                    'Connect'
-                  )}
-                </div>
+                <StatusBadge status={integration.status} dot />
               </div>
             </Card>
           ))}
@@ -710,20 +701,13 @@ export function RepositoriesPage() {
                             Security Score
                           </div>
                           {hasScore ? (
-                            <div className="mt-3 flex items-end gap-2">
-                              <span
-                                className={cn(
-                                  'text-3xl font-semibold',
-                                  (repo.overall_score || 0) >= 80
-                                    ? 'text-green-400'
-                                    : (repo.overall_score || 0) >= 60
-                                    ? 'text-yellow-400'
-                                    : 'text-red-400',
-                                )}
-                              >
-                                {repo.overall_score?.toFixed(1)}
-                              </span>
-                              <span className="pb-1 text-xs text-muted-foreground">/100</span>
+                            <div className="mt-3">
+                              <SecurityScore
+                                data={{ overall_score: repo.overall_score }}
+                                size="sm"
+                                showLabel={false}
+                                animated={false}
+                              />
                             </div>
                           ) : (
                             <p className="mt-3 text-sm text-muted-foreground">
@@ -876,7 +860,7 @@ export function RepositoriesPage() {
           if (activeScan) {
             setActiveScan(null)
             setActiveScanError(null)
-            navigate(`/repositories/${activeScan.repoId}/results`, { replace: true })
+            navigate(`/scans/${activeScan.scanId}`, { replace: true })
           }
         }}
         onRetry={closeProgressModal}

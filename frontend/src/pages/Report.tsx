@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { resolveSecurityScore } from '../lib/security-score'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -271,9 +272,10 @@ export function Report() {
   }
 
   const finalFindings = state?.findings || report?.findings || []
+  const reportResolved = resolveSecurityScore({ overall_score: report?.overall_score })
   const finalScores = state?.scores || {
-    overall: report?.overall_score || 0,
-    grade: report?.overall_score >= 90 ? 'A' : report?.overall_score >= 80 ? 'B' : report?.overall_score >= 70 ? 'C' : report?.overall_score >= 60 ? 'D' : 'F',
+    overall: reportResolved?.value ?? 0,
+    grade: reportResolved?.grade ?? 'N/A',
     category_scores: report?.category_scores || {},
   }
   const finalRepoInfo = state?.findings ? {
@@ -706,7 +708,7 @@ export function Report() {
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-mono font-bold">LATEST</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Score {report.overall_score.toFixed(0)} · {report.total_findings} findings · {new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Score {reportResolved?.value?.toFixed(0) ?? '—'} · {report.total_findings} findings · {new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                   </div>
                 </div>
@@ -727,7 +729,7 @@ export function Report() {
                   <div className="min-w-0">
                     <p className="text-sm text-foreground truncate">{related.repository_name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Score {related.overall_score.toFixed(0)} · {related.total_findings} findings · {related.created_at ? new Date(related.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                      Score {resolveSecurityScore({ overall_score: related.overall_score })?.value?.toFixed(0) ?? '—'} · {related.total_findings} findings · {related.created_at ? new Date(related.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
                     </p>
                   </div>
                 </div>

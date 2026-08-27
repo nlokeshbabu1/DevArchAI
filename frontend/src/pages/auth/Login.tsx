@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,6 +17,7 @@ const EASE_OUT = [0.16, 1, 0.3, 1] as const
 
 export function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { login, setUser } = useAuthStore()
 
@@ -35,6 +36,13 @@ export function Login() {
   useEffect(() => {
     if (error) setError('')
   }, [formData.email, formData.password])
+
+  useEffect(() => {
+    const oauthError = searchParams.get('error')
+    if (oauthError) {
+      setError(decodeURIComponent(oauthError.replace(/\+/g, ' ')))
+    }
+  }, [searchParams])
 
   const validateForm = (): boolean => {
     const errors: { email?: string; password?: string } = {}
@@ -339,9 +347,6 @@ export function Login() {
                 Remember me
               </span>
             </label>
-            <a href="#" className="text-[13px] text-primary hover:text-primary/80 transition-colors font-medium">
-              Forgot password?
-            </a>
           </div>
 
           {/* Submit */}
@@ -370,10 +375,11 @@ export function Login() {
 
         {/* Terms */}
         <p className="text-[11px] text-center text-slate-500 leading-relaxed">
-          By signing in, you agree to our{' '}
-          <a href="#" className="text-slate-400 hover:text-white transition-colors underline">Terms of Service</a>
-          {' '}and{' '}
-          <a href="#" className="text-slate-400 hover:text-white transition-colors underline">Privacy Policy</a>
+          By signing in, you agree to DevArchAI&apos;s{' '}
+          <Link to="/docs/getting-started" className="text-slate-400 hover:text-white transition-colors underline">
+            acceptable use terms
+          </Link>
+          {' '}for security scanning services.
         </p>
       </div>
     </AuthLayout>

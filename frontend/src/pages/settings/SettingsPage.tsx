@@ -14,6 +14,7 @@ import { settingsApi, type ProfileData, type NotificationPrefs, type SessionData
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
 import { cn, copyToClipboard } from '../../lib/utils'
+import { PageHeader } from '../../components/ui/PageHeader'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -832,11 +833,10 @@ export function SettingsPage() {
 
       <div className="space-y-6 max-w-4xl pb-12">
 
-        {/* ─── Header ─── */}
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground mt-1">Manage your account settings and preferences</p>
-        </motion.div>
+        <PageHeader
+          title="Settings"
+          description="Manage your profile, security credentials, and active sessions"
+        />
 
         {/* ─── Tabs ─── */}
         <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10 w-fit">

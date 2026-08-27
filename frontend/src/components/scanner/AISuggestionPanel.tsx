@@ -90,8 +90,7 @@ export function AISuggestionPanel({
 
   const handleFeedback = (type: 'up' | 'down') => {
     setFeedback(type)
-    // TODO: Send feedback to backend
-    console.log(`Feedback ${type} for finding ${finding.rule_id}`)
+    // TODO: Send feedback to backend when API is available
   }
 
   const getLanguageFromPath = (path: string): string => {

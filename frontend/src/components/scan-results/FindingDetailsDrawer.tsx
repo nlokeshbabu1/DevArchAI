@@ -10,7 +10,9 @@ import {
 } from "lucide-react"
 import { Finding } from "../../types"
 import { cn, getSeverityColor, sanitizePath, copyToClipboard, parseScannerSources } from "../../lib/utils"
+import { FocusTrap } from "../ui/focus-trap"
 import { Button } from "../ui-animated"
+import { AISourceBadge } from "../ui/AISourceBadge"
 import { DiffViewer } from "../DiffViewer"
 
 interface FindingDetailsDrawerProps {
@@ -113,16 +115,15 @@ export function FindingDetailsDrawer({
               className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
             />
 
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-[#0a0a10] border-l border-white/10 overflow-hidden flex flex-col"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Finding details"
-            >
+            <FocusTrap active onClose={onClose}>
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-[#0a0a10] border-l border-white/10 overflow-hidden flex flex-col"
+                aria-label="Finding details"
+              >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -341,6 +342,12 @@ export function FindingDetailsDrawer({
                         <h4 className="text-xs font-semibold text-purple-300 uppercase tracking-wider">AI Explanation</h4>
                       </div>
                       <p className="text-sm text-purple-200/70 leading-relaxed">{finding.ai_explanation}</p>
+                      <AISourceBadge
+                        className="mt-3"
+                        source={(finding as { ai_source?: string }).ai_source ?? (finding as { job?: { source?: string } }).job?.source}
+                        sourceDisplay={(finding as { source_display?: string }).source_display}
+                        technology={(finding as { technology?: string }).technology}
+                      />
                     </div>
                   )}
 
@@ -499,6 +506,7 @@ export function FindingDetailsDrawer({
                 </div>
               </div>
             </motion.div>
+            </FocusTrap>
           </>
         )}
       </AnimatePresence>

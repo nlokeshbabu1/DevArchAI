@@ -13,6 +13,7 @@ import { Diagnostics } from "./Diagnostics"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { getFileName, copyToClipboard } from "../../lib/utils"
+import { resolveSecurityScore } from "../../lib/security-score"
 
 interface ScanResultData {
   id?: string
@@ -81,7 +82,12 @@ export function ScanResultsDashboard({
   const [drawerFindingId, setDrawerFindingId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const isEmpty = findings.length === 0
-  const score = result.overall_score ?? 0
+
+  const scoreData = {
+    security_score: result.security_score,
+    overall_score: result.overall_score,
+  }
+  const resolvedScore = resolveSecurityScore(scoreData)?.value ?? 0
 
   const rawFindingsCount = useMemo(() => {
     if (!result.scanner_executions) return undefined
@@ -172,9 +178,10 @@ export function ScanResultsDashboard({
 
         {/* ===== SECTION 1: Repository Summary ===== */}
         <SecurityHero
-          overallScore={score}
+          scoreData={scoreData}
           repoName={repoName}
           branch={result.branch}
+          commitHash={result.commit_hash}
           completedAt={result.completed_at}
           techStack={result.detected_technologies}
           filesAnalyzed={filesScanned}
@@ -186,7 +193,7 @@ export function ScanResultsDashboard({
         {/* Empty State */}
         {isEmpty ? (
           <EmptyState
-            score={score}
+            score={resolvedScore}
             repoName={repoName}
             filesAnalyzed={filesScanned}
             coveragePercent={coverageScores.sast ?? 100}
@@ -228,7 +235,7 @@ export function ScanResultsDashboard({
               <div className="lg:col-span-1">
                 <FixTheseFirst
                   findings={priorityFixes}
-                  currentScore={score}
+                  currentScore={resolvedScore}
                   onSelect={handleOpenDrawer}
                   selectedId={drawerFindingId}
                 />
@@ -315,7 +322,7 @@ export function ScanResultsDashboard({
         finding={drawerFinding}
         isOpen={!!drawerFinding}
         onClose={handleCloseDrawer}
-        currentScore={score}
+        currentScore={resolvedScore}
         onCopyFix={handleCopyFix}
         onDownloadPatch={handleDownloadPatch}
         onCreatePR={handleCreatePR}

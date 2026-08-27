@@ -18,6 +18,7 @@ import apiClient from '../../api/endpoints/client'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
 import { useRepositoryScan } from '../../hooks/useRepositoryScan'
 import { scansApi } from '../../api/endpoints/scans'
+import { resolveSecurityScore } from '../../lib/security-score'
 import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
 import type { ScanStage, StageMetadata } from '../../types'
 import { getFindingsCount, sanitizePath, cn, copyToClipboard } from '../../lib/utils'
@@ -58,29 +59,45 @@ export function RepositoryResultsPage() {
   })
 
   const scanResult = repoData?.scan
+  const scanId = scanResult?.id as string | undefined
+
+  const { data: unifiedScanResult } = useQuery({
+    queryKey: ['scan-results', scanId],
+    queryFn: () => scansApi.getScanResults(scanId!),
+    enabled: !!scanId,
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as { ai_status?: string } | undefined
+      const status = data?.ai_status ?? scanResult?.ai_status
+      if (status === 'pending' || status === 'queued' || status === 'processing') return 4000
+      return false
+    },
+  })
+
+  const displayResult = unifiedScanResult ?? scanResult
   const repoName = repoData?.repository_name || ''
   const repoUrl = repoData?.repository_url || ''
   const defaultBranch = repoData?.default_branch || 'main'
 
   const severityCounts = useMemo(() => {
-    if (!scanResult?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-    return scanResult.findings.reduce((acc: Record<string, number>, f: any) => {
+    if (!displayResult?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+    return displayResult.findings.reduce((acc: Record<string, number>, f: any) => {
       const sev = f.severity || 'info'
       acc[sev] = (acc[sev] || 0) + 1
       return acc
     }, { critical: 0, high: 0, medium: 0, low: 0, info: 0 })
-  }, [scanResult?.findings])
+  }, [displayResult?.findings])
 
   const topPriorityFixes = useMemo(() => {
-    if (!scanResult?.findings) return []
-    return scanResult.findings
+    if (!displayResult?.findings) return []
+    return displayResult.findings
       .filter((f: any) => f.severity === 'critical' || f.severity === 'high')
       .slice(0, 5)
-  }, [scanResult?.findings])
+  }, [displayResult?.findings])
 
-  const isAiPending = scanResult?.ai_status === 'pending' || scanResult?.ai_status === 'queued' || scanResult?.ai_status === 'processing'
-  const isAiReady = scanResult?.ai_status === 'completed'
-  const score = scanResult?.overall_score ?? scanResult?.security_score ?? 0
+  const isAiPending = displayResult?.ai_status === 'pending' || displayResult?.ai_status === 'queued' || displayResult?.ai_status === 'processing'
+  const isAiReady = displayResult?.ai_status === 'completed'
+  const resolvedScore = resolveSecurityScore(displayResult)?.value ?? 0
 
   const { data: stagesData } = useQuery({
     queryKey: ['scan-stages'],
@@ -96,6 +113,15 @@ export function RepositoryResultsPage() {
     branch: defaultBranch,
     queryKeysToInvalidate: repositoryId ? [['repository-results', repositoryId]] : undefined,
   })
+
+  // Canonical scan results live at /scans/:id — redirect when viewing a completed scan
+  useEffect(() => {
+    if (!scanId || scanStarted || scanState.isScanning) return
+    const status = displayResult?.status ?? scanResult?.status
+    if (status === 'completed') {
+      navigate(`/scans/${scanId}`, { replace: true })
+    }
+  }, [scanId, scanStarted, scanState.isScanning, displayResult?.status, scanResult?.status, navigate])
 
   // WebSocket for real-time updates during scan
   const { scanState: wsState, completedStages, stageMessages, failedStage } = useScanWebSocket({
@@ -314,7 +340,7 @@ export function RepositoryResultsPage() {
     if (navigator.share) {
       navigator.share({
         title: `Scan Results: ${repoName}`,
-        text: `Security scan results for ${repoName} — Score: ${score}`,
+        text: `Security scan results for ${repoName} — Score: ${resolvedScore}`,
         url: window.location.href,
       }).catch(() => {})
     } else {
@@ -456,7 +482,13 @@ export function RepositoryResultsPage() {
                 (scanResult.severityCounts?.high || 0) +
                 (scanResult.severityCounts?.medium || 0) +
                 (scanResult.severityCounts?.low || 0)
-              setScanCompleteToast({ score: scanResult.overall_score || 0, findings: total })
+              setScanCompleteToast({
+                score: resolveSecurityScore({
+                  overall_score: scanResult.overall_score,
+                  security_score: scanResult.security_score,
+                })?.value ?? 0,
+                findings: total,
+              })
               setTimeout(() => setScanCompleteToast(null), 5000)
             }
           }}
@@ -526,7 +558,7 @@ export function RepositoryResultsPage() {
       <AnimatePresence>
         {isAiPending && !scanState.isScanning && (
           <AIProgressBanner
-            aiStatus={scanResult?.ai_status}
+            aiStatus={displayResult?.ai_status}
             aiProgress={wsAiProgress}
             onAIComplete={handleAIComplete}
           />
@@ -536,14 +568,14 @@ export function RepositoryResultsPage() {
       {/* Main Dashboard */}
       <div className={cn(scanState.isScanning && 'opacity-40 pointer-events-none transition-opacity duration-300')}>
         <ScanResultsDashboard
-          result={scanResult || {}}
+          result={displayResult || {}}
           repoName={repoName}
-          findings={scanResult?.findings || []}
+          findings={displayResult?.findings || []}
           severityCounts={severityCounts}
           priorityFixes={topPriorityFixes}
           isAiReady={isAiReady}
           isAiPending={isAiPending}
-          aiSummary={scanResult?.findings?.[0]?.summary || null}
+          aiSummary={displayResult?.findings?.[0]?.summary || null}
           severityFilter={severityFilter}
           sortBy={sortBy}
           expandedFinding={expandedFinding}
@@ -592,7 +624,13 @@ export function RepositoryResultsPage() {
               (scanResult.severityCounts?.high || 0) +
               (scanResult.severityCounts?.medium || 0) +
               (scanResult.severityCounts?.low || 0)
-            setScanCompleteToast({ score: scanResult.overall_score || 0, findings: total })
+            setScanCompleteToast({
+              score: resolveSecurityScore({
+                overall_score: scanResult.overall_score,
+                security_score: scanResult.security_score,
+              })?.value ?? 0,
+              findings: total,
+            })
             setTimeout(() => setScanCompleteToast(null), 5000)
           }
         }}

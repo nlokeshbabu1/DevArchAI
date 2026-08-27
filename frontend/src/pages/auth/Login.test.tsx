@@ -82,13 +82,6 @@ describe('Login', () => {
     expect(rememberMeCheckbox).toBeInTheDocument()
   })
 
-  it('has forgot password link', () => {
-    renderLogin()
-
-    const forgotPasswordLink = screen.getByText(/forgot password\?/i)
-    expect(forgotPasswordLink).toBeInTheDocument()
-  })
-
   it('has sign up link', () => {
     renderLogin()
 
