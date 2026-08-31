@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type ConnectionStatus = 'not_connected' | 'connected' | 'syncing' | 'error' | 'coming_soon'
+export type ConnectionStatus = 'not_connected' | 'connecting' | 'connected' | 'syncing' | 'verifying' | 'error' | 'coming_soon'
 
 export interface IntegrationMeta {
   id: string

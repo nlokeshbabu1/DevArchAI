@@ -26,8 +26,10 @@ interface AuthState {
   login: (token: string) => void
   logout: () => void
   setUser: (user: User) => void
+  setLoading: (loading: boolean) => void
   checkAuth: () => void
   fetchUserInfo: () => Promise<void>
+  refreshSession: () => Promise<boolean>
   serverLogout: () => Promise<void>
 }
 
@@ -41,13 +43,14 @@ export const useAuthStore = create<AuthState>()(
     checkAuth: () => {
       const token = get().token
 
-      if (!token) {
-        set({ isAuthenticated: false, isLoading: false })
+      if (token) {
+        set({ isAuthenticated: true, isLoading: true })
+        get().fetchUserInfo()
         return
       }
 
-      set({ isAuthenticated: true, isLoading: true })
-      get().fetchUserInfo()
+      set({ isLoading: true })
+      get().refreshSession()
     },
 
     fetchUserInfo: async () => {
@@ -93,6 +96,36 @@ export const useAuthStore = create<AuthState>()(
       }, 0)
     },
 
+    refreshSession: async (): Promise<boolean> => {
+      try {
+        const response = await api.post<{ access_token: string; refresh_token?: string | null }>(
+          '/auth/refresh',
+          null,
+          { withCredentials: true },
+        )
+
+        const { access_token: newToken } = response.data
+        setAccessToken(newToken)
+        set({
+          token: newToken,
+          isAuthenticated: true,
+          isLoading: true,
+        })
+
+        await get().fetchUserInfo()
+        return true
+      } catch {
+        clearAuthMemory()
+        set({
+          token: null,
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+        })
+        return false
+      }
+    },
+
     logout: () => {
       clearAuthMemory()
 
@@ -112,6 +145,10 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: true,
         isLoading: false,
       })
+    },
+
+    setLoading: (loading: boolean) => {
+      set({ isLoading: loading })
     },
 
     serverLogout: async () => {

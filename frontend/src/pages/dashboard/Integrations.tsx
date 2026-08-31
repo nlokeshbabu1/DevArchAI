@@ -7,7 +7,12 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 import { integrationsApi, type IntegrationInfo } from '@/api/endpoints/integrations'
 import { cloudApi } from '@/api/endpoints/cloud'
+import { kubernetesApi, type KubernetesInfo } from '@/api/endpoints/kubernetes'
+import { toast } from '@/hooks/useToast'
 import { AwsOnboardingWizard } from '@/components/integrations/AwsOnboardingWizard'
+import { KubernetesConnectModal } from '@/components/integrations/KubernetesConnectModal'
+import { EksConnectModal } from '@/components/integrations/EksConnectModal'
+import { ProviderManageModal } from '@/components/integrations/ProviderManageModal'
 import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
 import { IntegrationCategory } from '@/components/integrations/IntegrationCategory'
 import { buildCategories } from '@/components/integrations/providers'
@@ -16,6 +21,15 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 
 type ViewMode = 'grid' | 'cloud-dashboard'
 
+const OAUTH_PROVIDERS = ['github', 'gitlab'] as const
+const COMING_SOON_PROVIDERS = ['azure', 'gcp', 'aks', 'gke', 'bitbucket', 'slack', 'teams', 'discord', 'pagerduty']
+
+interface ManageTarget {
+  id: string
+  name: string
+  account?: string
+}
+
 export function IntegrationsPage() {
   const { user } = useAuthStore()
   const [view, setView] = useState<ViewMode>('grid')
@@ -23,7 +37,12 @@ export function IntegrationsPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [awsModalOpen, setAwsModalOpen] = useState(false)
+  const [kubeModalOpen, setKubeModalOpen] = useState(false)
+  const [eksModalOpen, setEksModalOpen] = useState(false)
+  const [manageTarget, setManageTarget] = useState<ManageTarget | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [pending, setPending] = useState<Record<string, ConnectionStatus>>({})
+  const [kubeConnections, setKubeConnections] = useState<KubernetesInfo[]>([])
   const [awsConnection, setAwsConnection] = useState<{
     connected: boolean
     accountId?: string
@@ -64,6 +83,13 @@ export function IntegrationsPage() {
       setAwsConnection({ connected: false })
     }
 
+    try {
+      const kube = await kubernetesApi.list()
+      setKubeConnections(kube)
+    } catch {
+      setKubeConnections([])
+    }
+
     setLoading(false)
   }, [authProvider])
 
@@ -76,11 +102,30 @@ export function IntegrationsPage() {
     return (integration?.status as ConnectionStatus) || 'not_connected'
   }
 
+  const getCardStatus = (provider: string): ConnectionStatus => {
+    if (pending[provider]) return pending[provider]
+    return getStatus(provider)
+  }
+
+  const kubernetesConnected = getStatus('kubernetes') === 'connected'
+  const eksConnected = getStatus('eks') === 'connected'
+
+  const kubernetesAccount = kubernetesConnected
+    ? kubeConnections.find((c) => c.kind === 'generic' && c.is_active)?.name
+    : undefined
+  const eksAccount = eksConnected
+    ? kubeConnections.find((c) => c.kind === 'eks' && c.is_active)?.name
+    : undefined
+
   const categories = buildCategories({
-    githubStatus: getStatus('github'),
-    gitlabStatus: getStatus('gitlab'),
-    bitbucketStatus: getStatus('bitbucket'),
-    awsStatus: awsConnection.connected ? 'connected' : getStatus('aws'),
+    githubStatus: getCardStatus('github'),
+    gitlabStatus: getCardStatus('gitlab'),
+    bitbucketStatus: getCardStatus('bitbucket'),
+    awsStatus: awsConnection.connected ? 'connected' : getCardStatus('aws'),
+    kubernetesStatus: getCardStatus('kubernetes'),
+    eksStatus: getCardStatus('eks'),
+    kubernetesAccount,
+    eksAccount,
     awsAccountId: awsConnection.accountId,
     awsResourceCount: awsConnection.resourceCount,
     awsSecurityScore: awsConnection.securityScore,
@@ -106,16 +151,74 @@ export function IntegrationsPage() {
   )
   const totalProviders = categories.reduce((sum, cat) => sum + cat.providers.length, 0)
 
+  async function startOAuth(id: 'github' | 'gitlab') {
+    setPending((p) => ({ ...p, [id]: 'connecting' }))
+    try {
+      const res = await integrationsApi.getOAuthUrl(id)
+      if (res.oauth_url) {
+        window.location.href = res.oauth_url
+      } else {
+        setPending((p) => ({ ...p, [id]: 'error' }))
+        toast.error(res.error || `Unable to start ${id === 'github' ? 'GitHub' : 'GitLab'} connection`)
+        setTimeout(() => setPending((p) => ({ ...p, [id]: 'not_connected' })), 2000)
+      }
+    } catch (err: any) {
+      setPending((p) => ({ ...p, [id]: 'error' }))
+      toast.error(err.response?.data?.detail || err.message || `Failed to start ${id} connection`)
+      setTimeout(() => setPending((p) => ({ ...p, [id]: 'not_connected' })), 2000)
+    }
+  }
+
   function handleConnect(id: string) {
-    if (id === 'aws') setAwsModalOpen(true)
+    if ((OAUTH_PROVIDERS as readonly string[]).includes(id)) {
+      startOAuth(id as 'github' | 'gitlab')
+      return
+    }
+    if (id === 'aws') {
+      setAwsModalOpen(true)
+      return
+    }
+    if (id === 'kubernetes') {
+      setKubeModalOpen(true)
+      return
+    }
+    if (id === 'eks') {
+      setEksModalOpen(true)
+      return
+    }
+    if ((COMING_SOON_PROVIDERS as readonly string[]).includes(id)) {
+      toast.info('This integration is coming soon')
+      return
+    }
   }
 
   function handleManage(id: string) {
-    if (id === 'aws') setView('cloud-dashboard')
+    if (id === 'aws') {
+      setView('cloud-dashboard')
+      return
+    }
+    if (id === 'github' || id === 'gitlab') {
+      setManageTarget({ id, name: id === 'github' ? 'GitHub' : 'GitLab' })
+      return
+    }
+    if (id === 'kubernetes') {
+      setManageTarget({ id, name: 'Kubernetes', account: kubernetesAccount })
+      return
+    }
+    if (id === 'eks') {
+      setManageTarget({ id, name: 'EKS', account: eksAccount })
+      return
+    }
   }
 
   function handleNotify(id: string) {
-    // Future: notification settings
+    toast.info('Notification settings coming soon')
+  }
+
+  const handleDisconnected = () => {
+    setPending({})
+    load()
+    toast.success('Integration disconnected')
   }
 
   return (
@@ -133,6 +236,34 @@ export function IntegrationsPage() {
             setView('cloud-dashboard')
           }
         }}
+      />
+
+      <KubernetesConnectModal
+        open={kubeModalOpen}
+        onClose={() => setKubeModalOpen(false)}
+        onConnected={() => {
+          load()
+          toast.success('Kubernetes cluster connected')
+        }}
+      />
+
+      <EksConnectModal
+        open={eksModalOpen}
+        onClose={() => setEksModalOpen(false)}
+        onConnected={() => {
+          load()
+          toast.success('EKS cluster connected')
+        }}
+        onNeedAws={() => setAwsModalOpen(true)}
+      />
+
+      <ProviderManageModal
+        open={!!manageTarget}
+        onClose={() => setManageTarget(null)}
+        providerId={manageTarget?.id || ''}
+        providerName={manageTarget?.name || ''}
+        account={manageTarget?.account}
+        onDisconnected={handleDisconnected}
       />
 
       {/* Error Banner */}

@@ -15,6 +15,16 @@ export function ProviderActionButton({ status, onClick, className }: ProviderAct
       icon: Settings,
       style: 'bg-white/10 hover:bg-white/15 text-foreground border border-white/10',
     },
+    connecting: {
+      label: 'Connecting...',
+      icon: Loader2,
+      style: 'bg-blue-500/20 hover:bg-blue-500/25 text-blue-400 border border-blue-500/20 cursor-wait',
+    },
+    verifying: {
+      label: 'Verifying...',
+      icon: Loader2,
+      style: 'bg-amber-500/20 hover:bg-amber-500/25 text-amber-400 border border-amber-500/20 cursor-wait',
+    },
     syncing: {
       label: 'Scanning...',
       icon: Loader2,
@@ -41,15 +51,15 @@ export function ProviderActionButton({ status, onClick, className }: ProviderAct
 
   return (
     <button
-      onClick={status === 'coming_soon' ? undefined : onClick}
-      disabled={status === 'coming_soon'}
+      onClick={status === 'coming_soon' || status === 'connecting' || status === 'verifying' || status === 'syncing' ? undefined : onClick}
+      disabled={status === 'coming_soon' || status === 'connecting' || status === 'verifying' || status === 'syncing'}
       className={cn(
         'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
         style,
         className,
       )}
     >
-      <Icon className={cn('h-3.5 w-3.5', status === 'syncing' && 'animate-spin')} />
+      <Icon className={cn('h-3.5 w-3.5', (status === 'connecting' || status === 'verifying' || status === 'syncing') && 'animate-spin')} />
       {label}
     </button>
   )

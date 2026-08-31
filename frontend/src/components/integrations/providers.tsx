@@ -10,6 +10,10 @@ export const buildCategories = (opts: {
   gitlabStatus: ConnectionStatus
   bitbucketStatus: ConnectionStatus
   awsStatus: ConnectionStatus
+  kubernetesStatus: ConnectionStatus
+  eksStatus: ConnectionStatus
+  kubernetesAccount?: string
+  eksAccount?: string
   awsAccountId?: string
   awsResourceCount?: number
   awsSecurityScore?: number
@@ -83,28 +87,11 @@ export const buildCategories = (opts: {
     },
   ]
 
-  const cicd: IntegrationMeta[] = [
-    { id: 'github-actions', name: 'GitHub Actions', description: 'Workflow analysis, secret detection, supply chain security.', icon: 'github', category: 'cicd', status: STATUS.NC },
-    { id: 'gitlab-ci', name: 'GitLab CI', description: 'Pipeline configuration scanning, stage analysis.', icon: 'gitlab', category: 'cicd', status: STATUS.NC },
-    { id: 'jenkins', name: 'Jenkins', description: 'Pipeline lint, plugin vulnerability scanning.', icon: 'jenkins', category: 'cicd', status: STATUS.CS },
-    { id: 'azure-devops', name: 'Azure DevOps', description: 'Pipeline scanning, artifact analysis.', icon: 'azure', category: 'cicd', status: STATUS.CS },
-    { id: 'circleci', name: 'CircleCI', description: 'Config validation, orb security analysis.', icon: 'circleci', category: 'cicd', status: STATUS.CS },
-  ]
-
   const containers: IntegrationMeta[] = [
-    { id: 'kubernetes', name: 'Kubernetes', description: 'Cluster scanning, RBAC analysis, manifest validation.', icon: 'kubernetes', category: 'containers', status: STATUS.NC },
-    { id: 'openshift', name: 'OpenShift', description: 'Security context constraints, route scanning.', icon: 'openshift', category: 'containers', status: STATUS.CS },
-    { id: 'rancher', name: 'Rancher', description: 'Multi-cluster management scanning.', icon: 'rancher', category: 'containers', status: STATUS.CS },
-    { id: 'eks', name: 'EKS', description: 'Managed Kubernetes security scanning.', icon: 'aws', category: 'containers', status: STATUS.NC },
+    { id: 'kubernetes', name: 'Kubernetes', description: 'Cluster scanning, RBAC analysis, manifest validation.', icon: 'kubernetes', category: 'containers', status: opts.kubernetesStatus, connectedAccount: opts.kubernetesAccount },
+    { id: 'eks', name: 'EKS', description: 'Managed Kubernetes security scanning.', icon: 'aws', category: 'containers', status: opts.eksStatus, connectedAccount: opts.eksAccount },
     { id: 'aks', name: 'AKS', description: 'Azure Kubernetes security analysis.', icon: 'azure', category: 'containers', status: STATUS.CS },
     { id: 'gke', name: 'GKE', description: 'Google Kubernetes security scanning.', icon: 'gcp', category: 'containers', status: STATUS.CS },
-  ]
-
-  const iac: IntegrationMeta[] = [
-    { id: 'terraform', name: 'Terraform Cloud', description: 'State file scanning, drift detection, module analysis.', icon: 'terraform', category: 'iac', status: STATUS.NC },
-    { id: 'opentofu', name: 'OpenTofu', description: 'Open-source Terraform alternative scanning.', icon: 'opentofu', category: 'iac', status: STATUS.CS },
-    { id: 'pulumi', name: 'Pulumi', description: 'Infrastructure code scanning across languages.', icon: 'pulumi', category: 'iac', status: STATUS.CS },
-    { id: 'cloudformation', name: 'CloudFormation', description: 'AWS template scanning and drift detection.', icon: 'aws', category: 'iac', status: STATUS.NC },
   ]
 
   const notifications: IntegrationMeta[] = [
@@ -130,25 +117,11 @@ export const buildCategories = (opts: {
       providers: cloud,
     },
     {
-      id: 'cicd',
-      title: 'CI/CD Platforms',
-      description: 'Pipeline configuration and supply chain security.',
-      icon: null,
-      providers: cicd,
-    },
-    {
       id: 'containers',
       title: 'Container Platforms',
       description: 'Cluster and orchestration platform scanning.',
       icon: null,
       providers: containers,
-    },
-    {
-      id: 'iac',
-      title: 'Infrastructure as Code',
-      description: 'Template scanning, drift detection, and module analysis.',
-      icon: null,
-      providers: iac,
     },
     {
       id: 'notifications',

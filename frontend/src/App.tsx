@@ -7,7 +7,10 @@ import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
+import { IntegrationCallback } from './pages/auth/IntegrationCallback'
 import { useAuthStore } from './stores/auth-store'
+import { useCookieConsentStore } from './stores/cookie-consent-store'
+import { CookieConsentBanner } from './components/CookieConsentBanner'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
 const Report = lazy(() => import('./pages/Report').then(m => ({ default: m.Report })))
@@ -32,11 +35,16 @@ const DocPage = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default:
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
+  const consent = useCookieConsentStore((state) => state.status)
 
   // Check auth on mount
   useEffect(() => {
-    useAuthStore.getState().checkAuth()
-  }, [])
+    if (consent === 'accepted') {
+      useAuthStore.getState().checkAuth()
+    } else {
+      useAuthStore.getState().setLoading(false)
+    }
+  }, [consent])
 
   if (isLoading) {
     return (
@@ -68,10 +76,16 @@ function ScanResultRedirect() {
 }
 
 export default function App() {
-  // Check auth on app mount
+  const consent = useCookieConsentStore((state) => state.status)
+
+  // Check auth on app mount once cookies are accepted
   useEffect(() => {
-    useAuthStore.getState().checkAuth()
-  }, [])
+    if (consent === 'accepted') {
+      useAuthStore.getState().checkAuth()
+    } else {
+      useAuthStore.getState().setLoading(false)
+    }
+  }, [consent])
 
   return (
     <Suspense fallback={
@@ -80,6 +94,7 @@ export default function App() {
       </div>
     }>
     <ToastHost />
+    <CookieConsentBanner />
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
@@ -88,6 +103,7 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />
+      <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
 
       {/* Documentation - public */}

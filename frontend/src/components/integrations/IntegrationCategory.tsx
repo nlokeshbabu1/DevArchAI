@@ -43,7 +43,6 @@ export function IntegrationCategory({
       onConnect?.(integration.id)
     }
   }
-
   const connectedCount = category.providers.filter((p) => p.status === 'connected').length
   const totalCount = category.providers.length
 
