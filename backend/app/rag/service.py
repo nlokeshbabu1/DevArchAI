@@ -103,6 +103,10 @@ class RagKnowledgeService:
         logger.info("RAG_INVENTORY_SEEDED", documents=count)
         return count
 
+    async def re_embed(self) -> int:
+        """Backfill embeddings for chunks stored without them."""
+        return await self._ingestion.re_embed_chunks()
+
     async def stats(self) -> dict[str, Any]:
         from app.rag.cache import get_rag_cache
 

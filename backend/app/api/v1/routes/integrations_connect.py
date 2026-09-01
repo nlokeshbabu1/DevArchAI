@@ -14,13 +14,14 @@ import uuid
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.encryption import set_user_oauth_token
 from app.core.security import get_current_user
 from app.db.session import get_db
+from app.models.github_installation import GitHubInstallation
 from app.models.user import User
 
 logger = structlog.get_logger(__name__)
@@ -162,6 +163,14 @@ async def github_integration_disconnect(
     user.github_login = None
     user.github_access_token = None
     user.github_access_token_encrypted = None
+
+    # Remove any app-installation records for this user. The status endpoint
+    # treats a leftover GitHubInstallation row as "connected", so leaving them
+    # behind makes GitHub appear Connected even after disconnect.
+    await db.execute(
+        delete(GitHubInstallation).where(GitHubInstallation.user_id == user.id)
+    )
+
     await db.commit()
 
     logger.info("integration_github_disconnected", user_id=str(user.id))

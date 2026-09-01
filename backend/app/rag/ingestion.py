@@ -202,6 +202,53 @@ class RagIngestionService:
                 count += 1
         return count
 
+    async def re_embed_chunks(self) -> int:
+        """Backfill embeddings for chunks that were stored without them.
+
+        Idempotent: only chunks with a NULL ``embedding`` are touched, so
+        semantic (pgvector) retrieval works for documents that were ingested
+        before the embedding provider was available.
+
+        Returns the number of chunks updated. When the embedding provider is
+        unavailable it degrades gracefully (no-op) rather than raising.
+        """
+        router = get_embedding_router()
+        if not router.is_semantic_available():
+            logger.warning("RAG_REEMBED_SKIPPED", reason="embedding_unavailable")
+            return 0
+
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    sa.select(RagChunk.id, RagChunk.content)
+                    .where(RagChunk.embedding.is_(None))
+                    .order_by(RagChunk.document_id, RagChunk.chunk_index)
+                )
+            ).all()
+
+            if not rows:
+                logger.info("RAG_REEMBED_NONE")
+                return 0
+
+            texts = [r.content for r in rows]
+            ids = [r.id for r in rows]
+            try:
+                vectors = router.embed_texts(texts)
+            except (EmbeddingUnavailable, EmbeddingDimensionError) as exc:
+                logger.warning("RAG_REEMBED_FAILED", reason=str(exc))
+                return 0
+
+            for row_id, vector in zip(ids, vectors):
+                await session.execute(
+                    sa.update(RagChunk)
+                    .where(RagChunk.id == row_id)
+                    .values(embedding=vector)
+                )
+            await session.commit()
+
+        logger.info("RAG_REEMBED_COMPLETE", chunks=len(ids))
+        return len(ids)
+
     async def ingest_inventory(self) -> int:
         """Seed the RAG store from the technology inventory.
 

@@ -375,6 +375,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = Field(default=60, env="RATE_LIMIT_WINDOW")  # seconds
     RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, env="RATE_LIMIT_AUTH_REQUESTS")  # stricter for auth endpoints
     RATE_LIMIT_AUTH_WINDOW: int = Field(default=60, env="RATE_LIMIT_AUTH_WINDOW")  # seconds
+    # Refresh is the legitimate, frequent "keep session alive" call and also runs
+    # on every page reload, so it gets a much more generous (per-IP) bucket than
+    # login/register. Otherwise multi-tab or rapid reloads can lock a user out of
+    # restoring their session.
+    RATE_LIMIT_REFRESH_REQUESTS: int = Field(default=300, env="RATE_LIMIT_REFRESH_REQUESTS")
+    RATE_LIMIT_REFRESH_WINDOW: int = Field(default=60, env="RATE_LIMIT_REFRESH_WINDOW")  # seconds
 
     # Refresh Token Storage Mode
     AUTH_REFRESH_TOKEN_STORAGE_MODE: Literal["legacy", "hybrid", "cookie_only"] = Field(

@@ -221,7 +221,6 @@ class AIContextEngine:
         """Assemble RAG + MCP + snippet context for a finding. Never raises."""
         rule_id = str(getattr(finding, "rule_id", "") or "")
         technology = self.technology_for_finding(finding)
-        category = _enum_value(getattr(finding, "category", ""))
 
         context = AIContext(
             rule_id=rule_id,
@@ -233,8 +232,13 @@ class AIContextEngine:
 
         # 1. Rule knowledge from RAG (cost: cheap, cached).
         if self._rag_enabled():
+            # NOTE: We deliberately do NOT filter by the finding's `category`:
+            # the finding's DevOps category (e.g. "deployment", "scalability")
+            # uses a different taxonomy than the RAG inventory's rule categories
+            # (e.g. "security", "reliability"). Filtering would drop otherwise
+            # relevant rule knowledge, so retrieve by rule_id/technology only.
             context.rule_knowledge = await self._retrieve_rule_knowledge(
-                rule_id, technology, category
+                rule_id, technology, None
             )
 
         # 2. Live context from MCP — only when the technology requires it.

@@ -9,7 +9,6 @@ import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { IntegrationCallback } from './pages/auth/IntegrationCallback'
 import { useAuthStore } from './stores/auth-store'
-import { useCookieConsentStore } from './stores/cookie-consent-store'
 import { CookieConsentBanner } from './components/CookieConsentBanner'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -35,16 +34,15 @@ const DocPage = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default:
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
-  const consent = useCookieConsentStore((state) => state.status)
 
-  // Check auth on mount
+  // Restore the session on mount regardless of cookie-consent status.
+  // The HttpOnly refresh cookie is a first-party, security-essential cookie
+  // and must NOT be gated behind optional cookie consent, otherwise a page
+  // refresh would log the user out.
   useEffect(() => {
-    if (consent === 'accepted') {
-      useAuthStore.getState().checkAuth()
-    } else {
-      useAuthStore.getState().setLoading(false)
-    }
-  }, [consent])
+    useAuthStore.getState().checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (isLoading) {
     return (
@@ -76,16 +74,14 @@ function ScanResultRedirect() {
 }
 
 export default function App() {
-  const consent = useCookieConsentStore((state) => state.status)
-
-  // Check auth on app mount once cookies are accepted
+  // Restore the session on app mount regardless of cookie-consent status.
+  // The HttpOnly refresh cookie is a first-party, security-essential cookie
+  // and must NOT be gated behind optional cookie consent, otherwise a page
+  // refresh would log the user out.
   useEffect(() => {
-    if (consent === 'accepted') {
-      useAuthStore.getState().checkAuth()
-    } else {
-      useAuthStore.getState().setLoading(false)
-    }
-  }, [consent])
+    useAuthStore.getState().checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Suspense fallback={

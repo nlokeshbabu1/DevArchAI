@@ -1,5 +1,6 @@
 """AI Suggestion API routes - Production Grade."""
 
+import hashlib
 from datetime import datetime
 
 import structlog
@@ -23,7 +24,6 @@ from app.schemas.ai_suggestion import (
     CreatePRResponse,
 )
 from app.services.feature_gating import FeatureGatingService
-from app.services.fix_generation import get_fix_generation_service
 from app.services.github_integration import get_github_integration_service
 
 logger = structlog.get_logger(__name__)
@@ -390,10 +390,31 @@ async def generate_suggestion(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Suggestion already exists for this finding")
 
-    # Generate fix code
-    fix_service = get_fix_generation_service()
+    # Generate grounding context + fix via the AI context engine
+    # (RAG rule knowledge + MCP live context → LLM), falling back to a
+    # deterministic static recommendation when the LLM is unavailable.
+    from app.ai.context_engine import AIContextEngine
 
-    # Determine fix type from file path
+    fingerprint = hashlib.sha256(
+        "|".join(
+            [
+                str(finding.rule_id or ""),
+                str(finding.file_path or ""),
+                str(finding.line_number or ""),
+            ]
+        ).encode("utf-8")
+    ).hexdigest()
+
+    engine = AIContextEngine()
+    context = await engine.build_context(finding)
+    recommendation = await engine.generate_recommendation(finding, context, fingerprint)
+    rec = recommendation.to_dict() if hasattr(recommendation, "to_dict") else recommendation
+
+    fix_code = rec.get("fix_code") or rec.get("fix_example") or rec.get("full_example")
+    if not fix_code:
+        raise HTTPException(status_code=500, detail="Failed to generate fix")
+
+    # Determine fix_type from file path (informational; not used to gate generation)
     file_path = finding.file_path or ""
     if ".tf" in file_path:
         fix_type = "terraform"
@@ -407,18 +428,6 @@ async def generate_suggestion(
     else:
         fix_type = "general"
 
-    fix_result = fix_service.generate_fix(
-        finding={
-            "rule_id": finding.rule_id,
-            "description": finding.description,
-            "file_path": finding.file_path,
-        },
-        fix_type=fix_type,
-    )
-
-    if not fix_result["success"]:
-        raise HTTPException(status_code=500, detail=fix_result.get("error", "Failed to generate fix"))
-
     # Create suggestion
     suggestion = AISuggestion(
         finding_id=finding_id,
@@ -426,12 +435,12 @@ async def generate_suggestion(
         title=finding.rule_name,
         description=finding.description,
         severity=finding.severity.value if hasattr(finding.severity, 'value') else str(finding.severity),
-        confidence=0.9,
+        confidence=float(rec.get("confidence", 0.9)),
         category=finding.category.value if hasattr(finding.category, 'value') else str(finding.category),
         fix_type=fix_type,
         file_path=finding.file_path or "",
         line_number=finding.line_number,
-        fix_code=fix_result["fix_code"],
+        fix_code=fix_code,
         auto_fix_available=True,
         status=SuggestionStatus.OPEN,
     )
@@ -443,8 +452,11 @@ async def generate_suggestion(
     return {
         "success": True,
         "suggestion_id": str(suggestion.id),
-        "fix_code": fix_result["fix_code"],
+        "fix_code": fix_code,
         "fix_type": fix_type,
+        "summary": rec.get("summary", ""),
+        "ai_generated": bool(rec.get("ai_generated", False)),
+        "source": rec.get("source", "unknown"),
     }
 
 

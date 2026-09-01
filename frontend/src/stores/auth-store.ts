@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api } from '../lib/api'
-import { setAccessToken, clearAuthMemory } from '../lib/auth-token'
+import { performRefresh, setAccessToken, clearAuthMemory } from '../lib/auth-token'
 
 interface User {
   id: string
@@ -98,14 +98,11 @@ export const useAuthStore = create<AuthState>()(
 
     refreshSession: async (): Promise<boolean> => {
       try {
-        const response = await api.post<{ access_token: string; refresh_token?: string | null }>(
-          '/auth/refresh',
-          null,
-          { withCredentials: true },
-        )
+        // performRefresh() is single-flight and shared with the axios 401
+        // interceptor, so concurrent session restores on a page refresh issue
+        // exactly one /auth/refresh (no double cookie rotation / reuse logout).
+        const newToken = await performRefresh()
 
-        const { access_token: newToken } = response.data
-        setAccessToken(newToken)
         set({
           token: newToken,
           isAuthenticated: true,

@@ -45,7 +45,7 @@ async def get_integration_status(
         gh_result = await db.execute(
             select(GitHubInstallation).where(GitHubInstallation.user_id == user.id)
         )
-        github_connected = gh_result.scalar_one_or_none() is not None
+        github_connected = gh_result.scalars().first() is not None
 
     # GitLab: an OAuth identity attached to the user.
     gitlab_connected = bool(
