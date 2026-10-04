@@ -338,7 +338,7 @@ export function VersionAdvisorPanel({ connectionId, advisor, onAdvisorUpdate }: 
                   >
                     {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     <span className="font-medium">Phase {p}: {String(phase.title)}</span>
-                    {phase.blocking && <SeverityBadge severity="blocking" />}
+                    {phase.blocking ? <SeverityBadge severity="blocking" /> : null}
                   </button>
                   {isOpen && (
                     <div className="px-3 pb-3 text-xs text-muted-foreground space-y-1">

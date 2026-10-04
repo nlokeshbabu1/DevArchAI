@@ -27,11 +27,13 @@ export interface KubernetesInfo {
   is_active: boolean
   node_count?: number | null
   pod_count?: number | null
+  service_count?: number | null
   namespace_count?: number | null
   deployment_count?: number | null
   ingress_count?: number | null
   error_message?: string | null
   permissions?: PermissionInfo[] | null
+  last_verified_at?: string | null
   created_at?: string | null
   updated_at?: string | null
 }

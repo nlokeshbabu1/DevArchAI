@@ -54,18 +54,18 @@ function SeveritySection({
           {items.map((item, i) => (
             <div key={i} className="rounded-lg border border-white/10 p-3 text-xs space-y-1.5">
               <div className="font-semibold">{String(item.title || item.finding || item.issue)}</div>
-              {item.affected_resource && (
+              {item.affected_resource != null ? (
                 <div className="text-muted-foreground font-mono">
                   {String(item.namespace)}{item.namespace ? '/' : ''}{String(item.affected_resource)}
                 </div>
-              )}
-              {item.explanation && <div>{String(item.explanation)}</div>}
-              {item.recommended_action && (
+              ) : null}
+              {item.explanation != null ? <div>{String(item.explanation)}</div> : null}
+              {item.recommended_action != null ? (
                 <div className="text-emerald-400/80">→ {String(item.recommended_action)}</div>
-              )}
+              ) : null}
               <div className="flex gap-3 text-muted-foreground">
-                {item.confidence && <span>Confidence: {String(item.confidence)}</span>}
-                {item.source && <span>Source: {String(item.source)}</span>}
+                {item.confidence != null ? <span>Confidence: {String(item.confidence)}</span> : null}
+                {item.source != null ? <span>Source: {String(item.source)}</span> : null}
               </div>
             </div>
           ))}
@@ -135,7 +135,7 @@ export function AICopilotPanel({ connectionId }: Props) {
   const result = aiJob?.result
   const healthScores = result?.health_scores as Record<string, number> | undefined
   const bySeverity = result?.findings_by_severity as Record<string, Record<string, unknown>[]> | undefined
-  const troubleshoot = result?.root_cause ? result : null
+  const troubleshoot = result?.root_cause != null
 
   return (
     <div className="space-y-6">
@@ -185,7 +185,7 @@ export function AICopilotPanel({ connectionId }: Props) {
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {/* Health scores */}
-      {healthScores && (
+      {healthScores ? (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -202,35 +202,35 @@ export function AICopilotPanel({ connectionId }: Props) {
             <ScoreBar label="Upgrade Readiness" score={healthScores.upgrade_readiness} />
           </div>
         </motion.div>
-      )}
+      ) : null}
 
       {/* Troubleshoot result */}
-      {troubleshoot && (
+      {troubleshoot ? (
         <div className="rounded-xl border border-white/10 bg-card/60 p-4 space-y-3">
           <h3 className="text-sm font-semibold">Investigation Result</h3>
           <div className="text-xs space-y-2">
             <div><span className="text-muted-foreground">Root Cause:</span> {String(result?.root_cause)}</div>
             <div><span className="text-muted-foreground">Confidence:</span> {String(result?.confidence)}</div>
-            {result?.recommended_fix && (
+            {result?.recommended_fix != null ? (
               <div className="text-emerald-400/80">→ {String(result.recommended_fix)}</div>
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Findings by severity */}
-      {bySeverity && (
+      {bySeverity ? (
         <div className="space-y-2">
           <SeveritySection title="Critical" items={bySeverity.critical || []} color="text-red-400" />
           <SeveritySection title="High" items={bySeverity.high || []} color="text-orange-400" />
           <SeveritySection title="Medium" items={bySeverity.medium || []} color="text-amber-400" />
           <SeveritySection title="Informational" items={bySeverity.informational || []} color="text-muted-foreground" />
         </div>
-      )}
+      ) : null}
 
-      {aiJob?.status === 'completed' && !bySeverity && !troubleshoot && result?.summary && (
+      {aiJob?.status === 'completed' && !bySeverity && !troubleshoot && result?.summary != null ? (
         <p className="text-sm">{String(result.summary)}</p>
-      )}
+      ) : null}
 
       {aiJob?.status === 'failed' && (
         <div className="space-y-2">
