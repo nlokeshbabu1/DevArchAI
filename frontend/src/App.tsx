@@ -27,6 +27,8 @@ const AISuggestionsPage = lazy(() => import('./pages/dashboard/AISuggestions').t
 const IntegrationsPage = lazy(() => import('./pages/dashboard/Integrations').then(m => ({ default: m.IntegrationsPage })))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const AwsPage = lazy(() => import('./pages/aws/AwsPage').then(m => ({ default: m.AwsPage })))
+const KubernetesWorkspacePage = lazy(() => import('./pages/kubernetes/KubernetesWorkspacePage').then(m => ({ default: m.KubernetesWorkspacePage })))
+const ClusterDetailPage = lazy(() => import('./pages/kubernetes/ClusterDetailPage').then(m => ({ default: m.ClusterDetailPage })))
 const DocsHome = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocsHome })))
 const DocPage = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocPage })))
 
@@ -210,6 +212,22 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <AwsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/kubernetes" element={
+        <ProtectedRoute>
+          <Layout>
+            <KubernetesWorkspacePage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/kubernetes/:connectionId" element={
+        <ProtectedRoute>
+          <Layout>
+            <ClusterDetailPage />
           </Layout>
         </ProtectedRoute>
       } />

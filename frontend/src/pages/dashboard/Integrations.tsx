@@ -111,11 +111,32 @@ export function IntegrationsPage() {
   const eksConnected = getStatus('eks') === 'connected'
 
   const kubernetesAccount = kubernetesConnected
-    ? kubeConnections.find((c) => c.kind === 'generic' && c.is_active)?.name
+    ? kubeConnections.find((c) => c.kind === 'generic' && c.is_active)?.cluster_name
+      || kubeConnections.find((c) => c.kind === 'generic' && c.is_active)?.name
     : undefined
   const eksAccount = eksConnected
-    ? kubeConnections.find((c) => c.kind === 'eks' && c.is_active)?.name
+    ? kubeConnections.find((c) => c.kind === 'eks' && c.is_active)?.cluster_name
+      || kubeConnections.find((c) => c.kind === 'eks' && c.is_active)?.name
     : undefined
+
+  const activeGeneric = kubeConnections.find((c) => c.kind === 'generic' && c.is_active)
+  const activeEks = kubeConnections.find((c) => c.kind === 'eks' && c.is_active)
+
+  const toConnMeta = (c: typeof activeGeneric) =>
+    c
+      ? {
+          id: c.id,
+          version: c.kubernetes_version,
+          healthStatus: c.health_status || c.status,
+          lastVerified: c.last_verified_at ? formatTimeAgo(c.last_verified_at) : undefined,
+          nodeCount: c.node_count,
+          podCount: c.pod_count,
+          serviceCount: c.service_count,
+          namespaceCount: c.namespace_count,
+          deploymentCount: c.deployment_count,
+          ingressCount: c.ingress_count,
+        }
+      : undefined
 
   const categories = buildCategories({
     githubStatus: getCardStatus('github'),
@@ -126,6 +147,8 @@ export function IntegrationsPage() {
     eksStatus: getCardStatus('eks'),
     kubernetesAccount,
     eksAccount,
+    kubernetesConnection: toConnMeta(activeGeneric),
+    eksConnection: toConnMeta(activeEks),
     awsAccountId: awsConnection.accountId,
     awsResourceCount: awsConnection.resourceCount,
     awsSecurityScore: awsConnection.securityScore,

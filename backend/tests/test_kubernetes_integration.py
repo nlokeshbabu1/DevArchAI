@@ -3,11 +3,12 @@ Tests for the Kubernetes integration routes (kubeconfig validation).
 """
 
 import base64
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from app.core.security import get_current_user
+from app.kubernetes.types import ConnectionStatus, ValidationResult
 from app.main import app
 
 client = TestClient(app)
@@ -52,12 +53,18 @@ class TestKubernetesTestEndpoint:
         app.dependency_overrides.clear()
 
     def test_valid_kubeconfig(self):
-        response = client.post(
-            "/api/v1/kubernetes/test",
-            json={"name": "test-cluster", "kubeconfig": _valid_kubeconfig()},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
+        with patch("app.api.v1.routes.kubernetes.validate_kubeconfig_text", new_callable=AsyncMock) as mock_val:
+            mock_val.return_value = ValidationResult(
+                status=ConnectionStatus.CONNECTED,
+                kubernetes_version="v1.34",
+                cluster_name="local",
+            )
+            response = client.post(
+                "/api/v1/kubernetes/test",
+                json={"name": "test-cluster", "kubeconfig": _valid_kubeconfig()},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
 
     def test_missing_clusters_section(self):
         bad = base64.b64encode(b"kind: Config\ncontexts: []").decode("ascii")

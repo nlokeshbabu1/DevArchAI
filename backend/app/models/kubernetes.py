@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -31,6 +31,16 @@ class KubernetesConnection(Base):
     aws_account_id = Column(String(128), nullable=True)
     aws_region = Column(String(64), nullable=True)
     eks_cluster_name = Column(String(200), nullable=True)
+    cluster_name = Column(String(200), nullable=True)
+    kubernetes_version = Column(String(32), nullable=True)
+    last_verified_at = Column(DateTime(timezone=True), nullable=True)
+    health_status = Column(String(32), nullable=True)
+    node_count = Column(Integer, nullable=True)
+    pod_count = Column(Integer, nullable=True)
+    service_count = Column(Integer, nullable=True)
+    namespace_count = Column(Integer, nullable=True)
+    deployment_count = Column(Integer, nullable=True)
+    ingress_count = Column(Integer, nullable=True)
     status = Column(String(20), nullable=False, default="connected")
     is_active = Column(Boolean, nullable=False, default=True)
     error_message = Column(Text, nullable=True)

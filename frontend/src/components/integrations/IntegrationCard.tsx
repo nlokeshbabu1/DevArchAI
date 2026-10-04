@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { CheckCircle, Clock, Zap } from 'lucide-react'
+import { CheckCircle, Clock, Zap, ArrowRight } from 'lucide-react'
 import { ProviderLogo } from './ProviderLogo'
 import { ConnectionBadge } from './ConnectionBadge'
 import { ProviderActionButton } from './ProviderActionButton'
@@ -23,6 +24,11 @@ export function IntegrationCard({ integration, index = 0, onClick, className }: 
     connectedAccount,
     lastScan,
     extraStats,
+    connectionId,
+    healthStatus,
+    kubernetesVersion,
+    lastVerified,
+    providerLabel,
   } = integration
 
   const isConnected = status === 'connected'
@@ -63,11 +69,19 @@ export function IntegrationCard({ integration, index = 0, onClick, className }: 
         {isConnected && connectedAccount && (
           <div className="mb-3 px-3 py-2 rounded-lg bg-white/5 border border-white/5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-              Account
+              {providerLabel || 'Cluster'}
             </div>
             <div className="text-xs font-medium text-foreground font-mono truncate">
               {connectedAccount}
             </div>
+            {kubernetesVersion && (
+              <div className="text-[10px] text-muted-foreground mt-1">{kubernetesVersion}</div>
+            )}
+            {healthStatus && (
+              <div className="text-[10px] mt-1 capitalize text-emerald-400">
+                {healthStatus === 'connected' ? '✓ Healthy' : healthStatus.replace(/_/g, ' ')}
+              </div>
+            )}
           </div>
         )}
 
@@ -83,12 +97,24 @@ export function IntegrationCard({ integration, index = 0, onClick, className }: 
           </div>
         )}
 
-        {/* Last scan */}
-        {isConnected && lastScan && (
+        {/* Last scan / verified */}
+        {isConnected && (lastScan || lastVerified) && (
           <div className="flex items-center gap-1.5 mb-3 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3" />
-            Last scan {lastScan}
+            {lastVerified ? `Last verified ${lastVerified}` : `Last scan ${lastScan}`}
           </div>
+        )}
+
+        {/* Open cluster for K8s */}
+        {isConnected && connectionId && (
+          <Link
+            to="/kubernetes"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-2 w-full justify-center mb-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all"
+          >
+            Open Cluster
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         )}
 
         {/* Features */}

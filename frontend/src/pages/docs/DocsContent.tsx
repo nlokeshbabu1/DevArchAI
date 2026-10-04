@@ -378,6 +378,299 @@ export function AwsIntegrationContent() {
   )
 }
 
+export function KubernetesIntegrationContent() {
+  return (
+    <>
+      <H2 id="overview">Overview</H2>
+      <P>
+        DevArchAI connects to <strong>live Kubernetes clusters</strong> for health monitoring, security analysis,
+        upgrade readiness analysis, version advisory, and AI copilot troubleshooting. Connect from the <a href="/integrations" className="text-primary hover:underline">Web UI Integrations</a> page
+        or the <code className="text-primary">devsec k8s</code> CLI — both use the same backend connection records.
+      </P>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-4">
+        {['Local / On-Prem', 'Amazon EKS', 'Azure AKS*', 'Google GKE*'].map((s) => (
+          <div key={s} className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-medium text-foreground text-center">{s}</div>
+        ))}
+      </div>
+      <Callout type="info" title="* AKS / GKE">
+        AKS and GKE managed-connect APIs are coming soon. You can connect AKS/GKE clusters today via kubeconfig
+        (<code className="text-primary">devsec k8s config --kubeconfig</code>).
+      </Callout>
+
+      <H2 id="architecture">Architecture & Data Flow</H2>
+      <P>All cluster access is <strong>backend-mediated</strong>. The CLI and Web UI never talk to the Kubernetes API directly.</P>
+      <CodeBlock code={`┌─────────────┐     ┌─────────────┐
+│  Web UI     │     │  devsec CLI │
+│ /kubernetes │     │  devsec k8s │
+└──────┬──────┘     └──────┬──────┘
+       │                   │
+       └─────────┬─────────┘
+                 ▼
+       ┌─────────────────────┐
+       │  DevArchAI Backend   │
+       │  /api/v1/kubernetes  │
+       └──────────┬──────────┘
+                  ▼
+       ┌─────────────────────┐
+       │  Kubernetes API      │
+       │  (your cluster)      │
+       └─────────────────────┘`} />
+      <Ul>
+        <li>Kubeconfigs are encrypted at rest — never returned to the browser or CLI</li>
+        <li>Connections are stored per-user in the backend database (single source of truth)</li>
+        <li>AI analysis runs via Celery/background workers — results sync to both CLI and Web UI</li>
+      </Ul>
+
+      <H2 id="prerequisites">Prerequisites</H2>
+      <Ul>
+        <li>A DevArchAI account with an API key (CLI) or web session (UI)</li>
+        <li>A reachable Kubernetes cluster (kind, minikube, on-prem, or cloud-managed)</li>
+        <li>A kubeconfig with read permissions (list nodes, pods, deployments, services, events)</li>
+        <li>For EKS: an active <a href="/docs/aws-integration" className="text-primary hover:underline">AWS connection</a> in DevArchAI</li>
+      </Ul>
+
+      <H2 id="web-ui-connect">Web UI: Connect a Cluster</H2>
+
+      <H3 id="web-ui-step-1">Step 1: Open Integrations</H3>
+      <Ol>
+        <li>Sign in at <a href="/login" className="text-primary hover:underline">devarchai.xyz</a></li>
+        <li>Navigate to <a href="/integrations" className="text-primary hover:underline">Integrations</a> in the sidebar</li>
+        <li>Find the <strong>Kubernetes</strong> card under the Containers category</li>
+      </Ol>
+
+      <H3 id="web-ui-step-2">Step 2: Connect Kubernetes</H3>
+      <Ol>
+        <li>Click <strong>Connect</strong> on the Kubernetes card</li>
+        <li>Enter a connection name (e.g. <code className="text-primary">production-hyd</code>)</li>
+        <li>Upload your kubeconfig file or paste the YAML contents</li>
+        <li>Optionally specify a context name if your kubeconfig has multiple contexts</li>
+        <li>Click <strong>Test Connection</strong> to validate before saving</li>
+        <li>Click <strong>Connect</strong> to register the cluster</li>
+      </Ol>
+      <Callout type="warning" title="Security">
+        DevArchAI never displays tokens, client keys, certificates, or kubeconfig secrets in the UI.
+        Only cluster metadata (name, version, node count) is shown after connection.
+      </Callout>
+
+      <H3 id="web-ui-step-3">Step 3: View Cluster Dashboard</H3>
+      <Ol>
+        <li>Go to <a href="/kubernetes" className="text-primary hover:underline">Kubernetes</a> in the sidebar</li>
+        <li>Click your connected cluster to open the detail page</li>
+        <li>Explore tabs: Overview, Nodes, Pods, Events, Security, Version, AI Analysis</li>
+      </Ol>
+
+      <H3 id="web-ui-step-4">Step 4: Run Analysis</H3>
+      <P>From the cluster detail page you can:</P>
+      <Ul>
+        <li><strong>Refresh</strong> — collect latest cluster snapshot</li>
+        <li><strong>Health Check</strong> — re-validate API connectivity and permissions</li>
+        <li><strong>Security Scan</strong> — run the Kubernetes security engine</li>
+        <li><strong>Versions → Analyze Upgrade</strong> — full upgrade readiness analysis (API compatibility, CRDs, upgrade path, what could break)</li>
+        <li><strong>AI Analysis → Run Copilot</strong> — evidence-based cluster health and recommendations (runs in background)</li>
+        <li><strong>AI Analysis → Troubleshooting</strong> — ask natural-language questions (e.g. &quot;why is payment-api failing?&quot;)</li>
+      </Ul>
+
+      <H2 id="cli-connect">CLI: Connect a Cluster</H2>
+
+      <H3 id="cli-step-1">Step 1: Install & Authenticate</H3>
+      <CodeBlock lang="bash" code={`pip install devsec
+devsec auth login --api-key sk-your-key-here
+devsec auth status`} />
+
+      <H3 id="cli-step-2">Step 2: Connect via Kubeconfig</H3>
+      <CodeBlock lang="bash" code={`# Connect local or on-premises cluster
+devsec k8s config --kubeconfig ~/.kube/config --name my-cluster
+
+# Specify a context (optional)
+devsec k8s config \\
+  --kubeconfig ~/.kube/config \\
+  --context production \\
+  --name production-hyd`} />
+      <P>Expected validation output:</P>
+      <CodeBlock code={`✓ Kubeconfig detected
+✓ Context validated
+✓ Kubernetes API reachable
+✓ Authentication successful
+✓ Permissions validated
+✓ Cluster discovered
+
+Cluster: production-hyd
+  Version: v1.30.0
+  Nodes: 4`} />
+
+      <H3 id="cli-step-3">Step 3: Verify Connection</H3>
+      <CodeBlock lang="bash" code={`# List all connected clusters
+devsec k8s list
+
+# Check connection status
+devsec k8s status
+
+# Run diagnostics
+devsec k8s doctor`} />
+
+      <H3 id="cli-step-4">Step 4: Inspect & Analyze</H3>
+      <CodeBlock lang="bash" code={`# Cluster overview
+devsec k8s inspect
+
+# Health score (from backend evidence engine)
+devsec k8s health
+
+# Security scan
+devsec k8s security
+
+# Version upgrade advisor (baseline)
+devsec k8s version
+devsec k8s advisor --target v1.34
+
+# Full upgrade readiness analysis (background job)
+devsec k8s upgrade analyze --target v1.34 --wait
+
+# AI copilot analysis (background job)
+devsec k8s troubleshoot --watch
+
+# AI troubleshooting with a specific question
+devsec k8s troubleshoot "why is payment-api failing?" --watch`} />
+
+      <H2 id="cli-commands">CLI Commands Reference</H2>
+      <Table
+        headers={['Command', 'Description']}
+        rows={[
+          ['devsec k8s config --kubeconfig <path>', 'Connect via kubeconfig (local/on-prem)'],
+          ['devsec k8s connect --type eks', 'Connect Amazon EKS cluster'],
+          ['devsec k8s connect --type aks', 'AKS (not yet available — use kubeconfig)'],
+          ['devsec k8s connect --type gke', 'GKE (not yet available — use kubeconfig)'],
+          ['devsec k8s list', 'List connected clusters'],
+          ['devsec k8s status [cluster]', 'Show connection status'],
+          ['devsec k8s inspect [cluster]', 'Cluster overview dashboard'],
+          ['devsec k8s health [cluster]', 'Health score from backend'],
+          ['devsec k8s security [cluster]', 'Run security scan'],
+          ['devsec k8s nodes [cluster]', 'List nodes'],
+          ['devsec k8s pods [cluster] [-n ns]', 'List pods'],
+          ['devsec k8s workloads [cluster]', 'List deployments'],
+          ['devsec k8s services [cluster]', 'List services'],
+          ['devsec k8s events [cluster]', 'List cluster events'],
+          ['devsec k8s version [cluster] [--target v1.34]', 'Version upgrade advisor (baseline)'],
+          ['devsec k8s advisor [cluster] [--target v1.34]', 'Alias for version; --target shows per-version impact'],
+          ['devsec k8s upgrade analyze [--target v1.34] [--wait]', 'Full upgrade readiness analysis (async job)'],
+          ['devsec k8s troubleshoot [question] [--watch]', 'AI copilot or troubleshooting with optional question'],
+          ['devsec k8s analyze [--wait]', 'Alias for troubleshoot (copilot mode)'],
+          ['devsec k8s doctor [--kubeconfig <path>]', 'Diagnostic checks'],
+          ['devsec k8s disconnect <cluster>', 'Remove connection'],
+        ]}
+      />
+      <Callout type="info" title="Alias">
+        <code className="text-primary">devsec kubernetes</code> is an alias for <code className="text-primary">devsec k8s</code>.
+        All commands support <code className="text-primary">--json</code> for scripting.
+      </Callout>
+
+      <H2 id="eks-integration">Amazon EKS</H2>
+      <P>EKS uses your existing DevArchAI AWS connection — no additional AWS credentials needed.</P>
+      <Steps>
+        <Step number="1" title="Connect AWS (if not already)">
+          <P>Follow the <a href="/docs/aws-integration" className="text-primary hover:underline">AWS Integration guide</a> to connect your AWS account via the Integrations page.</P>
+        </Step>
+        <Step number="2" title="Discover EKS clusters">
+          <CodeBlock lang="bash" code={`# CLI: list available EKS clusters
+devsec k8s connect --type eks --region us-east-1
+# Shows available clusters if --cluster-name is omitted`} />
+        </Step>
+        <Step number="3" title="Connect EKS cluster">
+          <CodeBlock lang="bash" code={`devsec k8s connect --type eks \\
+  --region us-east-1 \\
+  --cluster-name production-eks \\
+  --name prod-eks`} />
+          <P>Or use the Web UI: Integrations → EKS → select region and cluster.</P>
+        </Step>
+      </Steps>
+
+      <H2 id="aks-gke">Azure AKS & Google GKE</H2>
+      <Callout type="warning" title="Coming Soon">
+        Managed AKS and GKE connect APIs are not yet available. Attempting{' '}
+        <code className="text-primary">devsec k8s connect --type aks</code> or{' '}
+        <code className="text-primary">--type gke</code> returns an honest &quot;not yet available&quot; message.
+      </Callout>
+      <P><strong>Workaround today:</strong> export your AKS/GKE kubeconfig and connect via kubeconfig:</P>
+      <CodeBlock lang="bash" code={`# AKS
+az aks get-credentials --resource-group myRG --name myAKSCluster
+devsec k8s config --kubeconfig ~/.kube/config --name my-aks
+
+# GKE
+gcloud container clusters get-credentials my-gke --zone us-central1-a
+devsec k8s config --kubeconfig ~/.kube/config --name my-gke`} />
+
+      <H2 id="cli-web-sync">CLI ↔ Web UI Synchronization</H2>
+      <P>Connections are stored in the <strong>backend database</strong> — not in local CLI files.</P>
+      <Table
+        headers={['Action', 'CLI', 'Web UI', 'Synced?']}
+        rows={[
+          ['Connect cluster', 'devsec k8s config', 'Integrations → Connect', '✓ Immediately'],
+          ['List clusters', 'devsec k8s list', '/kubernetes page', '✓ Same data'],
+          ['Security scan', 'devsec k8s security', 'Cluster → Security tab', '✓ Same engine'],
+          ['Upgrade analysis', 'devsec k8s upgrade analyze --wait', 'Cluster → Versions → Analyze Upgrade', '✓ Same job'],
+          ['AI copilot', 'devsec k8s troubleshoot --watch', 'Cluster → AI Analysis → Run Copilot', '✓ Same job'],
+          ['AI troubleshoot', 'devsec k8s troubleshoot "question" --watch', 'Cluster → AI Analysis → Investigate', '✓ Same job'],
+          ['Disconnect', 'devsec k8s disconnect', 'Integrations → Manage', '✓ Immediately'],
+        ]}
+      />
+      <Callout type="success" title="Single source of truth">
+        Connect a cluster via CLI → it appears in the Web UI instantly. Connect via Web UI → visible in{' '}
+        <code className="text-primary">devsec k8s list</code> immediately.
+      </Callout>
+
+      <H2 id="api-endpoints">API Endpoints</H2>
+      <P>All endpoints are under <code className="text-primary">/api/v1/kubernetes</code>. Authenticate with Bearer token or API key.</P>
+      <Table
+        headers={['Method', 'Endpoint', 'Purpose']}
+        rows={[
+          ['POST', '/kubernetes/connect', 'Connect via kubeconfig'],
+          ['POST', '/kubernetes/test', 'Validate kubeconfig without saving'],
+          ['GET', '/kubernetes/connections', 'List connections'],
+          ['DELETE', '/kubernetes/connections/{id}', 'Disconnect'],
+          ['POST', '/kubernetes/connections/{id}/validate', 'Re-validate connection'],
+          ['POST', '/kubernetes/connections/{id}/refresh', 'Refresh cluster snapshot'],
+          ['GET', '/kubernetes/connections/{id}/overview', 'Dashboard overview'],
+          ['GET', '/kubernetes/connections/{id}/nodes', 'List nodes'],
+          ['GET', '/kubernetes/connections/{id}/pods', 'List pods'],
+          ['GET', '/kubernetes/connections/{id}/health-score', 'Health score'],
+          ['POST', '/kubernetes/connections/{id}/security-scan', 'Security scan'],
+          ['GET', '/kubernetes/connections/{id}/version-advisor?target_version=', 'Version advisor (optional per-version detail)'],
+          ['POST', '/kubernetes/connections/{id}/upgrade-analysis', 'Start upgrade readiness analysis'],
+          ['GET', '/kubernetes/connections/{id}/upgrade-analysis/{job_id}', 'Poll upgrade analysis job'],
+          ['POST', '/kubernetes/connections/{id}/ai-analysis', 'Start AI copilot or troubleshoot ({ question, analysis_type })'],
+          ['GET', '/kubernetes/connections/{id}/ai-analysis/latest', 'Latest AI analysis job'],
+          ['GET', '/kubernetes/connections/{id}/ai-analysis/{job_id}', 'Poll AI analysis job'],
+          ['GET', '/kubernetes/eks/aws-available', 'Check AWS connection for EKS'],
+          ['GET', '/kubernetes/eks/clusters?region=', 'Discover EKS clusters'],
+          ['POST', '/kubernetes/eks/connect', 'Connect EKS cluster'],
+        ]}
+      />
+
+      <H2 id="security">Security</H2>
+      <Ul>
+        <li>Kubeconfigs are encrypted at rest using DevArchAI&apos;s encryption service</li>
+        <li>Credentials are never logged, returned to the browser, or sent to the LLM</li>
+        <li>Default cluster analysis is <strong>read-only</strong> (list/get permissions only)</li>
+        <li>RBAC permissions are validated and reported during connection</li>
+        <li>Kubernetes Secret values are never collected or exposed</li>
+      </Ul>
+
+      <H2 id="troubleshooting">Troubleshooting</H2>
+      <Expandable title="Connection test fails">
+        <P>Run <code className="text-primary">devsec k8s doctor --kubeconfig ~/.kube/config</code> to diagnose kubeconfig, API reachability, and permissions.</P>
+      </Expandable>
+      <Expandable title="Cluster not visible in Web UI after CLI connect">
+        <P>Refresh the <a href="/kubernetes" className="text-primary hover:underline">Kubernetes</a> page. Connections are backend-stored and should appear immediately. Verify with <code className="text-primary">devsec k8s list --json</code>.</P>
+      </Expandable>
+      <Expandable title="AI or upgrade analysis stuck on 'queued'">
+        <P>Analysis jobs run via background workers. In development, ensure the backend is running. Retry AI copilot with <code className="text-primary">devsec k8s troubleshoot --watch</code>, upgrade analysis with <code className="text-primary">devsec k8s upgrade analyze --target v1.34 --wait</code>, or click the action again in the Web UI.</P>
+      </Expandable>
+      <Expandable title="EKS: No AWS connection found">
+        <P>Connect AWS first via the <a href="/integrations" className="text-primary hover:underline">Integrations</a> page before connecting EKS clusters.</P>
+      </Expandable>
+    </>
+  )
+}
+
 export function AzureIntegrationContent() {
   return (
     <>
@@ -1074,6 +1367,51 @@ devsec scan --repo https://github.com/your-org/your-repo --branch main --json --
         ]}
       />
 
+      <H2 id="k8s-commands">Kubernetes (k8s) Commands</H2>
+      <P>
+        Manage live Kubernetes clusters from the CLI. Connections sync with the Web UI instantly.
+        See the full <a href="/docs/kubernetes-integration" className="text-primary hover:underline">Kubernetes Integration guide</a> for step-by-step setup.
+      </P>
+      <CodeBlock lang="bash" code={`# Connect a local cluster
+devsec k8s config --kubeconfig ~/.kube/config --name my-cluster
+
+# List, inspect, and analyze
+devsec k8s list
+devsec k8s inspect
+devsec k8s health
+devsec k8s security
+
+# Version advisor and upgrade readiness
+devsec k8s version
+devsec k8s advisor --target v1.34
+devsec k8s upgrade analyze --target v1.34 --wait
+
+# AI copilot and troubleshooting
+devsec k8s troubleshoot --watch
+devsec k8s troubleshoot "why is payment-api failing?" --watch
+
+# EKS (requires AWS connection in DevArchAI)
+devsec k8s connect --type eks --region us-east-1 --cluster-name prod-eks`} />
+      <Table
+        headers={['Command', 'Description']}
+        rows={[
+          ['devsec k8s config --kubeconfig <path>', 'Connect via kubeconfig'],
+          ['devsec k8s connect --type eks', 'Connect Amazon EKS'],
+          ['devsec k8s list', 'List connected clusters'],
+          ['devsec k8s status', 'Connection status'],
+          ['devsec k8s inspect', 'Cluster overview'],
+          ['devsec k8s health', 'Health score'],
+          ['devsec k8s security', 'Security scan'],
+          ['devsec k8s version [--target v1.34]', 'Version upgrade advisor'],
+          ['devsec k8s advisor [--target v1.34]', 'Alias for version'],
+          ['devsec k8s upgrade analyze [--target v1.34] [--wait]', 'Upgrade readiness analysis'],
+          ['devsec k8s troubleshoot [question] [--watch]', 'AI copilot or troubleshooting'],
+          ['devsec k8s analyze [--wait]', 'Alias for troubleshoot'],
+          ['devsec k8s doctor', 'Diagnostic checks'],
+          ['devsec k8s disconnect <name>', 'Remove connection'],
+        ]}
+      />
+
       <H2 id="exit-codes">Exit Codes</H2>
       <P>The CLI uses stable exit codes for CI pipelines:</P>
       <Table
@@ -1360,6 +1698,33 @@ aws sts assume-role --role-arn "arn:aws:iam::123456789012:role/DevArchAI-Scanner
         <li>Ensure the repository does not have branch protection rules blocking automated PRs</li>
         <li>Try creating the fix manually and pushing it</li>
       </Ul>
+
+      <H2 id="kubernetes-connection-failed">Kubernetes Connection Failed</H2>
+      <P>If connecting a Kubernetes cluster fails:</P>
+      <Ul>
+        <li>Run <code className="text-primary">devsec k8s doctor --kubeconfig ~/.kube/config</code> to diagnose</li>
+        <li>Verify the kubeconfig has valid <code className="text-primary">clusters</code> and <code className="text-primary">contexts</code> sections</li>
+        <li>Ensure the API server is reachable from the DevArchAI backend (not just your laptop)</li>
+        <li>Check RBAC permissions — list nodes, pods, and namespaces are required</li>
+        <li>For kind/minikube: the API server must be accessible at the address in kubeconfig</li>
+      </Ul>
+      <CodeBlock lang="bash" code={`# Test locally first
+kubectl cluster-info
+kubectl get nodes
+
+# Then test via DevArchAI CLI
+devsec k8s config --kubeconfig ~/.kube/config --name test`} />
+
+      <H2 id="kubernetes-ai-stuck">Kubernetes AI Analysis Stuck</H2>
+      <P>If AI analysis or upgrade analysis stays on &quot;queued&quot; in the Web UI or CLI:</P>
+      <Ul>
+        <li>Ensure the backend server is running (development) or Celery workers are active (production)</li>
+        <li>Retry AI copilot: <code className="text-primary">devsec k8s troubleshoot --watch</code> or click Run Copilot again</li>
+        <li>Retry upgrade analysis: <code className="text-primary">devsec k8s upgrade analyze --target v1.34 --wait</code></li>
+        <li>Check backend logs for <code className="text-primary">CLUSTER_AI_JOB</code> messages</li>
+        <li>Refresh the cluster page after 30–60 seconds — jobs run in background</li>
+      </Ul>
+
       <Callout type="info" title="Need More Help?">
         Contact our support team at <strong>support@devarchai.com</strong> or use the in-app chat for real-time assistance.
       </Callout>
@@ -1636,6 +2001,7 @@ export const PAGE_CONTENT: Record<string, React.FC> = {
   'secret-scanning': SecretScanningContent,
   'dependency-scanning': DependencyScanningContent,
   'aws-integration': AwsIntegrationContent,
+  'kubernetes-integration': KubernetesIntegrationContent,
   'azure-integration': AzureIntegrationContent,
   'github-integration': GithubIntegrationContent,
   'gitlab-integration': GitlabIntegrationContent,

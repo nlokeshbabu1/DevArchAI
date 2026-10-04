@@ -86,6 +86,8 @@ _MIGRATION_MARKERS: list[tuple[str, str, str | None]] = [
     ("038", "_enum:scanstage", "analyzing_findings"),
     ("039", "kubernetes_connections", None),
     ("040", "_enum:membershiprole", "owner"),
+    ("041", "cluster_ai_jobs", None),
+    ("042", "kubernetes_connections", "namespace_count"),
 ]
 
 

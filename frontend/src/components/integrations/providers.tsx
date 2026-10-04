@@ -14,6 +14,30 @@ export const buildCategories = (opts: {
   eksStatus: ConnectionStatus
   kubernetesAccount?: string
   eksAccount?: string
+  kubernetesConnection?: {
+    id: string
+    version?: string | null
+    healthStatus?: string | null
+    lastVerified?: string | null
+    nodeCount?: number | null
+    podCount?: number | null
+    serviceCount?: number | null
+    namespaceCount?: number | null
+    deploymentCount?: number | null
+    ingressCount?: number | null
+  }
+  eksConnection?: {
+    id: string
+    version?: string | null
+    healthStatus?: string | null
+    lastVerified?: string | null
+    nodeCount?: number | null
+    podCount?: number | null
+    serviceCount?: number | null
+    namespaceCount?: number | null
+    deploymentCount?: number | null
+    ingressCount?: number | null
+  }
   awsAccountId?: string
   awsResourceCount?: number
   awsSecurityScore?: number
@@ -88,8 +112,48 @@ export const buildCategories = (opts: {
   ]
 
   const containers: IntegrationMeta[] = [
-    { id: 'kubernetes', name: 'Kubernetes', description: 'Cluster scanning, RBAC analysis, manifest validation.', icon: 'kubernetes', category: 'containers', status: opts.kubernetesStatus, connectedAccount: opts.kubernetesAccount },
-    { id: 'eks', name: 'EKS', description: 'Managed Kubernetes security scanning.', icon: 'aws', category: 'containers', status: opts.eksStatus, connectedAccount: opts.eksAccount },
+    {
+      id: 'kubernetes',
+      name: 'Kubernetes',
+      description: 'Cluster scanning, RBAC analysis, manifest validation.',
+      icon: 'kubernetes',
+      category: 'containers',
+      status: opts.kubernetesStatus,
+      connectedAccount: opts.kubernetesAccount,
+      connectionId: opts.kubernetesConnection?.id,
+      healthStatus: opts.kubernetesConnection?.healthStatus ?? undefined,
+      kubernetesVersion: opts.kubernetesConnection?.version ?? undefined,
+      lastVerified: opts.kubernetesConnection?.lastVerified ?? undefined,
+      providerLabel: 'Cluster',
+      extraStats: opts.kubernetesConnection?.nodeCount != null ? {
+        Nodes: opts.kubernetesConnection.nodeCount,
+        Pods: opts.kubernetesConnection.podCount ?? 0,
+        Namespaces: opts.kubernetesConnection.namespaceCount ?? 0,
+        Services: opts.kubernetesConnection.serviceCount ?? 0,
+        Ingress: opts.kubernetesConnection.ingressCount ?? 0,
+      } : undefined,
+    },
+    {
+      id: 'eks',
+      name: 'EKS',
+      description: 'Managed Kubernetes security scanning.',
+      icon: 'aws',
+      category: 'containers',
+      status: opts.eksStatus,
+      connectedAccount: opts.eksAccount,
+      connectionId: opts.eksConnection?.id,
+      healthStatus: opts.eksConnection?.healthStatus ?? undefined,
+      kubernetesVersion: opts.eksConnection?.version ?? undefined,
+      lastVerified: opts.eksConnection?.lastVerified ?? undefined,
+      providerLabel: 'AWS EKS',
+      extraStats: opts.eksConnection?.nodeCount != null ? {
+        Nodes: opts.eksConnection.nodeCount,
+        Pods: opts.eksConnection.podCount ?? 0,
+        Namespaces: opts.eksConnection.namespaceCount ?? 0,
+        Services: opts.eksConnection.serviceCount ?? 0,
+        Ingress: opts.eksConnection.ingressCount ?? 0,
+      } : undefined,
+    },
     { id: 'aks', name: 'AKS', description: 'Azure Kubernetes security analysis.', icon: 'azure', category: 'containers', status: STATUS.CS },
     { id: 'gke', name: 'GKE', description: 'Google Kubernetes security scanning.', icon: 'gcp', category: 'containers', status: STATUS.CS },
   ]

@@ -25,6 +25,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +38,26 @@ from app.config import settings
 logger = structlog.get_logger(__name__)
 
 PROMPT_VERSION = "ai-recommendation/v1"
+
+_llm_rate_limited_until: float = 0.0
+
+
+def mark_llm_rate_limited(retry_after_seconds: float = 60.0) -> None:
+    """Circuit-breaker: skip LLM calls until quota window resets."""
+    global _llm_rate_limited_until
+    _llm_rate_limited_until = time.time() + max(1.0, retry_after_seconds)
+    logger.info("LLM_RATE_LIMIT_CIRCUIT_OPEN", retry_after_seconds=retry_after_seconds)
+
+
+def is_llm_rate_limited() -> bool:
+    return time.time() < _llm_rate_limited_until
+
+
+def _parse_retry_after_seconds(error: str) -> float:
+    match = re.search(r"retry in ([\d.]+)s", error, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return 60.0
 
 
 @dataclass
@@ -268,10 +290,13 @@ class AIContextEngine:
             recommendation.source = "llm"
             return recommendation
         except Exception as exc:
+            err = str(exc) or type(exc).__name__
+            if "429" in err or "RESOURCE_EXHAUSTED" in err or "rate" in err.lower():
+                mark_llm_rate_limited(_parse_retry_after_seconds(err))
             logger.warning(
                 "AI_RECOMMENDATION_LLM_FAILED",
                 rule_id=context.rule_id,
-                error=str(exc) or type(exc).__name__,
+                error=err,
             )
             from app.services.metrics import record_ai_request
             record_ai_request(str(getattr(settings, "LLM_PROVIDER", "unknown")), "failed", 0.0)

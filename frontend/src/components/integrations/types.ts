@@ -11,6 +11,11 @@ export interface IntegrationMeta {
   status: ConnectionStatus
   features?: string[]
   connectedAccount?: string
+  connectionId?: string
+  healthStatus?: string
+  kubernetesVersion?: string
+  lastVerified?: string
+  providerLabel?: string
   lastSync?: string
   extraStats?: Record<string, string | number>
   lastScan?: string

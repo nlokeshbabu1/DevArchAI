@@ -313,6 +313,11 @@ class Settings(BaseSettings):
     AI_MCP_TIMEOUT_SECONDS: int = Field(default=15, env="AI_MCP_TIMEOUT_SECONDS")
     AI_REDIS_TIMEOUT_SECONDS: int = Field(default=5, env="AI_REDIS_TIMEOUT_SECONDS")
     AI_DB_TIMEOUT_SECONDS: int = Field(default=10, env="AI_DB_TIMEOUT_SECONDS")
+    K8S_AI_MAX_LLM_CALLS: int = Field(
+        default=2,
+        env="K8S_AI_MAX_LLM_CALLS",
+        description="Max Gemini/LLM calls per K8s copilot job (free tier ~10 RPM / 20 RPD).",
+    )
     AI_TASK_MAX_SECONDS: int = Field(
         default=600, env="AI_TASK_MAX_SECONDS",
         description="Hard ceiling for a single finding-group AI Celery task.",

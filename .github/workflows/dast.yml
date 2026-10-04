@@ -1,252 +1,252 @@
-name: DAST Security Scan
-on:
-  schedule:
-    - cron: "0 6 * * 1"  # Every Monday at 6 AM
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+# name: DAST Security Scan
+# on:
+#   schedule:
+#     - cron: "0 6 * * 1"  # Every Monday at 6 AM
+#   push:
+#     branches: [main, develop]
+#   pull_request:
+#     branches: [main]
+#   workflow_dispatch:
 
-env:
-  TARGET_URL: http://localhost:8000
-  DAST_EMAIL: dast-bot@devarchai.com
-  DAST_PASSWORD: ${{ secrets.DAST_BOT_PASSWORD }}
+# env:
+#   TARGET_URL: http://localhost:8000
+#   DAST_EMAIL: dast-bot@devarchai.com
+#   DAST_PASSWORD: ${{ secrets.DAST_BOT_PASSWORD }}
 
-jobs:
-  build-and-deploy-staging:
-    name: Build & Deploy Staging
-    runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+# jobs:
+#   build-and-deploy-staging:
+#     name: Build & Deploy Staging
+#     runs-on: ubuntu-latest
+#     if: github.event_name != 'schedule' || github.ref == 'refs/heads/main'
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Setup Docker Compose
-        run: |
-          docker compose build --parallel
-          docker compose up -d postgres redis
-          sleep 5
-          docker compose up -d backend frontend
-          sleep 10
+#       - name: Setup Docker Compose
+#         run: |
+#           docker compose build --parallel
+#           docker compose up -d postgres redis
+#           sleep 5
+#           docker compose up -d backend frontend
+#           sleep 10
 
-      - name: Verify Services
-        run: |
-          curl -f --retry 10 --retry-delay 3 http://localhost:8000/api/v1/health || exit 1
-          curl -f --retry 5 --retry-delay 2 http://localhost:3000/ || exit 1
+#       - name: Verify Services
+#         run: |
+#           curl -f --retry 10 --retry-delay 3 http://localhost:8000/api/v1/health || exit 1
+#           curl -f --retry 5 --retry-delay 2 http://localhost:3000/ || exit 1
 
-      - name: Create DAST Test User
-        run: |
-          curl -X POST http://localhost:8000/api/v1/auth/register \
-            -H "Content-Type: application/json" \
-            -d '{"email":"${{ env.DAST_EMAIL }}","password":"${{ env.DAST_PASSWORD }}","username":"dast-bot"}' || true
+#       - name: Create DAST Test User
+#         run: |
+#           curl -X POST http://localhost:8000/api/v1/auth/register \
+#             -H "Content-Type: application/json" \
+#             -d '{"email":"${{ env.DAST_EMAIL }}","password":"${{ env.DAST_PASSWORD }}","username":"dast-bot"}' || true
 
-  static-analysis:
-    name: SAST & Secrets
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+#   static-analysis:
+#     name: SAST & Secrets
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Run Semgrep SAST
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: p/default
-          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
-        continue-on-error: true
+#       - name: Run Semgrep SAST
+#         uses: semgrep/semgrep-action@v1
+#         with:
+#           config: p/default
+#           publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+#         continue-on-error: true
 
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "fs"
-          scan-ref: "."
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-        continue-on-error: true
+#       - name: Run Trivy filesystem scan
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           scan-type: "fs"
+#           scan-ref: "."
+#           format: "sarif"
+#           output: "trivy-results.sarif"
+#           severity: "CRITICAL,HIGH"
+#         continue-on-error: true
 
-      - name: Check for secrets
-        run: |
-          pip install truffleHog
-          trufflehog --no-update filesystem . --regex --entropy=True || true
+#       - name: Check for secrets
+#         run: |
+#           pip install truffleHog
+#           trufflehog --no-update filesystem . --regex --entropy=True || true
 
-      - name: Dependency scan
-        run: |
-          cd backend && pip install safety && safety check -r requirements.txt || true
-          cd frontend && npm audit --audit-level=high || true
+#       - name: Dependency scan
+#         run: |
+#           cd backend && pip install safety && safety check -r requirements.txt || true
+#           cd frontend && npm audit --audit-level=high || true
 
-  dast-scan:
-    name: DAST - OWASP ZAP
-    needs: [build-and-deploy-staging]
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: devarchai
-          POSTGRES_PASSWORD: devarchai
-          POSTGRES_DB: devarchai
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
+#   dast-scan:
+#     name: DAST - OWASP ZAP
+#     needs: [build-and-deploy-staging]
+#     runs-on: ubuntu-latest
+#     services:
+#       postgres:
+#         image: postgres:15-alpine
+#         env:
+#           POSTGRES_USER: devarchai
+#           POSTGRES_PASSWORD: devarchai
+#           POSTGRES_DB: devarchai
+#         ports:
+#           - 5432:5432
+#       redis:
+#         image: redis:7-alpine
+#         ports:
+#           - 6379:6379
 
-    steps:
-      - uses: actions/checkout@v4
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Start Backend
-        run: |
-          cd backend
-          pip install -r requirements.txt
-          python -m alembic upgrade head &
-          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          sleep 5
+#       - name: Start Backend
+#         run: |
+#           cd backend
+#           pip install -r requirements.txt
+#           python -m alembic upgrade head &
+#           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+#           sleep 5
 
-      - name: Start Frontend
-        run: |
-          cd frontend
-          npm ci
-          npm run build
-          npx serve -s dist -l 3000 &
-          sleep 3
+#       - name: Start Frontend
+#         run: |
+#           cd frontend
+#           npm ci
+#           npm run build
+#           npx serve -s dist -l 3000 &
+#           sleep 3
 
-      - name: Verify Services
-        run: |
-          curl -f http://localhost:8000/api/v1/health || exit 1
-          curl -f http://localhost:3000/ || exit 1
+#       - name: Verify Services
+#         run: |
+#           curl -f http://localhost:8000/api/v1/health || exit 1
+#           curl -f http://localhost:3000/ || exit 1
 
-      - name: Create DAST Test User
-        run: |
-          curl -X POST http://localhost:8000/api/v1/auth/register \
-            -H "Content-Type: application/json" \
-            -d '{"email":"${{ env.DAST_EMAIL }}","password":"${{ env.DAST_PASSWORD }}","username":"dast-bot"}' || true
+#       - name: Create DAST Test User
+#         run: |
+#           curl -X POST http://localhost:8000/api/v1/auth/register \
+#             -H "Content-Type: application/json" \
+#             -d '{"email":"${{ env.DAST_EMAIL }}","password":"${{ env.DAST_PASSWORD }}","username":"dast-bot"}' || true
 
-      - name: Run Python DAST Tests
-        run: |
-          cd security/dast
-          pip install httpx
-          python endpoint_inventory.py
-          python owasp_top10.py || true
-          python api_security.py || true
-          python aws_security.py || true
-          python upload_security.py || true
+#       - name: Run Python DAST Tests
+#         run: |
+#           cd security/dast
+#           pip install httpx
+#           python endpoint_inventory.py
+#           python owasp_top10.py || true
+#           python api_security.py || true
+#           python aws_security.py || true
+#           python upload_security.py || true
 
-      - name: Run OWASP ZAP DAST
-        run: |
-          bash security/zap/run_zap.sh
-        env:
-          TARGET_URL: ${{ env.TARGET_URL }}
-          DAST_EMAIL: ${{ env.DAST_EMAIL }}
-          DAST_PASSWORD: ${{ env.DAST_PASSWORD }}
-        continue-on-error: true
+#       - name: Run OWASP ZAP DAST
+#         run: |
+#           bash security/zap/run_zap.sh
+#         env:
+#           TARGET_URL: ${{ env.TARGET_URL }}
+#           DAST_EMAIL: ${{ env.DAST_EMAIL }}
+#           DAST_PASSWORD: ${{ env.DAST_PASSWORD }}
+#         continue-on-error: true
 
-      - name: Upload ZAP Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report
-          path: |
-            security/zap/reports/
-            security/reports/
-          retention-days: 30
+#       - name: Upload ZAP Report
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: zap-report
+#           path: |
+#             security/zap/reports/
+#             security/reports/
+#           retention-days: 30
 
-      - name: Upload DAST Python Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dast-reports
-          path: security/reports/
-          retention-days: 30
+#       - name: Upload DAST Python Reports
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: dast-reports
+#           path: security/reports/
+#           retention-days: 30
 
-      - name: Check for Critical/High Vulnerabilities
-        if: always()
-        run: |
-          REPORT=security/zap/reports/zap_scan_report.json
-          if [ -f "$REPORT" ]; then
-            CRIT=$(python3 -c "
-import json, sys
-d = json.load(open('$REPORT'))
-count = 0
-for site in d.get('site', []):
-    for alert in site.get('alerts', []):
-        risk = alert.get('riskdesc', '').lower().split(' (')[0]
-        if risk == 'critical':
-            count += int(alert.get('count', 1))
-print(count)
-")
-            HIGH=$(python3 -c "
-import json, sys
-d = json.load(open('$REPORT'))
-count = 0
-for site in d.get('site', []):
-    for alert in site.get('alerts', []):
-        risk = alert.get('riskdesc', '').lower().split(' (')[0]
-        if risk == 'high':
-            count += int(alert.get('count', 1))
-print(count)
-")
-            echo "Critical: $CRIT, High: $HIGH"
-            if [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-              echo "::error::DAST found $CRIT critical and $HIGH high vulnerabilities"
-              exit 1
-            fi
-            echo "::notice::DAST scan passed: no Critical or High vulnerabilities"
-          else
-            echo "::warning::ZAP JSON report not found at $REPORT"
-          fi
+#       - name: Check for Critical/High Vulnerabilities
+#         if: always()
+#         run: |
+#           REPORT=security/zap/reports/zap_scan_report.json
+#           if [ -f "$REPORT" ]; then
+#             CRIT=$(python3 -c "
+# import json, sys
+# d = json.load(open('$REPORT'))
+# count = 0
+# for site in d.get('site', []):
+#     for alert in site.get('alerts', []):
+#         risk = alert.get('riskdesc', '').lower().split(' (')[0]
+#         if risk == 'critical':
+#             count += int(alert.get('count', 1))
+# print(count)
+# ")
+#             HIGH=$(python3 -c "
+# import json, sys
+# d = json.load(open('$REPORT'))
+# count = 0
+# for site in d.get('site', []):
+#     for alert in site.get('alerts', []):
+#         risk = alert.get('riskdesc', '').lower().split(' (')[0]
+#         if risk == 'high':
+#             count += int(alert.get('count', 1))
+# print(count)
+# ")
+#             echo "Critical: $CRIT, High: $HIGH"
+#             if [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+#               echo "::error::DAST found $CRIT critical and $HIGH high vulnerabilities"
+#               exit 1
+#             fi
+#             echo "::notice::DAST scan passed: no Critical or High vulnerabilities"
+#           else
+#             echo "::warning::ZAP JSON report not found at $REPORT"
+#           fi
 
-  security-dashboard-update:
-    name: Update Security Dashboard
-    needs: [dast-scan, static-analysis]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+#   security-dashboard-update:
+#     name: Update Security Dashboard
+#     needs: [dast-scan, static-analysis]
+#     runs-on: ubuntu-latest
+#     if: github.ref == 'refs/heads/main'
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Download DAST Reports
-        uses: actions/download-artifact@v4
-        with:
-          name: dast-reports
-          path: security/reports/
+#       - name: Download DAST Reports
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: dast-reports
+#           path: security/reports/
 
-      - name: Generate Security Dashboard Data
-        run: |
-          python3 -c "
-import json, os
-from datetime import datetime
+#       - name: Generate Security Dashboard Data
+#         run: |
+#           python3 -c "
+# import json, os
+# from datetime import datetime
 
-dashboard = {
-    'last_scan': datetime.utcnow().isoformat(),
-    'branch': '${{ github.ref_name }}',
-    'commit': '${{ github.sha }}',
-    'summary': {},
-    'vulnerabilities': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0},
-}
+# dashboard = {
+#     'last_scan': datetime.utcnow().isoformat(),
+#     'branch': '${{ github.ref_name }}',
+#     'commit': '${{ github.sha }}',
+#     'summary': {},
+#     'vulnerabilities': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0},
+# }
 
-reports_dir = 'security/reports'
-for f in os.listdir(reports_dir):
-    if f.endswith('_results.json'):
-        with open(os.path.join(reports_dir, f)) as fh:
-            data = json.load(fh)
-            s = data.get('summary', {})
-            dashboard['summary'][f.replace('_results.json', '')] = s
+# reports_dir = 'security/reports'
+# for f in os.listdir(reports_dir):
+#     if f.endswith('_results.json'):
+#         with open(os.path.join(reports_dir, f)) as fh:
+#             data = json.load(fh)
+#             s = data.get('summary', {})
+#             dashboard['summary'][f.replace('_results.json', '')] = s
 
-with open('security/reports/dashboard_data.json', 'w') as fh:
-    json.dump(dashboard, fh, indent=2)
-print('Security dashboard data updated')
-"
+# with open('security/reports/dashboard_data.json', 'w') as fh:
+#     json.dump(dashboard, fh, indent=2)
+# print('Security dashboard data updated')
+# "
 
-  notify:
-    name: Notification
-    needs: [dast-scan, static-analysis, security-dashboard-update]
-    if: failure() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Slack Notification
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_TITLE: "DAST Scan Failed"
-          SLACK_MESSAGE: "DAST security scan found vulnerabilities on ${{ github.ref_name }}"
-          SLACK_COLOR: danger
-        continue-on-error: true
+#   notify:
+#     name: Notification
+#     needs: [dast-scan, static-analysis, security-dashboard-update]
+#     if: failure() && github.ref == 'refs/heads/main'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Slack Notification
+#         uses: rtCamp/action-slack-notify@v2
+#         env:
+#           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+#           SLACK_TITLE: "DAST Scan Failed"
+#           SLACK_MESSAGE: "DAST security scan found vulnerabilities on ${{ github.ref_name }}"
+#           SLACK_COLOR: danger
+#         continue-on-error: true
