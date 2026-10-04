@@ -7,7 +7,9 @@ import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
+import { IntegrationCallback } from './pages/auth/IntegrationCallback'
 import { useAuthStore } from './stores/auth-store'
+import { CookieConsentBanner } from './components/CookieConsentBanner'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
 const Report = lazy(() => import('./pages/Report').then(m => ({ default: m.Report })))
@@ -25,6 +27,8 @@ const AISuggestionsPage = lazy(() => import('./pages/dashboard/AISuggestions').t
 const IntegrationsPage = lazy(() => import('./pages/dashboard/Integrations').then(m => ({ default: m.IntegrationsPage })))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const AwsPage = lazy(() => import('./pages/aws/AwsPage').then(m => ({ default: m.AwsPage })))
+const KubernetesWorkspacePage = lazy(() => import('./pages/kubernetes/KubernetesWorkspacePage').then(m => ({ default: m.KubernetesWorkspacePage })))
+const ClusterDetailPage = lazy(() => import('./pages/kubernetes/ClusterDetailPage').then(m => ({ default: m.ClusterDetailPage })))
 const DocsHome = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocsHome })))
 const DocPage = lazy(() => import('./pages/docs/DocsPage').then(m => ({ default: m.DocPage })))
 
@@ -33,9 +37,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
 
-  // Check auth on mount
+  // Restore the session on mount regardless of cookie-consent status.
+  // The HttpOnly refresh cookie is a first-party, security-essential cookie
+  // and must NOT be gated behind optional cookie consent, otherwise a page
+  // refresh would log the user out.
   useEffect(() => {
     useAuthStore.getState().checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (isLoading) {
@@ -68,9 +76,13 @@ function ScanResultRedirect() {
 }
 
 export default function App() {
-  // Check auth on app mount
+  // Restore the session on app mount regardless of cookie-consent status.
+  // The HttpOnly refresh cookie is a first-party, security-essential cookie
+  // and must NOT be gated behind optional cookie consent, otherwise a page
+  // refresh would log the user out.
   useEffect(() => {
     useAuthStore.getState().checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
@@ -80,6 +92,7 @@ export default function App() {
       </div>
     }>
     <ToastHost />
+    <CookieConsentBanner />
     <Routes>
       {/* Public routes - no Layout */}
       <Route path="/" element={<Landing />} />
@@ -88,6 +101,7 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />
+      <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
       <Route path="/pricing" element={<PricingPage />} />
 
       {/* Documentation - public */}
@@ -198,6 +212,22 @@ export default function App() {
         <ProtectedRoute>
           <Layout>
             <AwsPage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/kubernetes" element={
+        <ProtectedRoute>
+          <Layout>
+            <KubernetesWorkspacePage />
+          </Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/kubernetes/:connectionId" element={
+        <ProtectedRoute>
+          <Layout>
+            <ClusterDetailPage />
           </Layout>
         </ProtectedRoute>
       } />

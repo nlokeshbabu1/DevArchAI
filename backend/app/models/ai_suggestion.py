@@ -57,7 +57,11 @@ class AISuggestion(Base):
     severity = Column(String(50), nullable=False, index=True)  # critical, high, medium, low, info
     confidence = Column(Float, default=0.9, nullable=False)  # 0.0 to 1.0
     category = Column(String(50), nullable=False, index=True)  # security, reliability, cost, etc.
-    fix_type = Column(SQLEnum(FixType), nullable=False, default=FixType.GENERAL)
+    fix_type = Column(
+        SQLEnum(FixType, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=FixType.GENERAL,
+    )
 
     # Location
     file_path = Column(String(500), nullable=False)
@@ -68,7 +72,12 @@ class AISuggestion(Base):
     auto_fix_available = Column(Boolean, default=False, nullable=False)
 
     # Status tracking
-    status = Column(SQLEnum(SuggestionStatus), default=SuggestionStatus.OPEN, nullable=False, index=True)
+    status = Column(
+        SQLEnum(SuggestionStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=SuggestionStatus.OPEN,
+        nullable=False,
+        index=True,
+    )
     applied_at = Column(DateTime(timezone=True), nullable=True)
     pr_url = Column(String(500), nullable=True)  # GitHub PR URL if created
     pr_number = Column(Integer, nullable=True)

@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
   Brain, CreditCard, Settings, LogOut, Menu, X, Search,
-  Zap, Cloud, User, ChevronDown, BookOpen, Plug,
+  Zap, Cloud, User, ChevronDown, BookOpen, Plug, Container,
 } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth-store'
 import { Button } from '../ui'
@@ -37,6 +37,7 @@ const navigationGroups: { label: string; items: NavItem[] }[] = [
     label: 'Cloud',
     items: [
       { name: 'AWS', href: '/aws', icon: Cloud },
+      { name: 'Kubernetes', href: '/kubernetes', icon: Container },
       { name: 'Azure', icon: Cloud, status: 'coming_soon' },
       { name: 'GCP', icon: Cloud, status: 'coming_soon' },
     ],

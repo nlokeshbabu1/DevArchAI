@@ -58,7 +58,10 @@ def get_password_hash(password: str) -> str:
 
 def generate_api_key() -> tuple[str, str]:
     """Generate a new API key with prefix."""
-    prefix = f"dk_{secrets.token_urlsafe(4)}"
+    # Prefix must fit within api_key_prefix String(8): "dk_" + up to 5 chars.
+    # token_urlsafe(3) yields exactly 4 base64url chars (3 bytes), giving
+    # "dk_xxxx" (7 chars) and never exceeding the varchar(8) column.
+    prefix = f"dk_{secrets.token_urlsafe(3)}"
     full_key = f"{prefix}_{secrets.token_urlsafe(32)}"
     return full_key, prefix
 

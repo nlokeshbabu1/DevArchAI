@@ -14,6 +14,7 @@ celery_app = Celery(
     include=[
         "app.workers.tasks.scan_repository",
         "app.workers.tasks.ai_recommendations",
+        "app.workers.tasks.cluster_ai",
     ],
 )
 

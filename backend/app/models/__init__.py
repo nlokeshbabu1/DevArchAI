@@ -17,7 +17,10 @@ from app.models.cloud import (
 )
 from app.models.cloud_recommendation import CloudAIRecommendation
 from app.models.finding import Category, Finding, Severity
+from app.models.finding_ai_job import FindingAIJob, FindingAIJobStatus
 from app.models.github_installation import GitHubInstallation
+from app.models.kubernetes import KubernetesConnection
+from app.models.cluster_ai_job import ClusterAIJob
 from app.models.knowledge import KnowledgeDocument, McpContext, RagChunk
 from app.models.organization import MembershipRole, Organization, OrganizationMember, PlanType
 from app.models.payment import (
@@ -59,6 +62,8 @@ __all__ = [
     "Finding",
     "Severity",
     "Category",
+    "FindingAIJob",
+    "FindingAIJobStatus",
     "AnonymousScan",
     "AIRecommendation",
     "CloudAIRecommendation",
@@ -102,4 +107,5 @@ __all__ = [
     "CloudFinding",
     "CloudCostRecommendation",
     "CloudComplianceResult",
+    "KubernetesConnection",
 ]

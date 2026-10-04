@@ -15,6 +15,18 @@ const STATUS_CONFIG: Record<ConnectionStatus, { label: string; dot: string; bg: 
     bg: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
     icon: Loader2,
   },
+  connecting: {
+    label: 'Connecting',
+    dot: 'bg-blue-500',
+    bg: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+    icon: Loader2,
+  },
+  verifying: {
+    label: 'Verifying',
+    dot: 'bg-amber-500',
+    bg: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+    icon: Loader2,
+  },
   error: {
     label: 'Error',
     dot: 'bg-red-500',
@@ -52,8 +64,8 @@ export function ConnectionBadge({ status, className }: ConnectionBadgeProps) {
         className,
       )}
     >
-      <span className={cn('h-1.5 w-1.5 rounded-full', config.dot, status === 'syncing' && 'animate-pulse')} />
-      <Icon className={cn('h-3 w-3', status === 'syncing' && 'animate-spin')} />
+      <span className={cn('h-1.5 w-1.5 rounded-full', config.dot, (status === 'syncing' || status === 'connecting' || status === 'verifying') && 'animate-pulse')} />
+      <Icon className={cn('h-3 w-3', (status === 'syncing' || status === 'connecting' || status === 'verifying') && 'animate-spin')} />
       {config.label}
     </span>
   )

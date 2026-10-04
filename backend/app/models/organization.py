@@ -101,7 +101,11 @@ class OrganizationMember(Base):
         index=True,
     )
 
-    role = Column(SQLEnum(MembershipRole), default=MembershipRole.MEMBER, nullable=False)
+    role = Column(
+        SQLEnum(MembershipRole, values_callable=lambda obj: [e.value for e in obj]),
+        default=MembershipRole.MEMBER,
+        nullable=False,
+    )
     invited_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     invited_at = Column(DateTime(timezone=True), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=True)

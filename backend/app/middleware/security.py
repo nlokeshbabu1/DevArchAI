@@ -15,16 +15,21 @@ from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
-# Auth and security-sensitive endpoints that require stricter rate limiting
+# Auth and security-sensitive endpoints that require stricter rate limiting.
+# /auth/refresh is intentionally NOT in _AUTH_PATHS: it is the legitimate
+# "keep session alive" call that runs on every page reload and must not be
+# throttled as hard as brute-force-prone login/register.
 _AUTH_PATHS = frozenset({
     "/api/v1/auth/login",
     "/api/v1/auth/register",
-    "/api/v1/auth/refresh",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
     "/api/v1/auth/github/callback",
     "/api/v1/auth/gitlab/callback",
 })
+
+# Refresh gets its own, much more generous bucket (see RATE_LIMIT_REFRESH_*).
+_REFRESH_PATH = "/api/v1/auth/refresh"
 
 # Paths that should skip rate limiting entirely (health checks, docs, etc.)
 _SKIP_RATE_LIMIT_PATHS = frozenset({
@@ -66,8 +71,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Determine rate limit config based on endpoint type
-        is_auth_endpoint = route_path in _AUTH_PATHS
-        if is_auth_endpoint:
+        if route_path == _REFRESH_PATH:
+            max_requests = settings.RATE_LIMIT_REFRESH_REQUESTS
+            window_seconds = settings.RATE_LIMIT_REFRESH_WINDOW
+            scope = "refresh"
+        elif route_path in _AUTH_PATHS:
             max_requests = settings.RATE_LIMIT_AUTH_REQUESTS
             window_seconds = settings.RATE_LIMIT_AUTH_WINDOW
             scope = "auth"

@@ -7,7 +7,7 @@ import { PAGE_CONTENT } from './DocsContent'
 import {
   BookOpen, Cloud, Server, Github, Gitlab,
   Brain, AlertTriangle, FileText, Bug, Rocket,
-  FolderGit2, ArrowRight, Terminal,
+  FolderGit2, ArrowRight, Terminal, Container,
 } from 'lucide-react'
 
 function DocPageRenderer({ page }: { page: DocPage }) {
@@ -45,6 +45,7 @@ const QUICK_START_CARDS = [
   { href: '/docs/github-integration', label: 'GitHub Integration', desc: 'Connect GitHub repositories', icon: Github },
   { href: '/docs/gitlab-integration', label: 'GitLab Integration', desc: 'Connect GitLab repositories', icon: Gitlab },
   { href: '/docs/aws-integration', label: 'AWS Integration', desc: 'Connect your AWS account', icon: Cloud },
+  { href: '/docs/kubernetes-integration', label: 'Kubernetes Integration', desc: 'Connect clusters, upgrade analysis, and AI copilot', icon: Container },
   { href: '/docs/azure-integration', label: 'Azure Integration', desc: 'Connect your Azure subscription', icon: Server },
   { href: '/docs/repository-scanning', label: 'Repository Scanning', desc: 'How DevArchAI scans your code', icon: FolderGit2 },
   { href: '/docs/ai-recommendations', label: 'AI Recommendations', desc: 'AI-powered fix suggestions', icon: Brain },

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from devsec.commands import auth_app, config_app, project_app, scan_app
+from devsec.commands import auth_app, config_app, kubernetes_app, project_app, scan_app
 from devsec.commands.base import command, set_debug
 from devsec.commands.version import version_cmd
 from devsec.output.console import is_ci, set_output_mode
@@ -68,6 +68,8 @@ app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
 app.add_typer(project_app, name="project")
 app.add_typer(scan_app, name="scan")
+app.add_typer(kubernetes_app, name="k8s")
+app.add_typer(kubernetes_app, name="kubernetes")
 
 
 def entrypoint() -> None:

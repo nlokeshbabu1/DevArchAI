@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useAuthStore } from '../stores/auth-store'
 
 describe('Auth Store', () => {
@@ -9,6 +9,10 @@ describe('Auth Store', () => {
       user: null,
       isLoading: false,
     })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('initializes with default state', () => {
@@ -66,6 +70,34 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
     
     useAuthStore.getState().login('token')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+  })
+
+  it('single-flights concurrent refreshSession calls', async () => {
+    const { default: axios } = await import('axios')
+    let refreshCalls = 0
+
+    vi.spyOn(axios, 'post').mockImplementation(async (url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        refreshCalls += 1
+        await new Promise((r) => setTimeout(r, 10))
+        return { data: { access_token: 'refreshed-token' } }
+      }
+      if (String(url).includes('/auth/me')) {
+        return { data: { id: '123', email: 'a@b.co', username: 'user' } }
+      }
+      return { data: {} }
+    }) as any
+
+    const [first, second] = await Promise.all([
+      useAuthStore.getState().refreshSession(),
+      useAuthStore.getState().refreshSession(),
+    ])
+
+    expect(first).toBe(true)
+    expect(second).toBe(true)
+    // Both callers share ONE refresh request -> no double rotation.
+    expect(refreshCalls).toBe(1)
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
   })
 })

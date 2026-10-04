@@ -1,13 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { getAccessToken, setAccessToken, clearAuthMemory } from './auth-token'
+import { getAccessToken, performRefresh } from './auth-token'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
-}
-
-interface RefreshTokenResponse {
-  access_token: string
-  refresh_token?: string | null
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -32,37 +27,16 @@ function redirectToLogin() {
 }
 
 // ---------------------------------------------------------------------------
-// Refresh-lock: only ONE refresh request at a time.  All concurrent callers
-// that hit a 401 wait on the same Promise so they all get the new token.
+// Refresh handling. The actual /auth/refresh call is single-flight and shared
+// app-wide via performRefresh() (see auth-token.ts) so that concurrent callers
+// from the 401 interceptor and from auth-store.refreshSession() never issue two
+// refreshes with the same (rotated) cookie in parallel.
 // ---------------------------------------------------------------------------
-let refreshPromise: Promise<string> | null = null
-
-function doRefresh(originalRequest: InternalAxiosRequestConfig): Promise<string> {
-  if (refreshPromise) {
-    return refreshPromise
-  }
-
-  refreshPromise = (async () => {
-    try {
-      const refreshResponse = await axios.post<RefreshTokenResponse>(
-        `${API_V1_BASE_URL}/auth/refresh`,
-        null,
-        { withCredentials: true },
-      )
-
-      const { access_token } = refreshResponse.data
-      setAccessToken(access_token)
-      return access_token
-    } catch (err) {
-      clearAuthMemory()
-      redirectToLogin()
-      throw err
-    } finally {
-      refreshPromise = null
-    }
-  })()
-
-  return refreshPromise
+function doRefresh(): Promise<string> {
+  return performRefresh().catch((err) => {
+    redirectToLogin()
+    throw err
+  })
 }
 
 export const API_BASE_URL = getConfiguredBaseUrl()
@@ -117,7 +91,7 @@ api.interceptors.response.use(
     originalRequest._retry = true
 
     try {
-      const newToken = await doRefresh(originalRequest)
+      const newToken = await doRefresh()
 
       if (originalRequest.headers) {
         originalRequest.headers.Authorization = `Bearer ${newToken}`

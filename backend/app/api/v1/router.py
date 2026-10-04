@@ -17,7 +17,9 @@ from app.api.v1.routes import (
     gitlab_auth,
     health,
     integrations,
+    integrations_connect,
     knowledge,
+    kubernetes,
     public_scans,
     pull_requests,
     repo_analysis,
@@ -45,6 +47,8 @@ api_router.include_router(gitlab.router)
 api_router.include_router(gitlab_auth.router)
 api_router.include_router(health.router)
 api_router.include_router(integrations.router)
+api_router.include_router(integrations_connect.router)
+api_router.include_router(kubernetes.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(pull_requests.router)
 api_router.include_router(scans.router)

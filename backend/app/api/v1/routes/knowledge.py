@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.security import get_optional_user
+from app.config import settings
 from app.mcp.service import get_mcp_service
 from app.models.user import User
 from app.rag.service import get_rag_service
@@ -116,6 +117,64 @@ async def rag_seed(current_user: User | None = Depends(get_optional_user)):
     service = get_rag_service()
     count = await service.seed_from_inventory()
     return {"success": True, "documents_created_or_updated": count}
+
+
+@router.post("/re-embed")
+async def rag_re_embed(current_user: User | None = Depends(get_optional_user)):
+    """Backfill embeddings for chunks stored without them (semantic search).
+
+    Idempotent: only chunks with a NULL embedding are touched.
+    """
+    service = get_rag_service()
+    count = await service.re_embed()
+    return {"success": True, "chunks_embedded": count}
+
+
+@router.get("/health")
+async def knowledge_health(current_user: User | None = Depends(get_optional_user)):
+    """Verify the RAG + MCP knowledge layer works end-to-end."""
+    service = get_rag_service()
+    mcp_service = get_mcp_service()
+
+    # 1. RAG: retrieve a known rule to confirm documents are queryable.
+    probe_rule = "k8s_single_replica"
+    rag_docs = 0
+    try:
+        ctx = await service.get_rule_knowledge(probe_rule)
+        rag_docs = len(getattr(ctx, "documents", []) or [])
+    except Exception:
+        rag_docs = 0
+
+    # 2. MCP: confirm routing works and providers are configured.
+    try:
+        mcp_routes_live = bool(mcp_service.requires_live_context("aws"))
+    except Exception:
+        mcp_routes_live = False
+    try:
+        mcp_stats = await mcp_service.stats()
+    except Exception:
+        mcp_stats = {}
+    mcp_enabled = bool(mcp_stats.get("enabled", False))
+    router = mcp_stats.get("router", {}) or {}
+    providers = router.get("providers", []) or []
+    mcp_providers = [getattr(p, "name", p.get("name")) if isinstance(p, dict) else getattr(p, "name", "") for p in providers]
+
+    embedding = getattr(service, "embedding_provider", "unknown")
+
+    return {
+        "rag": {
+            "enabled": settings.RAG_ENABLED,
+            "documents_queryable": rag_docs,
+            "probe_rule": probe_rule,
+        },
+        "mcp": {
+            "enabled": mcp_enabled,
+            "providers_configured": mcp_providers,
+            "routes_live": mcp_routes_live,
+        },
+        "embedding_provider": embedding,
+        "healthy": settings.RAG_ENABLED and rag_docs > 0,
+    }
 
 
 # ---------------------------------------------------------------------------

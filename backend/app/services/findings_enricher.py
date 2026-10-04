@@ -3692,6 +3692,19 @@ class FindingsEnricher:
             self._ai_service = AIFixEnrichmentService()
         return self._ai_service
 
+    @staticmethod
+    def _finding_fingerprint(finding: RuleFinding) -> str:
+        """Deterministic fingerprint for a finding (dedup / cache key)."""
+        raw = "|".join(
+            [
+                str(getattr(finding, "rule_id", "") or ""),
+                str(getattr(finding, "file_path", "") or ""),
+                str(getattr(finding, "line_number", "") or ""),
+                str(getattr(finding, "description", "") or ""),
+            ]
+        )
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
     async def enrich_finding_async(self, finding: RuleFinding, file_content: str = "") -> RuleFinding:
         """
         Enrich a finding with AI-powered or static enrichment.
@@ -3710,70 +3723,55 @@ class FindingsEnricher:
         """
         severity = str(finding.severity).lower() if hasattr(finding.severity, 'value') else str(finding.severity).lower()
 
-        # Try AI enrichment for ALL severities
+        # Try AI enrichment for ALL severities, grounded with RAG + MCP context
         try:
-            # PHASE 2D: RAG - Retrieve documentation before AI generation (NEW - Production Grade)
-            rag_context = ""
-            try:
-                from app.rag import retrieve_docs
-                rag_docs = retrieve_docs(finding.rule_id)
-                if rag_docs and rag_docs.documents:
-                    rag_context = rag_docs.to_context_string(max_docs=3)
-                    logger.info(
-                        "RAG documentation retrieved",
-                        rule_id=finding.rule_id,
-                        docs_count=len(rag_docs.documents),
-                    )
-            except Exception as e:
-                logger.warning(f"RAG retrieval failed: {e}")
-                rag_context = ""
+            from app.ai.context_engine import AIContextEngine
 
-            ai_service = self._get_ai_service()
-            logger.info(f"AI enrichment attempt: rule={finding.rule_id}, use_mock={ai_service._use_mock}")
+            fingerprint = self._finding_fingerprint(finding)
+            engine = AIContextEngine()
+            logger.info(
+                "AI enrichment attempt (context engine)",
+                rule_id=finding.rule_id,
+            )
 
-            ai_fix = await ai_service.generate_fix({
-                "rule_id": finding.rule_id,
-                "rule_name": finding.rule_name,
-                "severity": severity,
-                "file_type": finding.file_path.split('.')[-1] if '.' in finding.file_path else "unknown",
-                "description": finding.description,
-                "rag_context": rag_context,  # Add RAG context to AI prompt
-            }, file_content)
+            # 1. Assemble grounded context: RAG rule knowledge + MCP live/docs context.
+            context = await engine.build_context(
+                finding,
+                file_snippet=(file_content or "")[:2000],
+            )
+
+            # 2. Generate the structured recommendation from that context.
+            recommendation = await engine.generate_recommendation(
+                finding, context, fingerprint
+            )
+
+            rec = recommendation.to_dict() if hasattr(recommendation, "to_dict") else recommendation
 
             # Apply AI enrichment
             if not finding.summary:
-                finding.summary = ai_fix.get("summary", "")
+                finding.summary = rec.get("summary", "")
             if not finding.risk:
-                finding.risk = ai_fix.get("risk", "")
+                finding.risk = rec.get("risk", "")
             if not finding.fix_example:
-                # Try both "fix_code" (AI) and "fix_example" (static) keys
-                finding.fix_example = ai_fix.get("fix_code") or ai_fix.get("fix_example") or ai_fix.get("full_example") or ""
+                finding.fix_example = rec.get("fix_code") or rec.get("fix_example") or rec.get("full_example") or ""
             if not finding.fix_code:
-                finding.fix_code = ai_fix.get("fix_code", "")
+                finding.fix_code = rec.get("fix_code", "") or rec.get("fix_example", "")
             if not finding.full_example:
-                finding.full_example = ai_fix.get("full_example", "")
+                finding.full_example = rec.get("full_example", "")
             if not finding.impact_analysis:
-                finding.impact_analysis = ai_fix.get("impact", "")
+                finding.impact_analysis = rec.get("impact", "")
             if not finding.impact:
-                finding.impact = ai_fix.get("impact", "")
+                finding.impact = rec.get("impact", "")
             if not finding.best_practices:
-                finding.best_practices = ai_fix.get("best_practices", [])
-            finding.confidence = ai_fix.get("confidence", 0.8)
-            finding.ai_generated = True  # Mark as AI-generated
+                finding.best_practices = rec.get("best_practices", [])
+            if not finding.documentation_url:
+                finding.documentation_url = rec.get("documentation_url", "")
+            finding.confidence = float(rec.get("confidence", 0.8))
+            finding.ai_generated = bool(rec.get("ai_generated", False))
 
-            # Add code diff fields for Code Diff Viewer
-            if ai_fix.get("before_code"):
-                finding.metadata['before_code'] = ai_fix.get("before_code")
-            if ai_fix.get("after_code"):
-                finding.metadata['after_code'] = ai_fix.get("after_code")
-            if ai_fix.get("unified_diff"):
-                finding.metadata['unified_diff'] = ai_fix.get("unified_diff")
-
-            # Backwards compatibility: populate ai_explanation from summary
-            if not finding.ai_explanation and finding.summary:
-                finding.ai_explanation = finding.summary
-
-            logger.info(f"✅ AI enrichment applied: rule={finding.rule_id}, ai_generated={finding.ai_generated}")
+            # Backwards compatibility: populate ai_explanation from recommendation
+            if not finding.ai_explanation:
+                finding.ai_explanation = rec.get("ai_explanation") or finding.summary
 
             logger.info(
                 "AI enrichment applied",
@@ -3781,6 +3779,7 @@ class FindingsEnricher:
                 severity=severity,
                 confidence=finding.confidence,
                 ai_generated=finding.ai_generated,
+                source=rec.get("source", "unknown"),
             )
 
             return finding

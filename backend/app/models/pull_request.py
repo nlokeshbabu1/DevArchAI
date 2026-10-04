@@ -47,7 +47,11 @@ class PullRequest(Base):
     description = Column(Text, nullable=True)
 
     # Status and metadata
-    status = Column(SQLEnum(PRStatus), default=PRStatus.OPEN, nullable=False)
+    status = Column(
+        SQLEnum(PRStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=PRStatus.OPEN,
+        nullable=False,
+    )
     findings_fixed = Column(JSON, nullable=True)  # Array of finding IDs that were fixed
     score_before = Column(Float, nullable=True)
     score_after = Column(Float, nullable=True)

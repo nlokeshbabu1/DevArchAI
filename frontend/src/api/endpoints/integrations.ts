@@ -1,6 +1,6 @@
 import apiClient from '../client'
 
-export type IntegrationProvider = 'github' | 'gitlab' | 'aws' | 'azure' | 'bitbucket'
+export type IntegrationProvider = 'github' | 'gitlab' | 'aws' | 'azure' | 'bitbucket' | 'kubernetes' | 'eks'
 
 export type IntegrationStatus = 'connected' | 'not_connected' | 'connecting' | 'pending_verification' | 'connection_error'
 
@@ -10,6 +10,8 @@ export interface IntegrationStatusResponse {
   aws: boolean
   azure: boolean
   bitbucket: boolean
+  kubernetes: boolean
+  eks: boolean
 }
 
 export interface IntegrationInfo {
@@ -22,7 +24,7 @@ export interface IntegrationInfo {
   icon: string
   connectType: 'oauth' | 'modal' | 'none'
   connectUrl?: string
-  modalType?: 'aws' | 'azure'
+  modalType?: 'aws' | 'azure' | 'kubernetes' | 'eks'
 }
 
 export interface AuthContext {
@@ -34,14 +36,15 @@ const AUTH_PROVIDER_MAP: Record<string, IntegrationProvider> = {
   gitlab: 'gitlab',
 }
 
-const PROVIDER_META: Record<IntegrationProvider, { label: string; description: string; features: string[]; icon: string; connectType: 'oauth' | 'modal' | 'none'; connectUrl?: string; modalType?: 'aws' | 'azure' }> = {
+const PROVIDER_META: Record<IntegrationProvider, { label: string; description: string; features: string[]; icon: string; connectType: 'oauth' | 'modal' | 'none'; connectUrl?: string; modalType?: 'aws' | 'azure' | 'kubernetes' | 'eks' }> = {
   github: {
     label: 'GitHub',
     description: 'Connect GitHub repositories for automated scanning',
     features: ['Repository import', 'PR comments', 'Status checks', 'Auto-scan on push'],
     icon: 'github',
     connectType: 'oauth',
-    connectUrl: '/api/auth/github',
+    connectUrl: '/api/v1/integrations/github/url',
+    modalType: undefined,
   },
   gitlab: {
     label: 'GitLab',
@@ -49,7 +52,8 @@ const PROVIDER_META: Record<IntegrationProvider, { label: string; description: s
     features: ['Repository import', 'CI/CD integration', 'MR comments', 'Pipeline status'],
     icon: 'gitlab',
     connectType: 'oauth',
-    connectUrl: '/api/auth/gitlab',
+    connectUrl: '/api/v1/integrations/gitlab/url',
+    modalType: undefined,
   },
   aws: {
     label: 'AWS',
@@ -73,12 +77,29 @@ const PROVIDER_META: Record<IntegrationProvider, { label: string; description: s
     features: ['PR scanning', 'Commit checks', 'Pipeline integration'],
     icon: 'link',
     connectType: 'oauth',
-    connectUrl: '/api/auth/bitbucket',
+    connectUrl: '/api/v1/integrations/bitbucket/url',
+    modalType: undefined,
+  },
+  kubernetes: {
+    label: 'Kubernetes',
+    description: 'Connect Kubernetes clusters for security scanning',
+    features: ['Cluster scanning', 'RBAC analysis', 'Manifest validation'],
+    icon: 'kubernetes',
+    connectType: 'modal',
+    modalType: 'kubernetes',
+  },
+  eks: {
+    label: 'EKS',
+    description: 'Discover and connect Amazon EKS clusters',
+    features: ['Cluster discovery', 'AWS-powered', 'Managed scanning'],
+    icon: 'aws',
+    connectType: 'modal',
+    modalType: 'eks',
   },
 }
 
 function buildDefaultStatus(authProvider: 'github' | 'gitlab' | 'email'): IntegrationInfo[] {
-  const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket']
+  const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket', 'kubernetes', 'eks']
 
   return providers.map((provider) => {
     const meta = PROVIDER_META[provider]
@@ -105,7 +126,7 @@ export const integrationsApi = {
     try {
       const response = await apiClient.get<IntegrationStatusResponse>('/integrations/status')
       const data = response.data
-      const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket']
+      const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket', 'kubernetes', 'eks']
       const { authProvider } = auth
 
       return providers.map((provider) => {
@@ -133,5 +154,35 @@ export const integrationsApi = {
     } catch {
       return buildDefaultStatus(auth.authProvider)
     }
+  },
+
+  /**
+   * Get an OAuth authorization URL that attaches the provider to the current user.
+   */
+  getOAuthUrl: async (provider: 'github' | 'gitlab'): Promise<{ oauth_url: string | null; state?: string; error?: string }> => {
+    const response = await apiClient.get<{ oauth_url: string | null; state?: string; error?: string }>(
+      `/integrations/${provider}/url`,
+    )
+    return response.data
+  },
+
+  /**
+   * Exchange an OAuth code to attach the provider to the current user.
+   */
+  exchangeOAuthCode: async (
+    provider: 'github' | 'gitlab',
+    code: string,
+    state?: string,
+  ): Promise<{ connected: boolean; provider: string; account?: string; has_github?: boolean; has_gitlab?: boolean }> => {
+    const response = await apiClient.post(`/integrations/${provider}/callback`, { code, state })
+    return response.data
+  },
+
+  /**
+   * Disconnect an OAuth provider from the current user.
+   */
+  disconnectOAuth: async (provider: 'github' | 'gitlab'): Promise<{ connected: boolean; provider: string }> => {
+    const response = await apiClient.post(`/integrations/${provider}/disconnect`)
+    return response.data
   },
 }
