@@ -888,7 +888,7 @@ class SyncScanService:
                     )
 
             # Stage: ANALYZING_FINDINGS (static enrichment only — AI runs after COMPLETED)
-            self._transition_stage(scan, ScanStage.ANALYZING_FINDINGS, 88, "Analyzing findings...")
+            self._transition_stage(scan, ScanStage.ANALYZING_FINDINGS, "Analyzing findings...")
 
             self._update_progress(progress_callback, 88, "Calculating scores...")
 

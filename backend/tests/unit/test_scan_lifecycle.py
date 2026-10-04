@@ -36,3 +36,32 @@ def test_lifecycle_progress_scanning_uses_scanner_subprogress():
     )
     assert scanning is not None
     assert 0 < scanning < 100
+
+
+def test_transition_stage_call_signature_is_consistent():
+    """All _transition_stage call sites must match the 3-arg signature.
+
+    Regression guard: a stray positional int (e.g. _transition_stage(scan, stage, 88, msg))
+    raised "SyncScanService._transition_stage() takes 4 positional arguments but 5 were given"
+    and failed scans at the ANALYZING_FINDINGS stage.
+    """
+    import ast
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "app" / "workers" / "tasks" / "scan_repository.py"
+    tree = ast.parse(path.read_text())
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = getattr(fn, "attr", None) if isinstance(fn, ast.Attribute) else None
+        if name != "_transition_stage":
+            continue
+        if node.args:
+            for arg in node.args[1:]:  # skip the positional (self) receiver
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, int):
+                    raise AssertionError(
+                        f"_transition_stage called with stray positional int at line {node.lineno}: "
+                        f"{ast.unparse(node)}"
+                    )

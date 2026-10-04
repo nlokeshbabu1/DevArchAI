@@ -40,6 +40,12 @@ _APP_TABLES = {"users", "scans", "findings"}
 # database (app tables present, but no alembic_version table).  Each entry is
 # ``(revision, table, column_or_None)``; a column of ``None`` means "table
 # exists".  This mirrors the operations performed by each migration.
+#
+# Special sentinels:
+# - ``column="_has_rows"``: checks whether the table has any rows (for seed
+#   migrations that don't alter schema).
+# - ``table="_enum:<type_name>"``: checks whether a PostgreSQL enum type
+#   contains the given ``column`` value (for enum-altering migrations).
 _MIGRATION_MARKERS: list[tuple[str, str, str | None]] = [
     ("001", "repo_analysis", None),
     ("002", "findings", "ai_generated"),
@@ -73,6 +79,13 @@ _MIGRATION_MARKERS: list[tuple[str, str, str | None]] = [
     ("031", "ai_recommendations", None),
     ("032", "knowledge_documents", None),
     ("033", "scan_ai_recommendations", None),
+    ("034", "users", "token_encryption_version"),
+    ("035", "plans", "_has_rows"),
+    ("036", "user_sessions", "token_family"),
+    ("037", "finding_ai_jobs", None),
+    ("038", "_enum:scanstage", "analyzing_findings"),
+    ("039", "kubernetes_connections", None),
+    ("040", "_enum:membershiprole", "owner"),
 ]
 
 
@@ -215,6 +228,32 @@ def estimate_revision(url: str) -> str | None:
         column_cache: dict[str, set[str]] = {}
 
         def has_marker(table: str, column: str | None) -> bool:
+            # Special sentinel: check if a table has any rows (for seed migrations).
+            if column == "_has_rows":
+                if table not in table_names:
+                    return False
+                try:
+                    with engine.connect() as conn:
+                        return conn.execute(
+                            text(f"SELECT 1 FROM {table} LIMIT 1")
+                        ).scalar() is not None
+                except Exception:
+                    return False
+            # Special sentinel: check if a PostgreSQL enum type contains a value.
+            if table.startswith("_enum:"):
+                enum_type = table[len("_enum:"):]
+                try:
+                    with engine.connect() as conn:
+                        return conn.execute(
+                            text(
+                                "SELECT 1 FROM pg_enum e "
+                                "JOIN pg_type t ON e.enumtypid = t.oid "
+                                "WHERE t.typname = :typname AND e.enumlabel = :label"
+                            ),
+                            {"typname": enum_type, "label": column},
+                        ).scalar() is not None
+                except Exception:
+                    return False
             if table not in table_names:
                 return False
             if column is None:
@@ -239,23 +278,43 @@ def estimate_revision(url: str) -> str | None:
         engine.dispose()
 
 
-def _bootstrap_fresh_database(url: str) -> None:
-    """Create all tables from SQLAlchemy models on a completely empty database."""
+def _bootstrap_fresh_database(cfg) -> None:
+    """Bring a completely empty database to the head revision.
+
+    On PostgreSQL this runs the full Alembic migration chain from scratch so
+    the resulting schema exactly mirrors the migrations (no drift by
+    construction).  The pgvector extension is ensured up front; the RAG
+    migration also issues ``CREATE EXTENSION IF NOT EXISTS vector``.
+
+    Non-PostgreSQL backends (e.g. SQLite test harnesses) can't run the
+    PostgreSQL-specific migration chain, so they fall back to
+    ``Base.metadata.create_all`` + ``stamp head``.
+    """
+    import alembic.command
+
+    url = cfg.get_main_option("sqlalchemy.url")
+    if _is_postgres(url):
+        engine = create_engine(url)
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                conn.commit()
+        finally:
+            engine.dispose()
+        alembic.command.upgrade(cfg, "head")
+        logger.info("Fresh database migrated to head from scratch")
+        return
+
     import app.models  # noqa: F401 — ensure every model is registered on Base.metadata
     from app.db.base import Base
 
     engine = create_engine(url)
     try:
-        # The RAG knowledge layer stores embeddings as pgvector. Ensure the
-        # extension exists before create_all (no-op on non-Postgres backends).
-        if _is_postgres(url):
-            with engine.connect() as conn:
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                conn.commit()
         Base.metadata.create_all(engine)
     finally:
         engine.dispose()
-    logger.info("Fresh database bootstrapped: all tables created from models")
+    alembic.command.stamp(cfg, "head")
+    logger.info("Fresh database bootstrapped from models and stamped at head")
 
 
 def _check_not_newer_than_head(cfg, current: str | None) -> None:
@@ -308,9 +367,7 @@ def migrate_database() -> None:
 
     state = detect_database_state(url)
     if state == "fresh":
-        _bootstrap_fresh_database(url)
-        alembic.command.stamp(cfg, "head")
-        logger.info("Fresh database stamped at head migration")
+        _bootstrap_fresh_database(cfg)
     elif state == "orphan":
         current = _current_revision_impl(cfg)
         if current:

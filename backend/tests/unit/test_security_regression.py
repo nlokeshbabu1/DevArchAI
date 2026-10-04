@@ -134,3 +134,30 @@ class TestTokenFamilyTracking:
         from app.models.settings import UserSession
         col = UserSession.__table__.c.token_family
         assert col.nullable is True, "token_family should be nullable"
+
+
+class TestApiKeyPrefixLength:
+    """Verify ``generate_api_key`` never exceeds the api_key_prefix varchar(8) column."""
+
+    def test_generate_api_key_prefix_fits_varchar8(self):
+        from app.core.security import generate_api_key
+        from app.models.user import User
+
+        col = User.__table__.c.api_key_prefix
+        limit = col.type.length
+        assert limit is not None and limit <= 8, f"unexpected prefix length limit {limit}"
+
+        for _ in range(500):
+            _, prefix = generate_api_key()
+            assert len(prefix) <= limit, f"prefix {prefix!r} ({len(prefix)}) exceeds {limit}"
+            assert prefix.startswith("dk_"), f"prefix {prefix!r} must start with dk_"
+
+    def test_generate_api_key_full_key_length(self):
+        from app.core.security import generate_api_key
+        from app.models.user import User
+
+        limit = User.__table__.c.api_key.type.length
+        for _ in range(50):
+            full_key, _ = generate_api_key()
+            assert len(full_key) <= limit, f"full key too long for varchar({limit})"
+            assert "dk_" in full_key

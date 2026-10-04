@@ -74,6 +74,35 @@ else:
 "
 echo -e "${INFO}[3/4] Validation complete${NC}"
 
+# ──────────────────────────────────────────────
+# 3a. Verify schema drift against the models
+# ──────────────────────────────────────────────
+echo -e "${INFO}[3a/4] Verifying schema against models...${NC}"
+python3 -c "
+import sys
+from app.config import settings
+from app.db.migrate import _sync_url, current_revision
+from app.db.verify import verify_schema
+
+url = _sync_url()
+try:
+    report = verify_schema(url, database_revision=current_revision())
+except Exception as exc:
+    print(f'WARNING: schema verification failed to run ({exc})')
+    sys.exit(0)
+
+for issue in report.warnings:
+    print(f'[WARN ] schema: {issue.kind}: {getattr(issue, \"table\", \"\")} {getattr(issue, \"column\", \"\") or \"\"}'.rstrip())
+
+if not report.ok:
+    print(f'ERROR: schema drift detected against models ({len(report.issues)} issue(s))')
+    print(report.format_banner())
+    sys.exit(1)
+
+print(f'Schema verified OK ({report.tables_checked} tables, {report.columns_checked} columns)')
+"
+echo -e "${INFO}[3a/4] Schema verification complete${NC}"
+
 # Migrations already ran in this entrypoint — skip the duplicate pass inside
 # FastAPI lifespan (saves ~5-10s on cold start; schema was validated above).
 export DB_MIGRATE_ON_STARTUP=false

@@ -924,9 +924,14 @@ async def create_api_key(
     """Generate a new API key for the current user."""
     api_key, prefix = generate_api_key()
 
-    current_user.api_key = api_key
-    current_user.api_key_prefix = prefix
-
+    result = await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(api_key=api_key, api_key_prefix=prefix)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="User not found")
     await db.commit()
 
     return APIKeyResponse(
@@ -942,9 +947,14 @@ async def revoke_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke the current API key."""
-    current_user.api_key = None
-    current_user.api_key_prefix = None
-
+    result = await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(api_key=None, api_key_prefix=None)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="User not found")
     await db.commit()
 
     return MessageResponse(message="API key revoked successfully")
