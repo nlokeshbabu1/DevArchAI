@@ -23,6 +23,8 @@ interface FindingsExplorerProps {
   onExpandedFindingChange: (id: string | null) => void
   onFindingClick?: (id: string) => void
   rawFindingsCount?: number
+  sourceFilter?: string
+  onSourceFilterChange?: (filter: string) => void
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -48,6 +50,24 @@ function getSourceColor(source: string): string {
   return SOURCE_COLORS[source] ?? "bg-white/10 text-white/50 border-white/10"
 }
 
+function remediationLabel(finding: Finding): string {
+  const status = finding.remediation_status
+  if (status === 'FIX_AVAILABLE') return 'Fix available'
+  if (status === 'AI_SUGGESTED') return 'AI suggested'
+  if (status === 'MANUAL_REMEDIATION') return 'Manual'
+  if (status === 'NOT_SUPPORTED') return '—'
+  if (finding.fix_code) return 'Suggested'
+  return '—'
+}
+
+function remediationClass(finding: Finding): string {
+  const status = finding.remediation_status
+  if (status === 'FIX_AVAILABLE') return 'text-emerald-400/80'
+  if (status === 'AI_SUGGESTED') return 'text-indigo-300/70'
+  if (status === 'MANUAL_REMEDIATION') return 'text-amber-300/70'
+  return 'text-white/20'
+}
+
 const columns = [
   { key: "severity", label: "Severity", width: "w-[80px]" },
   { key: "rule_id", label: "Rule ID", width: "w-[100px]" },
@@ -64,8 +84,8 @@ const columns = [
 export const FindingsExplorer = memo(function FindingsExplorer({
   findings, severityFilter, sortBy, searchQuery,
   expandedFinding, onSeverityFilterChange, onSortByChange,
-  onSearchQueryChange, onExpandedFindingChange, onFindingClick,
-  rawFindingsCount,
+  onSearchQueryChange,   onExpandedFindingChange, onFindingClick,
+  rawFindingsCount, sourceFilter = 'all', onSourceFilterChange,
 }: FindingsExplorerProps) {
   const [page, setPage] = useState(1)
   const perPage = 15
@@ -75,6 +95,25 @@ export const FindingsExplorer = memo(function FindingsExplorer({
 
     if (severityFilter !== "all") {
       result = result.filter(f => f.severity === severityFilter)
+    }
+
+    if (sourceFilter !== "all") {
+      result = result.filter((f) => {
+        const src = f.detection_source
+          || (f.scanner_name && !f.scanner_name.toLowerCase().includes('devarchai')
+            ? 'external_scanner'
+            : 'rule_engine')
+        if (sourceFilter === 'scanner') {
+          return src === 'external_scanner'
+        }
+        if (sourceFilter === 'rule_engine') {
+          return src === 'rule_engine' || src === 'devarchai_scanner'
+        }
+        if (sourceFilter === 'ai') {
+          return f.ai_generated === true
+        }
+        return true
+      })
     }
 
     if (searchQuery) {
@@ -161,6 +200,23 @@ export const FindingsExplorer = memo(function FindingsExplorer({
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20 pointer-events-none" />
             </div>
+            {onSourceFilterChange && (
+              <div className="relative">
+                <ScanSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20 pointer-events-none" />
+                <select
+                  value={sourceFilter}
+                  onChange={(e) => { onSourceFilterChange(e.target.value); setPage(1) }}
+                  className="h-9 pl-9 pr-8 rounded-lg bg-white/5 border border-white/10 text-sm text-white/60 outline-none appearance-none cursor-pointer focus:border-indigo-500/40 transition-colors"
+                  aria-label="Filter by detection source"
+                >
+                  <option value="all" className="bg-slate-900">All sources</option>
+                  <option value="scanner" className="bg-slate-900">External scanners</option>
+                  <option value="rule_engine" className="bg-slate-900">DevArchAI rules</option>
+                  <option value="ai" className="bg-slate-900">AI enriched</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20 pointer-events-none" />
+              </div>
+            )}
             <div className="relative">
               <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20 pointer-events-none" />
               <select
@@ -221,7 +277,7 @@ export const FindingsExplorer = memo(function FindingsExplorer({
                   const isExpanded = expandedFinding === findingId
                   const confidence = finding.confidence ?? finding.confidence_score
                   const sources = parseScannerSources(finding.scanner_name)
-                  const hasAutoFix = !!finding.fix_code
+                  const hasAutoFix = finding.remediation_status === 'FIX_AVAILABLE'
                   const hasMergedSources = sources.length > 1
                   return (
                     <motion.tr
@@ -304,11 +360,9 @@ export const FindingsExplorer = memo(function FindingsExplorer({
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        {hasAutoFix ? (
-                          <span className="text-[9px] text-emerald-400/60 font-medium">Fixable</span>
-                        ) : (
-                          <span className="text-[9px] text-white/20">—</span>
-                        )}
+                        <span className={cn('text-[9px] font-medium', remediationClass(finding))}>
+                          {remediationLabel(finding)}
+                        </span>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1">

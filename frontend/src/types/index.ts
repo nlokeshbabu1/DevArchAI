@@ -25,6 +25,30 @@ export interface CategoryScore {
   low_count?: number
 }
 
+export interface FindingAISource {
+  kind: 'rag' | 'mcp'
+  title: string
+  url?: string
+  publisher?: string
+  retrieval_method?: string
+  relationship?: string
+  status?: string
+  supplied_to_llm?: boolean
+  retrieved_at?: string
+  version?: string
+  technology?: string
+  rule_id?: string
+  score?: number
+}
+
+export type DocumentationStatus =
+  | 'rag_used'
+  | 'mcp_used'
+  | 'rag_mcp_used'
+  | 'no_relevant_document'
+  | 'retrieval_unavailable'
+  | 'not_attempted'
+
 export interface Finding {
   id?: string
   message?: string
@@ -68,7 +92,16 @@ export interface Finding {
   cve?: string
   cwe?: string
   references?: string[]
+  ai_generated?: boolean
   evidence?: string
+  detection_source?: 'rule_engine' | 'external_scanner' | 'devarchai_scanner'
+  original_severity?: string
+  remediation_status?: 'FIX_AVAILABLE' | 'AI_SUGGESTED' | 'MANUAL_REMEDIATION' | 'NOT_SUPPORTED'
+  patch_status?: string
+  patch_explanation?: string
+  patch_skip_reason?: string
+  has_stored_patch?: boolean
+  processing_metadata?: Record<string, unknown>
   resource_name?: string
   // Technology classification (from backend)
   technology?: string
@@ -76,6 +109,12 @@ export interface Finding {
   fix_example?: string
   ai_explanation?: string
   impact_analysis?: string
+  // AI provenance (strict source attribution)
+  ai_source?: string
+  source_display?: string
+  documentation_status?: DocumentationStatus
+  documentation_status_display?: string
+  sources?: FindingAISource[]
 }
 
 export interface ScannerExecution {

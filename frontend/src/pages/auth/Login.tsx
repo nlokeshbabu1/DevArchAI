@@ -6,7 +6,7 @@ import {
   Mail, Lock, Eye, EyeOff, Github, Loader2,
   CheckCircle, AlertCircle, ArrowRight, Shield
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
@@ -19,7 +19,23 @@ export function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const { login, setUser } = useAuthStore()
+  const { login, setUser, isAuthenticated, isLoading: authBootstrapping, checkAuth } = useAuthStore()
+
+  useEffect(() => {
+    initAuthSync()
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
+    checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!authBootstrapping && isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [authBootstrapping, isAuthenticated, navigate])
 
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -162,6 +178,17 @@ export function Login() {
       setError('GitLab OAuth is not configured.')
       setIsLoading(false)
     }
+  }
+
+  if (authBootstrapping) {
+    return (
+      <AuthLayout>
+        <div className="flex flex-col items-center justify-center py-16 gap-4" role="status" aria-live="polite">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-slate-400">Restoring your session…</p>
+        </div>
+      </AuthLayout>
+    )
   }
 
   return (

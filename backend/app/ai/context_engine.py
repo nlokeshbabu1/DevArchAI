@@ -71,6 +71,9 @@ class AIContext:
     file_snippet: str = ""
     rag_version: str = ""
     mcp_version: str = ""
+    rag_enabled: bool = False
+    rag_error: bool = False
+    mcp_attempted: bool = False
 
 
 @dataclass
@@ -250,10 +253,11 @@ class AIContextEngine:
             file_snippet=self._scrub_snippet(file_snippet),
             rag_version=str(getattr(settings, "RAG_VERSION", "1.0.0")),
             mcp_version=str(getattr(settings, "MCP_CONTEXT_VERSION", "1.0.0")),
+            rag_enabled=self._rag_enabled(),
         )
 
         # 1. Rule knowledge from RAG (cost: cheap, cached).
-        if self._rag_enabled():
+        if context.rag_enabled:
             # NOTE: We deliberately do NOT filter by the finding's `category`:
             # the finding's DevOps category (e.g. "deployment", "scalability")
             # uses a different taxonomy than the RAG inventory's rule categories
@@ -262,9 +266,11 @@ class AIContextEngine:
             context.rule_knowledge = await self._retrieve_rule_knowledge(
                 rule_id, technology, None
             )
+            context.rag_error = context.rule_knowledge is None
 
         # 2. Live context from MCP — only when the technology requires it.
         context.mcp_results = await self._fetch_live_context(finding, technology, rule_id)
+        context.mcp_attempted = bool(context.mcp_results)
 
         return context
 
@@ -342,7 +348,8 @@ class AIContextEngine:
                 technology=technology,
                 category=category,
             )
-            record_rag_retrieval("completed", len(getattr(result, "chunks", []) or []))
+            document_count = len(getattr(result, "documents", None) or getattr(result, "chunks", None) or [])
+            record_rag_retrieval("completed", document_count)
             return result
         except Exception as exc:
             logger.debug("CONTEXT_RAG_FAILED", rule_id=rule_id, error=str(exc))
@@ -469,12 +476,16 @@ class AIContextEngine:
         )
 
     def _format_rule_knowledge(self, result: Any) -> str:
-        chunks = getattr(result, "chunks", None) or []
+        # ``RetrievedContext`` exposes ``.documents`` (RagResultDocument); older
+        # callers/doubles may expose ``.chunks``. Support both so retrieved rule
+        # knowledge is actually grounded into the prompt.
+        items = getattr(result, "documents", None) or getattr(result, "chunks", None) or []
         parts = []
-        for chunk in chunks:
-            content = _clean_text(getattr(chunk, "content", None) or getattr(chunk, "text", None))
+        for item in items:
+            content = _clean_text(getattr(item, "content", None) or getattr(item, "text", None))
+            title = _clean_text(getattr(item, "title", None) or getattr(item, "source_name", None))
             if content:
-                parts.append(content[:2000])
+                parts.append(f"[{title}] {content}"[:2000] if title else content[:2000])
         return "\n".join(parts)[:12000]
 
     def _parse_response(

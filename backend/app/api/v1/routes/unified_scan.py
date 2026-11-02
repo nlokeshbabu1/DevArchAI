@@ -21,9 +21,16 @@ from app.core.security import get_optional_user
 from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db, get_sync_session_factory
 from app.models.anonymous_scan import AnonymousScan
+from app.models.finding_ai_job import FindingAIJob
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
+from app.services.ai_job_service import source_display
+from app.services.finding_normalizer import enrich_finding_api_payload
+from app.services.ai_source_provenance import (
+    documentation_status_display,
+    normalize_sources,
+)
 from app.services.scan_progress_store import get_scan_progress_store
 from app.services.technology_classifier import classify_technology
 from app.utils.github_branch import resolve_repository_branch
@@ -564,6 +571,15 @@ async def get_scan_results(
     findings_result = await db.execute(select(Finding).where(Finding.scan_id == scan_id))
     findings = findings_result.scalars().all()
 
+    # Map findings to their AI job so provenance (sources) is consistent.
+    ai_jobs = (
+        await db.execute(select(FindingAIJob).where(FindingAIJob.scan_id == scan_id))
+    ).scalars().all()
+    job_by_finding: dict[str, FindingAIJob] = {}
+    for job in ai_jobs:
+        for finding_id in job.finding_ids or []:
+            job_by_finding[str(finding_id)] = job
+
     # Count by severity. All five buckets are always present (zero-filled) so
     # consumers can rely on total == sum(severity_counts.values()).
     severity_counts = {bucket: 0 for bucket in SEVERITY_BUCKETS}
@@ -789,7 +805,9 @@ async def get_scan_results(
             for se in (scan.scanner_executions or [])
         ],
         "findings": [
-            {
+            enrich_finding_api_payload(
+                f,
+                {
                 "id": str(f.id),
                 "rule_id": f.rule_id,
                 "rule_name": f.rule_name,
@@ -827,7 +845,29 @@ async def get_scan_results(
                 else (f.references or []),
                 "evidence": f.evidence,
                 "technology": _detect_finding_technology(f),
-            }
+                "ai_source": (
+                    job_by_finding[str(f.id)].source if str(f.id) in job_by_finding else None
+                ),
+                "source_display": source_display(
+                    job_by_finding[str(f.id)].source if str(f.id) in job_by_finding else None
+                ),
+                "documentation_status": (
+                    job_by_finding[str(f.id)].documentation_status
+                    if str(f.id) in job_by_finding
+                    else None
+                ),
+                "documentation_status_display": documentation_status_display(
+                    job_by_finding[str(f.id)].documentation_status
+                    if str(f.id) in job_by_finding
+                    else None
+                ),
+                "sources": (
+                    normalize_sources(job_by_finding[str(f.id)].sources)
+                    if str(f.id) in job_by_finding
+                    else []
+                ),
+                },
+            )
             for f in findings
         ],
         "ai_suggestions_count": len(suggestions),

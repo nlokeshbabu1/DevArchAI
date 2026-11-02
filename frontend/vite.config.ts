@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
 
-  server: {
+    server: {
     port: 5174,
     host: true,
     proxy: {
@@ -20,6 +20,7 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true,
+        cookieDomainRewrite: '',
       },
       '/ws': {
         target: 'ws://localhost:8000',

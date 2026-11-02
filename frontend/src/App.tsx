@@ -8,7 +8,7 @@ import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { IntegrationCallback } from './pages/auth/IntegrationCallback'
-import { useAuthStore } from './stores/auth-store'
+import { useAuthStore, initAuthSync } from './stores/auth-store'
 import { CookieConsentBanner } from './components/CookieConsentBanner'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -42,6 +42,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // and must NOT be gated behind optional cookie consent, otherwise a page
   // refresh would log the user out.
   useEffect(() => {
+    initAuthSync()
     useAuthStore.getState().checkAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -76,13 +77,8 @@ function ScanResultRedirect() {
 }
 
 export default function App() {
-  // Restore the session on app mount regardless of cookie-consent status.
-  // The HttpOnly refresh cookie is a first-party, security-essential cookie
-  // and must NOT be gated behind optional cookie consent, otherwise a page
-  // refresh would log the user out.
   useEffect(() => {
-    useAuthStore.getState().checkAuth()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    initAuthSync()
   }, [])
 
   return (

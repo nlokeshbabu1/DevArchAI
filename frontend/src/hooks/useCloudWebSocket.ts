@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { buildWebSocketUrl } from '../lib/api'
+import { getAccessToken } from '../lib/auth-token'
+import { buildWebSocketAuthMessage } from '../lib/ws-auth'
 import { useCloudStore } from '../stores/cloud-store'
 import type { CloudWSMessage } from '../api/endpoints/cloud'
 
@@ -67,6 +69,13 @@ export function useCloudWebSocket({
       wsRef.current = ws
 
       ws.onopen = () => {
+        const accessToken = getAccessToken()
+        try {
+          ws.send(buildWebSocketAuthMessage({ accessToken }))
+        } catch {
+          ws.close()
+          return
+        }
         setConnectionStatus('connected')
         reconnectAttempts.current = 0
 

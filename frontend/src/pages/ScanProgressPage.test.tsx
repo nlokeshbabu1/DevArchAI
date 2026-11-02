@@ -46,6 +46,14 @@ vi.mock('../api/endpoints/scans', () => ({
     getStages: (...args: any[]) => mockGetStages(...args),
     getScanState: (...args: any[]) => mockGetScanState(...args),
     getScanResults: (...args: any[]) => mockGetScanResults(...args),
+    getAiStatus: vi.fn(async () => ({ ai_status: 'completed', total_jobs: 0, by_status: {} })),
+  },
+}))
+
+vi.mock('../stores/auth-store', () => ({
+  useAuthStore: (selector?: (s: { isLoading: boolean; sessionChecked: boolean }) => unknown) => {
+    const state = { isLoading: false, sessionChecked: true }
+    return selector ? selector(state) : state
   },
 }))
 

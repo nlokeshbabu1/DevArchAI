@@ -6,7 +6,7 @@ import logging
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
@@ -401,7 +401,17 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = Field(default=False, env="COOKIE_SECURE")
     COOKIE_SAMESITE: str = Field(default="Lax", env="COOKIE_SAMESITE")
     COOKIE_DOMAIN: str | None = Field(default=None, env="COOKIE_DOMAIN")
-    COOKIE_PATH: str = Field(default="/api/v1/auth/refresh", env="COOKIE_PATH")
+    COOKIE_PATH: str = Field(default="/", env="COOKIE_PATH")
+    COOKIE_USE_HOST_PREFIX: bool = Field(
+        default=True,
+        env="COOKIE_USE_HOST_PREFIX",
+        description="When COOKIE_SECURE=true, use __Host- cookie prefix and Path=/",
+    )
+    REFRESH_COOKIE_NAME: str = Field(
+        default="devarchai_refresh",
+        env="REFRESH_COOKIE_NAME",
+        description="Refresh cookie name when not using __Host- prefix",
+    )
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
@@ -436,6 +446,30 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str | None = Field(default=None, env="PAYPAL_CLIENT_ID")
     PAYPAL_CLIENT_SECRET: str | None = Field(default=None, env="PAYPAL_CLIENT_SECRET")
     PAYPAL_MODE: str = Field(default="sandbox", env="PAYPAL_MODE")  # sandbox | live
+
+    @field_validator("COOKIE_SAMESITE", mode="after")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str) -> str:
+        normalized = (v or "Lax").strip().capitalize()
+        if normalized not in {"Lax", "Strict", "None"}:
+            raise ValueError("COOKIE_SAMESITE must be Lax, Strict, or None")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """Fail fast when production would run with insecure auth/cookie defaults."""
+        if self.ENVIRONMENT == "production":
+            if not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SECURE must be true when ENVIRONMENT=production")
+            if self.COOKIE_SAMESITE == "None" and not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SAMESITE=None requires COOKIE_SECURE=true")
+            if not self.CORS_ORIGINS:
+                raise ValueError("CORS_ORIGINS must be explicitly set when ENVIRONMENT=production")
+            if any(origin == "*" for origin in self.CORS_ORIGINS):
+                raise ValueError("CORS_ORIGINS cannot include '*' when allow_credentials is enabled")
+        if self.COOKIE_SAMESITE == "None" and not self.COOKIE_SECURE:
+            raise ValueError("COOKIE_SAMESITE=None requires COOKIE_SECURE=true")
+        return self
 
     @field_validator("SECRET_KEY", mode="after")
     @classmethod

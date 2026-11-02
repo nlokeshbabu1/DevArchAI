@@ -19,6 +19,10 @@ from app.services.ai_recommendation_cache import (
     finding_fingerprint,
     recommendation_cache_key,
 )
+from app.services.ai_source_provenance import (
+    documentation_status_display,
+    normalize_sources,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -159,6 +163,8 @@ async def set_job_status(
     error_message: str | None = None,
     recommendation: dict | None = None,
     celery_task_id: str | None = None,
+    sources: list[dict] | None = None,
+    documentation_status: str | None = None,
 ) -> FindingAIJob | None:
     job_uuid = job_id if isinstance(job_id, UUID) else UUID(str(job_id))
     job = await session.get(FindingAIJob, job_uuid)
@@ -175,6 +181,10 @@ async def set_job_status(
         job.error_message = error_message[:1000]
     if recommendation is not None:
         job.recommendation = recommendation
+    if sources is not None:
+        job.sources = sources
+    if documentation_status is not None:
+        job.documentation_status = documentation_status
     if celery_task_id is not None:
         job.celery_task_id = celery_task_id
     if status_value == FindingAIJobStatus.GENERATING.value and job.started_at is None:
@@ -241,6 +251,9 @@ def serialize_job(job: FindingAIJob) -> dict[str, Any]:
         "status": job.status,
         "source": job.source,
         "source_display": source_display(job.source),
+        "documentation_status": job.documentation_status,
+        "documentation_status_display": documentation_status_display(job.documentation_status),
+        "sources": normalize_sources(job.sources),
         "recommendation": job.recommendation,
         "model": job.model,
         "prompt_version": job.prompt_version,

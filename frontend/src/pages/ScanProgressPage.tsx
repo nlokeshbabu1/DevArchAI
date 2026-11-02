@@ -20,6 +20,7 @@ import { AIProgressBanner } from '../components/scans/AIProgressBanner'
 import { SecurityScore } from '../components/ui/SecurityScore'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { cn, copyToClipboard } from '../lib/utils'
+import { useAuthStore } from '../stores/auth-store'
 import type { ScanStage, StageMetadata, SeverityCounts, ScanEvent } from '../types'
 
 interface ScanResult {
@@ -296,6 +297,7 @@ export function ScanProgressPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const authReady = useAuthStore((s) => s.sessionChecked)
   const [isDownloading, setIsDownloading] = useState(false)
   const [prState, setPrState] = useState<{
     step: null | 'generating' | 'branch' | 'creating_pr'
@@ -322,13 +324,13 @@ export function ScanProgressPage() {
 
   const { data: scanState, isLoading: stateLoading, error: stateError } = useQuery({
     queryKey: ['scan-state', id], queryFn: () => scansApi.getScanState(id!),
-    enabled: isValidScanId, retry: 3, staleTime: 0,
+    enabled: authReady && isValidScanId, retry: 3, staleTime: 0,
   })
 
   const { data: result, isLoading: resultsLoading } = useQuery<ScanResult>({
-    queryKey: ['scan-results', id],
+    queryKey: ['scan-report', id],
     queryFn: async () => { if (!id) throw new Error('No scan ID'); return (await scansApi.getScanResults(id)) as ScanResult },
-    enabled: isValidScanId && !!scanState?.is_terminal && scanState.status === 'completed',
+    enabled: authReady && isValidScanId && !!scanState?.is_terminal && scanState.status === 'completed',
     retry: 3, staleTime: 5 * 60 * 1000,
     refetchInterval: (query) => {
       const data = query.state.data as ScanResult | undefined
@@ -343,7 +345,15 @@ export function ScanProgressPage() {
   const { data: aiJobStatus } = useQuery({
     queryKey: ['scan-ai-status', id],
     queryFn: () => scansApi.getAiStatus(id!),
-    enabled: isValidScanId && scanState?.is_terminal === true && scanState.status === 'completed',
+    enabled:
+      authReady &&
+      isValidScanId &&
+      scanState?.is_terminal === true &&
+      scanState.status === 'completed' &&
+      !!result &&
+      (result.ai_status === 'pending' ||
+        result.ai_status === 'queued' ||
+        result.ai_status === 'processing'),
     refetchInterval: (query) => {
       const status = query.state.data?.ai_status
       if (status === 'pending' || status === 'queued' || status === 'processing') {
@@ -368,13 +378,13 @@ export function ScanProgressPage() {
   const handleScanComplete = useCallback(() => {
     if (id) {
       void queryClient.invalidateQueries({ queryKey: ['scan-state', id] })
-      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+      void queryClient.invalidateQueries({ queryKey: ['scan-report', id] })
     }
   }, [queryClient, id])
   const handleScanFailed = useCallback(() => {}, [])
   const handleAIComplete = useCallback(() => {
     if (id) {
-      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+      void queryClient.invalidateQueries({ queryKey: ['scan-report', id] })
       void queryClient.invalidateQueries({ queryKey: ['scan-ai-status', id] })
     }
   }, [queryClient, id])
@@ -449,7 +459,7 @@ export function ScanProgressPage() {
   // On completion — invalidate results query so dashboard loads. Do NOT navigate away.
   useEffect(() => {
     if ((wsComplete || (isTerminal && isComplete)) && result) {
-      void queryClient.invalidateQueries({ queryKey: ['scan-results', id] })
+      void queryClient.invalidateQueries({ queryKey: ['scan-report', id] })
       setToastMsg('Scan completed successfully')
       if (toastRef.current) clearTimeout(toastRef.current)
       toastRef.current = setTimeout(() => setToastMsg(null), 4000)
@@ -524,12 +534,12 @@ export function ScanProgressPage() {
     }
   }, [repoName])
 
-  if (stateLoading) {
+  if (!authReady || stateLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-4">
           <Spinner />
-          <p className="text-muted-foreground text-sm">Connecting to scan...</p>
+          <p className="text-muted-foreground text-sm">{authReady ? 'Connecting to scan...' : 'Restoring session…'}</p>
         </div>
       </div>
     )

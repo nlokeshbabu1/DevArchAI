@@ -17,6 +17,10 @@ from app.models.finding_ai_job import FindingAIJob
 from app.models.scan import Scan
 from app.models.user import User
 from app.services.ai_job_service import serialize_job, source_display, summarize_scan_ai
+from app.services.ai_source_provenance import (
+    documentation_status_display,
+    normalize_sources,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -109,6 +113,11 @@ async def get_scan_ai_findings(
                 "status": job.status,
                 "source": job.source,
                 "source_display": source_display(job.source),
+                "documentation_status": job.documentation_status,
+                "documentation_status_display": documentation_status_display(
+                    job.documentation_status
+                ),
+                "sources": normalize_sources(job.sources),
                 "error_message": job.error_message,
                 "recommendation": job.recommendation,
             }
@@ -204,5 +213,10 @@ async def get_finding_recommendation(
         "full_example": finding.full_example,
         "best_practices": finding.best_practices,
         "documentation_url": finding.documentation_url,
+        "documentation_status": job.documentation_status if job else None,
+        "documentation_status_display": documentation_status_display(
+            job.documentation_status if job else None
+        ),
+        "sources": normalize_sources(job.sources) if job else [],
         "job": serialize_job(job) if job else None,
     }

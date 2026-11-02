@@ -7,6 +7,7 @@ from typing import Any
 
 import structlog
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 
 logger = structlog.get_logger(__name__)
 
@@ -30,7 +31,8 @@ class CloudWebSocketManager:
             return self._locks[connection_id]
 
     async def connect(self, connection_id: str, websocket: WebSocket) -> bool:
-        await websocket.accept()
+        if websocket.client_state != WebSocketState.CONNECTED:
+            await websocket.accept()
         lock = await self._get_lock(connection_id)
         async with lock:
             if connection_id not in self._connections:

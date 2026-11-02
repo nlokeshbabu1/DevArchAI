@@ -85,6 +85,8 @@ class FindingAIJob(Base):
         index=True,
     )
     source = Column(String(32), nullable=True)
+    documentation_status = Column(String(32), nullable=True)
+    sources = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     recommendation = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     model = Column(String(64), nullable=True)
     prompt_version = Column(String(32), nullable=True)

@@ -6,6 +6,10 @@ vi.mock('../lib/api', () => ({
   buildWebSocketUrl: vi.fn((path: string) => `ws://localhost:8000${path}`),
 }))
 
+vi.mock('../lib/auth-token', () => ({
+  getAccessToken: vi.fn(() => 'test-access-token'),
+}))
+
 class MockWebSocket {
   static instances: MockWebSocket[] = []
   static OPEN = 1
@@ -90,6 +94,14 @@ describe('useScanWebSocket', () => {
     expect(result.current.scanState).toBeNull()
     expect(result.current.error).toBeNull()
     expect(result.current.connectionStatus).toBe('disconnected')
+  })
+
+  it('should not put access tokens in the WebSocket URL', async () => {
+    renderHook(() => useScanWebSocket({ scanId: 'scan-123' }))
+    await flushConnect()
+    const ws = MockWebSocket.instances[0]
+    expect(ws.url).not.toContain('token=')
+    expect(ws.url).not.toContain('access_token')
   })
 
   it('should transition to running on progress_update', async () => {

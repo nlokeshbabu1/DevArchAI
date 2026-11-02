@@ -96,7 +96,7 @@ OFFICIAL_DOC_URLS: dict[str, list[str]] = {
         "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
     ],
     "terraform": [
-        "https://developer.hashicorp.com/terraform/language/configuration",
+        "https://developer.hashicorp.com/terraform/language/syntax/configuration",
         "https://developer.hashicorp.com/terraform/tutorials/configuration-language/sensitive-variables",
     ],
     "docker": [

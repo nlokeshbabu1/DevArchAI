@@ -28,6 +28,7 @@ from app.scanners.helm_scanner import HelmScanner
 from app.scanners.registry import ScannerRegistry
 from app.scoring.engine import ScoringEngine
 from app.services.ai_recommendation_service import enqueue_ai_analysis_for_scan
+from app.services.finding_normalizer import serialize_processing_metadata
 from app.services.report_service import ReportService
 from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
@@ -849,6 +850,9 @@ class SyncScanService:
             try:
                 from app.services.finding_validator import validate_findings
                 rule_findings, validation_stats = validate_findings(rule_findings)
+
+                from app.services.finding_normalizer import normalize_findings
+                rule_findings, _norm_stats = normalize_findings(rule_findings)
                 fallback_rate = validation_stats.findings_with_fallbacks / max(validation_stats.total_findings, 1) * 100
                 logger.info(
                     "Findings validated",
@@ -1316,6 +1320,7 @@ class SyncScanService:
                             'references',
                         ),
                         evidence=getattr(finding, 'evidence', None),
+                        processing_metadata=serialize_processing_metadata(finding),
                     )
                     self.db.add(db_finding)
                 except Exception as finding_error:

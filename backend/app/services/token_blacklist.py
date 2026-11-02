@@ -16,7 +16,21 @@ from app.cache.redis_cache import get_cache
 logger = structlog.get_logger(__name__)
 
 BLACKLIST_PREFIX = "devarchai:blacklist:"
+# Logical alias for access-token denylist (same Redis keys as BLACKLIST_PREFIX).
+ACCESS_REVOKED_PREFIX = BLACKLIST_PREFIX
 DEFAULT_TTL = timedelta(days=7)
+
+
+def access_token_blacklist_ttl(exp_timestamp: int | float | None) -> timedelta:
+    """TTL bounded by remaining access-token lifetime."""
+    if exp_timestamp is None:
+        return DEFAULT_TTL
+    from datetime import UTC, datetime
+
+    remaining = datetime.fromtimestamp(exp_timestamp, tz=UTC) - datetime.now(UTC)
+    if remaining.total_seconds() <= 0:
+        return timedelta(seconds=1)
+    return min(remaining, DEFAULT_TTL)
 
 
 class BlacklistRedisError(Exception):

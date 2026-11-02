@@ -113,6 +113,23 @@ class ScanStateResponse(BaseModel):
             return True
         return self.ai_status.lower() in {"completed", "failed", "skipped"}
 
+class FindingAISource(BaseModel):
+    """A single attributable documentation source behind a recommendation."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str | None = None
+    title: str | None = None
+    url: str | None = None
+    publisher: str | None = None
+    retrieval_method: str | None = None
+    relationship: str | None = None
+    status: str | None = None
+    supplied_to_llm: bool = False
+    retrieved_at: str | None = None
+    version: str | None = None
+
+
 class ScanFinding(BaseModel):
     """A single finding from scan results."""
 
@@ -128,6 +145,12 @@ class ScanFinding(BaseModel):
     file_path: str | None = None
     line_number: int | None = None
     scanner_name: str | None = None
+    documentation_url: str | None = None
+    ai_source: str | None = None
+    source_display: str | None = None
+    documentation_status: str | None = None
+    documentation_status_display: str | None = None
+    sources: list[FindingAISource] = Field(default_factory=list)
 
 
 class ScanResultsResponse(BaseModel):

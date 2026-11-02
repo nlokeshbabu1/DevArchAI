@@ -6,6 +6,7 @@ import apiClient from '../client'
 
 export interface GithubCallbackRequest {
   code: string
+  state: string
 }
 
 export interface GithubTokenResponse {
@@ -26,6 +27,7 @@ export interface GithubTokenResponse {
 
 export interface GithubOAuthUrlResponse {
   oauth_url: string | null
+  state?: string
   error?: string
   message?: string
 }
@@ -54,9 +56,9 @@ export const githubAuthApi = {
   /**
    * Exchange GitHub authorization code for JWT token
    */
-  exchangeCodeForToken: async (code: string): Promise<GithubTokenResponse> => {
+  exchangeCodeForToken: async (code: string, state: string): Promise<GithubTokenResponse> => {
     try {
-      const response = await apiClient.post<GithubTokenResponse>('/auth/github/callback', { code })
+      const response = await apiClient.post<GithubTokenResponse>('/auth/github/callback', { code, state })
       return response.data
     } catch (error: any) {
       throw error

@@ -153,6 +153,32 @@ def decode_token(token: str | None) -> dict[str, Any] | None:
         return None
 
 
+def decode_access_token_allow_expired(token: str | None) -> dict[str, Any] | None:
+    """Decode access JWT for logout/blacklist when exp may have passed."""
+    if token is None:
+        return None
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        if unverified_header.get("alg") != "HS256":
+            return None
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            audience=JWT_AUDIENCE,
+            issuer=JWT_ISSUER,
+            options={
+                "verify_exp": False,
+                "require": ["jti", "sub", "iss", "aud"],
+            },
+        )
+        if payload.get("type") != "access":
+            return None
+        return payload
+    except JWTError:
+        return None
+
+
 async def get_current_user_from_token(
     token: str,
     db: AsyncSession,
@@ -161,6 +187,9 @@ async def get_current_user_from_token(
     """Get current user from JWT token with blacklist check."""
     payload = decode_token(token)
     if payload is None:
+        return None
+
+    if payload.get("type") != "access":
         return None
 
     user_id = payload.get("sub")

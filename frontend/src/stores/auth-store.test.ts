@@ -66,11 +66,24 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().isLoading).toBe(false)
   })
 
-  it('checks authentication status', () => {
-    expect(useAuthStore.getState().isAuthenticated).toBe(false)
-    
+  it('serverLogout calls backend logout before clearing state', async () => {
+    const { api } = await import('../lib/api')
+    const postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: { message: 'ok' } } as any)
+    const replaceMock = vi.fn()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, replace: replaceMock },
+    })
+
     useAuthStore.getState().login('token')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    await useAuthStore.getState().serverLogout()
+
+    expect(postSpy).toHaveBeenCalledWith('/auth/logout')
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(replaceMock).toHaveBeenCalledWith('/login')
+
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
   })
 
   it('single-flights concurrent refreshSession calls', async () => {

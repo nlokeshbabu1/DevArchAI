@@ -7,8 +7,9 @@ import time
 import structlog
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+from app.core.security import decode_token
 from starlette.types import ASGIApp
 
 from app.config import settings
@@ -196,38 +197,12 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
         "/docs", "/redoc", "/openapi.json",
     }
 
-    # WebSocket paths that require authentication
-    WS_AUTH_PATHS = {"/ws/cloud/", "/ws/scan/"}
-
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
 
-        # WebSocket auth validation
-        if any(path.startswith(ws_path) for ws_path in self.WS_AUTH_PATHS):
-            token = request.headers.get("Authorization", "").replace("Bearer ", "")
-            query_token = request.query_params.get("token", "")
-            token = token or query_token
-            if not token:
-                return JSONResponse(
-                    status_code=401,
-                    content={"error": {"code": "WS_AUTH_REQUIRED", "message": "WebSocket authentication required"}},
-                )
-            try:
-                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-                jti = payload.get("jti")
-                if jti:
-                    from app.services.token_blacklist import BlacklistRedisError, is_blacklisted
-                    try:
-                        if await is_blacklisted(jti):
-                            return JSONResponse(status_code=401, content={"error": {"code": "TOKEN_BLACKLISTED"}})
-                    except BlacklistRedisError:
-                        logger.error("auth_revocation_check_failed", path=path, jti=jti[:8], reason="redis_unavailable")
-                        return JSONResponse(status_code=503, content={"error": {"code": "SERVICE_UNAVAILABLE", "message": "Service temporarily unavailable"}})
-            except JWTError:
-                return JSONResponse(
-                    status_code=401,
-                    content={"error": {"code": "INVALID_TOKEN", "message": "Invalid WebSocket token"}},
-                )
+        # WebSocket authentication is handled in endpoint handlers (first-message auth).
+        if path.startswith("/ws/"):
+            return await call_next(request)
 
         if any(path.startswith(skip) for skip in self.SKIP_PATHS):
             return await call_next(request)
@@ -235,32 +210,32 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header.replace("Bearer ", "")
-            try:
-                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-                jti = payload.get("jti")
-                if jti:
-                    from app.services.token_blacklist import BlacklistRedisError, is_blacklisted
-                    try:
-                        if await is_blacklisted(jti):
-                            logger.warning("token_blacklisted", path=path, jti=jti[:8])
-                            return JSONResponse(
-                                status_code=401,
-                                content={"error": {"code": "TOKEN_BLACKLISTED", "message": "Token has been revoked"}},
-                                headers={"WWW-Authenticate": "Bearer"},
-                            )
-                    except BlacklistRedisError:
-                        logger.error("auth_revocation_check_failed", path=path, jti=jti[:8], reason="redis_unavailable")
-                        return JSONResponse(
-                            status_code=503,
-                            content={"error": {"code": "SERVICE_UNAVAILABLE", "message": "Service temporarily unavailable"}},
-                            headers={"WWW-Authenticate": "Bearer"},
-                        )
-            except JWTError:
+            payload = decode_token(token)
+            if payload is None or payload.get("type") != "access":
                 logger.warning("invalid_token", path=path)
                 return JSONResponse(
                     status_code=401,
                     content={"error": {"code": "INVALID_TOKEN", "message": "Invalid or expired token"}},
                     headers={"WWW-Authenticate": "Bearer"},
                 )
+            jti = payload.get("jti")
+            if jti:
+                from app.services.token_blacklist import BlacklistRedisError, is_blacklisted
+
+                try:
+                    if await is_blacklisted(jti):
+                        logger.warning("token_blacklisted", path=path, jti=jti[:8])
+                        return JSONResponse(
+                            status_code=401,
+                            content={"error": {"code": "TOKEN_BLACKLISTED", "message": "Token has been revoked"}},
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                except BlacklistRedisError:
+                    logger.error("auth_revocation_check_failed", path=path, jti=jti[:8], reason="redis_unavailable")
+                    return JSONResponse(
+                        status_code=503,
+                        content={"error": {"code": "SERVICE_UNAVAILABLE", "message": "Service temporarily unavailable"}},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
 
         return await call_next(request)

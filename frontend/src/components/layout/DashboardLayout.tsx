@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useEffect, useState, useCallback } from 'react'
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '../../lib/utils'
@@ -7,7 +7,7 @@ import {
   Brain, CreditCard, Settings, LogOut, Menu, X, Search,
   Zap, Cloud, User, ChevronDown, BookOpen, Plug, Container,
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
 import { Button } from '../ui'
 import { StatusBadge } from '../ui/StatusBadge'
 
@@ -59,9 +59,15 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [, setSearchParams] = useSearchParams()
-  const { user, logout } = useAuthStore()
+  const { user, serverLogout, logoutInProgress, isLoading: authLoading } = useAuthStore()
+
+  useEffect(() => {
+    initAuthSync()
+    useAuthStore.getState().checkAuth()
+  }, [])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [dashboardSearch, setDashboardSearch] = useState('')
   const isDashboardRoute = location.pathname === '/dashboard'
 
@@ -94,6 +100,43 @@ export function Layout({ children }: LayoutProps) {
       setSearchParams(nextParams, { replace: true })
     })
   }
+
+  const handleLogout = useCallback(async () => {
+    setUserMenuOpen(false)
+    setHeaderMenuOpen(false)
+    await serverLogout()
+  }, [serverLogout])
+
+  const UserMenuPanel = ({ onNavigate }: { onNavigate?: () => void }) => (
+    <div className="space-y-1">
+      <div className="px-2 py-2 border-b border-white/10 mb-1">
+        <p className="text-sm font-medium text-foreground truncate">{user?.username || 'User'}</p>
+        <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
+      </div>
+      <Button
+        variant="ghost"
+        className="w-full justify-start gap-2"
+        onClick={() => {
+          navigate('/settings')
+          onNavigate?.()
+          setUserMenuOpen(false)
+          setHeaderMenuOpen(false)
+        }}
+      >
+        <Settings className="h-4 w-4" />
+        Account settings
+      </Button>
+      <Button
+        variant="ghost"
+        className="w-full justify-start gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+        disabled={logoutInProgress || authLoading}
+        onClick={() => { void handleLogout() }}
+      >
+        <LogOut className="h-4 w-4" />
+        {logoutInProgress ? 'Signing out…' : 'Log out'}
+      </Button>
+    </div>
+  )
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -222,17 +265,7 @@ export function Layout({ children }: LayoutProps) {
                   exit={{ opacity: 0, y: 10 }}
                 >
                   <div className="p-2">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start gap-2"
-                      onClick={() => {
-                        logout()
-                        navigate('/')
-                      }}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Sign out
-                    </Button>
+                    <UserMenuPanel onNavigate={() => setSidebarOpen(false)} />
                   </div>
                 </motion.div>
               )}
@@ -279,6 +312,33 @@ export function Layout({ children }: LayoutProps) {
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
               <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
               <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setHeaderMenuOpen((open) => !open)}
+                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                aria-expanded={headerMenuOpen}
+                aria-haspopup="menu"
+                aria-label="Account menu"
+              >
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-indigo-600">
+                  <User className="h-4 w-4 text-white" />
+                </div>
+                <ChevronDown className={cn('h-4 w-4 text-muted-foreground hidden sm:block', headerMenuOpen && 'rotate-180')} />
+              </button>
+              <AnimatePresence>
+                {headerMenuOpen && (
+                  <motion.div
+                    className="absolute right-0 top-full mt-2 w-56 bg-card border border-white/10 rounded-lg shadow-xl overflow-hidden z-50"
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                  >
+                    <UserMenuPanel />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>

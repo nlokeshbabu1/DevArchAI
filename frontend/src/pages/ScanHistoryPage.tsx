@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { Card, Button } from '../components/ui-animated'
 import { Badge } from '../components/ui'
+import { NativeSelect, nativeSelectOptionProps } from '../components/ui/native-select'
 import { scansApi } from '../api/endpoints/scans'
 import { cn } from '../lib/utils'
 import { SecurityScore } from '../components/ui/SecurityScore'
@@ -219,28 +220,28 @@ export function ScanHistoryPage() {
               placeholder="Search repositories..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
             />
           </div>
-          <div className="flex gap-2">
-            <select
+          <div className="flex flex-wrap gap-2">
+            <NativeSelect
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Filter by status"
             >
-              <option value="all">All Status</option>
-              <option value="completed">Completed</option>
-              <option value="processing">In Progress</option>
-              <option value="failed">Failed</option>
-            </select>
-            <select
+              <option value="all" {...nativeSelectOptionProps()}>All Status</option>
+              <option value="completed" {...nativeSelectOptionProps()}>Completed</option>
+              <option value="processing" {...nativeSelectOptionProps()}>In Progress</option>
+              <option value="failed" {...nativeSelectOptionProps()}>Failed</option>
+            </NativeSelect>
+            <NativeSelect
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'date' | 'score')}
-              className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Sort scans"
             >
-              <option value="date">Sort by Date</option>
-              <option value="score">Sort by Score</option>
-            </select>
+              <option value="date" {...nativeSelectOptionProps()}>Sort by Date</option>
+              <option value="score" {...nativeSelectOptionProps()}>Sort by Score</option>
+            </NativeSelect>
           </div>
         </div>
       </Card>

@@ -410,7 +410,12 @@ async def generate_suggestion(
     recommendation = await engine.generate_recommendation(finding, context, fingerprint)
     rec = recommendation.to_dict() if hasattr(recommendation, "to_dict") else recommendation
 
-    fix_code = rec.get("fix_code") or rec.get("fix_example") or rec.get("full_example")
+    fix_code = rec.get("fix_code") or rec.get("fix_example") or ""
+    if not fix_code and rec.get("full_example"):
+        logger.warning(
+            "Generated recommendation has only full_example; not storing as auto-apply fix_code",
+            finding_id=str(finding_id),
+        )
     if not fix_code:
         raise HTTPException(status_code=500, detail="Failed to generate fix")
 

@@ -13,6 +13,7 @@ import { cn, getSeverityColor, sanitizePath, copyToClipboard, parseScannerSource
 import { FocusTrap } from "../ui/focus-trap"
 import { Button } from "../ui-animated"
 import { AISourceBadge } from "../ui/AISourceBadge"
+import { AISources } from "../ui/AISources"
 import { DiffViewer } from "../DiffViewer"
 
 interface FindingDetailsDrawerProps {
@@ -304,6 +305,48 @@ export function FindingDetailsDrawer({
                     </div>
                   )}
 
+                  {(finding.patch_status || finding.processing_metadata?.remediation) && (
+                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-2">
+                      <h4 className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">
+                        Stored remediation patch
+                      </h4>
+                      <p className="text-xs text-white/60">
+                        Status:{' '}
+                        <span className="text-cyan-200 font-medium">
+                          {String(
+                            finding.patch_status ||
+                              (finding.processing_metadata?.remediation as { patch_status?: string })?.patch_status ||
+                              'not_evaluated'
+                          ).replace(/_/g, ' ')}
+                        </span>
+                      </p>
+                      {(finding.patch_explanation ||
+                        (finding.processing_metadata?.remediation as { explanation?: string })?.explanation) && (
+                        <p className="text-xs text-white/50 leading-relaxed">
+                          {finding.patch_explanation ||
+                            (finding.processing_metadata?.remediation as { explanation?: string })?.explanation}
+                        </p>
+                      )}
+                      {(finding.patch_skip_reason ||
+                        (finding.processing_metadata?.remediation as { skip_reason?: string })?.skip_reason) && (
+                        <p className="text-xs text-amber-300/80">
+                          {finding.patch_skip_reason ||
+                            (finding.processing_metadata?.remediation as { skip_reason?: string })?.skip_reason}
+                        </p>
+                      )}
+                      {((finding.processing_metadata?.remediation as { unified_diff?: string })?.unified_diff ||
+                        finding.unified_diff) && (
+                        <DiffViewer
+                          unifiedDiff={
+                            (finding.processing_metadata?.remediation as { unified_diff?: string })?.unified_diff ||
+                            finding.unified_diff
+                          }
+                          filename={repoPath || 'file'}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {/* 6. Diff View */}
                   {(finding.before_code || finding.after_code || finding.unified_diff) && (
                     <div>
@@ -347,6 +390,21 @@ export function FindingDetailsDrawer({
                         source={(finding as { ai_source?: string }).ai_source ?? (finding as { job?: { source?: string } }).job?.source}
                         sourceDisplay={(finding as { source_display?: string }).source_display}
                         technology={(finding as { technology?: string }).technology}
+                      />
+                    </div>
+                  )}
+
+                  {/* 8b. Documentation Sources (strict provenance) */}
+                  {((finding.sources && finding.sources.length > 0) || finding.documentation_status) && (
+                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <BookOpen className="w-4 h-4 text-white/30" />
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Documentation Sources</h4>
+                      </div>
+                      <AISources
+                        sources={finding.sources}
+                        documentationStatus={finding.documentation_status}
+                        documentationStatusDisplay={finding.documentation_status_display}
                       />
                     </div>
                   )}

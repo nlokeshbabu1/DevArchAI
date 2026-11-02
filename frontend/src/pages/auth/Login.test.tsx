@@ -6,9 +6,15 @@ import { Login } from './Login'
 
 // Mock the auth store
 vi.mock('../../stores/auth-store', () => ({
+  initAuthSync: vi.fn(),
   useAuthStore: vi.fn(() => ({
     login: vi.fn(),
     setUser: vi.fn(),
+    checkAuth: vi.fn(),
+    isAuthenticated: false,
+    isLoading: false,
+    sessionChecked: true,
+    refreshSession: vi.fn().mockResolvedValue(false),
   })),
 }))
 

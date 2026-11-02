@@ -24,6 +24,7 @@ export function GithubCallback() {
 
     const handleCallback = async () => {
       const code = searchParams.get('code')
+      const state = searchParams.get('state')
       const errorParam = searchParams.get('error')
 
       // Check for OAuth error
@@ -39,9 +40,15 @@ export function GithubCallback() {
         return
       }
 
+      if (!state) {
+        setStatus('error')
+        setError('Missing OAuth state. Please try signing in again.')
+        return
+      }
+
       try {
         // Exchange code for token
-        const tokenResponse = await githubAuthApi.exchangeCodeForToken(code)
+        const tokenResponse = await githubAuthApi.exchangeCodeForToken(code, state)
 
         // Update auth store (token stored in memory only)
         login(tokenResponse.access_token)

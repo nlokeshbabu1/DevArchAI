@@ -90,6 +90,7 @@ class Finding(Base):
     cwe = Column(String(50), nullable=True)
     references = Column(Text, nullable=True)  # JSON array of reference URLs
     evidence = Column(Text, nullable=True)  # Raw scanner evidence output
+    processing_metadata = Column(Text, nullable=True)  # JSON: detection_source, remediation_status, etc.
 
     # Metadata
     confidence_score = Column(Float, default=1.0, nullable=False)

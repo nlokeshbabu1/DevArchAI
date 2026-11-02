@@ -81,6 +81,7 @@ export function ScanResultsDashboard({
 }: ScanResultsDashboardProps) {
   const [drawerFindingId, setDrawerFindingId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = useState('all')
   const isEmpty = findings.length === 0
 
   const scoreData = {
@@ -263,6 +264,8 @@ export function ScanResultsDashboard({
                 onExpandedFindingChange={onExpandedFindingChange}
                 onFindingClick={handleOpenDrawer}
                 rawFindingsCount={rawFindingsCount}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={setSourceFilter}
               />
             </div>
 

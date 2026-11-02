@@ -40,6 +40,10 @@ class CreatePRRequest(BaseModel):
         default=False,
         description="Create PR as draft (won't trigger CI checks)"
     )
+    atomic_mode: bool = Field(
+        default=True,
+        description="When true (default), all selected findings must produce validated patches or the PR is not created",
+    )
 
     class Config:
         json_schema_extra = {
@@ -65,6 +69,10 @@ class CreatePRResponse(BaseModel):
     score_before: float | None
     score_after: float | None
     created_at: datetime
+    remediation_report: dict | None = Field(
+        default=None,
+        description="Structured remediation outcomes, validation, and discovery metadata",
+    )
 
     @field_validator('pr_id', 'scan_id', mode='before')
     @classmethod

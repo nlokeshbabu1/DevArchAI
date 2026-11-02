@@ -31,11 +31,11 @@ class TestSecurityConfigDefaults:
             f"Storage mode is {settings.AUTH_REFRESH_TOKEN_STORAGE_MODE}, expected cookie_only"
         )
 
-    def test_cookie_path_restricted(self):
-        """Refresh cookie path must be restricted to /api/v1/auth/refresh."""
+    def test_cookie_path_default(self):
+        """Refresh cookie path defaults to / when using host-prefix cookies."""
         from app.config import settings
-        assert settings.COOKIE_PATH == "/api/v1/auth/refresh", (
-            f"Cookie path is {settings.COOKIE_PATH}, expected /api/v1/auth/refresh"
+        assert settings.COOKIE_PATH == "/", (
+            f"Cookie path is {settings.COOKIE_PATH}, expected /"
         )
 
     def test_cookie_samesite_lax(self):

@@ -154,6 +154,9 @@ async def change_password(
     if not verify_password(current, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     current_user.hashed_password = get_password_hash(new_pw)
+    from app.services.refresh_session_service import revoke_all_user_sessions
+
+    await revoke_all_user_sessions(db, current_user.id)
     await db.commit()
     return {"message": "Password updated successfully", "success": True}
 

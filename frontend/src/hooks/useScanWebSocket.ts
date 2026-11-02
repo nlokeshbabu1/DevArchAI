@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { buildWebSocketUrl } from '../lib/api'
 import { getAccessToken } from '../lib/auth-token'
+import { buildWebSocketAuthMessage } from '../lib/ws-auth'
 import type {
   ScanStage,
   ScanLifecycleState,
@@ -228,11 +229,7 @@ export function useScanWebSocket({
 
     const token = getAccessToken() || ''
     const st = sessionTokenRef.current || ''
-    let wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
-    const params = new URLSearchParams()
-    if (token) params.set('token', token)
-    if (st) params.set('session_token', st)
-    wsUrl = `${wsUrl}?${params.toString()}`
+    const wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
 
     cleanup()
     setLifecycleState('reconnecting')
@@ -243,6 +240,17 @@ export function useScanWebSocket({
 
     ws.onopen = () => {
       if (!mountedRef.current) {
+        ws.close()
+        return
+      }
+      try {
+        ws.send(
+          buildWebSocketAuthMessage({
+            accessToken: token || null,
+            sessionToken: st || null,
+          }),
+        )
+      } catch {
         ws.close()
         return
       }

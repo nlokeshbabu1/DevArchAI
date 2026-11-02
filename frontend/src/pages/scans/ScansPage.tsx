@@ -7,6 +7,7 @@ import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth-store'
 import { EmptyState } from '@/components/ui/empty-state'
+import { NativeSelect, nativeSelectOptionProps } from '../../components/ui/native-select'
 import { SecurityScore } from '../../components/ui/SecurityScore'
 import { resolveSecurityScore } from '../../lib/security-score'
 
@@ -178,19 +179,19 @@ export function ScansPage() {
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-foreground font-medium">Filter:</span>
-          <select
+          <NativeSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Filter scans by status"
           >
-            <option value="all">All</option>
-            <option value="pending">Pending</option>
-            <option value="queued">Queued</option>
-            <option value="processing">Processing</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            <option value="all" {...nativeSelectOptionProps()}>All</option>
+            <option value="pending" {...nativeSelectOptionProps()}>Pending</option>
+            <option value="queued" {...nativeSelectOptionProps()}>Queued</option>
+            <option value="processing" {...nativeSelectOptionProps()}>Processing</option>
+            <option value="completed" {...nativeSelectOptionProps()}>Completed</option>
+            <option value="failed" {...nativeSelectOptionProps()}>Failed</option>
+            <option value="cancelled" {...nativeSelectOptionProps()}>Cancelled</option>
+          </NativeSelect>
         </div>
       </Card>
 
@@ -277,7 +278,7 @@ export function ScansPage() {
                           variant="primary"
                           size="sm"
                           className="w-full"
-                          onClick={() => navigate('/history')}
+                          onClick={() => navigate(`/scans/${scan.id}`)}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Report

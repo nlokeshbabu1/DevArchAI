@@ -210,21 +210,40 @@ def _make_service(session, engine=None, cache=None, **kwargs):
 
 
 def test_enqueue_never_blocks_or_raises_when_celery_down():
-    with patch(
-        "app.workers.tasks.ai_recommendations.enqueue_ai_analysis"
-    ) as mock_task:
-        mock_task.delay.side_effect = ConnectionError("broker down")
-        enqueue_ai_analysis_for_scan(uuid4())
-        mock_task.delay.assert_called_once()
-        time.sleep(0.2)
+    with patch("app.config.settings.ENVIRONMENT", "production"):
+        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
+            with patch(
+                "app.workers.tasks.ai_recommendations.enqueue_ai_analysis"
+            ) as mock_task:
+                mock_task.delay.side_effect = ConnectionError("broker down")
+                with patch(
+                    "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
+                    return_value=False,
+                ):
+                    enqueue_ai_analysis_for_scan(uuid4())
+                mock_task.delay.assert_called_once()
+                time.sleep(0.2)
 
 
 def test_enqueue_uses_celery_when_available():
     scan_id = uuid4()
-    with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
-        with patch("app.services.ai_recommendation_service._schedule_thread_fallback"):
+    with patch("app.config.settings.ENVIRONMENT", "production"):
+        with patch("app.config.settings.CELERY_AI_TASKS_ENABLED", True):
+            with patch("app.workers.tasks.ai_recommendations.enqueue_ai_analysis") as mock_task:
+                with patch("app.services.ai_recommendation_service._schedule_stale_watchdog"):
+                    enqueue_ai_analysis_for_scan(scan_id)
+                mock_task.delay.assert_called_once_with(str(scan_id))
+
+
+def test_enqueue_uses_main_loop_in_development():
+    scan_id = uuid4()
+    with patch("app.config.settings.ENVIRONMENT", "development"):
+        with patch(
+            "app.services.ai_recommendation_service._schedule_ai_on_main_loop",
+            return_value=True,
+        ) as mock_schedule:
             enqueue_ai_analysis_for_scan(scan_id)
-        mock_task.delay.assert_called_once_with(str(scan_id))
+        mock_schedule.assert_called_once_with(str(scan_id))
 
 
 # ---------------------------------------------------------------------------

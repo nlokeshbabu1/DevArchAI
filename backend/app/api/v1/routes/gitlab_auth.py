@@ -1,6 +1,5 @@
 """GitLab OAuth authentication routes."""
 
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -12,6 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.routes.auth import _parse_user_agent, _should_include_refresh_token_body
+from app.core.cookie_settings import set_refresh_cookie
+from app.core.oauth_state import generate_oauth_state, validate_oauth_state
 from app.config import settings
 from app.core.security import (
     create_access_token,
@@ -29,34 +30,6 @@ from app.services.organization_provisioning import ensure_user_organization_memb
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-_oauth_states: dict[str, float] = {}
-_OAUTH_STATE_TTL = 600
-
-
-def _generate_state() -> str:
-    state = uuid.uuid4().hex
-    _oauth_states[state] = time.time()
-    return state
-
-
-def _validate_state(state: str) -> bool:
-    now = time.time()
-    if state in _oauth_states:
-        created_at = _oauth_states.pop(state)
-        if now - created_at < _OAUTH_STATE_TTL:
-            return True
-    _clean_expired_states(now)
-    return False
-
-
-def _clean_expired_states(now: float | None = None) -> None:
-    if now is None:
-        now = time.time()
-    expired = [s for s, t in _oauth_states.items() if now - t >= _OAUTH_STATE_TTL]
-    for s in expired:
-        _oauth_states.pop(s, None)
-
 
 def _safe_email(user: User) -> str:
     if not user.email_encrypted:
@@ -102,7 +75,7 @@ async def get_gitlab_oauth_url(redirect_uri: str | None = None):
 
     final_redirect_uri = redirect_uri or settings.GITLAB_REDIRECT_URI
     gitlab_url = settings.GITLAB_URL.rstrip("/")
-    state = _generate_state()
+    state = await generate_oauth_state()
 
     params = urlencode({
         "client_id": settings.GITLAB_CLIENT_ID,
@@ -142,7 +115,7 @@ async def gitlab_callback(
                 detail="Authorization code required",
             )
 
-        if state and not _validate_state(state):
+        if not state or not await validate_oauth_state(state):
             logger.warning("Invalid or expired OAuth state", state=state)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -273,31 +246,15 @@ async def gitlab_callback(
                 "role": user.role.value if hasattr(user.role, "value") else "user",
                 "org_id": str(user.current_org_id) if user.current_org_id else None,
             })
-            refresh_token_jwt = create_refresh_token(data={"sub": str(user.id)})
+            from app.services.refresh_session_service import create_refresh_session
 
-            # Create session with token family for reuse detection
-            token_family = str(uuid.uuid4())
-            user_agent_str = request.headers.get("User-Agent", "")
-            ip = request.client.host if request.client else "0.0.0.0"
-            browser, os_val, device = _parse_user_agent(user_agent_str)
-            session = UserSession(
-                user_id=user.id,
-                refresh_token_hash=hash_token(refresh_token_jwt),
-                token_family=token_family,
-                browser=browser,
-                os=os_val,
-                ip_address=ip,
-                user_agent=user_agent_str,
-                device_name=request.headers.get("Sec-Ch-UA-Platform", device),
-                is_current=True,
-                expires_at=datetime.now(UTC).replace(hour=0, minute=0, second=0)
-                + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            _session, raw_refresh = await create_refresh_session(
+                db, user, request, token_family=str(uuid.uuid4())
             )
-            db.add(session)
             await db.commit()
             await db.refresh(user)
 
-            _set_refresh_cookie(response, refresh_token_jwt)
+            set_refresh_cookie(response, raw_refresh)
 
             await audit_logger.log(
                 actor_id=str(user.id),
@@ -310,14 +267,11 @@ async def gitlab_callback(
 
             logger.info("GitLab OAuth successful", user_id=user.id)
 
-            resp = {
+            return {
                 "access_token": access_token_jwt,
                 "token_type": "bearer",
                 "user": user_to_response(user),
             }
-            if _should_include_refresh_token_body():
-                resp["refresh_token"] = refresh_token_jwt
-            return resp
 
     except HTTPException:
         raise
@@ -329,15 +283,3 @@ async def gitlab_callback(
         )
 
 
-def _set_refresh_cookie(response: Response, token: str) -> None:
-    from app.config import settings
-    response.set_cookie(
-        key="refresh_token",
-        value=token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        domain=settings.COOKIE_DOMAIN,
-        path=settings.COOKIE_PATH,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-    )

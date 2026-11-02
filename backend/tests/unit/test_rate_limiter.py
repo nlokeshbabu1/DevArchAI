@@ -72,8 +72,9 @@ class TestRateLimitMiddleware:
         from app.middleware.security import _AUTH_PATHS
         assert "/api/v1/auth/login" in _AUTH_PATHS
         assert "/api/v1/auth/register" in _AUTH_PATHS
-        assert "/api/v1/auth/refresh" in _AUTH_PATHS
         assert "/api/v1/auth/github/callback" in _AUTH_PATHS
+        from app.middleware.security import _REFRESH_PATH
+        assert _REFRESH_PATH == "/api/v1/auth/refresh"
 
     def test_skip_paths_defined(self):
         """Skip paths frozenset contains health/docs paths."""

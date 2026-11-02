@@ -5,7 +5,7 @@ import json
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user, get_optional_user
@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.scan import Scan
 from app.models.user import User
+from app.services.finding_normalizer import enrich_finding_api_payload
 
 logger = structlog.get_logger(__name__)
 
@@ -104,7 +105,9 @@ async def list_findings(
     import json
     return {
         "findings": [
-            {
+            enrich_finding_api_payload(
+                finding,
+                {
                 "id": str(finding.id),
                 "scan_id": str(finding.scan_id),
                 "rule_id": finding.rule_id,
@@ -135,7 +138,8 @@ async def list_findings(
                 "cwe": finding.cwe,
                 "references": json.loads(finding.references) if finding.references else [],
                 "evidence": finding.evidence,
-            }
+                },
+            )
             for finding in findings
         ],
         "total": total,
@@ -213,6 +217,3 @@ async def get_finding(
         "evidence": finding.evidence,
     }
 
-
-# Import func for count query
-from sqlalchemy import func

@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { getAccessToken, performRefresh } from './auth-token'
+import { getApiV1BaseUrl, getConfiguredApiBaseUrl, warnIfDevApiOriginMismatch } from './api-base-url'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -14,9 +15,11 @@ function getFallbackBaseUrl(): string {
 }
 
 function getConfiguredBaseUrl(): string {
-  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  return normalizeBaseUrl(configuredBaseUrl || getFallbackBaseUrl())
+  const configured = getConfiguredApiBaseUrl()
+  return configured || normalizeBaseUrl(getFallbackBaseUrl())
 }
+
+warnIfDevApiOriginMismatch()
 
 function redirectToLogin() {
   if (typeof window === 'undefined') {
@@ -40,7 +43,7 @@ function doRefresh(): Promise<string> {
 }
 
 export const API_BASE_URL = getConfiguredBaseUrl()
-export const API_V1_BASE_URL = API_BASE_URL ? `${API_BASE_URL}/api/v1` : '/api/v1'
+export const API_V1_BASE_URL = getApiV1BaseUrl()
 
 export function buildBackendUrl(path: string): string {
   const baseUrl = API_BASE_URL || getFallbackBaseUrl()
