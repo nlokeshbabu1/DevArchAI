@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils'
 import { api } from '../../lib/api'
 import { useAuthStore } from '../../stores/auth-store'
 import { useNavigate } from 'react-router-dom'
+import { useProductConfig } from '../../hooks/useProductConfig'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { StatusBadge } from '../../components/ui/StatusBadge'
@@ -16,6 +17,9 @@ interface Subscription {
   status: string
   current_period_end: string | null
   cancel_at_period_end: boolean
+  beta_entitlements_active?: boolean
+  checkout_enabled?: boolean
+  beta_label?: string | null
 }
 
 const plans = [
@@ -114,6 +118,7 @@ const plans = [
 export function BillingPage() {
   const navigate = useNavigate()
   const { user, token } = useAuthStore()
+  const productConfig = useProductConfig()
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpgrading, setIsUpgrading] = useState<string | null>(null)
@@ -144,6 +149,11 @@ export function BillingPage() {
 
   const handleUpgrade = async (planId: string) => {
     if (planId === 'free') return
+
+    if (!productConfig.checkout_enabled || subscription?.checkout_enabled === false) {
+      navigate('/dashboard')
+      return
+    }
 
     if (!token) {
       navigate('/login')
@@ -185,12 +195,20 @@ export function BillingPage() {
     <div className="space-y-8">
       <PageHeader
         title="Billing"
-        description="Manage your subscription, usage limits, and plan upgrades"
+        description={
+          productConfig.beta_access_mode
+            ? 'Beta program — free access with usage limits. Paid checkout is paused.'
+            : 'Manage your subscription, usage limits, and plan upgrades'
+        }
         actions={
           subscription ? (
             <StatusBadge
-              status={subscription.status === 'active' ? 'connected' : subscription.status === 'past_due' ? 'failed' : 'pending'}
-              label={`${subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)} plan`}
+              status={subscription.beta_entitlements_active ? 'beta' : subscription.status === 'active' ? 'connected' : subscription.status === 'past_due' ? 'failed' : 'pending'}
+              label={
+                subscription.beta_entitlements_active
+                  ? subscription.beta_label || 'Beta — Free Access'
+                  : `${subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)} plan`
+              }
               dot
             />
           ) : undefined
@@ -323,7 +341,7 @@ export function BillingPage() {
                   variant={isCurrentPlan ? 'secondary' : plan.highlight ? 'primary' : 'secondary'}
                   className="w-full"
                   glow={plan.highlight && !isCurrentPlan}
-                  disabled={isCurrentPlan || isUpgradingThis}
+                  disabled={isCurrentPlan || isUpgradingThis || !productConfig.checkout_enabled}
                   onClick={() => handleUpgrade(plan.planId)}
                 >
                   {isUpgradingThis ? (

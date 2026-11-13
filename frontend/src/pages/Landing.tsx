@@ -14,6 +14,7 @@ import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
 import { WhyDevArchAI } from '../components/landing/WhyDevArchAI'
 import { PricingSection } from '../components/landing/PricingSection'
 import { BackgroundVideo } from '../components/landing/BackgroundVideo'
+import { useProductConfigState } from '../hooks/useProductConfig'
 
 /* ─── Mouse Glow ───────────────────────────────────────────── */
 function MouseGlow() {
@@ -162,10 +163,15 @@ function StoryStep({
 /* ─── Main Landing ────────────────────────────────────────── */
 export function Landing() {
   const navigate = useNavigate()
+  const { config } = useProductConfigState()
 
   const handleStartScan = useCallback(() => {
     navigate('/register')
   }, [navigate])
+
+  const trustMarkers = config.beta_access_mode
+    ? ['No payment during Beta', 'Full product access', 'Usage limits apply']
+    : ['No credit card required', 'Free tier available', 'Instant results']
 
   return (
     <div className="min-h-screen overflow-x-hidden">
@@ -179,10 +185,10 @@ export function Landing() {
 
           <FloatingTechCards />
 
-          {/* Hero ambient glows — depth layers */}
-          <div className="absolute top-[12%] left-1/2 -translate-x-1/2 w-[44rem] h-80 bg-primary/[0.09] rounded-full blur-[130px] pointer-events-none" />
-          <div className="absolute bottom-[14%] right-[10%] w-[30rem] h-72 bg-blue-500/[0.07] rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute top-[24%] left-[6%] w-80 h-80 bg-primary/[0.04] rounded-full blur-[110px] pointer-events-none" />
+          {/* Hero ambient glows — depth layers (desktop only) */}
+          <div className="hidden md:block absolute top-[12%] left-1/2 -translate-x-1/2 w-[44rem] h-80 bg-primary/[0.09] rounded-full blur-[130px] pointer-events-none" />
+          <div className="hidden md:block absolute bottom-[14%] right-[10%] w-[30rem] h-72 bg-blue-500/[0.07] rounded-full blur-[120px] pointer-events-none" />
+          <div className="hidden lg:block absolute top-[24%] left-[6%] w-80 h-80 bg-primary/[0.04] rounded-full blur-[110px] pointer-events-none" />
           {/* Very soft volumetric light */}
           <div
             className="absolute top-[-12%] left-[28%] w-48 h-[140%] pointer-events-none"
@@ -211,7 +217,11 @@ export function Landing() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
                     </span>
-                    <span className="text-xs font-medium text-slate-400">DevSecOps Security Platform</span>
+                    <span className="text-xs font-medium text-slate-400">
+                      {config.beta_access_mode
+                        ? config.beta_label || 'DevArchAI Beta — Free Access'
+                        : 'DevSecOps Security Platform'}
+                    </span>
                   </div>
                 </motion.div>
 
@@ -251,7 +261,7 @@ export function Landing() {
                       size="lg"
                       className="btn-premium h-[50px] px-7 text-sm font-semibold"
                     >
-                      Start Free Scan
+                      {config.beta_access_mode ? 'Join Beta — Free' : 'Start Free Scan'}
                       <ArrowRight className="h-4 w-4 ml-1.5" />
                     </Button>
                   </MagneticButton>
@@ -273,7 +283,7 @@ export function Landing() {
                   animate="visible"
                   className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400 justify-center"
                 >
-                  {['No credit card required', 'Free tier available', 'Instant results'].map((item) => (
+                  {trustMarkers.map((item) => (
                     <div key={item} className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-green-400/80" />
                       <span>{item}</span>

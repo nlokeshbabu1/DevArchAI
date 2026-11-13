@@ -24,6 +24,7 @@ from app.schemas.ai_suggestion import (
     CreatePRResponse,
 )
 from app.services.feature_gating import FeatureGatingService
+from app.services.entitlements import resolve_user_entitlements
 from app.services.github_integration import get_github_integration_service
 
 logger = structlog.get_logger(__name__)
@@ -276,11 +277,16 @@ async def create_pr(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    user_plan = getattr(current_user, 'subscription_plan', 'free')
-    if user_plan not in ['pro', 'enterprise']:
+    if not FeatureGatingService.can_create_pr(current_user):
+        ent = resolve_user_entitlements(current_user)
         raise HTTPException(
             status_code=403,
-            detail=f"Create PR requires Pro or Enterprise plan. Current plan: {user_plan}",
+            detail={
+                "error": "FEATURE_NOT_AVAILABLE",
+                "message": "Create PR is not available on your current plan",
+                "current_plan": ent.billing_plan,
+                "beta_access_mode": ent.beta_access_mode,
+            },
         )
 
     # Get suggestion with ownership verification

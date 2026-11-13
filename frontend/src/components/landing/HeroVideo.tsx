@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, memo, type ReactNode } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion, useInView, useReducedMotion } from 'framer-motion'
 import {
   GitBranch, Shield, Brain, FileText,
   CheckCircle2, AlertTriangle, Box, Hexagon, Layers,
@@ -561,8 +561,10 @@ function ReportStage() {
 
 // ─── Main Component ───────────────────────────────────────
 export function HeroVideo() {
+  const containerRef = useRef<HTMLDivElement>(null)
   const prefersReducedMotion = useReducedMotion()
-  const t = useTimer(!prefersReducedMotion)
+  const isInView = useInView(containerRef, { margin: '-15%', amount: 0.2 })
+  const t = useTimer(isInView && !prefersReducedMotion)
   const idx = activeIdx(t)
 
   const stages = useMemo(() => [
@@ -579,6 +581,7 @@ export function HeroVideo() {
   if (prefersReducedMotion) {
     return (
       <motion.div
+        ref={containerRef}
         className="relative w-full max-w-2xl mx-auto"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
@@ -599,13 +602,14 @@ export function HeroVideo() {
 
   return (
     <motion.div
+      ref={containerRef}
       className="relative w-full max-w-2xl mx-auto"
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay: 0.4, ease: EASE_OUT }}
     >
-      {/* Ambient glow */}
-      <div className="absolute -inset-8 bg-primary/[0.03] rounded-3xl blur-3xl pointer-events-none" />
+      {/* Ambient glow — desktop only to reduce paint cost on small screens */}
+      <div className="absolute -inset-8 bg-primary/[0.03] rounded-3xl blur-3xl pointer-events-none hidden sm:block" />
 
       <GlassCard className="overflow-hidden" glow>
         <TitleBar />

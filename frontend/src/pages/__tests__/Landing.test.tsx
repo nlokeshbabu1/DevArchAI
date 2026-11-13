@@ -1,7 +1,15 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { Landing } from '../Landing'
+import { clearProductConfigCache } from '../../hooks/useProductConfig'
+import { api } from '../../lib/api'
+
+vi.mock('../../lib/api', () => ({
+  api: {
+    get: vi.fn(),
+  },
+}))
 
 // Mock react-router-dom
 vi.mock('react-router-dom', async () => {
@@ -13,6 +21,18 @@ vi.mock('react-router-dom', async () => {
 })
 
 describe('Landing Page', () => {
+  beforeEach(() => {
+    clearProductConfigCache()
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        beta_access_mode: false,
+        checkout_enabled: true,
+        show_upgrade_prompts: true,
+        beta_label: null,
+      },
+    })
+  })
+
   const renderLanding = () => {
     return render(
       <BrowserRouter>
@@ -60,10 +80,12 @@ describe('Landing Page', () => {
     expect(screen.getAllByText('GitHub Actions').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders pricing plans', () => {
+  it('renders pricing plans', async () => {
     renderLanding()
     const pricing = within(document.getElementById('pricing') as HTMLElement)
-    expect(pricing.getByText('Free')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(pricing.getByText('Free')).toBeInTheDocument()
+    })
     expect(pricing.getByText('$0')).toBeInTheDocument()
     expect(pricing.getByText('Plus')).toBeInTheDocument()
     expect(pricing.getByText('$12')).toBeInTheDocument()

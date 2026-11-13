@@ -167,12 +167,13 @@ export function Findings() {
 
   // Get user subscription to determine if AI should be blurred
   const [userPlan, setUserPlan] = useState<string>('free')
+  const [blurAiSuggestions, setBlurAiSuggestions] = useState(true)
 
   useEffect(() => {
-    // Fetch user's subscription plan
     const fetchPlan = async () => {
       if (!token) {
         setUserPlan('free')
+        setBlurAiSuggestions(true)
         return
       }
       try {
@@ -180,8 +181,14 @@ export function Findings() {
           headers: { Authorization: `Bearer ${token}` }
         })
         setUserPlan(response.data.plan || 'free')
+        const betaActive = Boolean(response.data.beta_entitlements_active)
+        const features = response.data.features || {}
+        setBlurAiSuggestions(
+          !betaActive && (response.data.plan === 'free' || features.ai_suggestions_blurred !== false)
+        )
       } catch (error) {
         setUserPlan('free')
+        setBlurAiSuggestions(true)
       }
     }
     fetchPlan()
@@ -575,7 +582,7 @@ export function Findings() {
                     </div>
                     {finding.ai_explanation && !(finding.summary || finding.risk || finding.fix_code) ? (
                       <AISuggestionBlur
-                        isBlurred={userPlan === 'free'}
+                        isBlurred={blurAiSuggestions}
                         suggestion={finding.ai_explanation}
                         codeFix={finding.recommendation}
                         onUpgrade={() => navigate('/pricing')}

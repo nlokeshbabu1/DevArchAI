@@ -41,15 +41,7 @@ def start_scan(
         include_ai_explanations=include_ai,
     )
     body = payload.model_dump(exclude_none=True)
-    if not body.get("branch"):
-        raise UsageError(
-            "Branch is required to start a scan.",
-            hint=(
-                'Pass --branch <name> (e.g. devsec scan --branch master) or set a default '
-                'with "devsec project set-branch <project-id> <branch>".'
-            ),
-        )
-    data = client.post_json("/scan/start", payload=payload.model_dump(exclude_none=True))
+    data = client.post_json("/scan/start", payload=body)
     return ScanStartResponse.model_validate(data)
 
 

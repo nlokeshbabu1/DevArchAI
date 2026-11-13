@@ -3,7 +3,7 @@ import '@testing-library/jest-dom'
 // Mock scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn()
 
-// Mock IntersectionObserver for framer-motion
+// Mock IntersectionObserver for framer-motion (no synchronous callbacks — breaks WeakMap in inView)
 class MockIntersectionObserver {
   observe = vi.fn()
   disconnect = vi.fn()
@@ -30,3 +30,9 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 })
+
+if (typeof HTMLMediaElement !== 'undefined') {
+  HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve()) as typeof HTMLMediaElement.prototype.play
+  HTMLMediaElement.prototype.pause = vi.fn()
+  HTMLMediaElement.prototype.load = vi.fn()
+}

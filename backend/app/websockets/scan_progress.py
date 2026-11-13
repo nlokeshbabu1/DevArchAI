@@ -132,9 +132,16 @@ class ScanProgressWebSocketManager:
             True if the connection was accepted successfully.
         """
         try:
-            if websocket.client_state != WebSocketState.CONNECTED:
+            client_state = getattr(websocket, "client_state", WebSocketState.CONNECTING)
+            if client_state != WebSocketState.CONNECTED:
                 await websocket.accept()
             async with self._lock:
+                if websocket in self._active:
+                    logger.debug(
+                        "WebSocket already registered",
+                        scan_id=self._active[websocket],
+                    )
+                    return True
                 self._connections[scan_id].append(websocket)
                 self._active[websocket] = scan_id
 

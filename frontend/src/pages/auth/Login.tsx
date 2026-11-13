@@ -11,6 +11,7 @@ import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { fetchProductConfig } from '../../hooks/useProductConfig'
 import { AuthLayout } from './AuthLayout'
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
@@ -113,6 +114,13 @@ export function Login() {
           sessionStorage.removeItem('upgradeIntent')
           sessionStorage.removeItem('upgradePlan')
           sessionStorage.removeItem('postLoginRedirect')
+
+          const productConfig = await fetchProductConfig()
+          if (!productConfig.checkout_enabled) {
+            navigate(targetRedirect)
+            return
+          }
+
           try {
             const data = await createCheckout(
               { plan, billing: 'monthly' },

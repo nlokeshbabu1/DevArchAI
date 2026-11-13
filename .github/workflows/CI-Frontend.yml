@@ -1,117 +1,270 @@
-# name: Ci of he frontend application
+name: Ci of the frontend application
 
-# on:
-#   push:
-#     branches:
-#       - main
-#   # pull_request:
-#   #   branches:
-#   #     - main
+on:
+    push:
+        branches: ["main", "best-feature"]
+    pull_request:
+        branches: ["main", "best-feature"]
+        paths:
+            - 'frontend/**'
+            - '.github/workflows/CI-Frontend.yml'
 
-# job:
 
-#   # ==========================================
-#   # INSTALL + BUILD + TEST
-#   # ==========================================
+#we are using the default directory for the frontend application, so we don't need to specify a working-directory in the steps.
+defaults:
+  run:
+    working-directory: frontend
+
+permissions:
+  contents: read
+
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '24'
+  IMAGE_NAME: ${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY }}
+
+jobs:
+
+  # ==========================================
+  # Unit and Integration TEST
+  # ==========================================
   
-#   build:
-#     name: Build and Test Frontend
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4
+  test:
+    name: unit and integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
 
-#       - name: Set up Node.js
-#         uses: actions/setup-node@v3
-#         with:
-#           node-version: '21'
-#           cache: 'npm'
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
-#       - name: Install dependencies
-#         run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-#       - name: Run tests
-#         run: npm test
-
-#       - name: Build frontend application
-#         run: npm run build
+      - name: Run tests
+        run: npm test unit --if-present
       
-#       - name: Integration Tests
-#         run: npm run test:integration --if-present
+      - name: Integration Tests
+        run: npm run test:integration --if-present
 
-#       - name: WebSocket Tests
-#         run: npm run test:websocket --if-present
+      - name: WebSocket Tests
+        run: npm run test:websocket --if-present
 
-#   # ==========================================
-#   # NPM SECURITY
-#   # ==========================================
+  # ==========================================
+  # SCA - NPM SECURITY AUDIT
+  # ==========================================
 
-#   npm-security:
-#     name: NPM Security
-#     runs-on: ubuntu-latest
+  npm-security:
+    name: NPM Security
+    runs-on: ubuntu-latest
 
-#     steps:
+    steps:
 
-#       - name: Checkout
-#         uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
 
-#       - name: Setup Node.js
-#         uses: actions/setup-node@v6
-#         with:
-#           node-version: 20
-#           cache: npm
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-#       - name: Install dependencies
-#         run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-#       - name: NPM audit
-#         run: npm audit --audit-level=high
+      - name: NPM audit
+        run: npm audit --audit-level=high
 
-# # ==========================================
-# # CODEQL SAST Performs SAST (Static Application Security Testing) against your JavaScript/TypeScript code.
-# # ==========================================
+# ==========================================
+# CODEQL SAST Performs SAST (Static Application Security Testing) against your JavaScript/TypeScript code.
+# ==========================================
 
-#   codeql:
-#     name: CodeQL SAST
-#     runs-on: ubuntu-latest
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
 
-#     permissions:
-#       contents: read
-#       security-events: write
+    permissions:
+      contents: read
+      security-events: write
 
-#     steps:
+    steps:
 
-#       - name: Checkout
-#         uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
 
-#       - name: Initialize CodeQL
-#         uses: github/codeql-action/init@v4
-#         with:
-#           languages: javascript-typescript
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
 
-#       - name: Analyze
-#         uses: github/codeql-action/analyze@v4
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
 
 
-#   # ==========================================
-#   # DEPENDENCY REVIEW
-#   # ==========================================
+  # ==========================================
+  # 2C. SCA - DEPENDENCY REVIEW (PRs Only)
+  # ==========================================
+  dependency-review:
+    name: SCA - Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
 
-#   dependency-review:
-#     name: Dependency Review
-#     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
 
-#     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
 
-#     permissions:
-#       contents: read
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
-#     steps:
+    ##########################################################
+    ### Build the frontend application and create a production build artifact
+    ##########################################################
+  build-artifact:
+    name: Build Frontend Artifact
+    needs: [test, npm-security, codeql, dependency-review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
 
-#       - name: Checkout
-#         uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
-#       - name: Dependency Review
-#         uses: actions/dependency-review-action@v5
-#         with:
-#           fail-on-severity: high
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend artifact
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-artifact
+          path: frontend/dist
+          retention-days: 5
+
+  #########################
+  ##docker build and push to dockerhub
+  #########################
+  docker-build-push:
+    name: Docker Build and Push
+    needs: build-artifact
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && contains(github.ref, 'refs/heads/main')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 1
+            token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: setup docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract docker image tag
+        id: meta
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const shortSha = context.sha.substring(0, 7);
+            const tag = `${process.env.GITHUB_REF_NAME}-${shortSha}`;
+            core.setOutput('version', tag);
+
+      - name: Build docker image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          load: true # Loads image into local Docker daemon so Trivy can scan it BEFORE pushing
+          tags: frontend:${{ steps.meta.outputs.version }}
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: frontend:${{ steps.meta.outputs.version }}
+          format: sarif
+          output: trivy-report.sarif
+          exit-code: '1' # Fails the pipeline and blocks Docker push if HIGH/CRITICAL CVEs exist
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF report
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-report.sarif
+        
+      - name: Generate SBOM
+        if: success()
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          format: cyclonedx
+          output: frontend-sbom.cdx.json
+          exit-code: '0'
+
+      - name: Upload SBOM
+        if: always() && hashFiles('frontend-sbom.cdx.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-sbom
+          path: frontend-sbom.cdx.json
+          retention-days: 30
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push scanned image
+        run: |
+          docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+
+      - name: Get published image digest
+        id: digest
+        run: |
+          DIGEST=$(docker image inspect \
+            --format='{{index .RepoDigests 0}}' \
+            "${IMAGE_NAME}:${IMAGE_TAG}")
+
+          echo "image-digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}

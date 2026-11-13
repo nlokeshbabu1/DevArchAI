@@ -74,7 +74,10 @@ class TestScanProgressWebSocketManager:
 
     def _mock_websocket(self, scan_id: str = "scan-123") -> MagicMock:
         """Create a mock WebSocket."""
+        from starlette.websockets import WebSocketState
+
         ws = AsyncMock(spec=WebSocket)
+        ws.client_state = WebSocketState.CONNECTING
         ws.accept = AsyncMock()
         ws.send_text = AsyncMock()
         ws.close = AsyncMock()
@@ -88,6 +91,14 @@ class TestScanProgressWebSocketManager:
         assert result is True
         count = await manager.get_connection_count("scan-123")
         assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_connect_idempotent_for_same_socket(self, manager):
+        """Registering the same WebSocket twice does not duplicate subscribers."""
+        ws = self._mock_websocket()
+        assert await manager.connect(ws, "scan-123") is True
+        assert await manager.connect(ws, "scan-123") is True
+        assert await manager.get_connection_count("scan-123") == 1
 
     @pytest.mark.asyncio
     async def test_connect_accept_failure(self, manager):
@@ -217,14 +228,26 @@ class TestScanProgressWebSocketManager:
 
 
 class TestAuthenticateWebsocket:
-    """Tests for the _authenticate_websocket helper."""
+    """Tests for scan WebSocket authentication (core.websocket_auth)."""
 
     @pytest.mark.asyncio
     async def test_no_token_close_code_4001(self):
-        """Missing token => close(4001, 'Invalid token')."""
-        from app.websockets.scan_progress import _authenticate_websocket
+        """Missing auth message => close(4001)."""
+        from app.core.websocket_auth import (
+            WS_CLOSE_AUTH_REQUIRED,
+            receive_websocket_credentials,
+        )
+
         ws = AsyncMock(spec=WebSocket)
         ws.query_params = {}
         ws.headers = {}
-        result = await _authenticate_websocket(ws, "scan-123")
-        assert result is False
+        ws.url.path = "/ws/scan/scan-123"
+        ws.accept = AsyncMock()
+        ws.close = AsyncMock()
+
+        with patch("app.core.websocket_auth.asyncio.wait_for", side_effect=TimeoutError):
+            creds = await receive_websocket_credentials(ws)
+
+        assert creds is None
+        ws.close.assert_awaited()
+        assert ws.close.await_args.kwargs.get("code") == WS_CLOSE_AUTH_REQUIRED

@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ArrowRight, Menu, X } from 'lucide-react'
 import { Button } from '../ui-animated'
 
-const navLinks = [
+import { useProductConfigState } from '../../hooks/useProductConfig'
+
+const navLinksBase = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
-]
+  { label: 'Pricing', href: '#pricing', labelBeta: 'Beta Access' },
+] as const
 
 const NavItem = memo(function NavItem({
   label, href, onClick,
@@ -28,6 +30,11 @@ const NavItem = memo(function NavItem({
 
 export function Navbar() {
   const navigate = useNavigate()
+  const { config } = useProductConfigState()
+  const navLinks = navLinksBase.map((link) => ({
+    ...link,
+    label: config.beta_access_mode && 'labelBeta' in link ? link.labelBeta : link.label,
+  }))
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileMenuRef = useRef<HTMLDivElement>(null)

@@ -65,7 +65,6 @@ def isolated_env(tmp_path: Path):
     os.environ["DEVSEC_API_URL"] = "http://127.0.0.1:59999"
     os.environ["DEVSEC_DISABLE_WEBSOCKET"] = "1"
     os.environ.pop("DEVSEC_API_KEY", None)
-    os.environ.pop("DEVSEC_DISABLE_WEBSOCKET", None)
     store = SecretStore(config_file=tmp_path / "devsec" / "config.toml")
     store.set_token("sk-scan-test")
     cfg = tmp_path / "devsec" / "config.toml"

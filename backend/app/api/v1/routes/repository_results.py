@@ -271,6 +271,9 @@ async def get_repository_latest_scan(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
+    if repository.user_id and not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     if repository.user_id and current_user and repository.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 

@@ -436,11 +436,14 @@ class SyncScanService:
         )
 
         if self.progress_store and self.scan_id:
+            from app.services.scan_progress_steps import lifecycle_to_store_step_label
+
+            step_label = lifecycle_to_store_step_label(lifecycle) if lifecycle else None
             self._exec_async(
                 self._update_progress_async(
                     progress_pct if progress_pct is not None else scan.progress or 0,
                     message,
-                    lifecycle.value if lifecycle else stage.value,
+                    step_label,
                     stage=stage.value,
                 )
             )

@@ -433,6 +433,24 @@ class Settings(BaseSettings):
     # Anonymous Scans
     ANONYMOUS_SCAN_EXPIRY_HOURS: int = Field(default=24, env="ANONYMOUS_SCAN_EXPIRY_HOURS")
 
+    # ─── Beta access (payment-free) ─────────────────────────────────────
+    BETA_ACCESS_MODE: bool = Field(
+        default=False,
+        env="BETA_ACCESS_MODE",
+        description=(
+            "When true, authenticated users receive Beta entitlements without checkout. "
+            "Default false preserves paid-plan gating."
+        ),
+    )
+    BETA_MAX_SCANS_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_SCANS_PER_MONTH")
+    BETA_MAX_REPOSITORIES: int = Field(default=10, ge=1, env="BETA_MAX_REPOSITORIES")
+    BETA_MAX_REPORTS_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_REPORTS_PER_MONTH")
+    BETA_MAX_CONCURRENT_SCANS: int = Field(default=2, ge=1, env="BETA_MAX_CONCURRENT_SCANS")
+    BETA_MAX_AI_REQUESTS_PER_MONTH: int = Field(default=200, ge=1, env="BETA_MAX_AI_REQUESTS_PER_MONTH")
+    BETA_MAX_AI_TOKENS_PER_MONTH: int = Field(default=500_000, ge=1, env="BETA_MAX_AI_TOKENS_PER_MONTH")
+    BETA_MAX_REMEDIATION_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_REMEDIATION_PER_MONTH")
+    BETA_API_RATE_LIMIT_PER_HOUR: int = Field(default=1000, ge=1, env="BETA_API_RATE_LIMIT_PER_HOUR")
+
     # ─── Payment Providers ─────────────────────────────────────────────
     STRIPE_SECRET_KEY: str | None = Field(default=None, env="STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY: str | None = Field(default=None, env="STRIPE_PUBLISHABLE_KEY")
@@ -469,6 +487,11 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS cannot include '*' when allow_credentials is enabled")
         if self.COOKIE_SAMESITE == "None" and not self.COOKIE_SECURE:
             raise ValueError("COOKIE_SAMESITE=None requires COOKIE_SECURE=true")
+        if self.BETA_ACCESS_MODE and self.ENVIRONMENT == "production":
+            _config_logger.info(
+                "BETA_ACCESS_MODE is enabled in production — checkout disabled; "
+                "usage limits apply via BETA_MAX_* settings."
+            )
         return self
 
     @field_validator("SECRET_KEY", mode="after")

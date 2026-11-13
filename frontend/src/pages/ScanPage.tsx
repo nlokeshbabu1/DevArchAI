@@ -8,6 +8,7 @@ import { Card } from '../components/ui-animated'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { scansApi } from '../api/endpoints/scans'
+import { saveScanSessionToken } from '../lib/scan-session'
 
 type RepoProvider = 'github' | 'gitlab' | 'unknown'
 interface RepoInfo { owner: string; repo: string; provider: RepoProvider }
@@ -123,6 +124,9 @@ export function ScanPage() {
     try {
       const response = await scansApi.startUnifiedScan({ repository_url: trimmedUrl, branch: selectedBranch || 'main' })
       if (!response.scan_id) throw new Error('No scan_id returned from server')
+      if (response.session_token) {
+        saveScanSessionToken(response.scan_id, response.session_token)
+      }
       navigate(`/scans/${response.scan_id}`)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to analyze repository')

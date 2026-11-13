@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "frontend-devarchai.fullname" . }}-test-connection"
+  labels:
+    {{- include "frontend-devarchai.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "frontend-devarchai.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never

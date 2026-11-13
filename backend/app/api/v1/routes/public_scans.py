@@ -295,28 +295,26 @@ async def get_scan_status(
     from app.services.scan_progress_store import get_scan_progress_store
 
     parse_uuid(scan_id, "scan_id")
+
+    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    scan = result.scalar_one_or_none()
+
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan not found",
+        )
+
+    if scan.user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
     store = get_scan_progress_store()
     progress = await store.get_progress(scan_id)
 
     if not progress:
-        # Return scan status from database if progress not found
-        result = await db.execute(select(Scan).where(Scan.id == scan_id))
-        scan = result.scalar_one_or_none()
-
-        if not scan:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Scan not found",
-            )
-
-        # Only expose anonymous scan status via public endpoint
-        if scan.user_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied",
-            )
-
-        # Return completed scan data
         detected_techs = []
         if scan.detected_stack:
             # scan.detected_stack is a dict with "detected_stack" key containing the list

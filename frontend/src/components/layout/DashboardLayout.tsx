@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState, useCallback } from 'react'
+import { startTransition, useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '../../lib/utils'
@@ -8,6 +8,7 @@ import {
   Zap, Cloud, User, ChevronDown, BookOpen, Plug, Container,
 } from 'lucide-react'
 import { useAuthStore, initAuthSync } from '../../stores/auth-store'
+import { useProductConfig } from '../../hooks/useProductConfig'
 import { Button } from '../ui'
 import { StatusBadge } from '../ui/StatusBadge'
 
@@ -58,6 +59,17 @@ const navigation = navigationGroups.flatMap((g) => g.items.filter((i) => i.href)
 export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const productConfig = useProductConfig()
+  const navigationGroupsFiltered = useMemo(
+    () =>
+      navigationGroups.map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => item.href !== '/billing' || productConfig.checkout_enabled
+        ),
+      })),
+    [productConfig.checkout_enabled]
+  )
   const [, setSearchParams] = useSearchParams()
   const { user, serverLogout, logoutInProgress, isLoading: authLoading } = useAuthStore()
 
@@ -181,7 +193,7 @@ export function Layout({ children }: LayoutProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto" aria-label="Main navigation">
-          {navigationGroups.map((group) => (
+          {navigationGroupsFiltered.map((group) => (
             <div key={group.label}>
               <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
                 {group.label}
@@ -309,10 +321,18 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
-              <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
-              <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
-            </div>
+            {productConfig.beta_access_mode ? (
+              <StatusBadge
+                status="beta"
+                label={productConfig.beta_label || 'Beta — Free Access'}
+                dot
+              />
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
+                <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
+                <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
+              </div>
+            )}
             <div className="relative">
               <button
                 type="button"

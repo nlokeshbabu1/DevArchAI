@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.core.security import get_optional_user
+from app.core.scan_access import assert_scan_read_access
 from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db, get_sync_session_factory
 from app.models.anonymous_scan import AnonymousScan
@@ -25,6 +26,10 @@ from app.models.finding_ai_job import FindingAIJob
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
+from app.services.usage_enforcement import (
+    enforce_concurrent_scan_limit,
+    enforce_scan_monthly_limit,
+)
 from app.services.ai_job_service import source_display
 from app.services.finding_normalizer import enrich_finding_api_payload
 from app.services.ai_source_provenance import (
@@ -53,6 +58,11 @@ class UnifiedScanRequest(BaseModel):
     branch: str | None = Field(
         default=None,
         max_length=100,
+        description=(
+            "Git branch to scan. When omitted, uses the linked repository's "
+            "default_branch if repository_id is set, otherwise resolves the "
+            "remote default (via git ls-remote / GitHub API) starting from main."
+        ),
     )
     include_ai_explanations: bool = True
 
@@ -246,24 +256,20 @@ async def start_unified_scan(
                     "branch": existing_scan.branch,
                 }
 
-        # Resolve branch: request > repository default > error
+        # Resolve branch: explicit request > repository default > remote default (via resolve_repository_branch)
         branch_input = (request.branch or "").strip() or None
         if not branch_input and repository and repository.default_branch:
             branch_input = repository.default_branch.strip() or None
-        if not branch_input:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    "branch is required. Pass branch in the request or set "
-                    "default_branch on the repository."
-                ),
-            )
 
         branch = resolve_repository_branch(
             repository_url,
-            branch_input,
+            branch_input or "main",
             github_token=settings.GITHUB_TOKEN,
         )
+
+        if current_user:
+            await enforce_scan_monthly_limit(current_user, db)
+            await enforce_concurrent_scan_limit(current_user, db)
 
         if repository and repository.default_branch != branch:
             repository.default_branch = branch
@@ -364,6 +370,7 @@ async def get_scan_stages():
 @router.get("/status/{scan_id}", response_model=dict[str, Any])
 async def get_scan_status(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -392,18 +399,8 @@ async def get_scan_status(
             detail="Scan not found",
         )
 
-    # Check access for authenticated scans
-    if db_scan.user_id and not current_user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication required",
-        )
-
-    if db_scan.user_id and current_user and db_scan.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
-        )
+    session_token = request.headers.get("X-Session-Token")
+    await assert_scan_read_access(db, db_scan, current_user, session_token)
 
     # ---- DB is the AUTHORITY for terminal states ----
     # If the DB says completed/failed, ALWAYS return that — even if progress store
@@ -528,6 +525,7 @@ def _detect_finding_technology(finding: Any) -> str:
 @router.get("/results/{scan_id}", response_model=dict[str, Any])
 async def get_scan_results(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -552,12 +550,8 @@ async def get_scan_results(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    # Check access
-    if scan.user_id and not current_user:
-        raise HTTPException(status_code=403, detail="Authentication required")
-
-    if scan.user_id and current_user and scan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    session_token = request.headers.get("X-Session-Token")
+    await assert_scan_read_access(db, scan, current_user, session_token)
 
     if scan.status != ScanStatus.COMPLETED:
         raise HTTPException(
@@ -879,6 +873,7 @@ async def get_scan_results(
 @router.get("/state/{scan_id}", response_model=dict[str, Any])
 async def get_scan_state(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -911,10 +906,9 @@ async def get_scan_state(
     scan = result.scalar_one_or_none()
     if not scan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
-    if scan.user_id and not current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication required")
-    if scan.user_id and current_user and scan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    session_token = request.headers.get("X-Session-Token")
+    await assert_scan_read_access(db, scan, current_user, session_token)
 
     logger.info(
         f"[RECONNECT] scan={scan_id} status={snapshot.get('status')} "

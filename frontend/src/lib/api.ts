@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { getAccessToken, performRefresh } from './auth-token'
 import { getApiV1BaseUrl, getConfiguredApiBaseUrl, warnIfDevApiOriginMismatch } from './api-base-url'
+import { getScanSessionToken } from './scan-session'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -66,6 +67,15 @@ api.interceptors.request.use(
 
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+
+    const url = config.url || ''
+    const scanMatch = url.match(/\/scan\/(?:status|results|state)\/([0-9a-f-]{36})/i)
+    if (scanMatch && config.headers) {
+      const sessionToken = getScanSessionToken(scanMatch[1])
+      if (sessionToken) {
+        config.headers['X-Session-Token'] = sessionToken
+      }
     }
 
     return config

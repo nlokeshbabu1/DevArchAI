@@ -5,12 +5,13 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.security import get_current_user, get_optional_user
+from app.core.scan_access import assert_scan_read_access
 from app.db.session import get_db
 from app.models.finding import Finding
 from app.models.finding_ai_job import FindingAIJob
@@ -45,22 +46,25 @@ async def _get_scan_or_404(scan_id: str, db: AsyncSession) -> Scan:
     return scan
 
 
-async def _verify_scan_access(scan: Scan, user: User | None) -> None:
-    if scan.user_id is None:
-        return
-    if user is None or scan.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+async def _verify_scan_access(
+    db: AsyncSession,
+    scan: Scan,
+    user: User | None,
+    session_token: str | None,
+) -> None:
+    await assert_scan_read_access(db, scan, user, session_token)
 
 
 @router.get("/{scan_id}/ai/status")
 async def get_scan_ai_status(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
     """Return aggregate AI recommendation status for a scan."""
     scan = await _get_scan_or_404(scan_id, db)
-    await _verify_scan_access(scan, current_user)
+    await _verify_scan_access(db, scan, current_user, request.headers.get("X-Session-Token"))
     summary = await summarize_scan_ai(db, scan.id)
     return summary
 
@@ -68,12 +72,13 @@ async def get_scan_ai_status(
 @router.get("/{scan_id}/ai")
 async def get_scan_ai_recommendations(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
     """Return per-job AI recommendations for a scan."""
     scan = await _get_scan_or_404(scan_id, db)
-    await _verify_scan_access(scan, current_user)
+    await _verify_scan_access(db, scan, current_user, request.headers.get("X-Session-Token"))
     jobs = (
         await db.execute(
             select(FindingAIJob)
@@ -91,12 +96,13 @@ async def get_scan_ai_recommendations(
 @router.get("/{scan_id}/ai/findings")
 async def get_scan_ai_findings(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
     """Map each finding to its AI job status (for CLI/UI per-finding display)."""
     scan = await _get_scan_or_404(scan_id, db)
-    await _verify_scan_access(scan, current_user)
+    await _verify_scan_access(db, scan, current_user, request.headers.get("X-Session-Token"))
     jobs = (
         await db.execute(select(FindingAIJob).where(FindingAIJob.scan_id == scan.id))
     ).scalars().all()
@@ -145,8 +151,12 @@ async def get_stale_ai_jobs(
 
     jobs = (
         await db.execute(
-            select(FindingAIJob).where(
+            select(FindingAIJob)
+            .where(
                 FindingAIJob.status.notin_(["completed", "failed"]),
+                FindingAIJob.scan_id.in_(
+                    select(Scan.id).where(Scan.user_id == current_user.id)
+                ),
             )
         )
     ).scalars().all()
@@ -174,6 +184,7 @@ findings_router = APIRouter(prefix="/findings", tags=["Finding AI"])
 @findings_router.get("/{finding_id}/recommendation")
 async def get_finding_recommendation(
     finding_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -188,8 +199,10 @@ async def get_finding_recommendation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
 
     scan = finding.scan
-    if scan and scan.user_id:
-        await _verify_scan_access(scan, current_user)
+    if scan:
+        await _verify_scan_access(
+            db, scan, current_user, request.headers.get("X-Session-Token")
+        )
 
     job = None
     jobs = (

@@ -10,6 +10,26 @@ from app.models.scan import Scan, ScanStatus
 from app.models.finding import Finding, Severity, Category
 
 
+@pytest.fixture(autouse=True)
+def _fast_branch_resolution():
+    """Avoid git ls-remote / GitHub API during scan start integration tests."""
+    with patch(
+        "app.api.v1.routes.unified_scan.resolve_repository_branch",
+        return_value="main",
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _jwt_blacklist_available():
+    with patch(
+        "app.services.token_blacklist.is_blacklisted",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 class TestScanAPIIntegration:
     """Integration tests for scan API endpoints."""
