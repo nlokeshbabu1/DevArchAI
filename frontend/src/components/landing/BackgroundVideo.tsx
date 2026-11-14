@@ -1,5 +1,6 @@
-import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
 import { useReducedMotion } from 'framer-motion'
+import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
+
 import bgVideo from '@/assets/videos/Background_SaaS.mp4'
 
 const POSTER_GRADIENT =
@@ -42,7 +43,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
       return
     }
     const node = containerRef.current
-    if (!node) return
+    if (!node) {return}
     const observer = new IntersectionObserver(
       ([entry]) => setIsVisible(entry.isIntersecting),
       { root: null, threshold: 0.05 }
@@ -53,7 +54,7 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
 
   useEffect(() => {
     const vid = videoRef.current
-    if (!vid || skipVideo || prefersReducedMotion) return
+    if (!vid || skipVideo || prefersReducedMotion) {return}
 
     if (isVisible) {
       if (vid.preload === 'none') {

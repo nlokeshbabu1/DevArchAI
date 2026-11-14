@@ -1,6 +1,7 @@
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Container, Loader2, CheckCircle, AlertCircle, FileUp, TestTube2 } from 'lucide-react'
+import { useState } from 'react'
+
 import { kubernetesApi } from '@/api/endpoints/kubernetes'
 
 interface KubernetesConnectModalProps {
@@ -31,13 +32,13 @@ export function KubernetesConnectModal({ open, onClose, onConnected }: Kubernete
     reader.onload = () => {
       const text = String(reader.result || '')
       setKubeconfig(text)
-      if (!name) setName(file.name.replace(/\.(yaml|yml)$/i, ''))
+      if (!name) {setName(file.name.replace(/\.(yaml|yml)$/i, ''))}
     }
     reader.readAsText(file)
   }
 
   const testConnection = async () => {
-    if (!kubeconfig) return
+    if (!kubeconfig) {return}
     setState('testing')
     setErrorMsg('')
     try {

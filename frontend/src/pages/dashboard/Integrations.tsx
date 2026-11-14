@@ -1,23 +1,23 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Plug, Settings, RefreshCw, Grid3x3 } from 'lucide-react'
-import type { ConnectionStatus } from '@/components/integrations/types'
+import { useState, useEffect, useCallback } from 'react'
 
-import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
-import { integrationsApi, type IntegrationInfo } from '@/api/endpoints/integrations'
 import { cloudApi } from '@/api/endpoints/cloud'
+import { integrationsApi, type IntegrationInfo } from '@/api/endpoints/integrations'
 import { kubernetesApi, type KubernetesInfo } from '@/api/endpoints/kubernetes'
-import { toast } from '@/hooks/useToast'
 import { AwsOnboardingWizard } from '@/components/integrations/AwsOnboardingWizard'
-import { KubernetesConnectModal } from '@/components/integrations/KubernetesConnectModal'
 import { EksConnectModal } from '@/components/integrations/EksConnectModal'
-import { ProviderManageModal } from '@/components/integrations/ProviderManageModal'
-import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
 import { IntegrationCategory } from '@/components/integrations/IntegrationCategory'
+import { KubernetesConnectModal } from '@/components/integrations/KubernetesConnectModal'
+import { ProviderManageModal } from '@/components/integrations/ProviderManageModal'
 import { buildCategories } from '@/components/integrations/providers'
+import type { ConnectionStatus } from '@/components/integrations/types'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { toast } from '@/hooks/useToast'
+import { cn } from '@/lib/utils'
+import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
+import { useAuthStore } from '@/stores/auth-store'
 
 type ViewMode = 'grid' | 'cloud-dashboard'
 
@@ -103,7 +103,7 @@ export function IntegrationsPage() {
   }
 
   const getCardStatus = (provider: string): ConnectionStatus => {
-    if (pending[provider]) return pending[provider]
+    if (pending[provider]) {return pending[provider]}
     return getStatus(provider)
   }
 
@@ -427,10 +427,10 @@ export function IntegrationsPage() {
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) {return 'just now'}
+  if (mins < 60) {return `${mins}m ago`}
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) {return `${hours}h ago`}
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }

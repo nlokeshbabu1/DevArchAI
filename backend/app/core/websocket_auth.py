@@ -150,7 +150,9 @@ def _user_id_from_api_key(api_key: str) -> UUID | None:
             select(User).where(User.api_key_prefix == prefix, User.is_active.is_(True))
         )
         user = result.scalar_one_or_none()
-        if user and user.api_key == api_key:
+        from app.core.security import verify_user_api_key
+
+        if user and verify_user_api_key(user.api_key, api_key):
             return user.id
     finally:
         sync_db.close()

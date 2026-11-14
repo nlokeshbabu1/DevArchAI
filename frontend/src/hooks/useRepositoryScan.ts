@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useState, useCallback, useRef, useEffect } from 'react'
+
 import { scansApi } from '../api/endpoints/scans'
 
 export interface ScanState {
@@ -53,7 +54,7 @@ export function useRepositoryScan(options: UseRepositoryScanOptions) {
 
   const startScan = useCallback(async () => {
     const opts = optionsRef.current
-    if (!opts.repositoryUrl) return null
+    if (!opts.repositoryUrl) {return null}
 
     setState({
       ...initialState,
@@ -69,7 +70,7 @@ export function useRepositoryScan(options: UseRepositoryScanOptions) {
       })
 
       const scanId = response.scan_id
-      if (!scanId) throw new Error('No scan_id returned')
+      if (!scanId) {throw new Error('No scan_id returned')}
 
       setState(prev => ({
         ...prev,
@@ -126,7 +127,7 @@ export function useRepositoryScan(options: UseRepositoryScanOptions) {
   }, [reset, startScan])
 
   const cancelScan = useCallback(async () => {
-    if (!state.scanId) return
+    if (!state.scanId) {return}
     try {
       await scansApi.cancelScan(state.scanId)
       setState(prev => ({

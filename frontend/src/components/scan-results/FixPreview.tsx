@@ -1,18 +1,19 @@
 import { motion } from "framer-motion"
 import { X, FileCode, Zap, GitPullRequest, TrendingUp } from "lucide-react"
-import { Finding } from "../../types"
+
 import { cn, getSeverityColor, sanitizePath } from "../../lib/utils"
-import { Button } from "../ui-animated"
+import { Finding } from "../../types"
 import { DiffViewer } from "../DiffViewer"
+import { Button } from "../ui-animated"
 
 const computeRiskReduction = (finding: Finding): number => {
-  if (finding.risk_reduction_score != null) return finding.risk_reduction_score
+  if (finding.risk_reduction_score != null) {return finding.risk_reduction_score}
   const map: Record<string, number> = { critical: 90, high: 65, medium: 35, low: 10, info: 5 }
   return map[finding.severity] || 0
 }
 
 const computePredictedScore = (currentScore: number, finding: Finding): number => {
-  if (finding.predicted_score_after_fix != null) return finding.predicted_score_after_fix
+  if (finding.predicted_score_after_fix != null) {return finding.predicted_score_after_fix}
   const reduction = computeRiskReduction(finding)
   const improvement = Math.round((reduction / 100) * (100 - currentScore) * 0.3)
   return Math.min(100, currentScore + improvement)
@@ -27,7 +28,7 @@ interface FixPreviewProps {
 }
 
 export function FixPreview({ finding, currentScore, isOpen, onClose, onCreatePR }: FixPreviewProps) {
-  if (!isOpen) return null
+  if (!isOpen) {return null}
 
   const severityColor = getSeverityColor(finding.severity)
   const repoPath = sanitizePath(finding.file_path)

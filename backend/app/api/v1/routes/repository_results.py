@@ -44,11 +44,10 @@ async def get_repository_results(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Check access
-    if repository.user_id and current_user and repository.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    if repository.user_id and not current_user:
+    if not repository.user_id or not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
+    if repository.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get latest completed scan (eagerly load scanner_executions to avoid lazy-load in async context)
     scan_result = await db.execute(
@@ -271,10 +270,9 @@ async def get_repository_latest_scan(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repository.user_id and not current_user:
+    if not repository.user_id or not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    if repository.user_id and current_user and repository.user_id != current_user.id:
+    if repository.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     scan_result = await db.execute(

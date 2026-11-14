@@ -954,7 +954,7 @@ async def create_api_key(
     result = await db.execute(
         update(User)
         .where(User.id == current_user.id)
-        .values(api_key=api_key, api_key_prefix=prefix)
+        .values(api_key=hash_token(api_key), api_key_prefix=prefix)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount == 0:

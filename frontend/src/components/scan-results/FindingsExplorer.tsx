@@ -1,14 +1,15 @@
-import { useState, useMemo, memo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
   FileCode, Sparkles, ExternalLink, ArrowLeft, ArrowRight,
   ScanSearch, Hash, GitMerge, BadgeCheck,
 } from "lucide-react"
-import { Finding } from "../../types"
+import { useState, useMemo, memo } from "react"
+
 import { cn, getSeverityColor, sanitizePath, getFileName, parseScannerSources, copyToClipboard } from "../../lib/utils"
-import { Badge } from "../ui"
+import { Finding } from "../../types"
 import { DiffViewer } from "../DiffViewer"
+import { Badge } from "../ui"
 import { Button } from "../ui-animated"
 
 interface FindingsExplorerProps {
@@ -52,19 +53,19 @@ function getSourceColor(source: string): string {
 
 function remediationLabel(finding: Finding): string {
   const status = finding.remediation_status
-  if (status === 'FIX_AVAILABLE') return 'Fix available'
-  if (status === 'AI_SUGGESTED') return 'AI suggested'
-  if (status === 'MANUAL_REMEDIATION') return 'Manual'
-  if (status === 'NOT_SUPPORTED') return '—'
-  if (finding.fix_code) return 'Suggested'
+  if (status === 'FIX_AVAILABLE') {return 'Fix available'}
+  if (status === 'AI_SUGGESTED') {return 'AI suggested'}
+  if (status === 'MANUAL_REMEDIATION') {return 'Manual'}
+  if (status === 'NOT_SUPPORTED') {return '—'}
+  if (finding.fix_code) {return 'Suggested'}
   return '—'
 }
 
 function remediationClass(finding: Finding): string {
   const status = finding.remediation_status
-  if (status === 'FIX_AVAILABLE') return 'text-emerald-400/80'
-  if (status === 'AI_SUGGESTED') return 'text-indigo-300/70'
-  if (status === 'MANUAL_REMEDIATION') return 'text-amber-300/70'
+  if (status === 'FIX_AVAILABLE') {return 'text-emerald-400/80'}
+  if (status === 'AI_SUGGESTED') {return 'text-indigo-300/70'}
+  if (status === 'MANUAL_REMEDIATION') {return 'text-amber-300/70'}
   return 'text-white/20'
 }
 
@@ -130,10 +131,11 @@ export const FindingsExplorer = memo(function FindingsExplorer({
     }
 
     switch (sortBy) {
-      case "severity":
+      case "severity": {
         const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
-        result.sort((a, b) => (order[a.severity as keyof typeof order] ?? 5) - (order[b.severity as keyof typeof order] ?? 5))
+        result.sort((a, b) => (order[a.severity] ?? 5) - (order[b.severity] ?? 5))
         break
+      }
       case "file":
         result.sort((a, b) => (a.file_path || "").localeCompare(b.file_path || ""))
         break
@@ -387,7 +389,7 @@ export const FindingsExplorer = memo(function FindingsExplorer({
       <AnimatePresence>
         {expandedFinding && (() => {
           const finding = findings.find(f => (f.id ?? f.rule_id) === expandedFinding)
-          if (!finding) return null
+          if (!finding) {return null}
           return (
             <motion.div
               key={expandedFinding}
@@ -442,7 +444,7 @@ export const FindingsExplorer = memo(function FindingsExplorer({
             {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
               const start = Math.max(1, Math.min(page - 3, totalPages - 6))
               const p = start + i
-              if (p > totalPages) return null
+              if (p > totalPages) {return null}
               return (
                 <button
                   key={p}

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
 import { Shield, Code2, Database, Lock, Server, Cloud, Globe, FileText, Activity } from "lucide-react"
+
 import { cn } from "../../lib/utils"
 
 interface CoverageItem {

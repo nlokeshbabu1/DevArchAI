@@ -1,21 +1,22 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Cloud, RefreshCw, Loader2, Play, Trash2, AlertTriangle,
   Shield, DollarSign, FileCheck, Box, Sparkles, X,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
 import { cloudApi, type CloudConnection } from '@/api/endpoints/cloud'
-import { useCloudStore } from '@/stores/cloud-store'
-import { useCloudWebSocket } from '@/hooks/useCloudWebSocket'
+import { AIRecommendations } from '@/components/cloud/AIRecommendations'
 import { CloudOverview } from '@/components/cloud/CloudOverview'
+import { CloudScanProgress } from '@/components/cloud/CloudScanProgress'
+import { ComplianceView } from '@/components/cloud/ComplianceView'
+import { CostOptimization } from '@/components/cloud/CostOptimization'
 import { ResourceInventory } from '@/components/cloud/ResourceInventory'
 import { SecurityFindings } from '@/components/cloud/SecurityFindings'
-import { CostOptimization } from '@/components/cloud/CostOptimization'
-import { ComplianceView } from '@/components/cloud/ComplianceView'
-import { AIRecommendations } from '@/components/cloud/AIRecommendations'
-import { CloudScanProgress } from '@/components/cloud/CloudScanProgress'
+import { Button } from '@/components/ui'
+import { useCloudWebSocket } from '@/hooks/useCloudWebSocket'
+import { cn } from '@/lib/utils'
+import { useCloudStore } from '@/stores/cloud-store'
 
 interface CloudDashboardProps {
   isConnected: boolean
@@ -92,7 +93,7 @@ export function CloudDashboard({ isConnected, onConnect, onRefresh, autoScanConn
   }, [autoScanConnectionId, connections])
 
   const loadOverview = useCallback(async () => {
-    if (!selectedId) return
+    if (!selectedId) {return}
     try {
       const data = await cloudApi.overview(selectedId)
       setOverview(data)
@@ -102,7 +103,7 @@ export function CloudDashboard({ isConnected, onConnect, onRefresh, autoScanConn
   }, [selectedId, setOverview])
 
   const loadTabData = useCallback(async () => {
-    if (!selectedId) return
+    if (!selectedId) {return}
     try {
       switch (activeTab) {
         case 'resources': {
@@ -168,12 +169,12 @@ export function CloudDashboard({ isConnected, onConnect, onRefresh, autoScanConn
   })
 
   const handleScan = async () => {
-    if (!selectedId || scanInProgress) return
+    if (!selectedId || scanInProgress) {return}
     await handleScanById(selectedId)
   }
 
   const handleScanById = async (connectionId: string) => {
-    if (scanInProgress) return
+    if (scanInProgress) {return}
     setError(null)
     setScanInProgress(true)
     setScanProgress(0)
@@ -188,7 +189,7 @@ export function CloudDashboard({ isConnected, onConnect, onRefresh, autoScanConn
   const handleDelete = async (id: string) => {
     try {
       await cloudApi.deleteConnection(id)
-      if (selectedId === id) setSelectedId(null)
+      if (selectedId === id) {setSelectedId(null)}
       loadConnections()
     } catch {
       // ignore

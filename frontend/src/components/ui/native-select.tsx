@@ -1,5 +1,6 @@
-import type { SelectHTMLAttributes } from 'react'
 import { ChevronDown } from 'lucide-react'
+import type { SelectHTMLAttributes } from 'react'
+
 import { cn } from '../../lib/utils'
 
 const selectSurfaceClass =

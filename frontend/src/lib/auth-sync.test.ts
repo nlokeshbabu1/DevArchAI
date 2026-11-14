@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
 import { broadcastAuthEvent, subscribeAuthSync, withCrossTabRefreshLock } from './auth-sync'
 
 describe('auth-sync', () => {

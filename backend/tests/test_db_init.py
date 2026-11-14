@@ -15,7 +15,9 @@ import sqlalchemy as sa
 import structlog
 from sqlalchemy import create_engine, inspect, text
 
-from app.config import settings
+from app.config import get_settings, settings
+
+from tests.db_test_config import get_test_async_database_url, get_test_sync_database_url
 from app.db.base import Base
 from app.db.init import initialize_database
 from app.db.migrate import DatabaseInitializationError, current_revision, migration_lock
@@ -47,7 +49,7 @@ _MIGRATION_LOCK_KEY = 0x44424132
 def _maintenance_connect():
     import psycopg2
 
-    url = sa.make_url(settings.DATABASE_URL)
+    url = sa.make_url(get_test_sync_database_url())
     kwargs = {
         "host": url.host,
         "port": url.port,
@@ -61,7 +63,7 @@ def _maintenance_connect():
 @pytest.fixture(scope="module")
 def init_test_db():
     """Create a dedicated throwaway database and point settings at it."""
-    base_url = sa.make_url(settings.DATABASE_URL)
+    base_url = sa.make_url(get_test_async_database_url())
     original_url = settings.DATABASE_URL
     original_timeout = settings.DB_MIGRATION_LOCK_TIMEOUT
 
@@ -74,15 +76,18 @@ def init_test_db():
     finally:
         conn.close()
 
-    test_url = (
+    test_url_sync = (
         f"postgresql://{base_url.username}:{base_url.password}"
         f"@{base_url.host}:{base_url.port}/{_TEST_DB_NAME}"
     )
-    settings.DATABASE_URL = test_url
+    test_url_async = test_url_sync.replace("postgresql://", "postgresql+asyncpg://", 1)
+    settings.DATABASE_URL = test_url_async
+    get_settings.cache_clear()
     try:
-        yield test_url
+        yield test_url_sync
     finally:
         settings.DATABASE_URL = original_url
+        get_settings.cache_clear()
         settings.DB_MIGRATION_LOCK_TIMEOUT = original_timeout
         conn = _maintenance_connect()
         conn.autocommit = True
@@ -181,6 +186,18 @@ class TestDatabaseInitialization:
             conn.exec_driver_sql(
                 "ALTER TABLE users DROP COLUMN token_encryption_version"
             )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_sessions DROP COLUMN IF EXISTS token_family"
+            )
+            for table in (
+                "finding_ai_jobs",
+                "kubernetes_connections",
+                "cluster_ai_jobs",
+            ):
+                conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{table}" CASCADE')
+            conn.exec_driver_sql(
+                "ALTER TABLE findings DROP COLUMN IF EXISTS processing_metadata"
+            )
             conn.commit()
         engine.dispose()
 
@@ -231,6 +248,18 @@ class TestDatabaseInitialization:
             )
             conn.exec_driver_sql(
                 "ALTER TABLE users DROP COLUMN token_encryption_version"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE user_sessions DROP COLUMN IF EXISTS token_family"
+            )
+            for table in (
+                "finding_ai_jobs",
+                "kubernetes_connections",
+                "cluster_ai_jobs",
+            ):
+                conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{table}" CASCADE')
+            conn.exec_driver_sql(
+                "ALTER TABLE findings DROP COLUMN IF EXISTS processing_metadata"
             )
             conn.commit()
         engine.dispose()

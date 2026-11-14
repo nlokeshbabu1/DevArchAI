@@ -1,5 +1,4 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import {
   Play, GitBranch, FolderGit2, Search, FileText,
   Shield, Eye, Package, Box, Grid3x3, FileCode,
@@ -8,9 +7,12 @@ import {
   ArrowRight, Sparkles, Zap, Layers, Cpu, Rocket,
   ChevronRight
 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { cn } from '../../lib/utils'
 import { Button, Card, SeverityBadge, CodeBlock } from '../ui-animated'
-import { useState, useEffect } from 'react'
+
 
 const container = {
   hidden: { opacity: 0 },
@@ -95,8 +97,8 @@ function QuickStartChecklist() {
   const toggleStep = (key: string) => {
     setCompleted((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      if (next.has(key)) {next.delete(key)}
+      else {next.add(key)}
       return next
     })
   }

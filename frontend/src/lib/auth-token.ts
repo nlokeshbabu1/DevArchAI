@@ -10,6 +10,7 @@
  */
 
 import axios, { AxiosError } from 'axios'
+
 import { resolveRefreshUrl } from './api-base-url'
 import { broadcastAuthEvent, subscribeAuthSync, withCrossTabRefreshLock } from './auth-sync'
 

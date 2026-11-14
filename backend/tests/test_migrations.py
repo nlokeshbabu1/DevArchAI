@@ -1,13 +1,12 @@
 """Migration integration tests.
 
 Verifies that Alembic migrations produce the expected schema and can be
-applied/reverted cleanly.  Requires a running PostgreSQL instance
-(configured via TEST_DATABASE_URL or DATABASE_URL).
+applied/reverted cleanly.  Requires the isolated test PostgreSQL instance
+(``TEST_DATABASE_URL``; see ``docker-compose.test.yml``).
 """
 
 from __future__ import annotations
 
-import os
 from urllib.parse import urlparse, urlunparse
 
 import alembic.command
@@ -15,23 +14,20 @@ import alembic.config
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
+from tests.db_test_config import get_test_sync_database_url
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_SYNC_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/devarchai_test"),
-)
-if _SYNC_URL.startswith("postgresql+asyncpg://"):
-    _SYNC_URL = _SYNC_URL.replace("postgresql+asyncpg://", "postgresql://")
+_current_sync_url = get_test_sync_database_url()
 
 
 def _alembic_cfg() -> alembic.config.Config:
     cfg = alembic.config.Config("alembic.ini")
     # env.py ignores alembic.ini's placeholder URL; the programmatic
     # override in attributes is the supported way to target a database.
-    cfg.attributes["sqlalchemy_url"] = _SYNC_URL
+    cfg.attributes["sqlalchemy_url"] = _current_sync_url
     return cfg
 
 
@@ -43,7 +39,7 @@ def alembic_cfg():
 
 @pytest.fixture()
 def engine():
-    engine = create_engine(_SYNC_URL)
+    engine = create_engine(_current_sync_url)
     yield engine
     engine.dispose()
 
@@ -57,9 +53,9 @@ def scratch_database():
     that break FK constraints on downgrade.  Each session therefore gets a
     dedicated scratch database (dropped afterwards).
     """
-    global _SYNC_URL
+    global _current_sync_url
 
-    parsed = urlparse(_SYNC_URL)
+    parsed = urlparse(_current_sync_url)
     scratch_name = f"{parsed.path.lstrip('/')}_migrations"
     admin_url = urlunparse(parsed._replace(path="/postgres"))
     scratch_url = urlunparse(parsed._replace(path=f"/{scratch_name}"))
@@ -79,10 +75,10 @@ def scratch_database():
     _admin_exec(f'DROP DATABASE IF EXISTS "{scratch_name}"')
     _admin_exec(f'CREATE DATABASE "{scratch_name}"')
 
-    original_url = _SYNC_URL
-    _SYNC_URL = scratch_url
+    original_url = _current_sync_url
+    _current_sync_url = scratch_url
     yield
-    _SYNC_URL = original_url
+    _current_sync_url = original_url
     _admin_exec(f'DROP DATABASE IF EXISTS "{scratch_name}"')
 
 
@@ -146,7 +142,7 @@ class TestMigrations:
         alembic.command.upgrade(alembic_cfg, "base")
         alembic.command.upgrade(alembic_cfg, "head")
 
-        engine = create_engine(_SYNC_URL)
+        engine = create_engine(_current_sync_url)
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
         engine.dispose()
@@ -160,7 +156,7 @@ class TestMigrations:
         alembic.command.downgrade(alembic_cfg, "-1")
         alembic.command.upgrade(alembic_cfg, "head")
 
-        engine = create_engine(_SYNC_URL)
+        engine = create_engine(_current_sync_url)
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1")).scalar()
         engine.dispose()
@@ -171,7 +167,7 @@ class TestMigrations:
         """After upgrading to head all expected tables are present."""
         alembic.command.upgrade(alembic_cfg, "head")
 
-        engine = create_engine(_SYNC_URL)
+        engine = create_engine(_current_sync_url)
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
         engine.dispose()
@@ -183,7 +179,7 @@ class TestMigrations:
         """After upgrading to head, key columns on critical tables exist."""
         alembic.command.upgrade(alembic_cfg, "head")
 
-        engine = create_engine(_SYNC_URL)
+        engine = create_engine(_current_sync_url)
         inspector = inspect(engine)
 
         for table, expected_cols in EXPECTED_COLUMNS.items():
@@ -207,7 +203,7 @@ class TestMigrations:
         script = ScriptDirectory.from_config(alembic_cfg)
         head = script.get_current_head()
 
-        engine = create_engine(_SYNC_URL)
+        engine = create_engine(_current_sync_url)
         with engine.connect() as conn:
             context = MigrationContext.configure(conn)
             current = context.get_current_revision()

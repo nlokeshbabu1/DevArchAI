@@ -1,6 +1,6 @@
-import { useState, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
+import { useState, memo } from 'react'
 
 const faqs = [
   {

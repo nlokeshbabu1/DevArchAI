@@ -1,6 +1,7 @@
+import { useProductConfigState } from '../../hooks/useProductConfig'
+
 import { BetaAccessSection } from './BetaAccessSection'
 import { CommercialPricingSection, PricingSectionSkeleton } from './CommercialPricingSection'
-import { useProductConfigState } from '../../hooks/useProductConfig'
 
 export function PricingSection() {
   const { config, isLoading } = useProductConfigState()

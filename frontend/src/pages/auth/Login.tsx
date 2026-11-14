@@ -1,17 +1,19 @@
-import { useState, useEffect } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mail, Lock, Eye, EyeOff, Github, Loader2,
   CheckCircle, AlertCircle, ArrowRight, Shield
 } from 'lucide-react'
-import { useAuthStore, initAuthSync } from '../../stores/auth-store'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
-import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
 import { fetchProductConfig } from '../../hooks/useProductConfig'
+import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
+
 import { AuthLayout } from './AuthLayout'
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
@@ -51,7 +53,7 @@ export function Login() {
   })
 
   useEffect(() => {
-    if (error) setError('')
+    if (error) {setError('')}
   }, [formData.email, formData.password])
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export function Login() {
     setSuccess('')
     setFieldErrors({})
 
-    if (!validateForm()) return
+    if (!validateForm()) {return}
 
     setIsLoading(true)
 

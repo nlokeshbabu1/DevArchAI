@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+
 import '@testing-library/jest-dom'
-import { LiveFindingsStream } from './LiveFindingsStream'
 import type { LiveFinding } from '../../types'
+
+import { LiveFindingsStream } from './LiveFindingsStream'
 
 vi.mock('framer-motion', () => ({
   motion: {

@@ -87,11 +87,20 @@ class TestScanLifecycleAPI:
                 
                 # If scan started, check status
                 if start_response.status_code == 200:
-                    scan_id = start_response.json()["scan_id"]
+                    body = start_response.json()
+                    scan_id = body["scan_id"]
+                    session_token = body.get("session_token")
+                    headers = (
+                        {"X-Session-Token": session_token} if session_token else {}
+                    )
 
-                    # Check status - may return 200, 404, or 500 depending on scan state
-                    status_response = await client.get(f"/api/v1/scan/status/{scan_id}")
+                    status_response = await client.get(
+                        f"/api/v1/scan/status/{scan_id}",
+                        headers=headers,
+                    )
                     assert status_response.status_code in [200, 404, 500]
+                    if not session_token:
+                        assert status_response.status_code == 403
 
     @pytest.mark.asyncio
     async def test_scan_validation_rejects_invalid_urls(self):

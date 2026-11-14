@@ -7,19 +7,19 @@ import {
   Layers, ChevronLeft, Star, Gauge, FolderGit2, Files, Wrench, GitBranch, ArrowUp, ArrowDown, ExternalLink
 } from 'lucide-react'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Skeleton, SkeletonCard } from '../../components/ui-animated'
 import { useNavigate } from 'react-router-dom'
-import { CodeBlock } from '../../components/ui/code-block'
-import { SeverityBadge } from '../../components/ui/severity-badge'
-import { Button } from '../../components/ui'
-import { ErrorState } from '../../components/ui/error-state'
-import { useAuthStore } from '../../stores/auth-store'
-import { apiClient } from '../../api/client'
-import { cn, copyToClipboard } from '../../lib/utils'
 
-import { toast } from '../../hooks/useToast'
+import { apiClient } from '../../api/client'
+import { Button } from '../../components/ui'
+import { CodeBlock } from '../../components/ui/code-block'
+import { ErrorState } from '../../components/ui/error-state'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { SeverityBadge } from '../../components/ui/severity-badge'
 import { StatusBadge, type ProductStatus } from '../../components/ui/StatusBadge'
+import { Skeleton, SkeletonCard } from '../../components/ui-animated'
+import { toast } from '../../hooks/useToast'
+import { cn, copyToClipboard } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 interface AISuggestion {
   id: string
@@ -98,8 +98,8 @@ function getCategoryLabel(category: string): string {
 }
 
 function getSeveritySection(severity: string): SectionType {
-  if (severity === 'critical' || severity === 'high') return 'fix-first'
-  if (severity === 'medium') return 'recommended'
+  if (severity === 'critical' || severity === 'high') {return 'fix-first'}
+  if (severity === 'medium') {return 'recommended'}
   return 'optimization'
 }
 
@@ -127,7 +127,7 @@ function extractRepo(filePath: string): string {
     let first = parts[0]
     // Strip scan hash prefix (e.g. "3a586b3c_gen-ai" -> "gen-ai")
     const hashMatch = first.match(/^([0-9a-f]{8,})_(.+)$/)
-    if (hashMatch) first = hashMatch[2]
+    if (hashMatch) {first = hashMatch[2]}
     return first
   }
   return parts[0] || 'unknown'
@@ -229,8 +229,8 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showPRPreview) setShowPRPreview(false)
-        else onClose()
+        if (showPRPreview) {setShowPRPreview(false)}
+        else {onClose()}
       }
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -238,7 +238,7 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
   }, [onClose, showPRPreview])
 
   const handleCopyFix = async () => {
-    if (!canCopyFix || !suggestion.fix_code) return
+    if (!canCopyFix || !suggestion.fix_code) {return}
     try {
       await copyToClipboard(suggestion.fix_code)
       setCopied(true)
@@ -248,12 +248,12 @@ function AIDetailSidePanel({ suggestion, onClose, onStatusChange, userPlan }: Si
   }
 
   const handleCreatePR = () => {
-    if (!canCreatePR) return
+    if (!canCreatePR) {return}
     setShowPRPreview(true)
   }
 
   const handleConfirmPR = async () => {
-    if (!canCreatePR) return
+    if (!canCreatePR) {return}
     setCreatingPR(true)
     try {
       const response = await apiClient.post(`/suggestions/${suggestion.id}/create-pr`, {
@@ -727,7 +727,7 @@ function SectionBlock({
   const config = SECTION_CONFIG[section]
   const SectionIcon = config.icon
 
-  if (groups.length === 0) return null
+  if (groups.length === 0) {return null}
 
   return (
     <div className="space-y-4">
@@ -770,7 +770,7 @@ export function AISuggestionsPage() {
   const shouldReduceMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   useEffect(() => {
-    if (isAuthenticated) fetchAllSuggestions()
+    if (isAuthenticated) {fetchAllSuggestions()}
   }, [isAuthenticated])
 
   const fetchAllSuggestions = async () => {
@@ -796,12 +796,12 @@ export function AISuggestionsPage() {
   )
 
   const filteredByCategory = useMemo(() => {
-    if (categoryFilter === 'all') return openSuggestions
+    if (categoryFilter === 'all') {return openSuggestions}
     return openSuggestions.filter(s => s.category.toLowerCase() === categoryFilter.toLowerCase())
   }, [openSuggestions, categoryFilter])
 
   const searchFiltered = useMemo(() => {
-    if (!searchTerm.trim()) return filteredByCategory
+    if (!searchTerm.trim()) {return filteredByCategory}
     const term = searchTerm.toLowerCase()
     return filteredByCategory.filter(s =>
       s.title.toLowerCase().includes(term) ||
@@ -913,7 +913,7 @@ export function AISuggestionsPage() {
                   <>
                     {['critical', 'high', 'medium', 'low'].map(sev => {
                       const count = severityCounts[sev as keyof typeof severityCounts]
-                      if (count === 0) return null
+                      if (count === 0) {return null}
                       const colors: Record<string, string> = {
                         critical: 'text-red-400 bg-red-500/10 border-red-500/20',
                         high: 'text-orange-400 bg-orange-500/10 border-orange-500/20',

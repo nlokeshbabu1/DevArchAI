@@ -3,8 +3,9 @@ import {
   FolderGit2, Activity, AlertTriangle, Brain,
   TrendingUp, ArrowUp, ArrowDown
 } from 'lucide-react'
-import { cn } from '../../lib/utils'
 import { useEffect, useState, useRef, memo } from 'react'
+
+import { cn } from '../../lib/utils'
 
 interface KpiCardProps {
   title: string
@@ -65,7 +66,7 @@ function AnimatedCounter({ value, duration = 1200 }: { value: string; duration?:
 
 function SeverityStack({ severity }: { severity: { critical: number; high: number; medium: number; low: number } }) {
   const total = severity.critical + severity.high + severity.medium + severity.low
-  if (total === 0) return null
+  if (total === 0) {return null}
 
   const items = [
     { key: 'critical', value: severity.critical, color: 'severity-bar-critical' },
@@ -78,7 +79,7 @@ function SeverityStack({ severity }: { severity: { critical: number; high: numbe
     <div className="flex h-1.5 gap-0.5 rounded-full overflow-hidden bg-white/5">
       {items.map((item) => {
         const pct = total > 0 ? (item.value / total) * 100 : 0
-        if (pct === 0) return null
+        if (pct === 0) {return null}
         return (
           <div
             key={item.key}

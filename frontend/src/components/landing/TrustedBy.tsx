@@ -1,5 +1,5 @@
-import { memo, useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
+import { memo, useState, useEffect } from 'react'
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false)

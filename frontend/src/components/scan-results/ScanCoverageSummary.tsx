@@ -3,6 +3,7 @@ import {
   FileText, FolderTree, Shield, Code2, Clock,
   HardDrive, Activity, Cpu
 } from "lucide-react"
+
 import { cn, formatDuration } from "../../lib/utils"
 
 interface ScanCoverageSummaryProps {

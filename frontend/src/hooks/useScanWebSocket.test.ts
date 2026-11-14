@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
 import { useScanWebSocket } from './useScanWebSocket'
 
 vi.mock('../lib/api', () => ({
@@ -429,7 +430,7 @@ describe('useScanWebSocket', () => {
 
     for (let i = 0; i < 55; i++) {
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
-      if (!ws) break
+      if (!ws) {break}
       await act(async () => {
         ws.simulateClose()
       })

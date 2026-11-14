@@ -1,9 +1,9 @@
-import { memo, useMemo, useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   Box, Hexagon, Layers, Cloud, Shield, GitBranch, Github,
   Server, Workflow, Rocket, Activity, LineChart, Search, Radar,
 } from 'lucide-react'
+import { memo, useMemo, useState, useEffect } from 'react'
 
 function useIsDesktop(breakpoint = 1024) {
   const [isDesktop, setIsDesktop] = useState(false)

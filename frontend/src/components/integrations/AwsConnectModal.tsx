@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Cloud, CheckCircle, AlertCircle, Copy, Check,
   ChevronLeft, Shield, Globe, Key, ArrowRight,
 } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { useState, useEffect, useCallback } from 'react'
+
 import { cloudApi } from '@/api/endpoints/cloud'
+import { Button } from '@/components/ui'
 
 interface AwsConnectModalProps {
   open: boolean
@@ -104,12 +105,12 @@ export function AwsConnectModal({ open, onClose }: AwsConnectModalProps) {
 
   const handleNext = () => {
     const idx = STEPS.findIndex((s) => s.key === step)
-    if (idx < STEPS.length - 1) setStep(STEPS[idx + 1].key)
+    if (idx < STEPS.length - 1) {setStep(STEPS[idx + 1].key)}
   }
 
   const handleBack = () => {
     const idx = STEPS.findIndex((s) => s.key === step)
-    if (idx > 0) setStep(STEPS[idx - 1].key)
+    if (idx > 0) {setStep(STEPS[idx - 1].key)}
   }
 
   const handleConnect = async () => {

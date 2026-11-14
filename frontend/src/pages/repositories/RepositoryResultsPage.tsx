@@ -1,5 +1,3 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -7,21 +5,24 @@ import {
   GitPullRequest, LayoutDashboard, BookOpen, CheckCircle2,
   XCircle, ExternalLink, Loader2, X, CheckCheck
 } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
-import { ErrorState } from '../../components/ui/error-state'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+
+import apiClient from '../../api/endpoints/client'
 import { prApi } from '../../api/endpoints/pull-requests'
 import { reportsApi } from '../../api/endpoints/reports'
-import { ScanResultsDashboard } from '../../components/scan-results/ScanResultsDashboard'
-import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
-import { AIProgressBanner } from '../../components/scans/AIProgressBanner'
-import apiClient from '../../api/endpoints/client'
-import { useScanWebSocket } from '../../hooks/useScanWebSocket'
-import { useRepositoryScan } from '../../hooks/useRepositoryScan'
 import { scansApi } from '../../api/endpoints/scans'
-import { resolveSecurityScore } from '../../lib/security-score'
+import { ScanResultsDashboard } from '../../components/scan-results/ScanResultsDashboard'
+import { AIProgressBanner } from '../../components/scans/AIProgressBanner'
+import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
+import { ErrorState } from '../../components/ui/error-state'
+import { Button, Card } from '../../components/ui-animated'
+import { useRepositoryScan } from '../../hooks/useRepositoryScan'
+import { useScanWebSocket } from '../../hooks/useScanWebSocket'
 import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
-import type { ScanStage, StageMetadata } from '../../types'
+import { resolveSecurityScore } from '../../lib/security-score'
 import { getFindingsCount, sanitizePath, cn, copyToClipboard } from '../../lib/utils'
+import type { ScanStage, StageMetadata } from '../../types'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'
 type SortOption = 'severity' | 'date'
@@ -41,7 +42,7 @@ export function RepositoryResultsPage() {
   const { data: repoData, isLoading, error, refetch } = useQuery({
     queryKey: ['repository-results', repositoryId],
     queryFn: async () => {
-      if (!repositoryId) throw new Error('No repository ID')
+      if (!repositoryId) {throw new Error('No repository ID')}
       const response = await apiClient.get(`/repositories/${repositoryId}/results`)
       return response.data
     },
@@ -49,7 +50,7 @@ export function RepositoryResultsPage() {
     retry: 2,
     staleTime: 30 * 1000,
     refetchInterval: (query) => {
-      const data = query.state.data as any
+      const data = query.state.data
       // Poll while AI is still running
       if (data?.scan?.ai_status === 'pending' || data?.scan?.ai_status === 'queued' || data?.scan?.ai_status === 'processing') {
         return 4000
@@ -69,7 +70,7 @@ export function RepositoryResultsPage() {
     refetchInterval: (query) => {
       const data = query.state.data as { ai_status?: string } | undefined
       const status = data?.ai_status ?? scanResult?.ai_status
-      if (status === 'pending' || status === 'queued' || status === 'processing') return 4000
+      if (status === 'pending' || status === 'queued' || status === 'processing') {return 4000}
       return false
     },
   })
@@ -80,7 +81,7 @@ export function RepositoryResultsPage() {
   const defaultBranch = repoData?.default_branch || 'main'
 
   const severityCounts = useMemo(() => {
-    if (!displayResult?.findings) return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+    if (!displayResult?.findings) {return { critical: 0, high: 0, medium: 0, low: 0, info: 0 }}
     return displayResult.findings.reduce((acc: Record<string, number>, f: any) => {
       const sev = f.severity || 'info'
       acc[sev] = (acc[sev] || 0) + 1
@@ -89,7 +90,7 @@ export function RepositoryResultsPage() {
   }, [displayResult?.findings])
 
   const topPriorityFixes = useMemo(() => {
-    if (!displayResult?.findings) return []
+    if (!displayResult?.findings) {return []}
     return displayResult.findings
       .filter((f: any) => f.severity === 'critical' || f.severity === 'high')
       .slice(0, 5)
@@ -116,7 +117,7 @@ export function RepositoryResultsPage() {
 
   // Canonical scan results live at /scans/:id — redirect when viewing a completed scan
   useEffect(() => {
-    if (!scanId || scanStarted || scanState.isScanning) return
+    if (!scanId || scanStarted || scanState.isScanning) {return}
     const status = displayResult?.status ?? scanResult?.status
     if (status === 'completed') {
       navigate(`/scans/${scanId}`, { replace: true })
@@ -184,9 +185,9 @@ export function RepositoryResultsPage() {
   }, [scanState.isComplete, scanState.isFailed])
 
   const handleDownload = async (format: 'pdf' | 'excel' | 'json' | 'sarif' = 'pdf') => {
-    if (!scanResult || isDownloading) return
+    if (!scanResult || isDownloading) {return}
     const effectiveScanId = scanResult.id
-    if (!effectiveScanId) return
+    if (!effectiveScanId) {return}
 
     if (format === 'json') {
       const reportData = {
@@ -218,7 +219,7 @@ export function RepositoryResultsPage() {
 
     setIsDownloading(true)
     try {
-      const downloadResponse = await reportsApi.downloadReport(effectiveScanId, format as 'pdf' | 'excel')
+      const downloadResponse = await reportsApi.downloadReport(effectiveScanId, format)
       const ext = format === 'pdf' ? 'pdf' : 'xlsx'
       const link = document.createElement('a')
       link.href = downloadResponse.url
@@ -237,9 +238,9 @@ export function RepositoryResultsPage() {
   }
 
   const handleCreatePR = async (findingId: string) => {
-    if (!scanResult) return
+    if (!scanResult) {return}
     const effectiveScanId = scanResult.id
-    if (!effectiveScanId) return
+    if (!effectiveScanId) {return}
 
     setPrState({ step: 'generating', success: false, error: null, response: null })
     await new Promise(r => setTimeout(r, 600))
@@ -270,11 +271,11 @@ export function RepositoryResultsPage() {
   }
 
   const handleCreateGlobalPR = async () => {
-    if (!scanResult) return
+    if (!scanResult) {return}
     const fixableFindings = scanResult?.findings?.filter((f: any) => f.fix_code && (f.severity === 'critical' || f.severity === 'high')) ?? []
-    if (fixableFindings.length === 0) return
+    if (fixableFindings.length === 0) {return}
     const effectiveScanId = scanResult.id
-    if (!effectiveScanId) return
+    if (!effectiveScanId) {return}
     const findingIds = fixableFindings.map((f: any) => f.id ?? f.rule_id)
 
     setPrState({ step: 'generating', success: false, error: null, response: null })
@@ -306,9 +307,9 @@ export function RepositoryResultsPage() {
   }
 
   const handleBatchCreatePR = async (findingIds: string[]) => {
-    if (!scanResult || findingIds.length === 0) return
+    if (!scanResult || findingIds.length === 0) {return}
     const effectiveScanId = scanResult.id
-    if (!effectiveScanId) return
+    if (!effectiveScanId) {return}
     setPrState({ step: 'generating', success: false, error: null, response: null })
     await new Promise(r => setTimeout(r, 600))
     setPrState(prev => prev.error ? prev : { ...prev, step: 'branch' })
@@ -396,7 +397,7 @@ export function RepositoryResultsPage() {
   }
 
   if (error && !repoData) {
-    const errorMessage = (error as Error)?.message || 'Failed to load repository results'
+    const errorMessage = (error)?.message || 'Failed to load repository results'
     const isNotFound = /404|not found/i.test(errorMessage)
     return (
       <div className="min-h-screen flex items-center justify-center">

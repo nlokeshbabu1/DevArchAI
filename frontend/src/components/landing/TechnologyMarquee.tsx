@@ -1,6 +1,7 @@
-import { memo, useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Box, GitBranch, Github, Layers, Cloud, Server, Shield, Hexagon } from 'lucide-react'
+import { memo, useState, useEffect } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface TechItem {

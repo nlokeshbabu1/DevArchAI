@@ -3,11 +3,14 @@
  * Shows before/after code changes with syntax highlighting
  */
 
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronDown, ChevronUp, Code, FileDiff } from 'lucide-react'
-import { Card } from './ui-animated'
+import { useState } from 'react'
+
 import { cn } from '../lib/utils'
+
+import { Card } from './ui-animated'
+
 
 interface DiffViewerProps {
   beforeCode?: string

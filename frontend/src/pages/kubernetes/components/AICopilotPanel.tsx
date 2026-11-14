@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Brain, ChevronDown, ChevronRight, Loader2, MessageSquare, Search,
 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
 import { kubernetesApi, type ClusterAIJob } from '@/api/endpoints/kubernetes'
 import { cn } from '@/lib/utils'
 
@@ -37,7 +38,7 @@ function SeveritySection({
   color: string
 }) {
   const [open, setOpen] = useState(items.length > 0 && items.length <= 3)
-  if (items.length === 0) return null
+  if (items.length === 0) {return null}
   return (
     <div className="border border-white/10 rounded-lg overflow-hidden">
       <button
@@ -84,18 +85,18 @@ export function AICopilotPanel({ connectionId }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const startPolling = useCallback((jobId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current)
+    if (pollRef.current) {clearInterval(pollRef.current)}
     pollRef.current = setInterval(async () => {
       try {
         const updated = await kubernetesApi.getAiAnalysis(connectionId, jobId)
         setAiJob(updated)
         if (updated.status === 'completed' || updated.status === 'failed') {
-          if (pollRef.current) clearInterval(pollRef.current)
+          if (pollRef.current) {clearInterval(pollRef.current)}
           pollRef.current = null
           setLoading(false)
         }
       } catch {
-        if (pollRef.current) clearInterval(pollRef.current)
+        if (pollRef.current) {clearInterval(pollRef.current)}
         pollRef.current = null
         setLoading(false)
       }
@@ -113,7 +114,7 @@ export function AICopilotPanel({ connectionId }: Props) {
       }
     }).catch(() => {})
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      if (pollRef.current) {clearInterval(pollRef.current)}
     }
   }, [connectionId, startPolling])
 

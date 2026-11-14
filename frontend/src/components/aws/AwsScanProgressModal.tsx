@@ -1,4 +1,5 @@
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
+
 import { AwsAccount } from '../../api/endpoints/aws'
 import { cn } from '../../lib/utils'
 
@@ -12,7 +13,7 @@ const stages = [
 ] as const
 
 export function AwsScanProgressModal({ account }: { account?: AwsAccount }) {
-  if (!account || !['queued', 'running', 'failed'].includes(account.scan_status)) return null
+  if (!account || !['queued', 'running', 'failed'].includes(account.scan_status)) {return null}
   const failed = account.scan_status === 'failed'
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">

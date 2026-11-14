@@ -1,7 +1,8 @@
 import { create } from 'zustand'
+
 import { api } from '../lib/api'
-import { clearAuthMemory, performRefresh, setAccessToken } from '../lib/auth-token'
 import { broadcastAuthEvent, subscribeAuthSync, type AuthSyncMessage } from '../lib/auth-sync'
+import { clearAuthMemory, performRefresh, setAccessToken } from '../lib/auth-token'
 import { clearUserQueryCache } from '../lib/query-client'
 
 interface User {

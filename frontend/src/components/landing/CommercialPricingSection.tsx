@@ -1,9 +1,10 @@
-import { memo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Check, X, Sparkles, ArrowRight, Zap, Shield, Globe, Star } from 'lucide-react'
-import { Button, Card } from '../ui-animated'
-import { cn } from '../../lib/utils'
+import { memo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { cn } from '../../lib/utils'
+import { Button, Card } from '../ui-animated'
 
 interface PricingPlan {
   name: string

@@ -1,9 +1,11 @@
-import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, ChevronRight, Terminal, Activity, GitMerge, Layers, FileText } from "lucide-react"
+import { useState } from "react"
+
 import { cn } from "../../lib/utils"
-import { ScanTimeline } from "./ScanTimeline"
+
 import { RepositoryStats } from "./RepositoryStats"
+import { ScanTimeline } from "./ScanTimeline"
 
 interface DiagnosticsProps {
   repoName: string

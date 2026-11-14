@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight,
   Loader2, Shield, Zap,
 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+
 import { kubernetesApi, type ClusterAIJob } from '@/api/endpoints/kubernetes'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +69,7 @@ export function VersionAdvisorPanel({ connectionId, advisor, onAdvisorUpdate }: 
           clearInterval(interval)
           setAnalyzing(false)
           if (job.status === 'completed' && job.result) {
-            onAdvisorUpdate?.(job.result as Record<string, unknown>)
+            onAdvisorUpdate?.(job.result)
           }
         }
       } catch {
@@ -101,7 +102,7 @@ export function VersionAdvisorPanel({ connectionId, advisor, onAdvisorUpdate }: 
   }
 
   useEffect(() => {
-    if (!advisor) return
+    if (!advisor) {return}
     const versions = (advisor.upgrade_path_versions as string[]) || (advisor.recommended_sequence as string[])
     if (versions.length && !selectedVersion) {
       setSelectedVersion(versions[versions.length - 1])

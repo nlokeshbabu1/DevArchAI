@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { getAccessToken, performRefresh } from './auth-token'
+
 import { getApiV1BaseUrl, getConfiguredApiBaseUrl, warnIfDevApiOriginMismatch } from './api-base-url'
+import { getAccessToken, performRefresh } from './auth-token'
 import { getScanSessionToken } from './scan-session'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
@@ -112,7 +113,8 @@ api.interceptors.response.use(
 
       return api(originalRequest)
     } catch (refreshError) {
-      return Promise.reject(refreshError)
+      const reason = refreshError instanceof Error ? refreshError : new Error(String(refreshError))
+      throw reason
     }
   },
 )

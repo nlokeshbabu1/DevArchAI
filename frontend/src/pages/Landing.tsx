@@ -1,19 +1,20 @@
-import { useCallback, useRef, useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { motion, useInView, useMotionValue, useSpring } from 'framer-motion'
 import {
   ArrowRight, Check, Shield, GitBranch, Search, Brain,
   GitPullRequest, FileText, Play, ChevronDown
 } from 'lucide-react'
-import { Button } from '../components/ui-animated'
+import { useCallback, useRef, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { BackgroundVideo } from '../components/landing/BackgroundVideo'
+import { FloatingTechCards } from '../components/landing/FloatingTechCards'
+import { HeroVideo } from '../components/landing/HeroVideo'
 import { MagneticButton } from '../components/landing/MagneticButton'
 import { Navbar } from '../components/landing/Navbar'
-import { HeroVideo } from '../components/landing/HeroVideo'
-import { FloatingTechCards } from '../components/landing/FloatingTechCards'
+import { PricingSection } from '../components/landing/PricingSection'
 import { TechnologyMarquee } from '../components/landing/TechnologyMarquee'
 import { WhyDevArchAI } from '../components/landing/WhyDevArchAI'
-import { PricingSection } from '../components/landing/PricingSection'
-import { BackgroundVideo } from '../components/landing/BackgroundVideo'
+import { Button } from '../components/ui-animated'
 import { useProductConfigState } from '../hooks/useProductConfig'
 
 /* ─── Mouse Glow ───────────────────────────────────────────── */
@@ -26,7 +27,7 @@ function MouseGlow() {
 
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
-      if (!visible) setVisible(true)
+      if (!visible) {setVisible(true)}
       x.set(e.clientX)
       y.set(e.clientY)
     }

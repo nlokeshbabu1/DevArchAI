@@ -12,6 +12,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_test_database_url():
+    """Force settings onto the isolated test Postgres (port 5433) for DB tests."""
+    from app.config import get_settings
+
+    from tests.db_test_config import apply_test_database_env
+
+    apply_test_database_env()
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def sample_dockerfile_content():
     """Sample Dockerfile content for testing."""

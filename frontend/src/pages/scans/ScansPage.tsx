@@ -1,15 +1,18 @@
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText, Scan } from 'lucide-react'
-import { Card, Button, Badge, Progress } from '../../components/ui'
-import { scansApi } from '../../api/endpoints/scans'
-import { api } from '../../lib/api'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../stores/auth-store'
+
 import { EmptyState } from '@/components/ui/empty-state'
+
+import { scansApi } from '../../api/endpoints/scans'
+import { Card, Button, Badge, Progress } from '../../components/ui'
 import { NativeSelect, nativeSelectOptionProps } from '../../components/ui/native-select'
 import { SecurityScore } from '../../components/ui/SecurityScore'
+import { api } from '../../lib/api'
 import { resolveSecurityScore } from '../../lib/security-score'
+import { useAuthStore } from '../../stores/auth-store'
+
 
 interface Scan {
   id: string
@@ -113,7 +116,7 @@ export function ScansPage() {
   }
 
   const filteredScans = (scans || []).filter((scan: Scan) => {
-    if (statusFilter === 'all') return true
+    if (statusFilter === 'all') {return true}
     return scan.status === statusFilter
   })
 

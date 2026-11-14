@@ -76,6 +76,20 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def is_stored_api_key_hash(value: str) -> bool:
+    """True when ``value`` looks like a SHA-256 hex digest stored for an API key."""
+    return len(value) == 64 and all(c in "0123456789abcdef" for c in value.lower())
+
+
+def verify_user_api_key(stored: str | None, presented: str) -> bool:
+    """Constant-time verification for legacy plaintext or hashed ``dk_`` API keys."""
+    if not stored:
+        return False
+    if is_stored_api_key_hash(stored):
+        return secrets.compare_digest(stored, hash_token(presented))
+    return secrets.compare_digest(stored, presented)
+
+
 JWT_ISSUER = "devarchai"
 JWT_AUDIENCE = "devarchai-api"
 
@@ -265,9 +279,11 @@ async def get_current_user_from_api_key(
     )
     user = result.scalar_one_or_none()
 
-    if user and user.api_key == api_key:
-        # Update last login
+    if user and verify_user_api_key(user.api_key, api_key):
         user.last_login_at = datetime.now(UTC)
+        if not is_stored_api_key_hash(user.api_key):
+            user.api_key = hash_token(api_key)
+            await db.commit()
         return user
 
     return None

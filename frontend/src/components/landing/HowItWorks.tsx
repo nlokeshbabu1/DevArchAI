@@ -1,9 +1,9 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import {
   GitBranch, Cpu, Server, Shield, Brain, AlertTriangle,
   BarChart3, FileText, LayoutDashboard
 } from 'lucide-react'
+import { memo } from 'react'
 
 const steps = [
   { icon: GitBranch, label: 'Repository', description: 'Connect your GitHub, GitLab, or Bitbucket repo' },

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+
+import type { CloudWSMessage } from '../api/endpoints/cloud'
 import { buildWebSocketUrl } from '../lib/api'
 import { getAccessToken } from '../lib/auth-token'
 import { buildWebSocketAuthMessage } from '../lib/ws-auth'
 import { useCloudStore } from '../stores/cloud-store'
-import type { CloudWSMessage } from '../api/endpoints/cloud'
 
 interface UseCloudWebSocketOptions {
   connectionId: string | null
@@ -58,7 +59,7 @@ export function useCloudWebSocket({
   }, [])
 
   const connect = useCallback(() => {
-    if (!connectionId || !enabled) return
+    if (!connectionId || !enabled) {return}
     cleanup()
 
     setConnectionStatus('connecting')
@@ -89,7 +90,7 @@ export function useCloudWebSocket({
       ws.onmessage = (event) => {
         try {
           const msg: CloudWSMessage = JSON.parse(event.data)
-          if (msg.type === 'pong') return
+          if (msg.type === 'pong') {return}
 
           const data = msg.data || {}
 

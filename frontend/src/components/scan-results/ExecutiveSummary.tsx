@@ -1,4 +1,3 @@
-import { useMemo, memo } from "react"
 import { motion } from "framer-motion"
 import {
   AlertTriangle, Bug, AlertCircle, Info,
@@ -7,6 +6,8 @@ import {
   Globe, Key, Files, List, Box, Braces,
   Server, Container, ArrowRight, CircleDot
 } from "lucide-react"
+import { useMemo, memo } from "react"
+
 import { cn, classifyFindingScanner } from "../../lib/utils"
 
 interface ExecutiveSummaryProps {
@@ -59,7 +60,7 @@ export const ExecutiveSummary = memo(function ExecutiveSummary({
       for (const cat of categoryConfig) {
         if (matchSecurityCategory(f, cat.key)) {
           counts[cat.key] = (counts[cat.key] || 0) + 1
-          if (f.file_path) files[cat.key].add(f.file_path)
+          if (f.file_path) {files[cat.key].add(f.file_path)}
         }
       }
     }
@@ -74,7 +75,7 @@ export const ExecutiveSummary = memo(function ExecutiveSummary({
   const totalFiles = useMemo(() => {
     const unique = new Set<string>()
     for (const f of findings) {
-      if (f.file_path) unique.add(f.file_path)
+      if (f.file_path) {unique.add(f.file_path)}
     }
     return unique.size
   }, [findings])
@@ -101,12 +102,12 @@ export const ExecutiveSummary = memo(function ExecutiveSummary({
 
   const actions = useMemo(() => {
     const items: { label: string; severity: "critical" | "high" | "medium" | "low" }[] = []
-    if (criticalCount > 0) items.push({ label: `Address ${criticalCount} critical ${criticalCount === 1 ? "finding" : "findings"} immediately`, severity: "critical" })
-    if (highCount > 0) items.push({ label: `Review ${highCount} high-severity ${highCount === 1 ? "issue" : "issues"}`, severity: "high" })
+    if (criticalCount > 0) {items.push({ label: `Address ${criticalCount} critical ${criticalCount === 1 ? "finding" : "findings"} immediately`, severity: "critical" })}
+    if (highCount > 0) {items.push({ label: `Review ${highCount} high-severity ${highCount === 1 ? "issue" : "issues"}`, severity: "high" })}
     for (const cat of affectedCategories.slice(0, 3)) {
       items.push({ label: `Audit ${cat.label} (${cat.count} ${cat.count === 1 ? "finding" : "findings"})`, severity: cat.count > 5 ? "high" : "medium" })
     }
-    if (items.length === 0 && lowCount > 0) items.push({ label: `Address ${lowCount} low-priority ${lowCount === 1 ? "item" : "items"}`, severity: "low" })
+    if (items.length === 0 && lowCount > 0) {items.push({ label: `Address ${lowCount} low-priority ${lowCount === 1 ? "item" : "items"}`, severity: "low" })}
     return items
   }, [criticalCount, highCount, lowCount, affectedCategories])
 
@@ -156,7 +157,7 @@ export const ExecutiveSummary = memo(function ExecutiveSummary({
                 <div className="flex h-1.5 gap-0.5 rounded-full overflow-hidden bg-white/5">
                   {Object.entries(severityConfig).map(([key, config]) => {
                     const count = severityCounts[key] || 0
-                    if (count === 0) return null
+                    if (count === 0) {return null}
                     const pct = (count / totalFindings) * 100
                     return (
                       <div

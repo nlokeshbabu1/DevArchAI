@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Cloud, Layers, Github, Shield, Activity, GitBranch, Box, Package, Code, Lock } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface Technology {

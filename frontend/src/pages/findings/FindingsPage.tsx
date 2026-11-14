@@ -1,17 +1,21 @@
-import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp, FileCode, FolderGit2, Shield, Wrench, FileText, ShieldCheck } from 'lucide-react'
-import { Card, Button, Badge } from '../../components/ui'
-import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
-import { api } from '../../lib/api'
-import { useAuthStore } from '../../stores/auth-store'
-import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn, sanitizePath, copyToClipboard } from '../../lib/utils'
+import { Search, Filter, Download, CheckCircle, AlertTriangle, AlertCircle, Info, Sparkles, BookOpen, ExternalLink, Code, Brain, ChevronDown, ChevronUp, FileCode, FolderGit2, Shield, Wrench, FileText, ShieldCheck } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { EmptyState } from '@/components/ui/empty-state'
+
+import { AISuggestionBlur } from '../../components/billing/AISuggestionBlur'
+import { Card, Button, Badge } from '../../components/ui'
+import { AISourceBadge } from '../../components/ui/AISourceBadge'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { SeverityBadge } from '../../components/ui/severity-badge'
-import { AISourceBadge } from '../../components/ui/AISourceBadge'
+import { api } from '../../lib/api'
+import { cn, sanitizePath, copyToClipboard } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
+
+
 
 interface Finding {
   id: string
@@ -67,9 +71,9 @@ export function Findings() {
   const severityOrder: Finding['severity'][] = ['critical', 'high', 'medium', 'low', 'info']
 
   const getRepositoryLabel = (finding: Finding) => {
-    if (finding.repository_name) return finding.repository_name
-    if (finding.repository) return finding.repository
-    if (finding.repository_url) return finding.repository_url.split('/').filter(Boolean).slice(-2).join('/')
+    if (finding.repository_name) {return finding.repository_name}
+    if (finding.repository) {return finding.repository}
+    if (finding.repository_url) {return finding.repository_url.split('/').filter(Boolean).slice(-2).join('/')}
     return `Scan ${finding.scan_id?.slice(0, 8) || 'unknown'}`
   }
 
@@ -136,15 +140,15 @@ export function Findings() {
 
   // Get confidence badge color
   const getConfidenceBadge = (confidence: number | undefined) => {
-    if (!confidence) return { color: 'bg-gray-500/10 text-gray-400', label: 'Unknown' }
-    if (confidence >= 0.8) return { color: 'bg-green-500/10 text-green-400', label: 'High' }
-    if (confidence >= 0.6) return { color: 'bg-yellow-500/10 text-yellow-400', label: 'Medium' }
+    if (!confidence) {return { color: 'bg-gray-500/10 text-gray-400', label: 'Unknown' }}
+    if (confidence >= 0.8) {return { color: 'bg-green-500/10 text-green-400', label: 'High' }}
+    if (confidence >= 0.6) {return { color: 'bg-yellow-500/10 text-yellow-400', label: 'Medium' }}
     return { color: 'bg-gray-500/10 text-gray-400', label: 'Low' }
   }
 
   // Get documentation URL
   const getDocumentationUrl = (finding: Finding): string => {
-    if (finding.documentation_url) return finding.documentation_url
+    if (finding.documentation_url) {return finding.documentation_url}
 
     const category = finding.category.toLowerCase()
     const ruleId = finding.rule_id?.toUpperCase() || ''
@@ -198,7 +202,7 @@ export function Findings() {
   const { data: findingsData, isLoading: findingsLoading, error: findingsError } = useQuery({
     queryKey: ['findings'],
     queryFn: async () => {
-      if (!isAuthenticated) return { findings: [], total: 0 }
+      if (!isAuthenticated) {return { findings: [], total: 0 }}
       const response = await api.get('/findings', {
         params: { page_size: 100 },
       })

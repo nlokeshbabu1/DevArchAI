@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Cloud, Plus, RefreshCw, ChevronRight, ShieldCheck, Clock } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useCallback, useEffect } from 'react'
+
 import { cloudApi, type CloudConnection } from '@/api/endpoints/cloud'
-import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
 import { AwsOnboardingWizard } from '@/components/integrations/AwsOnboardingWizard'
+import { cn } from '@/lib/utils'
+import { CloudDashboard } from '@/pages/cloud/CloudDashboard'
 
 interface CloudAccount {
   provider: 'aws' | 'azure' | 'gcp'
@@ -20,25 +21,25 @@ const AVAILABLE_PROVIDERS: CloudAccount[] = [
 ]
 
 function maskAccount(id: string): string {
-  if (!id) return '—'
-  if (id.length <= 4) return `****${id}`
+  if (!id) {return '—'}
+  if (id.length <= 4) {return `****${id}`}
   return `****${id.slice(-4)}`
 }
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) {return 'just now'}
+  if (mins < 60) {return `${mins}m ago`}
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) {return `${hours}h ago`}
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }
 
 function healthOf(conn: CloudConnection): { label: string; ok: boolean } {
-  if (conn.scan_status === 'failed') return { label: 'Degraded', ok: false }
-  if (conn.status === 'active') return { label: 'Healthy', ok: true }
+  if (conn.scan_status === 'failed') {return { label: 'Degraded', ok: false }}
+  if (conn.status === 'active') {return { label: 'Healthy', ok: true }}
   return { label: 'Unknown', ok: false }
 }
 
@@ -64,7 +65,7 @@ export function CloudAccounts({ provider = 'aws', title, description }: CloudAcc
       const filtered = provider ? conns.filter((c) => c.provider === provider) : conns
       setConnections(filtered)
       setSelectedId((current) => current && filtered.some((c) => c.id === current) ? current : (filtered[0]?.id || null))
-      if (!filtered.length) setSelectedId(null)
+      if (!filtered.length) {setSelectedId(null)}
     } catch {
       setError('Unable to load cloud connection status.')
     } finally {

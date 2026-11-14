@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { FolderGit2, CheckCircle, ArrowRight, Clock, Search, AlertTriangle, Brain, Download, Shield } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { resolveSecurityScore } from '../../lib/security-score'
-import { Button } from '../ui-animated'
-import type { RecentScan } from '../../api/endpoints/dashboard'
 import { useState, useDeferredValue, memo } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import type { RecentScan } from '../../api/endpoints/dashboard'
+import { resolveSecurityScore } from '../../lib/security-score'
+import { cn } from '../../lib/utils'
+import { Button } from '../ui-animated'
+
 
 interface ActivityFeedProps {
   scans: RecentScan[]
@@ -34,9 +36,9 @@ const getActivityColor = (status: string) => {
 }
 
 const getScoreColor = (score: number | null) => {
-  if (score === null) return 'text-muted-foreground'
-  if (score >= 80) return 'text-green-400'
-  if (score >= 60) return 'text-yellow-400'
+  if (score === null) {return 'text-muted-foreground'}
+  if (score >= 80) {return 'text-green-400'}
+  if (score >= 60) {return 'text-yellow-400'}
   return 'text-red-400'
 }
 
@@ -51,7 +53,7 @@ export const ActivityFeed = memo(function ActivityFeed({ scans, searchQuery, onS
   }
 
   const filteredScans = scans.filter((scan) => {
-    if (!deferredSearch) return true
+    if (!deferredSearch) {return true}
     const name = (scan.repository_name || scan.repository_url || '').toLowerCase()
     const status = (scan.status || '').toLowerCase()
     return name.includes(deferredSearch) || status.includes(deferredSearch)

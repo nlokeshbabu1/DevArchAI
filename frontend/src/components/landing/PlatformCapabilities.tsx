@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Shield, Search, FileCode, Box, Hexagon, Layers, GitBranch, Brain, FileText, FileDown, FileSpreadsheet, BarChart3, Sparkles, Cloud, Lock } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface Capability {

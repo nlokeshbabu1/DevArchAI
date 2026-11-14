@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+
 import '@testing-library/jest-dom'
-import { AIGenerationPanel } from './AIGenerationPanel'
 import type { AIGenerationProgress } from '../../types'
+
+import { AIGenerationPanel } from './AIGenerationPanel'
 
 vi.mock('framer-motion', () => ({
   motion: {

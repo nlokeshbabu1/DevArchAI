@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo, memo, type ReactNode } from 'react'
 import { motion, useInView, useReducedMotion } from 'framer-motion'
 import {
   GitBranch, Shield, Brain, FileText,
   CheckCircle2, AlertTriangle, Box, Hexagon, Layers,
   ArrowRight, Zap, Search, KeyRound,
 } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, memo, type ReactNode } from 'react'
 
 // ─── Timing ───────────────────────────────────────────────
 const LOOP = 10_000

@@ -1,3 +1,4 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Plus,
@@ -14,26 +15,28 @@ import {
   Play,
   Clock,
 } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
-import { Badge } from '../../components/ui'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { cn } from '../../lib/utils'
-import { SecurityScore } from '../../components/ui/SecurityScore'
-import { PageHeader } from '../../components/ui/PageHeader'
-import { StatusBadge } from '../../components/ui/StatusBadge'
-import { useAuthStore } from '../../stores/auth-store'
+import { useNavigate } from 'react-router-dom'
+
+import { EmptyState } from '@/components/ui/empty-state'
+
+import apiClient from '../../api/endpoints/client'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
 import { scansApi } from '../../api/endpoints/scans'
-import apiClient from '../../api/endpoints/client'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
 import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
-import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import { Badge } from '../../components/ui'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { SecurityScore } from '../../components/ui/SecurityScore'
+import { StatusBadge } from '../../components/ui/StatusBadge'
+import { Button, Card } from '../../components/ui-animated'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
+import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import { cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 import type { StageMetadata } from '../../types'
-import { EmptyState } from '@/components/ui/empty-state'
+
 
 type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
 
@@ -149,7 +152,7 @@ export function RepositoriesPage() {
     scanId: activeScan?.scanId ?? null,
     enabled: !!activeScan?.scanId,
     onComplete: () => {
-      if (!activeScan) return
+      if (!activeScan) {return}
       setScanningRepoIds((prev) => {
         const next = new Set(prev)
         next.delete(activeScan.repoId)
@@ -427,7 +430,7 @@ export function RepositoriesPage() {
   }
 
   const handleCancelActiveScan = async () => {
-    if (!activeScan?.scanId) return
+    if (!activeScan?.scanId) {return}
     try {
       await scansApi.cancelScan(activeScan.scanId)
     } catch {

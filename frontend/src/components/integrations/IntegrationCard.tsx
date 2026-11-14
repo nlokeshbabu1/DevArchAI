@@ -1,11 +1,14 @@
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
-import { cn } from '@/lib/utils'
 import { CheckCircle, Clock, Zap, ArrowRight } from 'lucide-react'
-import { ProviderLogo } from './ProviderLogo'
+import { Link } from 'react-router-dom'
+
+import { cn } from '@/lib/utils'
+
 import { ConnectionBadge } from './ConnectionBadge'
 import { ProviderActionButton } from './ProviderActionButton'
+import { ProviderLogo } from './ProviderLogo'
 import type { IntegrationMeta } from './types'
+
 
 interface IntegrationCardProps {
   integration: IntegrationMeta

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+
 import { cn, sanitizePath } from '../lib/utils'
+
 import { SeverityBadge } from './ui/severity-badge'
 
 interface ScoreCircleProps {
@@ -35,18 +37,18 @@ export function ScoreCircle({
   const strokeDashoffset = circumference - (score / 100) * circumference
   
   const getColor = (score: number) => {
-    if (score >= 90) return { text: 'text-green-400', stroke: 'stroke-green-400', glow: 'shadow-green-500/30' }
-    if (score >= 80) return { text: 'text-blue-400', stroke: 'stroke-blue-400', glow: 'shadow-blue-500/30' }
-    if (score >= 70) return { text: 'text-yellow-400', stroke: 'stroke-yellow-400', glow: 'shadow-yellow-500/30' }
-    if (score >= 60) return { text: 'text-orange-400', stroke: 'stroke-orange-400', glow: 'shadow-orange-500/30' }
+    if (score >= 90) {return { text: 'text-green-400', stroke: 'stroke-green-400', glow: 'shadow-green-500/30' }}
+    if (score >= 80) {return { text: 'text-blue-400', stroke: 'stroke-blue-400', glow: 'shadow-blue-500/30' }}
+    if (score >= 70) {return { text: 'text-yellow-400', stroke: 'stroke-yellow-400', glow: 'shadow-yellow-500/30' }}
+    if (score >= 60) {return { text: 'text-orange-400', stroke: 'stroke-orange-400', glow: 'shadow-orange-500/30' }}
     return { text: 'text-red-400', stroke: 'stroke-red-400', glow: 'shadow-red-500/30' }
   }
   
   const getGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
+    if (score >= 90) {return 'A'}
+    if (score >= 80) {return 'B'}
+    if (score >= 70) {return 'C'}
+    if (score >= 60) {return 'D'}
     return 'F'
   }
   

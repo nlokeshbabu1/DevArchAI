@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useEffect, useState } from 'react'
-import { cn } from '../lib/utils'
 import { Github, ChevronRight, CheckCircle, AlertCircle, RefreshCw, Clock, Play, Terminal } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
+import { cn } from '../lib/utils'
 
 // Re-export only used UI components
 export { Skeleton, SkeletonCard } from './ui/Skeleton'
@@ -43,18 +44,18 @@ export function ScoreCircle({
   const strokeDashoffset = circumference - (score / 100) * circumference
 
   const getColor = (score: number) => {
-    if (score >= 90) return { text: 'text-green-400', stroke: 'stroke-green-400', glow: 'shadow-green-500/30', gradient: 'from-green-500 to-emerald-500' }
-    if (score >= 80) return { text: 'text-blue-400', stroke: 'stroke-blue-400', glow: 'shadow-blue-500/30', gradient: 'from-blue-500 to-cyan-500' }
-    if (score >= 70) return { text: 'text-yellow-400', stroke: 'stroke-yellow-400', glow: 'shadow-yellow-500/30', gradient: 'from-yellow-500 to-orange-500' }
-    if (score >= 60) return { text: 'text-orange-400', stroke: 'stroke-orange-400', glow: 'shadow-orange-500/30', gradient: 'from-orange-500 to-red-500' }
+    if (score >= 90) {return { text: 'text-green-400', stroke: 'stroke-green-400', glow: 'shadow-green-500/30', gradient: 'from-green-500 to-emerald-500' }}
+    if (score >= 80) {return { text: 'text-blue-400', stroke: 'stroke-blue-400', glow: 'shadow-blue-500/30', gradient: 'from-blue-500 to-cyan-500' }}
+    if (score >= 70) {return { text: 'text-yellow-400', stroke: 'stroke-yellow-400', glow: 'shadow-yellow-500/30', gradient: 'from-yellow-500 to-orange-500' }}
+    if (score >= 60) {return { text: 'text-orange-400', stroke: 'stroke-orange-400', glow: 'shadow-orange-500/30', gradient: 'from-orange-500 to-red-500' }}
     return { text: 'text-red-400', stroke: 'stroke-red-400', glow: 'shadow-red-500/30', gradient: 'from-red-500 to-pink-500' }
   }
 
   const getGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
+    if (score >= 90) {return 'A'}
+    if (score >= 80) {return 'B'}
+    if (score >= 70) {return 'C'}
+    if (score >= 60) {return 'D'}
     return 'F'
   }
 

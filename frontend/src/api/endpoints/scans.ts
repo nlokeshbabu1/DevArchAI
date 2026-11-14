@@ -2,8 +2,9 @@
  * Scans API endpoints
  */
 
-import apiClient from './client';
 import type { StageMetadata } from '../../types';
+
+import apiClient from './client';
 
 export interface Scan {
   id: string;

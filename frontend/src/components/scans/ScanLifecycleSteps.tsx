@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, XCircle, Circle, Loader2 } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import { useMemo } from 'react'
+
 import { buildDynamicScanSteps, normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import { cn } from '../../lib/utils'
 import type { ScanStage, StageMetadata, TechnologyResult } from '../../types'
 
 export type LifecycleStepState = 'completed' | 'running' | 'failed' | 'pending'
@@ -30,18 +31,18 @@ function getStepState(
   const failed = normalizeLifecycleStage(props.failedStage ?? null)
   const completed = props.completedStages.map(s => normalizeLifecycleStage(s) ?? s)
 
-  if (tech?.status === 'failed') return 'failed'
-  if (tech?.status === 'completed' || (tech && tech.findings > 0 && completed.includes(id))) return 'completed'
-  if (failed === id) return 'failed'
-  if (completed.includes(id)) return 'completed'
-  if (tech?.status === 'scanning' || current === id) return 'running'
-  if (tech?.status === 'detected' && !completed.includes(id) && current !== id) return 'pending'
+  if (tech?.status === 'failed') {return 'failed'}
+  if (tech?.status === 'completed' || (tech && tech.findings > 0 && completed.includes(id))) {return 'completed'}
+  if (failed === id) {return 'failed'}
+  if (completed.includes(id)) {return 'completed'}
+  if (tech?.status === 'scanning' || current === id) {return 'running'}
+  if (tech?.status === 'detected' && !completed.includes(id) && current !== id) {return 'pending'}
   return 'pending'
 }
 
 function StatusIcon({ state }: { state: LifecycleStepState }) {
-  if (state === 'completed') return <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-  if (state === 'failed') return <XCircle className="h-4 w-4 text-red-400" />
+  if (state === 'completed') {return <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+  if (state === 'failed') {return <XCircle className="h-4 w-4 text-red-400" />}
   if (state === 'running') {
     return (
       <div className="relative">

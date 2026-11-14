@@ -2,12 +2,14 @@
  * AddRepositoryModal - Modal for adding new repositories
  */
 
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, GitBranch, Loader2, Link as LinkIcon, AlertCircle } from 'lucide-react'
-import { Button, Card } from './ui-animated'
-import { Input } from './ui'
+import { useState } from 'react'
+
 import { cn } from '../lib/utils'
+
+import { Input } from './ui'
+import { Button, Card } from './ui-animated'
 
 interface AddRepositoryModalProps {
   isOpen: boolean

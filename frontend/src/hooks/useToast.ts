@@ -9,7 +9,7 @@ export interface ToastItem {
 }
 
 let toasts: ToastItem[] = []
-let listeners = new Set<() => void>()
+const listeners = new Set<() => void>()
 let idCounter = 0
 
 function emit() {

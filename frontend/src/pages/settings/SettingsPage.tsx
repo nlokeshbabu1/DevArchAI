@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User, Mail, Building, Key, Bell, Shield, CreditCard, Trash2,
@@ -7,19 +6,21 @@ import {
   AlertTriangle, RefreshCw, ChevronRight, Camera, Smartphone,
   Github, Gitlab, Lock,
 } from 'lucide-react'
-import { Button, Card, Input } from '../../components/ui'
-import { Skeleton } from '../../components/ui/Skeleton'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { authApi, type SessionInfo } from '../../api/endpoints/auth'
 import { settingsApi, type ProfileData, type NotificationPrefs, type SessionData, type ApiKeyData, type CreateApiKeyResponse } from '../../api/endpoints/settings'
-import { useAuthStore } from '../../stores/auth-store'
-import { useNavigate } from 'react-router-dom'
-import { cn, copyToClipboard } from '../../lib/utils'
+import { Button, Card, Input } from '../../components/ui'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { Skeleton } from '../../components/ui/Skeleton'
+import { cn, copyToClipboard } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function safeEmail(email: string | null | undefined): string {
-  if (!email) return 'Email unavailable'
+  if (!email) {return 'Email unavailable'}
   return email
 }
 
@@ -48,7 +49,7 @@ function useToast() {
 }
 
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
-  if (!toasts.length) return null
+  if (!toasts.length) {return null}
   return (
     <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
       <AnimatePresence>
@@ -74,24 +75,24 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
 /* ──────────────── Password Strength ──────────────── */
 
 function getPasswordStrength(pw: string): { label: string; color: string; width: string; score: number } {
-  if (!pw) return { label: '', color: '', width: '0%', score: 0 }
+  if (!pw) {return { label: '', color: '', width: '0%', score: 0 }}
   let score = 0
-  if (pw.length >= 8) score += 1
-  if (pw.length >= 12) score += 1
-  if (/[a-z]/.test(pw)) score += 1
-  if (/[A-Z]/.test(pw)) score += 1
-  if (/[0-9]/.test(pw)) score += 1
-  if (/[^a-zA-Z0-9]/.test(pw)) score += 1
-  if (score <= 2) return { label: 'Weak', color: 'bg-red-500', width: '20%', score }
-  if (score <= 3) return { label: 'Fair', color: 'bg-orange-500', width: '40%', score }
-  if (score <= 4) return { label: 'Good', color: 'bg-yellow-500', width: '65%', score }
-  if (score <= 5) return { label: 'Strong', color: 'bg-green-500', width: '85%', score }
+  if (pw.length >= 8) {score += 1}
+  if (pw.length >= 12) {score += 1}
+  if (/[a-z]/.test(pw)) {score += 1}
+  if (/[A-Z]/.test(pw)) {score += 1}
+  if (/[0-9]/.test(pw)) {score += 1}
+  if (/[^a-zA-Z0-9]/.test(pw)) {score += 1}
+  if (score <= 2) {return { label: 'Weak', color: 'bg-red-500', width: '20%', score }}
+  if (score <= 3) {return { label: 'Fair', color: 'bg-orange-500', width: '40%', score }}
+  if (score <= 4) {return { label: 'Good', color: 'bg-yellow-500', width: '65%', score }}
+  if (score <= 5) {return { label: 'Strong', color: 'bg-green-500', width: '85%', score }}
   return { label: 'Very Strong', color: 'bg-emerald-500', width: '100%', score }
 }
 
 function PasswordStrengthMeter({ password }: { password: string }) {
   const strength = getPasswordStrength(password)
-  if (!password) return null
+  if (!password) {return null}
   return (
     <div className="mt-2 space-y-1">
       <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
@@ -133,7 +134,7 @@ function ToggleSwitch({ checked, onChange, label, description, icon: Icon }: { c
 /* ──────────────── Danger Confirmation Modal ──────────────── */
 
 function ConfirmModal({ open, onClose, onConfirm, title, description, confirmLabel, isLoading, children }: { open: boolean; onClose: () => void; onConfirm: () => void; title: string; description: string; confirmLabel: string; isLoading?: boolean; children?: React.ReactNode }) {
-  if (!open) return null
+  if (!open) {return null}
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-card border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>

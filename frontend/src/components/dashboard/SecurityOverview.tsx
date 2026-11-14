@@ -1,8 +1,10 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, AlertTriangle, TrendingUp, FolderGit2, Info } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 import { SecurityScore } from '../ui/SecurityScore'
+
 import type { KpiData } from './KpiRow'
 
 interface SecurityOverviewProps {

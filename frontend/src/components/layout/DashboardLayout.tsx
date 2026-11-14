@@ -1,14 +1,15 @@
-import { startTransition, useEffect, useState, useCallback, useMemo } from 'react'
-import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
   Brain, CreditCard, Settings, LogOut, Menu, X, Search,
   Zap, Cloud, User, ChevronDown, BookOpen, Plug, Container,
 } from 'lucide-react'
-import { useAuthStore, initAuthSync } from '../../stores/auth-store'
+import { startTransition, useEffect, useState, useCallback, useMemo } from 'react'
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
+
 import { useProductConfig } from '../../hooks/useProductConfig'
+import { cn } from '../../lib/utils'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
 import { Button } from '../ui'
 import { StatusBadge } from '../ui/StatusBadge'
 

@@ -1,18 +1,19 @@
 import { ChevronDown, Cloud, Eye, Loader2, Play, Power, RefreshCw } from 'lucide-react'
+
 import { AwsAccount } from '../../api/endpoints/aws'
-import { Button } from '../ui'
 import { cn } from '../../lib/utils'
+import { Button } from '../ui'
 
 function formatDate(value?: string | null) {
-  if (!value) return 'Not scanned'
+  if (!value) {return 'Not scanned'}
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
 function accountTag(account: AwsAccount) {
   const source = `${account.account_alias || ''} ${account.account_id}`.toLowerCase()
-  if (source.includes('prod')) return 'Production'
-  if (source.includes('stage')) return 'Staging'
-  if (source.includes('dev')) return 'Development'
+  if (source.includes('prod')) {return 'Production'}
+  if (source.includes('stage')) {return 'Staging'}
+  if (source.includes('dev')) {return 'Development'}
   return 'Sandbox'
 }
 

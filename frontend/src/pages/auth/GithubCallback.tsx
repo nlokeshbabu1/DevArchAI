@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { Card, Button } from '../../components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
 import { githubAuthApi } from '../../api/endpoints/github-auth'
+import { Card, Button } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 
 export function GithubCallback() {
@@ -19,7 +20,7 @@ export function GithubCallback() {
 
   useEffect(() => {
     // Prevent double processing (React StrictMode)
-    if (hasProcessedRef.current) return
+    if (hasProcessedRef.current) {return}
     hasProcessedRef.current = true
 
     const handleCallback = async () => {

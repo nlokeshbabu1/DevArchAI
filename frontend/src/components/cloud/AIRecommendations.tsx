@@ -1,4 +1,3 @@
-import React, { useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertCircle, AlertTriangle, BookOpen, CheckCircle,
@@ -7,8 +6,10 @@ import {
   FileCode, FileText, Info, ListChecks, RotateCcw, Search, Shield,
   Sparkles, Terminal, TrendingUp, XCircle,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import React, { useCallback, useEffect, useState } from 'react'
+
 import { cloudApi, type CloudAIRecommendation, type CloudAIRecommendationSummary, type CreateJiraTicketPayload, type JiraTicketResponse } from '@/api/endpoints/cloud'
+import { cn } from '@/lib/utils'
 import { useCloudStore } from '@/stores/cloud-store'
 
 interface Props {
@@ -540,7 +541,7 @@ function JiraModal({
                         {/* Actions */}
                         <div className="flex items-center gap-2 pt-2 border-t border-white/10">
                           {rec.status === 'open' && (
-                            <React.Fragment>
+                            <>
                               <button
                                 onClick={function () { handleStatusChange(rec.recommendation_id, 'resolved') }}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
@@ -563,7 +564,7 @@ function JiraModal({
                                 <ExternalLinkIcon className="h-3.5 w-3.5" />
                                 Create Jira Ticket
                               </button>
-                            </React.Fragment>
+                            </>
                           )}
                           {rec.status !== 'open' && (
                             <button

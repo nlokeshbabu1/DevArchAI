@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Zap, Shield, Brain, Loader2, Star, Building2 } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
-import { cn } from '../../lib/utils'
-import { api } from '../../lib/api'
-import { useAuthStore } from '../../stores/auth-store'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useProductConfig } from '../../hooks/useProductConfig'
-import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+
 import { PageHeader } from '../../components/ui/PageHeader'
 import { StatusBadge } from '../../components/ui/StatusBadge'
+import { Button, Card } from '../../components/ui-animated'
+import { useProductConfig } from '../../hooks/useProductConfig'
+import { api } from '../../lib/api'
+import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 interface Subscription {
   id: string | null
@@ -148,7 +149,7 @@ export function BillingPage() {
   }
 
   const handleUpgrade = async (planId: string) => {
-    if (planId === 'free') return
+    if (planId === 'free') {return}
 
     if (!productConfig.checkout_enabled || subscription?.checkout_enabled === false) {
       navigate('/dashboard')

@@ -16,8 +16,8 @@ function browserOrigin(): string {
 
 export function getConfiguredApiBaseUrl(): string {
   const fromEnv =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ||
-    (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+    (import.meta.env.VITE_API_BASE_URL)?.trim() ||
+    (import.meta.env.VITE_API_URL)?.trim()
   if (fromEnv) {
     return normalizeBaseUrl(fromEnv)
   }
@@ -37,7 +37,7 @@ export function warnIfDevApiOriginMismatch(): void {
   if (!import.meta.env.DEV || typeof window === 'undefined') {
     return
   }
-  const configured = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+  const configured = (import.meta.env.VITE_API_BASE_URL)?.trim()
   if (!configured) {
     return
   }

@@ -3,12 +3,13 @@
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ScanNotFoundException
+from app.core.scan_access import assert_scan_read_access
 from app.core.security import get_current_user, get_optional_user
 from app.db.session import get_db
 from app.models.finding import Finding
@@ -26,6 +27,27 @@ from app.workers.tasks.scan_repository import cancel_scan_task, scan_repository_
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
+
+
+async def _load_scan_for_read(
+    scan_id: str,
+    db: AsyncSession,
+    current_user: User | None,
+    session_token: str | None,
+    *,
+    options: list | None = None,
+) -> Scan:
+    """Load a scan by ID and enforce read access (owner or anonymous session)."""
+    scan_uuid = _parse_scan_id(scan_id)
+    query = select(Scan)
+    if options:
+        query = query.options(*options)
+    result = await db.execute(query.where(Scan.id == scan_uuid))
+    scan = result.scalar_one_or_none()
+    if not scan:
+        raise ScanNotFoundException(scan_id)
+    await assert_scan_read_access(db, scan, current_user, session_token)
+    return scan
 
 
 def _parse_scan_id(scan_id: str) -> UUID:
@@ -134,12 +156,10 @@ async def list_scans(
         query = query.where(Scan.user_id == current_user.id)
         logger.info(f"Listing scans for user {current_user.id}")
     else:
-        # For unauthenticated users, show only anonymous scans (last 7 days)
-        from datetime import datetime, timedelta
-
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        query = query.where((Scan.user_id.is_(None)) & (Scan.created_at >= seven_days_ago))
-        logger.info("Listing anonymous scans for guest user")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
 
     # Apply pagination
     query = query.offset(offset).limit(page_size)
@@ -156,25 +176,20 @@ async def list_scans(
 @router.get("/{scan_id}", response_model=ScanResponse)
 async def get_scan(
     scan_id: str,
+    request: Request,
     current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific scan with findings."""
-    scan_uuid = _parse_scan_id(scan_id)
-
-    # Filter by user_id to enforce tenant isolation
-    # Eagerly load scanner_executions to avoid MissingGreenlet in async context
-    query = select(Scan).options(selectinload(Scan.scanner_executions))
-    if current_user:
-        result = await db.execute(
-            query.where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
-        )
-    else:
-        result = await db.execute(query.where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
-    scan = result.scalar_one_or_none()
-
-    if not scan:
-        raise ScanNotFoundException(scan_id)
+    session_token = request.headers.get("X-Session-Token")
+    scan = await _load_scan_for_read(
+        scan_id,
+        db,
+        current_user,
+        session_token,
+        options=[selectinload(Scan.scanner_executions)],
+    )
+    scan_uuid = scan.id
 
     # Get findings count
     findings_count = await db.execute(
@@ -257,23 +272,13 @@ async def get_scan(
 @router.get("/{scan_id}/progress", response_model=ScanProgressResponse)
 async def get_scan_progress(
     scan_id: str,
+    request: Request,
     current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get scan progress."""
-    scan_uuid = _parse_scan_id(scan_id)
-
-    # Filter by user_id to enforce tenant isolation
-    if current_user:
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
-        )
-    else:
-        result = await db.execute(select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
-    scan = result.scalar_one_or_none()
-
-    if not scan:
-        raise ScanNotFoundException(scan_id)
+    session_token = request.headers.get("X-Session-Token")
+    scan = await _load_scan_for_read(scan_id, db, current_user, session_token)
 
     # Get Celery task status if available
     progress = scan.progress
@@ -366,23 +371,14 @@ async def cancel_scan(
 @router.get("/{scan_id}/findings", response_model=list)
 async def get_scan_findings(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
     """Get all findings for a specific scan."""
-    scan_uuid = _parse_scan_id(scan_id)
-
-    # Filter by user_id to enforce tenant isolation
-    if current_user:
-        result = await db.execute(
-            select(Scan).where(Scan.id == scan_uuid, Scan.user_id == current_user.id)
-        )
-    else:
-        result = await db.execute(select(Scan).where(Scan.id == scan_uuid, Scan.user_id.is_(None)))
-    scan = result.scalar_one_or_none()
-
-    if not scan:
-        raise ScanNotFoundException(scan_id)
+    session_token = request.headers.get("X-Session-Token")
+    scan = await _load_scan_for_read(scan_id, db, current_user, session_token)
+    scan_uuid = scan.id
 
     # Get findings
     findings_result = await db.execute(

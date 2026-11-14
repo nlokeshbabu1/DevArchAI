@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+
 import { api } from '../lib/api'
 
 export type ProductConfig = {
@@ -20,8 +21,8 @@ let cached: ProductConfig | null = null
 let inflight: Promise<ProductConfig> | null = null
 
 export async function fetchProductConfig(): Promise<ProductConfig> {
-  if (cached) return cached
-  if (inflight) return inflight
+  if (cached) {return cached}
+  if (inflight) {return inflight}
   inflight = api
     .get<ProductConfig>('/billing/product-config')
     .then((res) => {
@@ -57,18 +58,18 @@ export function useProductConfigState(): ProductConfigState {
     api
       .get<ProductConfig>('/billing/product-config')
       .then((res) => {
-        if (!active) return
+        if (!active) {return}
         cached = { ...DEFAULT_CONFIG, ...res.data }
         setConfig(cached)
         setError(false)
       })
       .catch(() => {
-        if (!active) return
+        if (!active) {return}
         setConfig(DEFAULT_CONFIG)
         setError(true)
       })
       .finally(() => {
-        if (active) setIsLoading(false)
+        if (active) {setIsLoading(false)}
       })
     return () => {
       active = false
@@ -99,7 +100,7 @@ export const LIMIT_DISPLAY_LABELS: Record<string, string> = {
 }
 
 export function formatConfigLimits(limits?: Record<string, number | null>): { label: string; value: string }[] {
-  if (!limits) return []
+  if (!limits) {return []}
   return Object.entries(limits)
     .filter(([, value]) => typeof value === 'number' && value > 0)
     .map(([key, value]) => ({

@@ -1,6 +1,9 @@
-import { cn } from '@/lib/utils'
 import { Plug, Settings, ExternalLink, ArrowRight, Loader2 } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
+
 import type { ConnectionStatus } from './types'
+
 
 interface ProviderActionButtonProps {
   status: ConnectionStatus

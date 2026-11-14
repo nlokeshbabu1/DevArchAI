@@ -31,15 +31,15 @@ export function FocusTrap({ active, onClose, children, restoreFocus = true }: Fo
       onClose()
       return
     }
-    if (e.key !== 'Tab') return
+    if (e.key !== 'Tab') {return}
     const container = containerRef.current
-    if (!container) return
+    if (!container) {return}
     const focusable = Array.from(
       container.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       )
     )
-    if (focusable.length === 0) return
+    if (focusable.length === 0) {return}
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
     if (e.shiftKey && document.activeElement === first) {
@@ -51,7 +51,7 @@ export function FocusTrap({ active, onClose, children, restoreFocus = true }: Fo
     }
   }, [onClose])
 
-  if (!active) return null
+  if (!active) {return null}
 
   return (
     <div ref={containerRef} onKeyDown={handleKeyDown} role="dialog" aria-modal="true">

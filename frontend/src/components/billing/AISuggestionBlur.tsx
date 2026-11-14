@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
 import { Lock, Sparkles, ArrowRight, Zap, CheckCircle, AlertTriangle } from 'lucide-react'
-import { Button, Card } from '../ui-animated'
+
 import { cn } from '../../lib/utils'
+import { Button, Card } from '../ui-animated'
 
 interface AISuggestionBlurProps {
   isBlurred: boolean

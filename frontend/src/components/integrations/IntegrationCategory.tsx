@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion'
-import { cn } from '@/lib/utils'
 import {
   GitBranch,
   Cloud,
@@ -9,8 +8,12 @@ import {
   Bell,
   type LucideIcon,
 } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
+
 import { IntegrationCard } from './IntegrationCard'
 import type { IntegrationCategory as IntegrationCategoryType, IntegrationMeta } from './types'
+
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
   repositories: GitBranch,

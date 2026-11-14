@@ -1,15 +1,16 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+
+import { CookieConsentBanner } from './components/CookieConsentBanner'
 import { Layout } from './components/layout/DashboardLayout'
 import { ToastHost } from './components/ui/ToastHost'
-import { Landing } from './pages/Landing'
-import { Login } from './pages/auth/Login'
-import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { IntegrationCallback } from './pages/auth/IntegrationCallback'
+import { Login } from './pages/auth/Login'
+import { Register } from './pages/auth/Register'
+import { Landing } from './pages/Landing'
 import { useAuthStore, initAuthSync } from './stores/auth-store'
-import { CookieConsentBanner } from './components/CookieConsentBanner'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
 const Report = lazy(() => import('./pages/Report').then(m => ({ default: m.Report })))

@@ -4,6 +4,7 @@ import {
   List, Shield, Code2, Clock, Activity, BarChart3,
   ScanSearch, Layers, Sparkles,
 } from "lucide-react"
+
 import { cn, formatDuration, getRelativeTime } from "../../lib/utils"
 
 interface RepositoryStatsProps {

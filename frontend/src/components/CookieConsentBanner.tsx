@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Cookie, X } from 'lucide-react'
 
-import { useCookieConsentStore } from '../stores/cookie-consent-store'
 import type { ConsentCategory } from '../lib/cookie-consent'
+import { useCookieConsentStore } from '../stores/cookie-consent-store'
 
 const CATEGORY_COPY: Record<
   ConsentCategory,

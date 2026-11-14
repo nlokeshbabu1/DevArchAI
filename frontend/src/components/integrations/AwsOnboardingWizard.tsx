@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Cloud, CheckCircle, AlertCircle, Copy, Check,
   ChevronRight, Shield, Globe, ArrowRight, ExternalLink,
   Loader2, Database, Lock, Activity, Eye, Clock, Zap, Rocket,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
 import { cloudApi, type WizardInitResponse, type WizardVerifyResponse } from '@/api/endpoints/cloud'
+import { cn } from '@/lib/utils'
 
 interface AwsOnboardingWizardProps {
   open: boolean
@@ -50,7 +51,7 @@ export function AwsOnboardingWizard({ open, onClose, onComplete }: AwsOnboarding
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
+      if (pollingRef.current) {clearInterval(pollingRef.current)}
     }
   }, [])
 
@@ -101,11 +102,11 @@ export function AwsOnboardingWizard({ open, onClose, onComplete }: AwsOnboarding
 
   const handleBack = () => {
     const idx = STEPS.findIndex((s) => s.key === step)
-    if (idx > 0) setStep(STEPS[idx - 1].key)
+    if (idx > 0) {setStep(STEPS[idx - 1].key)}
   }
 
   const startVerification = async () => {
-    if (!wizardData) return
+    if (!wizardData) {return}
 
     setIsVerifying(true)
     setVerifyingStep(0)

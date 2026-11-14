@@ -1,7 +1,8 @@
 import { Check, Copy, Loader2, X } from 'lucide-react'
 import { useState } from 'react'
-import { copyToClipboard } from '../../lib/utils'
+
 import { AwsFindingExplanation } from '../../api/endpoints/aws'
+import { copyToClipboard } from '../../lib/utils'
 import { Button } from '../ui'
 
 function CodeBlock({ value }: { value: string }) {
@@ -41,7 +42,7 @@ export function AIExplainModal({
   error: string | null
   onClose: () => void
 }) {
-  if (!loading && !explanation && !error) return null
+  if (!loading && !explanation && !error) {return null}
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

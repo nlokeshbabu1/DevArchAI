@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { Terminal, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { cn } from '../../lib/utils'
 

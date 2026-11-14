@@ -3,6 +3,7 @@ import {
   Search, CheckCircle2, Clock, Loader2, AlertCircle,
   ArrowRight, Cpu, Shield, GitMerge, Sparkles, FileText, Flag,
 } from "lucide-react"
+
 import { cn } from "../../lib/utils"
 
 interface ScanTimelineProps {
@@ -30,11 +31,11 @@ function getStepState(
   aiStatus: string,
   scanStatus: string,
 ): "done" | "current" | "pending" | "error" {
-  if (scanStatus === "failed") return "error"
-  if (stepIndex < currentStep) return "done"
+  if (scanStatus === "failed") {return "error"}
+  if (stepIndex < currentStep) {return "done"}
   if (stepIndex === currentStep) {
-    if (stepIndex === 5 && (aiStatus === "failed")) return "error"
-    if (stepIndex === 5 && (aiStatus === "processing" || aiStatus === "queued" || aiStatus === "pending")) return "current"
+    if (stepIndex === 5 && (aiStatus === "failed")) {return "error"}
+    if (stepIndex === 5 && (aiStatus === "processing" || aiStatus === "queued" || aiStatus === "pending")) {return "current"}
     return "current"
   }
   return "pending"

@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { FileDown, FileSpreadsheet, BarChart3, Shield, AlertTriangle, CheckCircle, Download, FileText } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 const reportTypes = [

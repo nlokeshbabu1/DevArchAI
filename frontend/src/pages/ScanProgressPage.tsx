@@ -1,5 +1,3 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -8,17 +6,20 @@ import {
   XCircle, Download, GitPullRequest, Share2,
   Shield, FileText, Cpu, Brain, FileCode, Activity,
 } from 'lucide-react'
-import { Button, Card } from '../components/ui-animated'
-import { scansApi } from '../api/endpoints/scans'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+
 import { prApi } from '../api/endpoints/pull-requests'
 import { reportsApi } from '../api/endpoints/reports'
-import { useScanWebSocket } from '../hooks/useScanWebSocket'
+import { scansApi } from '../api/endpoints/scans'
 import { ScanResultsDashboard } from '../components/scan-results/ScanResultsDashboard'
-import { ScanPipeline } from '../components/scans/ScanPipeline'
-import { LiveTerminal } from '../components/scans/LiveTerminal'
 import { AIProgressBanner } from '../components/scans/AIProgressBanner'
+import { LiveTerminal } from '../components/scans/LiveTerminal'
+import { ScanPipeline } from '../components/scans/ScanPipeline'
 import { SecurityScore } from '../components/ui/SecurityScore'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { Button, Card } from '../components/ui-animated'
+import { useScanWebSocket } from '../hooks/useScanWebSocket'
 import { cn, copyToClipboard } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 import type { ScanStage, StageMetadata, SeverityCounts, ScanEvent } from '../types'
@@ -62,9 +63,9 @@ function useElapsedTime(startedAt: string | null | undefined, isTerminal: boolea
   const endTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!startedAt) return
+    if (!startedAt) {return}
     const start = new Date(startedAt).getTime()
-    if (isNaN(start)) return
+    if (isNaN(start)) {return}
 
     if (isTerminal) {
       const end = completedAt ? new Date(completedAt).getTime() : Date.now()
@@ -84,7 +85,7 @@ function useElapsedTime(startedAt: string | null | undefined, isTerminal: boolea
 }
 
 function fmt(seconds: number): string {
-  if (seconds < 0) return '00:00'
+  if (seconds < 0) {return '00:00'}
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
@@ -115,7 +116,7 @@ const TECH_CAT: Record<string, { c: string; bg: string; bd: string }> = {
 function techCat(tech: string) {
   const l = tech.toLowerCase()
   for (const [k, v] of Object.entries(TECH_CAT)) {
-    if (l.includes(k)) return v
+    if (l.includes(k)) {return v}
   }
   return { c: 'text-white/60', bg: 'bg-white/5', bd: 'border-white/10' }
 }
@@ -155,23 +156,23 @@ function getEventIcon(event: ScanEvent): React.ComponentType<{ className?: strin
 }
 
 function getEventColor(event: ScanEvent): string {
-  if (event.type === 'scan_completed') return 'text-emerald-400'
-  if (event.type === 'scan_failed') return 'text-red-400'
-  if (event.type === 'finding_discovered') return SEV[event.metadata?.severity || 'info']?.c || 'text-blue-400'
-  if (event.type === 'ai_suggestion_generation') return 'text-purple-400'
-  if (event.type === 'stack_detected') return 'text-cyan-400'
-  if (event.type.startsWith('running_')) return 'text-indigo-400'
-  if (event.type === 'scanner_complete') return 'text-emerald-400/60'
+  if (event.type === 'scan_completed') {return 'text-emerald-400'}
+  if (event.type === 'scan_failed') {return 'text-red-400'}
+  if (event.type === 'finding_discovered') {return SEV[event.metadata?.severity || 'info']?.c || 'text-blue-400'}
+  if (event.type === 'ai_suggestion_generation') {return 'text-purple-400'}
+  if (event.type === 'stack_detected') {return 'text-cyan-400'}
+  if (event.type.startsWith('running_')) {return 'text-indigo-400'}
+  if (event.type === 'scanner_complete') {return 'text-emerald-400/60'}
   return 'text-white/40'
 }
 
 function getEventBg(event: ScanEvent): string {
-  if (event.type === 'scan_completed') return 'bg-emerald-500/5'
-  if (event.type === 'scan_failed') return 'bg-red-500/5'
-  if (event.type === 'finding_discovered') return SEV[event.metadata?.severity || 'info']?.bg || 'bg-blue-500/5'
-  if (event.type === 'ai_suggestion_generation') return 'bg-purple-500/5'
-  if (event.type === 'stack_detected') return 'bg-cyan-500/5'
-  if (event.type.startsWith('running_')) return 'bg-indigo-500/5'
+  if (event.type === 'scan_completed') {return 'bg-emerald-500/5'}
+  if (event.type === 'scan_failed') {return 'bg-red-500/5'}
+  if (event.type === 'finding_discovered') {return SEV[event.metadata?.severity || 'info']?.bg || 'bg-blue-500/5'}
+  if (event.type === 'ai_suggestion_generation') {return 'bg-purple-500/5'}
+  if (event.type === 'stack_detected') {return 'bg-cyan-500/5'}
+  if (event.type.startsWith('running_')) {return 'bg-indigo-500/5'}
   return 'bg-white/[0.02]'
 }
 
@@ -235,7 +236,7 @@ function LiveEventTimeline({
     }
   }, [events.length, prefersReduced])
 
-  if (!isVisible || events.length === 0) return null
+  if (!isVisible || events.length === 0) {return null}
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-[rgba(30,41,59,0.6)] backdrop-blur-xl overflow-hidden">
@@ -329,11 +330,11 @@ export function ScanProgressPage() {
 
   const { data: result, isLoading: resultsLoading } = useQuery<ScanResult>({
     queryKey: ['scan-report', id],
-    queryFn: async () => { if (!id) throw new Error('No scan ID'); return (await scansApi.getScanResults(id)) as ScanResult },
+    queryFn: async () => { if (!id) {throw new Error('No scan ID');} return (await scansApi.getScanResults(id)) as ScanResult },
     enabled: authReady && isValidScanId && !!scanState?.is_terminal && scanState.status === 'completed',
     retry: 3, staleTime: 5 * 60 * 1000,
     refetchInterval: (query) => {
-      const data = query.state.data as ScanResult | undefined
+      const data = query.state.data
       const status = data?.ai_status
       if (status === 'pending' || status === 'queued' || status === 'processing') {
         return 4000
@@ -396,7 +397,7 @@ export function ScanProgressPage() {
   }, [aiJobStatus?.ai_status, handleAIComplete])
 
   const { scanState: wsState, completedStages } = useScanWebSocket({
-    scanId: isValidScanId ? id! : null,
+    scanId: isValidScanId ? id : null,
     enabled: isValidScanId && (!isTerminal || isAiStillPending),
     onComplete: handleScanComplete, onFailed: handleScanFailed,
     onAIComplete: handleAIComplete,
@@ -414,11 +415,11 @@ export function ScanProgressPage() {
   const liveFindings = wsState?.liveFindings || []
   const aiProgress = wsState?.aiProgress || null
   const polledAiProgress = useMemo(() => {
-    if (!aiJobStatus?.total_jobs) return null
+    if (!aiJobStatus?.total_jobs) {return null}
     const by = aiJobStatus.by_status || {}
     const completed = (by.completed || 0) + (by.failed || 0)
     const total = aiJobStatus.total_jobs
-    if (total <= 0) return null
+    if (total <= 0) {return null}
     return {
       phase: 'llm',
       message: `Generating AI recommendations (${completed}/${total})`,
@@ -451,7 +452,7 @@ export function ScanProgressPage() {
   const completedScanners = useMemo(() =>
     Object.values(scanners).filter(s => s.status === 'completed_with_findings' || s.status === 'completed_no_findings').length, [scanners])
   const activeAiPhase = useMemo(() => {
-    if (!aiProgress?.phase) return -1
+    if (!aiProgress?.phase) {return -1}
     const idx = AI_PHASES.findIndex(p => aiProgress.phase.toLowerCase().includes(p.key))
     return idx >= 0 ? idx : 0
   }, [aiProgress])
@@ -461,7 +462,7 @@ export function ScanProgressPage() {
     if ((wsComplete || (isTerminal && isComplete)) && result) {
       void queryClient.invalidateQueries({ queryKey: ['scan-report', id] })
       setToastMsg('Scan completed successfully')
-      if (toastRef.current) clearTimeout(toastRef.current)
+      if (toastRef.current) {clearTimeout(toastRef.current)}
       toastRef.current = setTimeout(() => setToastMsg(null), 4000)
     }
   }, [wsComplete, isTerminal, isComplete, result, id, queryClient])
@@ -469,17 +470,19 @@ export function ScanProgressPage() {
   const repoUrl = result?.repository_url || ''
 
   const handleRescan = useCallback(async () => {
-    if (!repoUrl) return
+    if (!repoUrl) {return}
     try {
       const r = await scansApi.startUnifiedScan({ repository_url: repoUrl, branch: branch || 'main' })
-      if (r?.scan_id) navigate(`/scans/${r.scan_id}`)
-    } catch {}
+      if (r?.scan_id) {navigate(`/scans/${r.scan_id}`)}
+    } catch (err) {
+      console.error('Rescan failed', err)
+    }
   }, [repoUrl, branch, navigate])
 
   const handleDownload = useCallback(async (format: 'pdf' | 'json' | 'sarif' | 'csv' = 'pdf') => {
-    if (!result || isDownloading) return
+    if (!result || isDownloading) {return}
     const eid = result.id
-    if (!eid) return
+    if (!eid) {return}
     if (format === 'json') {
       const d = {
         scan_id: eid, repository_name: repoName, repository_url: repoUrl, branch: result.branch || 'main',
@@ -496,21 +499,21 @@ export function ScanProgressPage() {
     }
     setIsDownloading(true)
     try {
-      const dr = await reportsApi.downloadReport(eid, format as 'pdf' | 'excel')
+      const dr = await reportsApi.downloadReport(eid, format)
       const ext = format === 'pdf' ? 'pdf' : format === 'csv' ? 'csv' : format === 'sarif' ? 'sarif' : 'xlsx'
       const a = document.createElement('a'); a.href = dr.url; a.rel = 'noopener noreferrer'
       a.download = dr.filename || `report-${String(eid).slice(0, 8)}.${ext}`
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    } catch { if (format === 'pdf') void handleDownload('json') }
+    } catch { if (format === 'pdf') {void handleDownload('json')} }
     finally { setIsDownloading(false) }
   }, [result, isDownloading, repoName, repoUrl])
 
   const hasFixableFindings = useMemo(() => result?.findings?.some((f: any) => f.fix_code) ?? false, [result])
 
   const handleCreateGlobalPR = useCallback(async () => {
-    if (!result || !hasFixableFindings) return
+    if (!result || !hasFixableFindings) {return}
     const eid = result.id
-    if (!eid) return
+    if (!eid) {return}
     setPrState({ step: 'generating', success: false, error: null })
     await new Promise(r => setTimeout(r, 600))
     setPrState(p => p.error ? p : { ...p, step: 'branch' })
@@ -529,7 +532,7 @@ export function ScanProgressPage() {
     } else {
       void copyToClipboard(window.location.href)
       setToastMsg('Link copied to clipboard')
-      if (toastRef.current) clearTimeout(toastRef.current)
+      if (toastRef.current) {clearTimeout(toastRef.current)}
       toastRef.current = setTimeout(() => setToastMsg(null), 3000)
     }
   }, [repoName])

@@ -1,6 +1,6 @@
-import { type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { Shield, Zap, Globe, Users, Terminal, Brain, GitPullRequest } from 'lucide-react'
+import { type ReactNode } from 'react'
 
 const features = [
   { icon: Terminal, text: 'Docker & Kubernetes', color: 'text-blue-400' },

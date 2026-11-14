@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
 import { Card, Button } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
-import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
 
 export function GitlabCallback() {
   const navigate = useNavigate()
@@ -16,7 +17,7 @@ export function GitlabCallback() {
   const processedRef = useRef(false)
 
   useEffect(() => {
-    if (processedRef.current) return
+    if (processedRef.current) {return}
     processedRef.current = true
 
     const errorParam = searchParams.get('error')

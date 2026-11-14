@@ -15,6 +15,7 @@ import {
   Package,
   Server,
 } from 'lucide-react'
+
 import { cn } from '../../lib/utils'
 import type { ScannerStatus } from '../../types'
 
@@ -144,9 +145,9 @@ function getStatusConfig(status: ScannerStatus['status']) {
 }
 
 function formatDuration(ms?: number): string {
-  if (!ms) return ''
+  if (!ms) {return ''}
   const sec = ms / 1000
-  if (sec < 60) return `${sec.toFixed(1)} sec`
+  if (sec < 60) {return `${sec.toFixed(1)} sec`}
   return `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s`
 }
 

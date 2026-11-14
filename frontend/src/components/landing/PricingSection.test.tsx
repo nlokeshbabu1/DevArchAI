@@ -1,9 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PricingSection } from './PricingSection'
+
 import { clearProductConfigCache } from '../../hooks/useProductConfig'
 import { api } from '../../lib/api'
+
+import { PricingSection } from './PricingSection'
 
 vi.mock('../../lib/api', () => ({
   api: {

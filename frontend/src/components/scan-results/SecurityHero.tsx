@@ -1,8 +1,9 @@
 import { motion } from "framer-motion"
 import { GitBranch, Clock, FileText, Tag, Files, List } from "lucide-react"
-import { SecurityScore } from "../ui/SecurityScore"
-import { formatDuration, getRelativeTime } from "../../lib/utils"
+
 import type { ScoreSource } from "../../lib/security-score"
+import { formatDuration, getRelativeTime } from "../../lib/utils"
+import { SecurityScore } from "../ui/SecurityScore"
 
 interface SecurityHeroProps {
   /** Canonical score fields from API */

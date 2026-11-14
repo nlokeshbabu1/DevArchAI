@@ -1,4 +1,3 @@
-import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Shield, CheckCircle2, AlertCircle, Clock, SkipForward, Loader2,
@@ -7,6 +6,8 @@ import {
   GitMerge, Terminal, Eye, List, Lock, HelpCircle, GitPullRequest,
   Info,
 } from "lucide-react"
+import { useState, useMemo } from "react"
+
 import { cn, formatDuration, getScannerPurpose, getScannerTechnologies } from "../../lib/utils"
 import type { ScannerExecution, Finding } from "../../types"
 
@@ -57,7 +58,7 @@ const STATUS_STYLES: Record<string, { label: string; icon: typeof Shield; color:
 }
 
 function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—"
+  if (!iso) {return "—"}
   try {
     const d = new Date(iso)
     return d.toLocaleString("en-US", {
@@ -72,7 +73,7 @@ function formatDateTime(iso: string | null | undefined): string {
 function StatRow({ icon: Icon, label, value, color, tooltip }: {
   icon: typeof Shield; label: string; value: string | number | null | undefined; color?: string; tooltip?: string
 }) {
-  if (value == null || value === "" || value === "—") return null
+  if (value == null || value === "" || value === "—") {return null}
   return (
     <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-white/[0.015]">
       <Icon className={cn("w-3.5 h-3.5 shrink-0", color ?? "text-white/30")} />
@@ -111,7 +112,7 @@ function computeMetrics(execution: ScannerExecution, findings?: Finding[]): PerS
     criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0,
     resourceTypes: [], uniquePackages: [], uniqueFiles: [],
   }
-  if (!findings || findings.length === 0) return empty
+  if (!findings || findings.length === 0) {return empty}
 
   const scannerName = execution.scanner_name?.toLowerCase() || ""
   const relevant = findings.filter(f => {
@@ -119,7 +120,7 @@ function computeMetrics(execution: ScannerExecution, findings?: Finding[]): PerS
     return sn.includes(scannerName) || sn.includes(execution.scanner_id?.toLowerCase() || "")
   })
 
-  if (relevant.length === 0) return empty
+  if (relevant.length === 0) {return empty}
 
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 }
   const packages = new Set<string>()
@@ -128,13 +129,13 @@ function computeMetrics(execution: ScannerExecution, findings?: Finding[]): PerS
 
   for (const f of relevant) {
     const sev = (f.severity || "").toLowerCase()
-    if (sev === "critical") severityCounts.critical++
-    else if (sev === "high") severityCounts.high++
-    else if (sev === "medium") severityCounts.medium++
-    else if (sev === "low") severityCounts.low++
+    if (sev === "critical") {severityCounts.critical++}
+    else if (sev === "high") {severityCounts.high++}
+    else if (sev === "medium") {severityCounts.medium++}
+    else if (sev === "low") {severityCounts.low++}
 
-    if (f.package) packages.add(f.package)
-    if (f.file_path) files.add(f.file_path)
+    if (f.package) {packages.add(f.package)}
+    if (f.file_path) {files.add(f.file_path)}
 
     const rid = (f.rule_id || "").toLowerCase()
     if (rid.includes("deployment") || rid.includes("daemonset") || rid.includes("statefulset") ||
@@ -142,7 +143,7 @@ function computeMetrics(execution: ScannerExecution, findings?: Finding[]): PerS
         rid.includes("secret") || rid.includes("namespace") || rid.includes("pod")) {
       const types = ["Deployment", "DaemonSet", "StatefulSet", "Service", "Ingress", "ConfigMap", "Secret", "Namespace", "Pod"]
       for (const t of types) {
-        if (rid.includes(t.toLowerCase())) resourceTypes.add(t)
+        if (rid.includes(t.toLowerCase())) {resourceTypes.add(t)}
       }
     }
   }

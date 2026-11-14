@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Github, ArrowRight, Loader2, AlertCircle, Check, GitBranch, Shield, Zap, BarChart3, Server, Cloud, FolderOpen, Brain, ChevronDown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { Button, Card } from '../components/ui'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -85,7 +86,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
   const { data: branchesData, isLoading: isLoadingBranches } = useQuery({
     queryKey: ['branches', repoUrl],
     queryFn: async () => {
-      if (!repoUrl || !repoUrl.startsWith('https://github.com/')) {
+      if (!repoUrl?.startsWith('https://github.com/')) {
         return { branches: [], default_branch: 'main' }
       }
       const response = await api.get('/github/branches', {
@@ -140,20 +141,20 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
   }
 
   const getScoreColor = (score: number | null) => {
-    if (!score) return 'text-muted-foreground'
-    if (score >= 90) return 'text-green-400'
-    if (score >= 80) return 'text-blue-400'
-    if (score >= 70) return 'text-yellow-400'
-    if (score >= 60) return 'text-orange-400'
+    if (!score) {return 'text-muted-foreground'}
+    if (score >= 90) {return 'text-green-400'}
+    if (score >= 80) {return 'text-blue-400'}
+    if (score >= 70) {return 'text-yellow-400'}
+    if (score >= 60) {return 'text-orange-400'}
     return 'text-red-400'
   }
 
   const getScoreGrade = (score: number | null) => {
-    if (!score) return 'N/A'
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
+    if (!score) {return 'N/A'}
+    if (score >= 90) {return 'A'}
+    if (score >= 80) {return 'B'}
+    if (score >= 70) {return 'C'}
+    if (score >= 60) {return 'D'}
     return 'F'
   }
 
@@ -385,7 +386,7 @@ export function RepoAnalyzerInput({ onAnalysisComplete }: RepoAnalyzerInputProps
       </Card>
 
       {/* Results */}
-      {result && result.findings && (
+      {result?.findings && (
         <div className="space-y-6 animate-fade-in">
           {/* Score Card */}
           <Card className="p-8" hover={false}>

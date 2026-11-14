@@ -1,7 +1,8 @@
 import { motion } from "framer-motion"
 import { Shield, FileCode, Sparkles, Clock } from "lucide-react"
-import { Finding } from "../../types"
+
 import { cn, getSeverityColor, getFileName, sanitizePath } from "../../lib/utils"
+import { Finding } from "../../types"
 
 interface FixTheseFirstProps {
   findings: Finding[]
@@ -13,17 +14,17 @@ interface FixTheseFirstProps {
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
 
 function estimateFixTime(finding: Finding): string {
-  if (finding.fix_code) return "~2 min"
-  if (finding.severity === "critical") return "~15 min"
-  if (finding.severity === "high") return "~10 min"
-  if (finding.severity === "medium") return "~5 min"
+  if (finding.fix_code) {return "~2 min"}
+  if (finding.severity === "critical") {return "~15 min"}
+  if (finding.severity === "high") {return "~10 min"}
+  if (finding.severity === "medium") {return "~5 min"}
   return "~2 min"
 }
 
 export function FixTheseFirst({ findings, onSelect, selectedId }: FixTheseFirstProps) {
   const sorted = [...findings].sort((a, b) => {
-    const aSev = (SEVERITY_ORDER[a.severity as keyof typeof SEVERITY_ORDER] ?? 5)
-    const bSev = (SEVERITY_ORDER[b.severity as keyof typeof SEVERITY_ORDER] ?? 5)
+    const aSev = (SEVERITY_ORDER[a.severity] ?? 5)
+    const bSev = (SEVERITY_ORDER[b.severity] ?? 5)
     return aSev - bSev
   })
   const displayFindings = sorted.slice(0, 5)

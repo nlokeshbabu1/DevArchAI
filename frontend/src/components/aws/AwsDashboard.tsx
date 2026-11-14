@@ -1,14 +1,16 @@
-import { useMemo, useState } from 'react'
 import {
   AlertTriangle, ArrowUpRight, BarChart3, Bot, Box, ChevronDown, Cloud, Database,
   DollarSign, GitBranch, HardDrive, KeyRound, Loader2, Lock, Network, Search, Server,
   Shield, Sparkles, Workflow, Zap
 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+
 import { awsApi, AwsAccount, AwsCostRecommendation, AwsFinding, AwsFindingExplanation, AwsInventoryResponse, AwsOverview } from '../../api/endpoints/aws'
 import { cn } from '../../lib/utils'
-import { Button } from '../ui'
-import { AIExplainModal } from './AIExplainModal'
 import { generateAWSConsoleLink } from '../../utils/awsConsoleLinks'
+import { Button } from '../ui'
+
+import { AIExplainModal } from './AIExplainModal'
 
 const services = [
   ['ec2', 'EC2', Server],
@@ -36,21 +38,21 @@ export function AwsDashboardSkeleton() {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return 'Not available'
+  if (!value) {return 'Not available'}
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
 function grade(score: number) {
-  if (score >= 90) return 'A'
-  if (score >= 80) return 'B'
-  if (score >= 70) return 'C'
-  if (score >= 60) return 'D'
+  if (score >= 90) {return 'A'}
+  if (score >= 80) {return 'B'}
+  if (score >= 70) {return 'C'}
+  if (score >= 60) {return 'D'}
   return 'F'
 }
 
 function scoreColor(score: number) {
-  if (score >= 80) return 'text-green-300 stroke-green-300'
-  if (score >= 60) return 'text-yellow-300 stroke-yellow-300'
+  if (score >= 80) {return 'text-green-300 stroke-green-300'}
+  if (score >= 60) {return 'text-yellow-300 stroke-yellow-300'}
   return 'text-red-300 stroke-red-300'
 }
 
@@ -202,7 +204,7 @@ function FindingsIncidents({ findings }: { findings: AwsFinding[] }) {
     .sort((a, b) => ['critical', 'high', 'medium', 'low'].indexOf(a.severity) - ['critical', 'high', 'medium', 'low'].indexOf(b.severity)), [findings, query, severity])
 
   async function handleAIExplain(finding: AwsFinding) {
-    if (!finding.id || explainingId) return
+    if (!finding.id || explainingId) {return}
     setExplainingId(finding.id)
     setExplanation(null)
     setModalError(null)

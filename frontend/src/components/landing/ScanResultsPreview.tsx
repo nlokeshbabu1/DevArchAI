@@ -1,10 +1,11 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Shield, AlertTriangle, AlertCircle, Info, Lock, Github, ArrowRight, Terminal, Cloud, Layers, CheckCircle } from 'lucide-react'
-import { Button, Card, ScoreCircle } from '../ui-animated'
-import { Badge } from '../ui'
-import { cn } from '../../lib/utils'
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { cn } from '../../lib/utils'
+import { Badge } from '../ui'
+import { Button, Card, ScoreCircle } from '../ui-animated'
 
 interface Finding {
   rule_id: string
@@ -105,10 +106,10 @@ export function ScanResultsPreview({
   }
 
   const getGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
+    if (score >= 90) {return 'A'}
+    if (score >= 80) {return 'B'}
+    if (score >= 70) {return 'C'}
+    if (score >= 60) {return 'D'}
     return 'F'
   }
 

@@ -231,7 +231,7 @@ def resolve_proposed_content(
         raise PatchValidationError("No fix content provided")
 
     # Explicit full-file only when flagged and passes preservation
-    if fix.get("patch_type") == PatchType.FULL_FILE.value or fix.get("allow_full_file"):
+    if fix.get("patch_type") == PatchType.FULL_FILE.value:
         validate_preservation(original, fix_text, rel_path)
         return fix_text
 

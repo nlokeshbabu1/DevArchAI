@@ -1,8 +1,9 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, ExternalLink, Loader2, CheckCircle, AlertCircle, GitPullRequest } from 'lucide-react';
-import { Button, Card } from '../components/ui-animated';
+import { useState } from 'react';
+
 import { prApi, type CreatePRResponse } from '../api/endpoints/pull-requests';
+import { Button, Card } from '../components/ui-animated';
 
 interface CreatePRButtonProps {
   scanId: string;

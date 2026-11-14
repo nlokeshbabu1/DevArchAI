@@ -1,15 +1,17 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mail, Lock, User, Eye, EyeOff, Check, CheckCircle, Github, Loader2,
   AlertCircle, ArrowRight, Globe
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
+import { useAuthStore } from '../../stores/auth-store'
+
 import { AuthLayout } from './AuthLayout'
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
@@ -35,12 +37,12 @@ export function Register() {
 
   const getPasswordStrength = (password: string) => {
     let strength = 0
-    if (password.length >= 8) strength++
-    if (password.length >= 12) strength++
-    if (/[a-z]/.test(password)) strength++
-    if (/[A-Z]/.test(password)) strength++
-    if (/[0-9]/.test(password)) strength++
-    if (/[^a-zA-Z0-9]/.test(password)) strength++
+    if (password.length >= 8) {strength++}
+    if (password.length >= 12) {strength++}
+    if (/[a-z]/.test(password)) {strength++}
+    if (/[A-Z]/.test(password)) {strength++}
+    if (/[0-9]/.test(password)) {strength++}
+    if (/[^a-zA-Z0-9]/.test(password)) {strength++}
     return strength
   }
 

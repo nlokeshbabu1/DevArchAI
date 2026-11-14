@@ -1,5 +1,5 @@
-import { Fragment, memo, useMemo, useState, useEffect } from 'react'
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion'
+import { Fragment, memo, useMemo, useState, useEffect } from 'react'
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false)
@@ -136,7 +136,7 @@ export const BackgroundGrid = memo(function BackgroundGrid() {
 
       {/* Aurora bands — Northern Lights effect */}
       {!isMobile && !prefersReducedMotion && (
-        <Fragment>
+        <>
           <motion.div
             className="absolute top-[8%] left-0 right-0 h-[35%] pointer-events-none"
             style={{
@@ -163,7 +163,7 @@ export const BackgroundGrid = memo(function BackgroundGrid() {
             }}
             transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
           />
-        </Fragment>
+        </>
       )}
 
       {/* Gradient mesh — multi-color ambient glow */}
@@ -180,7 +180,7 @@ export const BackgroundGrid = memo(function BackgroundGrid() {
 
       {/* Light beams — subtle diagonal sweep */}
       {!isMobile && !prefersReducedMotion && (
-        <Fragment>
+        <>
           <motion.div
             className="absolute top-0 left-0 w-[200px] h-[120%] -rotate-12 origin-top-left"
             style={{
@@ -197,7 +197,7 @@ export const BackgroundGrid = memo(function BackgroundGrid() {
             animate={{ x: ['calc(100vw + 200px)', '-200px'] }}
             transition={{ duration: 22, repeat: Infinity, ease: 'linear', delay: 6 }}
           />
-        </Fragment>
+        </>
       )}
 
       {/* Radial gradient orbs for depth */}
@@ -240,10 +240,10 @@ export const BackgroundGrid = memo(function BackgroundGrid() {
 
       {/* Decorative subtle lines */}
       {!isMobile && (
-        <Fragment>
+        <>
           <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-white/[0.02] to-transparent" />
           <div className="absolute right-1/4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-white/[0.02] to-transparent" />
-        </Fragment>
+        </>
       )}
     </motion.div>
   )

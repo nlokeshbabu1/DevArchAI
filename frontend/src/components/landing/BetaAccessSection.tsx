@@ -3,8 +3,9 @@ import {
   ArrowRight, Brain, Check, FileText, GitPullRequest, Search, Shield, Sparkles,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../ui-animated'
+
 import { formatConfigLimits, type ProductConfig } from '../../hooks/useProductConfig'
+import { Button } from '../ui-animated'
 
 const INCLUDED = [
   { icon: Search, text: 'Repository scanning and findings explorer' },

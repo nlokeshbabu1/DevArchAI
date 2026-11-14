@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   X, AlertTriangle, Sparkles, Shield,
@@ -8,13 +7,15 @@ import {
   HelpCircle, GitBranch, BadgeCheck, ScanSearch,
   Zap, Search, GitMerge, Bug, Package2
 } from "lucide-react"
-import { Finding } from "../../types"
+import { useState } from "react"
+
 import { cn, getSeverityColor, sanitizePath, copyToClipboard, parseScannerSources } from "../../lib/utils"
-import { FocusTrap } from "../ui/focus-trap"
-import { Button } from "../ui-animated"
+import { Finding } from "../../types"
+import { DiffViewer } from "../DiffViewer"
 import { AISourceBadge } from "../ui/AISourceBadge"
 import { AISources } from "../ui/AISources"
-import { DiffViewer } from "../DiffViewer"
+import { FocusTrap } from "../ui/focus-trap"
+import { Button } from "../ui-animated"
 
 interface FindingDetailsDrawerProps {
   finding: Finding | null
@@ -33,8 +34,8 @@ interface PRConfirmation {
 }
 
 const estimateFixTime = (finding: Finding): string => {
-  if (finding.estimated_fix_time) return finding.estimated_fix_time
-  if (finding.fix_code) return "~5 min"
+  if (finding.estimated_fix_time) {return finding.estimated_fix_time}
+  if (finding.fix_code) {return "~5 min"}
   const map: Record<string, string> = {
     critical: "~45 min",
     high: "~25 min",
@@ -46,13 +47,13 @@ const estimateFixTime = (finding: Finding): string => {
 }
 
 const computeRiskReduction = (finding: Finding): number => {
-  if (finding.risk_reduction_score != null) return finding.risk_reduction_score
+  if (finding.risk_reduction_score != null) {return finding.risk_reduction_score}
   const map: Record<string, number> = { critical: 90, high: 65, medium: 35, low: 10, info: 5 }
   return map[finding.severity] || 0
 }
 
 const computePredictedScore = (currentScore: number, finding: Finding): number => {
-  if (finding.predicted_score_after_fix != null) return finding.predicted_score_after_fix
+  if (finding.predicted_score_after_fix != null) {return finding.predicted_score_after_fix}
   const reduction = computeRiskReduction(finding)
   const improvement = Math.round((reduction / 100) * (100 - currentScore) * 0.3)
   return Math.min(100, currentScore + improvement)
@@ -73,7 +74,7 @@ export function FindingDetailsDrawer({
   const [copied, setCopied] = useState(false)
   const [prConfirm, setPrConfirm] = useState<PRConfirmation | null>(null)
 
-  if (!finding) return null
+  if (!finding) {return null}
 
   const severityColor = getSeverityColor(finding.severity)
   const riskReduction = computeRiskReduction(finding)
@@ -83,7 +84,7 @@ export function FindingDetailsDrawer({
   const severityBorder = severityBorderColors[finding.severity] || "border-l-gray-500"
 
   const handleCopy = async () => {
-    if (!finding.fix_code) return
+    if (!finding.fix_code) {return}
     await copyToClipboard(finding.fix_code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -305,7 +306,7 @@ export function FindingDetailsDrawer({
                     </div>
                   )}
 
-                  {(finding.patch_status || finding.processing_metadata?.remediation) && (
+                  {Boolean(finding.patch_status || finding.processing_metadata?.remediation) && (
                     <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-2">
                       <h4 className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">
                         Stored remediation patch
@@ -428,7 +429,7 @@ export function FindingDetailsDrawer({
                             Official Documentation
                           </a>
                         )}
-                        {finding.references && finding.references.filter((ref): ref is string => !!ref).map((ref, idx) => (
+                        {finding.references?.filter((ref): ref is string => !!ref).map((ref, idx) => (
                           <a
                             key={idx}
                             href={ref}

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Box, Shield, DollarSign, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
+
 import type { CloudOverview as CloudOverviewData } from '@/api/endpoints/cloud'
 
 interface Props {

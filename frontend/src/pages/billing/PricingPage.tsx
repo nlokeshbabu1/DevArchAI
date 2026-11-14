@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Zap, Shield, Brain, Sparkles, Globe, Lock, ArrowRight, Star, Users, Building2 } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
-import { cn } from '../../lib/utils'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useAuthStore } from '../../stores/auth-store'
+
+import { Button, Card } from '../../components/ui-animated'
 import { useProductConfig } from '../../hooks/useProductConfig'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 // Pricing data with multi-currency support
 const PRICING_DATA = {

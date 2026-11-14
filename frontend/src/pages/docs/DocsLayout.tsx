@@ -1,13 +1,16 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '../../lib/utils'
 import {
   Shield, Menu, X, Search, ChevronRight, ChevronDown,
   BookOpen, ExternalLink, Github, Gitlab, Cloud, Server,
   AlertTriangle, Brain, FileText, HelpCircle, Bug, Zap,
   Container, FileCode, FolderGit2, Rocket, ArrowLeft, ArrowRight, Terminal,
 } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+
+import { cn } from '../../lib/utils'
+
+
 import {
   DOC_SECTIONS,
   searchDocs,
@@ -36,7 +39,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [expandedSections, setExpandedSections] = useState<string[]>(() => {
-    if (page) return [page.section]
+    if (page) {return [page.section]}
     return DOC_SECTIONS.map((s) => s.label)
   })
   const searchRef = useRef<HTMLInputElement>(null)
@@ -51,7 +54,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
 
   // Focus search when opened
   useEffect(() => {
-    if (searchOpen && searchRef.current) searchRef.current.focus()
+    if (searchOpen && searchRef.current) {searchRef.current.focus()}
   }, [searchOpen])
 
   // Close search on escape
@@ -96,7 +99,7 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
     const seen = new Set<string>()
     setSearchResults(raw.filter((r) => {
       const key = `${r.slug}-${r.match}`
-      if (seen.has(key)) return false
+      if (seen.has(key)) {return false}
       seen.add(key)
       return true
     }))
@@ -105,13 +108,13 @@ export function DocsLayout({ children, page }: DocsLayoutProps) {
   // Track scroll position for active TOC heading
   useEffect(() => {
     const handleScroll = () => {
-      if (!page) return
+      if (!page) {return}
       const headings = page.headings.map((h) => document.getElementById(h.id)).filter(Boolean)
       let current = ''
       for (const el of headings) {
-        if (!el) continue
+        if (!el) {continue}
         const rect = el.getBoundingClientRect()
-        if (rect.top <= 120) current = el.id
+        if (rect.top <= 120) {current = el.id}
       }
       setActiveHeading(current)
     }

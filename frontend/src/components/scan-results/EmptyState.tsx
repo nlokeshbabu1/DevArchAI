@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
 import { Shield, ShieldCheck, CheckCircle2, RotateCcw } from "lucide-react"
+
 import { ScoreCircle, Button } from "../ui-animated"
 
 interface EmptyStateProps {

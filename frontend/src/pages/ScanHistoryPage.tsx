@@ -1,18 +1,19 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { 
   FolderGit2, Clock, CheckCircle, XCircle, AlertCircle, Loader2, 
   Search, Filter, ArrowRight, BarChart3, Shield, Zap
 } from 'lucide-react'
-import { Card, Button } from '../components/ui-animated'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { scansApi } from '../api/endpoints/scans'
 import { Badge } from '../components/ui'
 import { NativeSelect, nativeSelectOptionProps } from '../components/ui/native-select'
-import { scansApi } from '../api/endpoints/scans'
-import { cn } from '../lib/utils'
 import { SecurityScore } from '../components/ui/SecurityScore'
+import { Card, Button } from '../components/ui-animated'
 import { resolveSecurityScore } from '../lib/security-score'
+import { cn } from '../lib/utils'
 
 interface Scan {
   id: string
@@ -135,7 +136,7 @@ export function ScanHistoryPage() {
       <Card className="p-12 text-center" hover={false}>
         <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
         <h3 className="text-lg font-semibold text-foreground mb-2">Failed to Load Scans</h3>
-        <p className="text-muted-foreground mb-4">{(error as Error).message}</p>
+        <p className="text-muted-foreground mb-4">{(error).message}</p>
         <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
       </Card>
     )

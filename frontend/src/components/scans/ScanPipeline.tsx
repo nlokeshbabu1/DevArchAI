@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   CheckCircle2, XCircle, Circle, Loader2, Globe, GitMerge,
   Cpu, Search, Shield, FileCode, Zap, Brain, FileText,
 } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import React, { useMemo } from 'react'
+
 import { buildDynamicScanSteps } from '../../lib/scanLifecycle'
+import { cn } from '../../lib/utils'
 import type { ScanStage, StageMetadata, TechnologyResult } from '../../types'
 
 interface ScanPipelineProps {
@@ -39,9 +40,9 @@ function getStageState(
 ): 'completed' | 'running' | 'failed' | 'pending' {
   const completed = props.completedStages ?? []
   const failed = props.failedStages ?? []
-  if (completed.includes(id) || props.isComplete) return 'completed'
-  if (failed.includes(id)) return 'failed'
-  if (id === props.currentStage) return 'running'
+  if (completed.includes(id) || props.isComplete) {return 'completed'}
+  if (failed.includes(id)) {return 'failed'}
+  if (id === props.currentStage) {return 'running'}
   return 'pending'
 }
 

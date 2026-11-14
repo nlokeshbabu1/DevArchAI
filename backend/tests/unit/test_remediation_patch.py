@@ -202,3 +202,13 @@ class TestHashAndDiff:
         h2 = file_content_hash(GO_DOCKERFILE)
         assert h1 == h2
         assert h1 != file_content_hash(GO_DOCKERFILE + "\n")
+
+
+def test_allow_full_file_flag_from_llm_is_ignored():
+    """LLM-only allow_full_file must not bypass diff requirement."""
+    with pytest.raises(PatchValidationError, match="not a safe full-file"):
+        resolve_proposed_content(
+            GO_DOCKERFILE,
+            {"allow_full_file": True, "fix_code": NODE_DOCKERFILE},
+            rel_path="Dockerfile",
+        )

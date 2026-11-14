@@ -57,12 +57,8 @@ export const githubAuthApi = {
    * Exchange GitHub authorization code for JWT token
    */
   exchangeCodeForToken: async (code: string, state: string): Promise<GithubTokenResponse> => {
-    try {
-      const response = await apiClient.post<GithubTokenResponse>('/auth/github/callback', { code, state })
-      return response.data
-    } catch (error: any) {
-      throw error
-    }
+    const response = await apiClient.post<GithubTokenResponse>('/auth/github/callback', { code, state })
+    return response.data
   },
 
   /**

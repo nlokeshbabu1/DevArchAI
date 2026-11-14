@@ -4,6 +4,7 @@ import {
   Settings, Database, Shield, CheckCircle,
   Layers, Box, Package
 } from 'lucide-react'
+
 import { cn } from '../lib/utils'
 
 interface Technology {
@@ -112,7 +113,7 @@ export function TechStackDisplay({ technologies }: TechStackDisplayProps) {
 
   // Group by category
   const grouped = techObjects.reduce((acc, tech) => {
-    if (!tech.category) return acc
+    if (!tech.category) {return acc}
     if (!acc[tech.category]) {
       acc[tech.category] = []
     }

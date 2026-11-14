@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
 import { useAuthStore } from '../stores/auth-store'
 
 describe('Auth Store', () => {
@@ -68,7 +69,7 @@ describe('Auth Store', () => {
 
   it('serverLogout calls backend logout before clearing state', async () => {
     const { api } = await import('../lib/api')
-    const postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: { message: 'ok' } } as any)
+    const postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: { message: 'ok' } })
     const replaceMock = vi.fn()
     const originalLocation = window.location
     Object.defineProperty(window, 'location', {

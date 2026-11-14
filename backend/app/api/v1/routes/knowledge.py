@@ -21,7 +21,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.core.security import get_optional_user
+from app.core.security import get_optional_user, require_admin
 from app.config import settings
 from app.mcp.service import get_mcp_service
 from app.models.user import User
@@ -112,7 +112,7 @@ async def rag_rule_knowledge(
 
 
 @router.post("/seed")
-async def rag_seed(current_user: User | None = Depends(get_optional_user)):
+async def rag_seed(_admin: User = Depends(require_admin)):
     """(Re)seed the RAG store from the technology inventory. Idempotent."""
     service = get_rag_service()
     count = await service.seed_from_inventory()
@@ -120,7 +120,7 @@ async def rag_seed(current_user: User | None = Depends(get_optional_user)):
 
 
 @router.post("/re-embed")
-async def rag_re_embed(current_user: User | None = Depends(get_optional_user)):
+async def rag_re_embed(_admin: User = Depends(require_admin)):
     """Backfill embeddings for chunks stored without them (semantic search).
 
     Idempotent: only chunks with a NULL embedding are touched.

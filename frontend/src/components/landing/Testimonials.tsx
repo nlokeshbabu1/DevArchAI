@@ -1,6 +1,6 @@
-import { memo, useState, useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Quote, Star } from 'lucide-react'
+import { memo, useState, useEffect } from 'react'
 
 interface Testimonial {
   id: number
