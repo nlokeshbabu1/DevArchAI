@@ -1,8 +1,9 @@
-import { useMemo } from "react"
 import { motion } from "framer-motion"
 import { Lightbulb, AlertTriangle, Server, Key, Container, FileCode, Globe, Package, ArrowRight, Shield } from "lucide-react"
-import { Finding } from "../../types"
+import { useMemo } from "react"
+
 import { cn } from "../../lib/utils"
+import { Finding } from "../../types"
 
 interface Recommendation {
   id: number
@@ -44,7 +45,7 @@ export function FixRoadmap({
   const recommendations = useMemo(() => {
     const recs: Recommendation[] = []
 
-    if (findings.length === 0) return recs
+    if (findings.length === 0) {return recs}
 
     const criticalCount = findings.filter(f => f.severity === "critical").length
     if (criticalCount > 0) {
@@ -73,7 +74,7 @@ export function FixRoadmap({
     }
 
     for (const [catKey, count] of Object.entries(categoryCounts)) {
-      if (count === 0) continue
+      if (count === 0) {continue}
       const Icon = categoryIcons[catKey] || Lightbulb
       const label = categoryLabels[catKey] || catKey
       const severity = findings

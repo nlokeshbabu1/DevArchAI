@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Sparkles, AlertTriangle, CheckCircle, ArrowRight, User, Bot, Shield, BookOpen, Wrench, Target, Search, FileText, Code } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 const bulletPoints = [

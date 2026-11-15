@@ -1,15 +1,17 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+
+import { CookieConsentBanner } from './components/CookieConsentBanner'
 import { Layout } from './components/layout/DashboardLayout'
 import { ToastHost } from './components/ui/ToastHost'
-import { Landing } from './pages/Landing'
-import { Login } from './pages/auth/Login'
-import { Register } from './pages/auth/Register'
 import { GithubCallback } from './pages/auth/GithubCallback'
 import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { IntegrationCallback } from './pages/auth/IntegrationCallback'
-import { useAuthStore } from './stores/auth-store'
-import { CookieConsentBanner } from './components/CookieConsentBanner'
+import { Login } from './pages/auth/Login'
+import { Register } from './pages/auth/Register'
+import { CliAuthorize } from './pages/cli/CliAuthorize'
+import { Landing } from './pages/Landing'
+import { useAuthStore, initAuthSync } from './stores/auth-store'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })))
 const Report = lazy(() => import('./pages/Report').then(m => ({ default: m.Report })))
@@ -42,6 +44,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // and must NOT be gated behind optional cookie consent, otherwise a page
   // refresh would log the user out.
   useEffect(() => {
+    initAuthSync()
     useAuthStore.getState().checkAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -76,13 +79,8 @@ function ScanResultRedirect() {
 }
 
 export default function App() {
-  // Restore the session on app mount regardless of cookie-consent status.
-  // The HttpOnly refresh cookie is a first-party, security-essential cookie
-  // and must NOT be gated behind optional cookie consent, otherwise a page
-  // refresh would log the user out.
   useEffect(() => {
-    useAuthStore.getState().checkAuth()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    initAuthSync()
   }, [])
 
   return (
@@ -98,6 +96,7 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/scan" element={<ScanPage />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/cli/authorize" element={<CliAuthorize />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />

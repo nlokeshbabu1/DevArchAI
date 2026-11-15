@@ -1,10 +1,11 @@
+import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { Card } from '../../components/ui'
+
 import { integrationsApi } from '../../api/endpoints/integrations'
-import { useAuthStore } from '../../stores/auth-store'
+import { Card } from '../../components/ui'
 import { toast } from '../../hooks/useToast'
+import { useAuthStore } from '../../stores/auth-store'
 
 export function IntegrationCallback() {
   const navigate = useNavigate()
@@ -17,7 +18,7 @@ export function IntegrationCallback() {
   const validProvider = provider === 'github' || provider === 'gitlab' ? provider : null
 
   useEffect(() => {
-    if (hasProcessedRef.current) return
+    if (hasProcessedRef.current) {return}
     hasProcessedRef.current = true
 
     const handleCallback = async () => {

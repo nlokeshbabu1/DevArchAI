@@ -1,6 +1,9 @@
-import { cn } from '@/lib/utils'
 import { Check, X, Loader2, AlertCircle, Clock, Construction } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
+
 import type { ConnectionStatus } from './types'
+
 
 const STATUS_CONFIG: Record<ConnectionStatus, { label: string; dot: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
   connected: {

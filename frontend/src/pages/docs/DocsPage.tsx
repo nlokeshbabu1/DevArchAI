@@ -1,18 +1,19 @@
-import { useParams, Navigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { DocsLayout } from './DocsLayout'
-import { getPage, type DocPage } from './docs-data'
-import { PAGE_CONTENT } from './DocsContent'
-
 import {
   BookOpen, Cloud, Server, Github, Gitlab,
   Brain, AlertTriangle, FileText, Bug, Rocket,
   FolderGit2, ArrowRight, Terminal, Container,
 } from 'lucide-react'
+import { useParams, Navigate, Link } from 'react-router-dom'
+
+import { getPage, type DocPage } from './docs-data'
+import { PAGE_CONTENT } from './DocsContent'
+import { DocsLayout } from './DocsLayout'
+
 
 function DocPageRenderer({ page }: { page: DocPage }) {
   const Content = PAGE_CONTENT[page.slug]
-  if (!Content) return <Navigate to="/docs" replace />
+  if (!Content) {return <Navigate to="/docs" replace />}
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}

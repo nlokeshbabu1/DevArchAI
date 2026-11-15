@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime, timedelta
 
 from app.services.scan_progress_store import ScanProgressStore, get_scan_progress_store
+from app.services.scan_progress_steps import progress_store_step_labels
 from app.schemas.scan_progress import StepStatus
 
 
@@ -11,6 +12,9 @@ from app.schemas.scan_progress import StepStatus
 def store():
     """Fresh ScanProgressStore for each test."""
     return ScanProgressStore()
+
+
+AUTHORITATIVE_STEP_NAMES = progress_store_step_labels()
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +34,7 @@ class TestCreateScan:
     @pytest.mark.asyncio
     async def test_default_steps_are_pending(self, store):
         progress = await store.create_scan("s2")
-        assert len(progress.steps) == 6
+        assert len(progress.steps) == 5
         for step in progress.steps:
             assert step.status == StepStatus.PENDING
             assert step.progress == 0
@@ -39,14 +43,7 @@ class TestCreateScan:
     async def test_step_names(self, store):
         progress = await store.create_scan("s3")
         names = [s.name for s in progress.steps]
-        assert names == [
-            "Connecting to GitHub",
-            "Fetching repository",
-            "Detecting technologies",
-            "Running security rules",
-            "Generating AI suggestions",
-            "Calculating score",
-        ]
+        assert names == AUTHORITATIVE_STEP_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +69,35 @@ class TestUpdateStatus:
     @pytest.mark.asyncio
     async def test_updates_status_and_progress(self, store):
         await store.create_scan("s1")
-        await store.update_status("s1", "running", 30, current_step="Cloning")
+        await store.update_status("s1", "running", 30, current_step="Clone repository")
         p = await store.get_progress("s1")
         assert p.status == "running"
         assert p.progress == 30
-        assert p.current_step == "Cloning"
+        assert p.current_step == "Clone repository"
+
+    @pytest.mark.asyncio
+    async def test_progress_is_monotonic_while_running(self, store):
+        await store.create_scan("s1")
+        await store.update_status("s1", "running", 40)
+        await store.update_status("s1", "running", 25)
+        p = await store.get_progress("s1")
+        assert p.progress == 40
+
+    @pytest.mark.asyncio
+    async def test_does_not_regress_from_completed_to_running(self, store):
+        await store.create_scan("s1")
+        await store.complete_scan("s1")
+        await store.update_status("s1", "running", 50)
+        p = await store.get_progress("s1")
+        assert p.status == "completed"
+        assert p.progress == 100
+
+    @pytest.mark.asyncio
+    async def test_normalizes_lifecycle_id_as_current_step(self, store):
+        await store.create_scan("s1")
+        await store.update_status("s1", "running", 10, current_step="connecting_repository")
+        p = await store.get_progress("s1")
+        assert p.current_step == "Connect to repository"
 
     @pytest.mark.asyncio
     async def test_noop_for_unknown_scan(self, store):
@@ -91,7 +112,7 @@ class TestUpdateStep:
     @pytest.mark.asyncio
     async def test_updates_step_status_and_progress(self, store):
         await store.create_scan("s1")
-        await store.update_step("s1", "Connecting to GitHub", StepStatus.RUNNING, progress=10)
+        await store.update_step("s1", "Connect to repository", StepStatus.RUNNING, progress=10)
         p = await store.get_progress("s1")
         step = p.steps[0]
         assert step.status == StepStatus.RUNNING
@@ -99,9 +120,24 @@ class TestUpdateStep:
         assert step.started_at is not None
 
     @pytest.mark.asyncio
+    async def test_accepts_lifecycle_stage_id(self, store):
+        await store.create_scan("s1")
+        await store.update_step("s1", "connecting_repository", StepStatus.RUNNING, progress=5)
+        step = (await store.get_progress("s1")).steps[0]
+        assert step.status == StepStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_maps_cloned_to_clone_step(self, store):
+        await store.create_scan("s1")
+        await store.update_step("s1", "cloned", StepStatus.COMPLETED, progress=100)
+        step = (await store.get_progress("s1")).steps[1]
+        assert step.name == "Clone repository"
+        assert step.status == StepStatus.COMPLETED
+
+    @pytest.mark.asyncio
     async def test_sets_completed_at_on_complete(self, store):
         await store.create_scan("s1")
-        await store.update_step("s1", "Connecting to GitHub", StepStatus.COMPLETED, progress=100)
+        await store.update_step("s1", "Connect to repository", StepStatus.COMPLETED, progress=100)
         step = (await store.get_progress("s1")).steps[0]
         assert step.status == StepStatus.COMPLETED
         assert step.completed_at is not None
@@ -109,16 +145,40 @@ class TestUpdateStep:
     @pytest.mark.asyncio
     async def test_sets_error_on_failed(self, store):
         await store.create_scan("s1")
-        await store.update_step("s1", "Fetching repository", StepStatus.FAILED, error="timeout")
+        await store.update_step("s1", "Clone repository", StepStatus.FAILED, error="timeout")
         step = (await store.get_progress("s1")).steps[1]
         assert step.status == StepStatus.FAILED
         assert step.error == "timeout"
         assert step.completed_at is not None
 
     @pytest.mark.asyncio
+    async def test_unknown_step_is_noop(self, store):
+        await store.create_scan("s1")
+        await store.update_step("s1", "not-a-real-step", StepStatus.RUNNING)
+        for step in (await store.get_progress("s1")).steps:
+            assert step.status == StepStatus.PENDING
+
+    @pytest.mark.asyncio
     async def test_noop_for_unknown_scan(self, store):
         await store.update_step("ghost", "step", StepStatus.RUNNING)
         assert await store.get_progress("ghost") is None
+
+
+# ---------------------------------------------------------------------------
+# Progress isolation
+# ---------------------------------------------------------------------------
+class TestProgressIsolation:
+    @pytest.mark.asyncio
+    async def test_concurrent_scans_do_not_leak(self, store):
+        await store.create_scan("scan-a")
+        await store.create_scan("scan-b")
+        await store.update_step("scan-a", "Security scan", StepStatus.RUNNING, progress=55)
+        await store.update_status("scan-b", "running", 12, current_step="Clone repository")
+        a = await store.get_progress("scan-a")
+        b = await store.get_progress("scan-b")
+        assert a.steps[3].status == StepStatus.RUNNING
+        assert b.steps[3].status == StepStatus.PENDING
+        assert b.progress == 12
 
 
 # ---------------------------------------------------------------------------
@@ -221,13 +281,12 @@ class TestCompleteScan:
             assert step.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_does_not_overwrite_running_step(self, store):
+    async def test_completes_running_step(self, store):
         await store.create_scan("s1")
-        await store.update_step("s1", "Connecting to GitHub", StepStatus.RUNNING)
+        await store.update_step("s1", "Connect to repository", StepStatus.RUNNING)
         await store.complete_scan("s1")
         p = await store.get_progress("s1")
-        # RUNNING step is NOT PENDING, so complete_scan leaves it RUNNING
-        assert p.steps[0].status == StepStatus.RUNNING
+        assert p.steps[0].status == StepStatus.COMPLETED
 
     @pytest.mark.asyncio
     async def test_noop_for_unknown_scan(self, store):
@@ -242,7 +301,7 @@ class TestFailScan:
     @pytest.mark.asyncio
     async def test_fails_running_step(self, store):
         await store.create_scan("s1")
-        await store.update_step("s1", "Fetching repository", StepStatus.RUNNING)
+        await store.update_step("s1", "Clone repository", StepStatus.RUNNING)
         await store.fail_scan("s1", "network error")
         p = await store.get_progress("s1")
         assert p.status == "failed"

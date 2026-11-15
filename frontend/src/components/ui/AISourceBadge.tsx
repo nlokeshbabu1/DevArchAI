@@ -1,21 +1,23 @@
 import { BookOpen, Database, Globe, Sparkles } from 'lucide-react'
+
 import { cn } from '../../lib/utils'
 
 /** Backend `source` / `source_display` values from AI job telemetry */
-export type AISourceKind = 'rag' | 'rag_mcp' | 'mcp' | 'cache' | 'llm' | string | null | undefined
+/** Known backend values; additional strings are accepted at runtime. */
+export type AISourceKind = string | null | undefined
 
 function normalizeSource(source: AISourceKind): string {
   return String(source ?? '').toLowerCase().replace(/[\s-]+/g, '_')
 }
 
 export function getAISourceLabel(source: AISourceKind, sourceDisplay?: string | null): string | null {
-  if (sourceDisplay?.trim()) return sourceDisplay.trim()
+  if (sourceDisplay?.trim()) {return sourceDisplay.trim()}
   const key = normalizeSource(source)
-  if (!key) return null
-  if (key === 'rag' || key === 'rag_mcp') return 'DevArchAI security knowledge'
-  if (key === 'mcp') return 'Current official documentation'
-  if (key === 'cache' || key.includes('cache')) return 'Cached recommendation'
-  if (key === 'llm') return 'AI-generated guidance'
+  if (!key) {return null}
+  if (key === 'rag' || key === 'rag_mcp') {return 'DevArchAI security knowledge'}
+  if (key === 'mcp') {return 'Current official documentation'}
+  if (key === 'cache' || key.includes('cache')) {return 'Cached recommendation'}
+  if (key === 'llm') {return 'AI-generated guidance'}
   return null
 }
 
@@ -30,7 +32,7 @@ interface AISourceBadgeProps {
 export function AISourceBadge({ source, sourceDisplay, technology, className, compact }: AISourceBadgeProps) {
   const key = normalizeSource(source)
   const label = getAISourceLabel(source, sourceDisplay)
-  if (!label && !key) return null
+  if (!label && !key) {return null}
 
   const usedRag = key === 'rag' || key === 'rag_mcp' || key.includes('rag')
   const usedMcp = key === 'mcp' || key === 'rag_mcp' || key.includes('mcp')

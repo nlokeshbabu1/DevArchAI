@@ -15,7 +15,7 @@ from typing import Any
 
 import structlog
 
-from app.rule_engine.base import RuleFinding
+from app.rule_engine.base import RuleFinding, Severity
 
 logger = structlog.get_logger(__name__)
 
@@ -205,6 +205,8 @@ class FindingValidator:
             is_valid=True,
         )
 
+        self._hydrate_from_scanner_source(finding)
+
         for field_name in self._REQUIRED_FIELDS:
             current_value = getattr(finding, field_name, None)
 
@@ -295,6 +297,38 @@ class FindingValidator:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _hydrate_from_scanner_source(self, finding: RuleFinding) -> None:
+        """Prefer scanner-native text before static severity templates."""
+        description = (finding.description or "").strip()
+        recommendation = (finding.recommendation or "").strip()
+        guideline = ""
+        refs = finding.references or []
+        if refs:
+            guideline = next((str(r).strip() for r in refs if r and str(r).strip()), "")
+
+        if not (finding.summary or "").strip():
+            if description:
+                finding.summary = description
+            elif recommendation:
+                finding.summary = recommendation
+            elif finding.scanner_rule_id:
+                finding.summary = f"{finding.scanner_name or 'Scanner'} check {finding.scanner_rule_id}"
+
+        if finding.severity == Severity.INFO:
+            if not (finding.risk or "").strip() and description:
+                finding.risk = description
+            if not (finding.impact or "").strip():
+                finding.impact = (
+                    "Informational observation from the scanner; no immediate remediation required."
+                )
+            if not (finding.fix_code or "").strip():
+                if guideline:
+                    finding.fix_code = f"# Reference: {guideline}"
+                elif recommendation:
+                    finding.fix_code = f"# {recommendation}"
+                else:
+                    finding.fix_code = "# Review this observation when updating related configuration."
+
     def _get_fallback(
         self,
         finding: RuleFinding,
@@ -320,8 +354,12 @@ class FindingValidator:
         if rule_fallbacks and field_name in rule_fallbacks:
             return rule_fallbacks[field_name]
 
-        # 2. Severity-specific fallback
+        # 2. Severity-specific fallback (skip generic info copy when scanner text exists)
         severity = finding.severity.value if finding.severity else "medium"
+        if severity == Severity.INFO.value and field_name == "summary":
+            desc = (finding.description or finding.recommendation or "").strip()
+            if desc:
+                return desc
         severity_fallbacks = _STATIC_FALLBACKS.get(severity)
         if severity_fallbacks and field_name in severity_fallbacks:
             return severity_fallbacks[field_name]

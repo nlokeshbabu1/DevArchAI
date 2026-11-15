@@ -1,6 +1,3 @@
-import { useState, useEffect, useRef } from 'react'
-import { resolveSecurityScore } from '../lib/security-score'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Download,
@@ -32,9 +29,13 @@ import {
   Target,
   BookOpen,
 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useLocation, useNavigate } from 'react-router-dom'
+
+import { reportsApi } from '../api/endpoints/reports'
 import { Card, ScoreCircle, Button, SeverityBadge } from '../components/ui'
 import { api } from '../lib/api'
-import { reportsApi } from '../api/endpoints/reports'
+import { resolveSecurityScore } from '../lib/security-score'
 import { cn, sanitizePath } from '../lib/utils'
 
 interface Finding {
@@ -233,7 +234,7 @@ export function Report() {
 
   const handleDownloadPdf = async () => {
     const scanId = report?.scan_id
-    if (!scanId) return
+    if (!scanId) {return}
     setIsDownloading(true)
     setShowDownloadMenu(false)
     try {
@@ -253,7 +254,7 @@ export function Report() {
 
   const handleDownloadExcel = async () => {
     const scanId = report?.scan_id
-    if (!scanId) return
+    if (!scanId) {return}
     setIsDownloading(true)
     setShowDownloadMenu(false)
     try {
@@ -291,7 +292,7 @@ export function Report() {
   const severitySummary = finalFindings.reduce((acc: Record<string, number>, f: Finding) => {
     acc[f.severity] = (acc[f.severity] || 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
 
   const totalFindings = finalFindings.length
 
@@ -572,7 +573,7 @@ export function Report() {
           <h2 className="text-lg font-semibold mb-4 text-foreground">Category Scores</h2>
           <div className="grid gap-4 md:grid-cols-5">
             {Object.entries(finalScores.category_scores).map(([category, score]) => {
-              const scoreColor = getCategoryColor(score as number)
+              const scoreColor = getCategoryColor(score)
               return (
                 <Card key={category} className="p-5 text-center" hover>
                   <div className={cn(
@@ -582,7 +583,7 @@ export function Report() {
                     <Shield className={cn('h-5 w-5', scoreColor.text)} />
                   </div>
                   <div className={cn('text-2xl font-bold', scoreColor.text)}>
-                    {(score as number).toFixed(0)}
+                    {(score).toFixed(0)}
                   </div>
                   <div className="text-sm text-muted-foreground capitalize mt-1">
                     {category}
@@ -1128,9 +1129,9 @@ interface FindingCardProps {
 }
 
 function getCategoryColor(score: number) {
-  if (score >= 90) return { bg: 'bg-green-500/15', text: 'text-green-400' }
-  if (score >= 80) return { bg: 'bg-blue-500/15', text: 'text-blue-400' }
-  if (score >= 70) return { bg: 'bg-yellow-500/15', text: 'text-yellow-400' }
-  if (score >= 60) return { bg: 'bg-orange-500/15', text: 'text-orange-400' }
+  if (score >= 90) {return { bg: 'bg-green-500/15', text: 'text-green-400' }}
+  if (score >= 80) {return { bg: 'bg-blue-500/15', text: 'text-blue-400' }}
+  if (score >= 70) {return { bg: 'bg-yellow-500/15', text: 'text-yellow-400' }}
+  if (score >= 60) {return { bg: 'bg-orange-500/15', text: 'text-orange-400' }}
   return { bg: 'bg-red-500/15', text: 'text-red-400' }
 }

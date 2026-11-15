@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Settings, Loader2, CheckCircle, AlertCircle, RefreshCw, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { integrationsApi } from '@/api/endpoints/integrations'
 import { kubernetesApi, type KubernetesInfo } from '@/api/endpoints/kubernetes'
 
@@ -15,12 +16,12 @@ interface ProviderManageModalProps {
 }
 
 function formatTimeAgo(dateStr?: string | null): string {
-  if (!dateStr) return 'never'
+  if (!dateStr) {return 'never'}
   const diff = Date.now() - new Date(dateStr).getTime()
   const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
+  if (secs < 60) {return `${secs}s ago`}
   const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) {return `${mins}m ago`}
   return `${Math.floor(mins / 60)}h ago`
 }
 
@@ -32,7 +33,7 @@ export function ProviderManageModal({ open, onClose, providerId, providerName, a
   const isK8s = providerId === 'kubernetes' || providerId === 'eks'
 
   useEffect(() => {
-    if (!open || !isK8s) return
+    if (!open || !isK8s) {return}
     setState('loading')
     kubernetesApi.list()
       .then((connections) => {
@@ -46,7 +47,7 @@ export function ProviderManageModal({ open, onClose, providerId, providerName, a
   }, [open, providerId, isK8s])
 
   const handleValidate = async () => {
-    if (!connection) return
+    if (!connection) {return}
     setState('validating')
     try {
       const updated = await kubernetesApi.validate(connection.id)
@@ -64,9 +65,9 @@ export function ProviderManageModal({ open, onClose, providerId, providerName, a
     setErrorMsg('')
     try {
       if (providerId === 'github' || providerId === 'gitlab') {
-        await integrationsApi.disconnectOAuth(providerId as 'github' | 'gitlab')
+        await integrationsApi.disconnectOAuth(providerId)
       } else if (isK8s) {
-        if (!connection) throw new Error('No active connection found to disconnect')
+        if (!connection) {throw new Error('No active connection found to disconnect')}
         await kubernetesApi.disconnect(connection.id)
       } else {
         throw new Error('Disconnect not supported for this provider')

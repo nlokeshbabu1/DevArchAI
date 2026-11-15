@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
+import { useState, type ReactNode } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface Tab {

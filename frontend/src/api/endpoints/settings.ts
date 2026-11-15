@@ -18,6 +18,8 @@ export interface ProfileData {
   last_login_at?: string
   provider?: 'email' | 'github' | 'gitlab' | 'email+github' | 'email+gitlab'
   has_password?: boolean
+  has_github_oauth?: boolean
+  has_gitlab_oauth?: boolean
 }
 
 export interface NotificationPrefs {
@@ -108,8 +110,12 @@ export const settingsApi = {
     return response.data
   },
 
-  deleteAccount: async (password: string): Promise<ApiMessageResponse> => {
-    const response = await apiClient.delete<ApiMessageResponse>('/settings/account', { data: { password } })
+  deleteAccount: async (payload: {
+    password?: string
+    confirmation?: string
+    provider?: 'github' | 'gitlab'
+  }): Promise<ApiMessageResponse> => {
+    const response = await apiClient.delete<ApiMessageResponse>('/settings/account', { data: payload })
     return response.data
   },
 }

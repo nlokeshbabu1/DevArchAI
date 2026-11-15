@@ -3,7 +3,6 @@
  */
 
 import { motion } from 'framer-motion'
-import { cn } from '../lib/utils'
 import { 
   CheckCircle, 
   Loader2, 
@@ -14,6 +13,8 @@ import {
   Activity,
   Shield
 } from 'lucide-react'
+
+import { cn } from '../lib/utils'
 
 interface TechnologyDetectionPanelProps {
   detectedTechnologies?: string[]

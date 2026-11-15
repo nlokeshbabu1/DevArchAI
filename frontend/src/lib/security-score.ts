@@ -24,10 +24,13 @@ export interface ResolvedSecurityScore {
   label: string
 }
 
+export const SECURITY_SCORE_HELP =
+  'Security Score prefers the security-category score from the backend when present; otherwise it uses the composite overall score (see resolveSecurityScore).'
+
 export function resolveSecurityScore(
   data: ScoreSource | null | undefined,
 ): ResolvedSecurityScore | null {
-  if (!data) return null
+  if (!data) {return null}
 
   if (isValidScore(data.security_score)) {
     const value = Math.round(data.security_score * 10) / 10

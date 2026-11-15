@@ -1,28 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Container, RefreshCw, Loader2, Shield, Brain, Activity,
   ChevronLeft, AlertTriangle, Server, Box,
 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+
+
 import { kubernetesApi, type ClusterAIJob, type KubernetesInfo } from '@/api/endpoints/kubernetes'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { cn } from '@/lib/utils'
-import { VersionAdvisorPanel } from './components/VersionAdvisorPanel'
+
 import { AICopilotPanel } from './components/AICopilotPanel'
+import { VersionAdvisorPanel } from './components/VersionAdvisorPanel'
 
 type Tab = 'overview' | 'nodes' | 'pods' | 'namespaces' | 'deployments' | 'services' | 'ingress' | 'events' | 'security' | 'health' | 'version' | 'ai'
 
 const RUNNING_AI_STATUSES = new Set(['queued', 'running', 'collecting', 'checking_cache', 'rag_retrieving', 'mcp_retrieving', 'generating'])
 
 function formatTimeAgo(dateStr?: string | null): string {
-  if (!dateStr) return 'never'
+  if (!dateStr) {return 'never'}
   const diff = Date.now() - new Date(dateStr).getTime()
   const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
+  if (secs < 60) {return `${secs}s ago`}
   const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) {return `${mins}m ago`}
   return `${Math.floor(mins / 60)}h ago`
 }
 
@@ -59,19 +62,19 @@ export function ClusterDetailPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const startAiPolling = useCallback((jobId: string) => {
-    if (!connectionId) return
-    if (pollRef.current) clearInterval(pollRef.current)
+    if (!connectionId) {return}
+    if (pollRef.current) {clearInterval(pollRef.current)}
     pollRef.current = setInterval(async () => {
       try {
         const updated = await kubernetesApi.getAiAnalysis(connectionId, jobId)
         setAiJob(updated)
         if (updated.status === 'completed' || updated.status === 'failed') {
-          if (pollRef.current) clearInterval(pollRef.current)
+          if (pollRef.current) {clearInterval(pollRef.current)}
           pollRef.current = null
           setActionLoading(null)
         }
       } catch {
-        if (pollRef.current) clearInterval(pollRef.current)
+        if (pollRef.current) {clearInterval(pollRef.current)}
         pollRef.current = null
         setActionLoading(null)
       }
@@ -79,12 +82,12 @@ export function ClusterDetailPage() {
   }, [connectionId])
 
   const loadOverview = useCallback(async () => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     setLoading(true)
     try {
       const data = await kubernetesApi.overview(connectionId)
       setConnection(data.connection)
-      setOverview(data.overview as Record<string, unknown>)
+      setOverview(data.overview)
       setHealthScore(data.health_score as Record<string, unknown> | null)
       setVersionAdvisor(data.version_advisor as Record<string, unknown> | null)
       setSecurityFindings((data.security_findings as Record<string, unknown>[]) || [])
@@ -109,7 +112,7 @@ export function ClusterDetailPage() {
   }, [loadOverview])
 
   useEffect(() => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     if (activeTab === 'nodes') {
       kubernetesApi.nodes(connectionId).then((d) => setNodes(d.nodes))
     } else if (activeTab === 'pods') {
@@ -130,12 +133,12 @@ export function ClusterDetailPage() {
 
   useEffect(() => {
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      if (pollRef.current) {clearInterval(pollRef.current)}
     }
   }, [])
 
   const handleRefresh = async () => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     setActionLoading('refresh')
     try {
       await kubernetesApi.refresh(connectionId)
@@ -146,7 +149,7 @@ export function ClusterDetailPage() {
   }
 
   const handleHealthCheck = async () => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     setActionLoading('health')
     try {
       const conn = await kubernetesApi.validate(connectionId)
@@ -157,7 +160,7 @@ export function ClusterDetailPage() {
   }
 
   const handleSecurityScan = async () => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     setActionLoading('security')
     setActiveTab('security')
     try {
@@ -170,7 +173,7 @@ export function ClusterDetailPage() {
   }
 
   const handleAiAnalysis = async () => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     setActionLoading('ai')
     setAiError(null)
     setActiveTab('ai')
@@ -186,7 +189,7 @@ export function ClusterDetailPage() {
   }
 
   const handlePodClick = async (pod: Record<string, unknown>) => {
-    if (!connectionId) return
+    if (!connectionId) {return}
     const ns = String(pod.namespace)
     const name = String(pod.name)
     try {
@@ -362,7 +365,7 @@ export function ClusterDetailPage() {
               <tbody>
                 {pods.map((p) => (
                   <tr
-                    key={`${p.namespace}/${p.name}`}
+                    key={`${String(p.namespace)}/${String(p.name)}`}
                     className="border-t border-white/5 hover:bg-white/5 cursor-pointer"
                     onClick={() => handlePodClick(p)}
                   >

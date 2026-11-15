@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { DollarSign, TrendingDown, ArrowDown, Filter } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect, useCallback } from 'react'
+
 import { cloudApi, type CloudCostRecommendation } from '@/api/endpoints/cloud'
+import { cn } from '@/lib/utils'
 import { useCloudStore } from '@/stores/cloud-store'
 
 interface Props {

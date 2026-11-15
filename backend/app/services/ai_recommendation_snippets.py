@@ -117,3 +117,31 @@ class RepoFileSnippetLoader:
         except ValueError:
             return None
         return resolved_path
+
+    def read_full_file(
+        self,
+        scan: Any,
+        finding: Any,
+        *,
+        max_chars: int | None = None,
+    ) -> tuple[str | None, str | None]:
+        """Return (content, repo_relative_path) for patch generation. Never raises."""
+        try:
+            file_path = str(getattr(finding, "file_path", "") or "")
+            if not file_path:
+                return None, None
+            repo_root = self._ensure_repo(scan)
+            if repo_root is None:
+                return None, None
+            resolved = self._resolve_repo_file(repo_root, file_path)
+            if resolved is None or not resolved.is_file():
+                return None, None
+            limit = max_chars or int(
+                getattr(settings, "AI_REMEDIATION_MAX_FILE_CHARS", None) or 48_000
+            )
+            content = resolved.read_text(encoding="utf-8", errors="ignore")[:limit]
+            rel = str(resolved.relative_to(repo_root.resolve())).replace("\\", "/")
+            return content, rel
+        except Exception as exc:
+            logger.debug("AI_REMEDIATION_FULL_FILE_READ_ERROR", error=str(exc))
+            return None, None

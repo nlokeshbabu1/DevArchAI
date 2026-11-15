@@ -9,6 +9,28 @@ from sqlalchemy import select
 from app.models.scan import Scan, ScanStatus
 from app.models.finding import Finding, Severity, Category
 
+from tests.integration.guest_session import guest_session_headers as _guest_session_headers
+
+
+@pytest.fixture(autouse=True)
+def _fast_branch_resolution():
+    """Avoid git ls-remote / GitHub API during scan start integration tests."""
+    with patch(
+        "app.api.v1.routes.unified_scan.resolve_repository_branch",
+        return_value="main",
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _jwt_blacklist_available():
+    with patch(
+        "app.services.token_blacklist.is_blacklisted",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        yield
+
 
 @pytest.mark.asyncio
 class TestScanAPIIntegration:
@@ -173,9 +195,10 @@ class TestScanAPIIntegration:
         test_db.add(finding)
         await test_db.commit()
         
-        # Act - Get scan results
+        headers = await _guest_session_headers(test_db, scan_id)
         response = await client.get(
-            f"/api/v1/scan/results/{scan_id}"
+            f"/api/v1/scan/results/{scan_id}",
+            headers=headers,
         )
         
         # Assert
@@ -259,13 +282,15 @@ class TestScanAPIIntegration:
         test_db.add(scan)
         await test_db.commit()
         
+        headers = await _guest_session_headers(test_db, scan_id)
         response = await client.get(
-            f"/api/v1/scan/status/{scan_id}"
+            f"/api/v1/scan/status/{scan_id}",
+            headers=headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["status"] == "processing"
         assert data["progress"] == 65
         assert "current_step" in data

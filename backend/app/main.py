@@ -313,6 +313,10 @@ def create_app() -> FastAPI:
         @app.websocket("/ws/cloud/{connection_id}")
         async def websocket_cloud_progress(websocket: _WS, connection_id: str):
             """WebSocket endpoint for real-time cloud scan progress updates."""
+            from app.core.websocket_auth import authenticate_cloud_websocket
+
+            if not await authenticate_cloud_websocket(websocket, connection_id):
+                return
             connected = await cloud_ws_manager.connect(connection_id, websocket)
             if not connected:
                 return

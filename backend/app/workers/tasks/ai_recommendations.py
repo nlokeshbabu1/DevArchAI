@@ -48,7 +48,7 @@ def _run_async_with_isolated_engine(coro_builder: Any) -> Any:
         )
         try:
             async with session_factory() as session:
-                return await coro_builder(session)
+                return await coro_builder(session, session_factory)
         finally:
             await engine.dispose()
 
@@ -168,7 +168,7 @@ def recover_stale_ai_jobs(limit: int = 50) -> int:
 def _prepare_jobs_sync(scan_id: str, force: bool = False) -> list[str]:
     from app.services.ai_job_service import ensure_jobs_for_scan
 
-    async def _runner(session: Any) -> list[str]:
+    async def _runner(session: Any, _session_factory: Any) -> list[str]:
         from app.models.scan import Scan
 
         if not force:
@@ -191,8 +191,11 @@ def _prepare_jobs_sync(scan_id: str, force: bool = False) -> list[str]:
 def _run_job_sync(job_id: str, celery_task_id: str | None = None) -> dict[str, Any]:
     from app.services.ai_recommendation_service import AIRecommendationService
 
-    async def _runner(session: Any) -> dict[str, Any]:
-        service = AIRecommendationService(session=session)
+    async def _runner(session: Any, session_factory: Any) -> dict[str, Any]:
+        service = AIRecommendationService(
+            session=session,
+            session_factory=session_factory,
+        )
         return await service.process_job(job_id, celery_task_id=celery_task_id)
 
     return _run_async_with_isolated_engine(_runner)
@@ -201,7 +204,7 @@ def _run_job_sync(job_id: str, celery_task_id: str | None = None) -> dict[str, A
 def _finalize_scan_sync(scan_id: str) -> None:
     from app.services.ai_job_service import aggregate_scan_ai_status
 
-    async def _runner(session: Any) -> None:
+    async def _runner(session: Any, _session_factory: Any) -> None:
         await aggregate_scan_ai_status(session, scan_id)
 
     _run_async_with_isolated_engine(_runner)
@@ -210,7 +213,7 @@ def _finalize_scan_sync(scan_id: str) -> None:
 def _recover_stale_sync(limit: int = 50) -> int:
     from app.services.ai_job_service import recover_stale_jobs
 
-    async def _runner(session: Any) -> tuple[int, list[str]]:
+    async def _runner(session: Any, _session_factory: Any) -> tuple[int, list[str]]:
         return await recover_stale_jobs(session, limit=limit)
 
     count, job_ids = _run_async_with_isolated_engine(_runner)

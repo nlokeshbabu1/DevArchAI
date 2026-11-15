@@ -28,6 +28,7 @@ from app.scanners.helm_scanner import HelmScanner
 from app.scanners.registry import ScannerRegistry
 from app.scoring.engine import ScoringEngine
 from app.services.ai_recommendation_service import enqueue_ai_analysis_for_scan
+from app.services.finding_normalizer import serialize_processing_metadata
 from app.services.report_service import ReportService
 from app.utils.repository_scanner import RepositoryScanner
 from app.workers.celery_config import celery_app
@@ -435,11 +436,14 @@ class SyncScanService:
         )
 
         if self.progress_store and self.scan_id:
+            from app.services.scan_progress_steps import lifecycle_to_store_step_label
+
+            step_label = lifecycle_to_store_step_label(lifecycle) if lifecycle else None
             self._exec_async(
                 self._update_progress_async(
                     progress_pct if progress_pct is not None else scan.progress or 0,
                     message,
-                    lifecycle.value if lifecycle else stage.value,
+                    step_label,
                     stage=stage.value,
                 )
             )
@@ -849,6 +853,9 @@ class SyncScanService:
             try:
                 from app.services.finding_validator import validate_findings
                 rule_findings, validation_stats = validate_findings(rule_findings)
+
+                from app.services.finding_normalizer import normalize_findings
+                rule_findings, _norm_stats = normalize_findings(rule_findings)
                 fallback_rate = validation_stats.findings_with_fallbacks / max(validation_stats.total_findings, 1) * 100
                 logger.info(
                     "Findings validated",
@@ -1316,6 +1323,7 @@ class SyncScanService:
                             'references',
                         ),
                         evidence=getattr(finding, 'evidence', None),
+                        processing_metadata=serialize_processing_metadata(finding),
                     )
                     self.db.add(db_finding)
                 except Exception as finding_error:

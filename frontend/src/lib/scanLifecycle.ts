@@ -17,9 +17,11 @@ const LEGACY_STAGE_MAP: Record<string, ScanStage> = {
   ai_generation: 'analyzing',
 }
 
-export function normalizeLifecycleStage(stage: ScanStage | string | null | undefined): ScanStage | null {
-  if (!stage) return null
-  return (LEGACY_STAGE_MAP[stage] ?? stage) as ScanStage
+export function normalizeLifecycleStage(stage: string | null | undefined): ScanStage | null {
+  if (!stage) {return null}
+  const mapped = LEGACY_STAGE_MAP[stage]
+  if (mapped) {return mapped}
+  return stage as ScanStage
 }
 
 export function buildDynamicScanSteps(

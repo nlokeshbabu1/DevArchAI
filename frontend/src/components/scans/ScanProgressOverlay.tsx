@@ -1,15 +1,17 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle, Clock, GitBranch,
   Loader2, X, AlertCircle, TrendingUp, TrendingDown,
   CheckCheck,
 } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { formatDuration } from '../../lib/utils'
-import { Button } from '../ui-animated'
-import { ScanLifecycleSteps, normalizeLifecycleStage } from './ScanLifecycleSteps'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+
+import { cn , formatDuration } from '../../lib/utils'
 import type { ScanStage, StageMetadata, TechnologyResult } from '../../types'
+import { Button } from '../ui-animated'
+
+import { ScanLifecycleSteps, normalizeLifecycleStage } from './ScanLifecycleSteps'
+
 
 interface ScanProgressData {
   progress?: number
@@ -123,8 +125,8 @@ export function ScanProgressOverlay({
 
   const normalizedCurrent = normalizeLifecycleStage(currentStage)
   const derivedCompleted = useMemo(() => {
-    if (completedStages.length > 0) return completedStages
-    if (!normalizedCurrent || stages.length === 0) return []
+    if (completedStages.length > 0) {return completedStages}
+    if (!normalizedCurrent || stages.length === 0) {return []}
     const currentOrder = stages.find(s => s.id === normalizedCurrent)?.order ?? -1
     return stages.filter(s => s.order < currentOrder).map(s => s.id)
   }, [completedStages, normalizedCurrent, stages])
@@ -154,8 +156,8 @@ export function ScanProgressOverlay({
   }, [isComplete])
 
   const subtitle = useMemo(() => {
-    if (isComplete) return 'Scan completed. AI remediation may continue in the background.'
-    if (hasFailed) return progressData.error || 'An error occurred during the scan'
+    if (isComplete) {return 'Scan completed. AI remediation may continue in the background.'}
+    if (hasFailed) {return progressData.error || 'An error occurred during the scan'}
     const active = normalizedCurrent
       ? stages.find(s => s.id === normalizedCurrent)?.label
       : progressData.currentStep
@@ -168,7 +170,7 @@ export function ScanProgressOverlay({
   )
 
   const findingsCount = useMemo(() => {
-    if (typeof progressData.findingsCount === 'number') return progressData.findingsCount
+    if (typeof progressData.findingsCount === 'number') {return progressData.findingsCount}
     return Object.values(technologies).reduce((sum, t) => sum + (t.findings ?? 0), 0)
   }, [progressData.findingsCount, technologies])
 
@@ -182,8 +184,8 @@ export function ScanProgressOverlay({
   const showProgressBar = showProgressPercent && typeof progressData.progress === 'number'
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-emerald-400'
-    if (score >= 60) return 'text-yellow-400'
+    if (score >= 80) {return 'text-emerald-400'}
+    if (score >= 60) {return 'text-yellow-400'}
     return 'text-red-400'
   }
 

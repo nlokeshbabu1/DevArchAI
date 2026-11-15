@@ -1,9 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
 import { useScanWebSocket } from './useScanWebSocket'
 
 vi.mock('../lib/api', () => ({
   buildWebSocketUrl: vi.fn((path: string) => `ws://localhost:8000${path}`),
+}))
+
+vi.mock('../lib/auth-token', () => ({
+  getAccessToken: vi.fn(() => 'test-access-token'),
 }))
 
 class MockWebSocket {
@@ -90,6 +95,14 @@ describe('useScanWebSocket', () => {
     expect(result.current.scanState).toBeNull()
     expect(result.current.error).toBeNull()
     expect(result.current.connectionStatus).toBe('disconnected')
+  })
+
+  it('should not put access tokens in the WebSocket URL', async () => {
+    renderHook(() => useScanWebSocket({ scanId: 'scan-123' }))
+    await flushConnect()
+    const ws = MockWebSocket.instances[0]
+    expect(ws.url).not.toContain('token=')
+    expect(ws.url).not.toContain('access_token')
   })
 
   it('should transition to running on progress_update', async () => {
@@ -417,7 +430,7 @@ describe('useScanWebSocket', () => {
 
     for (let i = 0; i < 55; i++) {
       const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]
-      if (!ws) break
+      if (!ws) {break}
       await act(async () => {
         ws.simulateClose()
       })

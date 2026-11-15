@@ -1,14 +1,21 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+
 import { Login } from './Login'
 
 // Mock the auth store
 vi.mock('../../stores/auth-store', () => ({
+  initAuthSync: vi.fn(),
   useAuthStore: vi.fn(() => ({
     login: vi.fn(),
     setUser: vi.fn(),
+    checkAuth: vi.fn(),
+    isAuthenticated: false,
+    isLoading: false,
+    sessionChecked: true,
+    refreshSession: vi.fn().mockResolvedValue(false),
   })),
 }))
 

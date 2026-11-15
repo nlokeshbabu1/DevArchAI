@@ -17,11 +17,23 @@ from app.models.user import User
 from app.services.organization_provisioning import ensure_user_organization_membership
 from app.services.payment_clients import RazorpayClient, StripeClient
 from app.services.payment_service import PaymentService
-from app.services.webhook_handler import WebhookIdempotencyGuard
+from app.services.entitlements import (
+    is_checkout_enabled,
+    product_config_payload,
+    resolve_user_entitlements,
+    subscription_features_payload,
+)
+from app.services.usage_enforcement import raise_checkout_disabled
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
+
+
+@router.get("/product-config", response_model=dict)
+async def get_product_config():
+    """Public product configuration (Beta mode, checkout visibility)."""
+    return product_config_payload()
 
 
 # ─── Request/Response Models ───────────────────────────────────────────
@@ -370,6 +382,9 @@ async def create_checkout_session(
 
     Routes to Razorpay for India, Stripe for all other countries.
     """
+    if not is_checkout_enabled():
+        raise_checkout_disabled()
+
     payment_svc = PaymentService()
     user_country = _detect_user_country(current_user, http_request)
     selected_gateway = _resolve_billing_gateway(current_user, http_request)
@@ -428,6 +443,9 @@ async def verify_payment(
     db: AsyncSession = Depends(get_db),
 ):
     """Verify a Razorpay payment signature and activate subscription."""
+    if not is_checkout_enabled():
+        raise_checkout_disabled()
+
     from datetime import timedelta
 
     from app.models.payment import Payment, PaymentProvider, PaymentStatus, PaymentType
@@ -910,9 +928,10 @@ async def get_subscription(
     sub = result.scalar_one_or_none()
 
     if not sub:
-        return _free_plan_response(str(current_user.id))
+        return _free_plan_response(str(current_user.id), current_user)
 
     public_plan_name = await _resolve_public_plan_name(db, current_user, sub)
+    ent = resolve_user_entitlements(current_user)
 
     return {
         "id": str(sub.id),
@@ -926,7 +945,12 @@ async def get_subscription(
         "scans_this_period": sub.scans_this_period,
         "repositories_count": sub.repositories_count,
         "team_members_count": getattr(sub, "team_members_count", 1),
-        "features": _plan_features(public_plan_name),
+        "features": subscription_features_payload(current_user, plan_name=public_plan_name),
+        "beta_access_mode": ent.beta_access_mode,
+        "beta_entitlements_active": ent.beta_entitlements_active,
+        "checkout_enabled": ent.checkout_enabled,
+        "show_upgrade_prompts": ent.show_upgrade_prompts,
+        "beta_label": "Beta — Free Access" if ent.beta_entitlements_active else None,
     }
 
 
@@ -943,6 +967,9 @@ async def activate_subscription(
     In production, subscription activation should happen via webhooks only.
     This endpoint is for mock/dev mode or manual activation.
     """
+    if not is_checkout_enabled():
+        raise_checkout_disabled()
+
     from datetime import datetime, timedelta
 
     from app.models.subscription import Subscription
@@ -1098,27 +1125,30 @@ async def get_usage(
     """Get current usage for user."""
     if not current_user:
         user_id = "anonymous"
+        ent = resolve_user_entitlements(None)
     else:
         user_id = str(current_user.id)
+        ent = resolve_user_entitlements(current_user)
 
     return {
         "user_id": user_id,
-        "plan": "free",
+        "plan": ent.billing_plan,
         "usage": {
             "scans_this_period": 0,
             "repositories_count": 0,
             "team_members_count": 1,
         },
-        "limits": {
-            "max_scans_per_month": 10,
-            "max_repositories": 5,
-        },
+        "limits": ent.limits,
+        "beta_access_mode": ent.beta_access_mode,
+        "beta_entitlements_active": ent.beta_entitlements_active,
     }
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────
 
-def _free_plan_response(user_id: str) -> dict:
+def _free_plan_response(user_id: str, user: User | None = None) -> dict:
+    ent = resolve_user_entitlements(user)
+    features = subscription_features_payload(user, plan_name=ent.billing_plan)
     return {
         "id": None,
         "user_id": user_id,
@@ -1131,13 +1161,12 @@ def _free_plan_response(user_id: str) -> dict:
         "scans_this_period": 0,
         "repositories_count": 0,
         "team_members_count": 1,
-        "features": {
-            "max_repositories": 5,
-            "max_scans_per_month": 10,
-            "ai_suggestions": False,
-            "api_access": False,
-            "priority_support": False,
-        },
+        "features": features,
+        "beta_access_mode": ent.beta_access_mode,
+        "beta_entitlements_active": ent.beta_entitlements_active,
+        "checkout_enabled": ent.checkout_enabled,
+        "show_upgrade_prompts": ent.show_upgrade_prompts,
+        "beta_label": "Beta — Free Access" if ent.beta_entitlements_active else None,
     }
 
 

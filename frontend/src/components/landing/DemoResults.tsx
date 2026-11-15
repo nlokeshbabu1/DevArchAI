@@ -1,13 +1,14 @@
-import { useState, memo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle, AlertCircle, Info,
   Server, Cloud, GitBranch, Zap, ChevronDown, ChevronUp,
   Lock, ArrowRight, Code
 } from 'lucide-react'
-import { Card, Button } from '../ui-animated'
-import { cn, sanitizePath } from '../../lib/utils'
+import { useState, memo, useCallback } from 'react'
+
 import demoData from '../../data/demoScan.json'
+import { cn, sanitizePath } from '../../lib/utils'
+import { Card, Button } from '../ui-animated'
 
 interface DemoResultsProps {
   onUnlock: () => void
@@ -162,17 +163,17 @@ export function DemoResults({ onUnlock }: DemoResultsProps) {
   const data = demoData
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 60) return 'text-yellow-400'
-    if (score >= 50) return 'text-orange-400'
+    if (score >= 80) {return 'text-green-400'}
+    if (score >= 60) {return 'text-yellow-400'}
+    if (score >= 50) {return 'text-orange-400'}
     return 'text-red-400'
   }
 
   const getScoreGrade = (score: number) => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
+    if (score >= 90) {return 'A'}
+    if (score >= 80) {return 'B'}
+    if (score >= 70) {return 'C'}
+    if (score >= 60) {return 'D'}
     return 'F'
   }
 

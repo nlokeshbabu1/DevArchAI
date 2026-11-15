@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Shield, AlertTriangle, BarChart3, GitBranch } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface DemoDashboardProps {

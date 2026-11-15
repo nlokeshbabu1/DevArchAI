@@ -1,70 +1,123 @@
-import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
 import { useReducedMotion } from 'framer-motion'
+import { useRef, useState, useEffect, memo, type CSSProperties } from 'react'
+
 import bgVideo from '@/assets/videos/Background_SaaS.mp4'
 
+const POSTER_GRADIENT =
+  'radial-gradient(ellipse 70% 60% at 50% 40%, rgba(18, 24, 48, 0.9) 0%, rgba(5, 7, 18, 1) 100%)'
+
+function useCoarsePointerOrMobile() {
+  const [reduceMotionMedia, setReduceMotionMedia] = useState(false)
+  const [narrowViewport, setNarrowViewport] = useState(false)
+
+  useEffect(() => {
+    const motionMq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const narrowMq = window.matchMedia('(max-width: 768px)')
+    const update = () => {
+      setReduceMotionMedia(motionMq.matches)
+      setNarrowViewport(narrowMq.matches)
+    }
+    update()
+    motionMq.addEventListener('change', update)
+    narrowMq.addEventListener('change', update)
+    return () => {
+      motionMq.removeEventListener('change', update)
+      narrowMq.removeEventListener('change', update)
+    }
+  }, [])
+
+  return reduceMotionMedia || narrowViewport
+}
+
 export const BackgroundVideo = memo(function BackgroundVideo() {
+  const containerRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const prefersReducedMotion = useReducedMotion()
-  const [canAutoplay, setCanAutoplay] = useState(true)
+  const skipVideo = useCoarsePointerOrMobile()
+  const [isVisible, setIsVisible] = useState(true)
+  const [videoReady, setVideoReady] = useState(false)
+
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') {
+      setIsVisible(true)
+      return
+    }
+    const node = containerRef.current
+    if (!node) {return}
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { root: null, threshold: 0.05 }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const vid = videoRef.current
-    if (!vid || prefersReducedMotion) return
+    if (!vid || skipVideo || prefersReducedMotion) {return}
 
-    const tryPlay = async () => {
-      try {
-        await vid.play()
-      } catch {
-        setCanAutoplay(false)
+    if (isVisible) {
+      if (vid.preload === 'none') {
+        vid.preload = 'auto'
+        vid.load()
       }
+      void vid.play().catch(() => {
+        /* autoplay blocked — poster gradient remains */
+      })
+    } else {
+      vid.pause()
     }
-    tryPlay()
-  }, [prefersReducedMotion])
+  }, [isVisible, skipVideo, prefersReducedMotion])
 
-  const showVideo = !prefersReducedMotion && canAutoplay
+  const showVideo = !skipVideo && !prefersReducedMotion
 
   return (
     <div
+      ref={containerRef}
       className="fixed inset-0 w-full h-full overflow-hidden pointer-events-none"
       style={{ zIndex: 0 }}
       aria-hidden="true"
     >
-      {/* Video element — ambient opacity, GPU accelerated, focal point centered */}
+      <div
+        className="absolute inset-0"
+        style={{ background: POSTER_GRADIENT }}
+        aria-hidden
+      />
+
       {showVideo && (
         <video
           ref={videoRef}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full transition-opacity duration-700"
           style={{
             objectFit: 'cover',
             objectPosition: 'center center',
-            opacity: 0.55,
-            willChange: 'transform',
-            transform: 'translateZ(0) scale(1.02)',
+            opacity: videoReady ? 0.45 : 0,
+            transform: 'translateZ(0)',
           }}
-          autoPlay
           muted
           loop
           playsInline
-          preload="auto"
+          preload="none"
           disablePictureInPicture
           disableRemotePlayback
+          poster=""
+          onCanPlay={() => setVideoReady(true)}
         >
           <source src={bgVideo} type="video/mp4" />
         </video>
       )}
 
-      {/* Layer 1: Soft blur + gentle dim filter over video */}
+      {/* Lighter overlay on mobile — avoids full-viewport backdrop-filter cost */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 md:hidden"
         style={{
-          backdropFilter: 'blur(8px) brightness(32%) contrast(82%) saturate(92%)',
-          WebkitBackdropFilter: 'blur(8px) brightness(32%) contrast(82%) saturate(92%)',
+          background: `
+            linear-gradient(to bottom, rgba(2, 0, 12, 0.55) 0%, rgba(5, 7, 18, 0.85) 100%)
+          `,
         }}
       />
-
-      {/* Layer 2: Radial spotlight — soft center light, gentle dark edges */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 hidden md:block"
         style={{
           background: `
             radial-gradient(ellipse 55% 50% at 50% 45%, rgba(18, 24, 48, 0.22) 0%, transparent 70%),
@@ -73,65 +126,60 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
         }}
       />
 
-      {/* Layer 3: Soft vignette — subtle, tight around viewport edges */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 hidden md:block"
         style={{
           background: 'radial-gradient(ellipse 65% 50% at 50% 50%, transparent 0%, rgba(2, 0, 12, 0.45) 100%)',
         }}
       />
 
-      {/* Layer 3.5: Aurora blobs — screen-blended ambient light */}
-      <div
-        className="absolute inset-0 overflow-hidden"
-        style={{ maskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)' }}
-      >
-        <div
-          className="aurora-blob animate-aurora-a"
-          style={{
-            width: '55vw',
-            height: '55vw',
-            left: '-8%',
-            top: '-12%',
-            background: 'radial-gradient(circle at 35% 35%, rgba(124, 92, 255, 0.32), transparent 70%)',
-          }}
-        />
-        <div
-          className="aurora-blob animate-aurora-b"
-          style={{
-            width: '48vw',
-            height: '48vw',
-            right: '-10%',
-            top: '22%',
-            background: 'radial-gradient(circle at 60% 40%, rgba(79, 141, 255, 0.28), transparent 70%)',
-          }}
-        />
-        <div
-          className="aurora-blob animate-aurora-c"
-          style={{
-            width: '40vw',
-            height: '40vw',
-            left: '18%',
-            bottom: '-18%',
-            background: 'radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.18), transparent 70%)',
-          }}
-        />
-      </div>
-
-      {/* Layer 3.6: Floating particles — neural-network ambience */}
       {!prefersReducedMotion && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className={`absolute inset-0 overflow-hidden hidden lg:block ${isVisible ? '' : '[&_.aurora-blob]:![animation-play-state:paused]'}`}
+          style={{
+            maskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 90% 70% at 50% 45%, black 30%, transparent 100%)',
+          }}
+        >
+          <div
+            className="aurora-blob animate-aurora-a"
+            style={{
+              width: '55vw',
+              height: '55vw',
+              left: '-8%',
+              top: '-12%',
+              background: 'radial-gradient(circle at 35% 35%, rgba(124, 92, 255, 0.28), transparent 70%)',
+            }}
+          />
+          <div
+            className="aurora-blob animate-aurora-b"
+            style={{
+              width: '48vw',
+              height: '48vw',
+              right: '-10%',
+              top: '22%',
+              background: 'radial-gradient(circle at 60% 40%, rgba(79, 141, 255, 0.22), transparent 70%)',
+            }}
+          />
+          <div
+            className="aurora-blob animate-aurora-c"
+            style={{
+              width: '40vw',
+              height: '40vw',
+              left: '18%',
+              bottom: '-18%',
+              background: 'radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.14), transparent 70%)',
+            }}
+          />
+        </div>
+      )}
+
+      {!prefersReducedMotion && isVisible && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none hidden lg:block">
           {[
             { left: '8%', size: 3, dur: 16, delay: 0, drift: 14, glow: 6 },
-            { left: '16%', size: 2, dur: 21, delay: 2.5, drift: -10, glow: 5 },
-            { left: '27%', size: 4, dur: 19, delay: 5, drift: 18, glow: 8 },
-            { left: '38%', size: 2, dur: 24, delay: 1.2, drift: -14, glow: 5 },
             { left: '49%', size: 3, dur: 17, delay: 7, drift: 10, glow: 6 },
-            { left: '58%', size: 2, dur: 22, delay: 3.8, drift: -8, glow: 4 },
-            { left: '67%', size: 3, dur: 18, delay: 0.6, drift: 12, glow: 7 },
-            { left: '76%', size: 2, dur: 25, delay: 6.2, drift: -12, glow: 5 },
             { left: '84%', size: 3, dur: 20, delay: 4.4, drift: 16, glow: 6 },
-            { left: '92%', size: 2, dur: 23, delay: 8.5, drift: -6, glow: 4 },
           ].map((p, i) => (
             <div
               key={i}
@@ -149,28 +197,14 @@ export const BackgroundVideo = memo(function BackgroundVideo() {
         </div>
       )}
 
-      {/* Layer 4: Very subtle animated noise texture */}
       <div
-        className="absolute inset-0 opacity-[0.03] mix-blend-overlay pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          backgroundRepeat: 'repeat',
-          backgroundSize: '256px 256px',
-          animation: 'noiseShift 8s steps(4) infinite',
-        }}
-      />
-
-      {/* Bottom gradient for content readability */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-[20%]"
+        className="absolute inset-x-0 bottom-0 h-[20%] pointer-events-none"
         style={{
           background: 'linear-gradient(to top, rgba(2, 0, 12, 0.35) 0%, transparent 100%)',
         }}
       />
-
-      {/* Top gradient for navbar readability */}
       <div
-        className="absolute inset-x-0 top-0 h-[12%]"
+        className="absolute inset-x-0 top-0 h-[12%] pointer-events-none"
         style={{
           background: 'linear-gradient(to bottom, rgba(2, 0, 12, 0.45) 0%, transparent 100%)',
         }}

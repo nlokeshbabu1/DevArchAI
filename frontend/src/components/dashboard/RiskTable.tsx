@@ -1,11 +1,12 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { FolderGit2, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { Button } from '../ui-animated'
-import { SecurityScore } from '../ui/SecurityScore'
+import { memo } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import type { Repository } from '../../api/endpoints/repositories'
+import { cn } from '../../lib/utils'
+import { SecurityScore } from '../ui/SecurityScore'
+import { Button } from '../ui-animated'
 
 interface RiskTableProps {
   repositories: Repository[]

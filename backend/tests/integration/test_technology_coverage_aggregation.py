@@ -18,6 +18,8 @@ import pytest
 from app.models.finding import Category, Finding, Severity
 from app.models.scan import Scan, ScanStatus
 
+from tests.integration.guest_session import guest_session_headers
+
 DEPLOYEMT = "/kubernetes/Backend/backend-deployemt.yaml"
 STATEFULLSET = "/kubernetes/DB-Service/statefullset.yaml"
 INGRESS = "/helm-chart/ingress.yaml"
@@ -148,7 +150,8 @@ async def test_technology_coverage_totals_match_severity_counts(client, test_db)
         test_db.add(f)
     await test_db.commit()
 
-    response = await client.get(f"/api/v1/scan/results/{scan_id}")
+    headers = await guest_session_headers(test_db, scan_id)
+    response = await client.get(f"/api/v1/scan/results/{scan_id}", headers=headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -227,7 +230,8 @@ async def test_severity_counts_lowercase_and_zero_filled(client, test_db):
     ))
     await test_db.commit()
 
-    response = await client.get(f"/api/v1/scan/results/{scan_id}")
+    headers = await guest_session_headers(test_db, scan_id)
+    response = await client.get(f"/api/v1/scan/results/{scan_id}", headers=headers)
     assert response.status_code == 200
     data = response.json()
 

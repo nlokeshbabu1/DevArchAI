@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Cloud, DollarSign, Shield, Slack, CalendarCheck, TrendingUp, GitBranch, Sparkles, Clock, Puzzle, FileCheck } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 const roadmapItems = [

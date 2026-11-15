@@ -1,9 +1,7 @@
 """Authentication API calls and login/logout flows.
 
-The CLI authenticates with a *persistent API key* generated in the web app.
-``devsec auth login`` opens the Settings page and stores the pasted key in the
-OS keyring (or an env var / config for CI). This module deliberately does not
-implement password-based or device-code OAuth.
+Interactive login uses PKCE + browser authorization (``devsec login``).
+API keys remain supported for CI/CD (``--api-key`` or ``DEVSEC_API_KEY``).
 """
 
 from __future__ import annotations
@@ -31,8 +29,10 @@ def _is_api_key(token: str) -> bool:
     return token.startswith((API_KEY_PREFIX, LEGACY_API_KEY_PREFIX))
 
 
-def authentication_method(token: str | None) -> str | None:
+def authentication_method(token: str | None, *, config: Config | None = None) -> str | None:
     """Human-readable authentication method label (never includes the secret)."""
+    if config and config.cli_session and not config.env_credential_set:
+        return "CLI Session"
     if not token:
         return None
     if _is_api_key(token):
@@ -86,43 +86,51 @@ def _open_browser(url: str) -> None:
         pass
 
 
-def login(config: Config, client: ApiClient, *, api_key: str | None = None) -> dict:
-    """Authenticate with an API key, storing it securely on success."""
+def _prompt_login_method() -> str:
+    """Ask whether to use the browser flow or a pasted API key."""
+    stderr = sys.stderr
+    print(typer.style("\nHow would you like to sign in?\n", fg="cyan"), file=stderr)
+    print("  1) Open the browser and sign in (recommended)", file=stderr)
+    print("  2) Paste an API key from the web app", file=stderr)
+    while True:
+        choice = typer.prompt("Selection", default="1", show_default=False, err=True)
+        normalized = str(choice).strip().lower()
+        if normalized in {"1", "b", "browser"}:
+            return "browser"
+        if normalized in {"2", "a", "api", "api-key", "api_key", "key", "k"}:
+            return "api_key"
+        print("Enter 1 for the browser or 2 for an API key.", file=stderr)
+
+
+def _prompt_api_key(config: Config) -> str:
+    """Show where to create an API key and read it with hidden input."""
+    key_page = _frontend_key_page(config)
+    stderr = sys.stderr
+    print("\nCreate an API key in the web app:", file=stderr)
+    print(f"  Settings > Security: {key_page}\n", file=stderr)
+    return str(typer.prompt("Paste your API key (input hidden)", hide_input=True, err=True))
+
+
+def login(
+    config: Config,
+    client: ApiClient,
+    *,
+    api_key: str | None = None,
+    server: str | None = None,
+    device_name: str | None = None,
+) -> dict:
+    """Authenticate via browser login or an explicit API key."""
     if api_key is None:
-        if sys.stdin.isatty():
-            key_page = _frontend_key_page(config)
-            print(
-                typer.style(
-                    "Opening the DevArchAI web app to generate an API key...",
-                    fg="cyan",
-                ),
-                file=sys.stderr,
-            )
-            print(
-                typer.style(
-                    f"Create an API key under Settings > Security: {key_page}",
-                    fg="cyan",
-                ),
-                file=sys.stderr,
-            )
-            _open_browser(key_page)
-            print(
-                typer.style(
-                    f"If a browser did not open, copy this URL into any browser: {key_page}",
-                    dim=True,
-                ),
-                file=sys.stderr,
-            )
-            api_key = typer.prompt(
-                "Paste your API key (input is hidden)",
-                hide_input=True,
-            )
-        else:
+        if not sys.stdin.isatty():
             raise UsageError(
-                "No API key provided.",
-                hint="Pass one with 'devsec auth login --api-key sk-...' or set "
-                "the DEVSEC_API_KEY environment variable.",
+                "No credentials available for non-interactive login.",
+                hint="Set DEVSEC_API_KEY for CI/CD or pass --api-key.",
             )
+        if _prompt_login_method() == "browser":
+            from devsec.auth.browser_login import browser_login
+
+            return browser_login(config, server=server, device_name=device_name)
+        api_key = _prompt_api_key(config)
 
     api_key = (api_key or "").strip()
     if not api_key:
@@ -155,17 +163,26 @@ def login(config: Config, client: ApiClient, *, api_key: str | None = None) -> d
     }
 
 
-def logout(config: Config, client: ApiClient, *, revoke: bool = False) -> dict:
-    """Remove the stored token, optionally revoking the API key server-side.
-
-    Environment variables (``DEVSEC_API_KEY`` / ``DEVSEC_API_TOKEN``) are never
-    modified - only keyring / credentials-file state is cleared.
-    """
-    # Prefer the keyring copy for server-side revoke; env may still override
-    # ``config.token`` for subsequent commands until the shell is updated.
+def logout(config: Config, client: ApiClient, *, revoke: bool = True) -> dict:
+    """Clear local credentials and revoke CLI session or API key when possible."""
     stored = config.secrets.get_token()
+    cli_session = config.load_cli_session()
     effective = config.token
     revoked = False
+    if revoke and cli_session and cli_session.get("refresh_token") and not config.env_credential_set:
+        revoke_client = ApiClient(config)
+        try:
+            revoke_client.post_json(
+                "/auth/cli/revoke",
+                {"refresh_token": cli_session["refresh_token"]},
+            )
+            revoked = True
+        except Exception:  # noqa: BLE001, S110
+            pass
+        finally:
+            revoke_client.close()
+        config.clear_cli_session()
+
     revoke_token = stored or effective
     if revoke and revoke_token and _is_api_key(revoke_token):
         revoke_client = ApiClient(config, token=revoke_token)
@@ -179,6 +196,7 @@ def logout(config: Config, client: ApiClient, *, revoke: bool = False) -> dict:
             revoke_client.close()
 
     config.secrets.delete_token()
+    config.clear_cli_session()
     return {
         "logged_out": True,
         "revoked": revoked,
@@ -202,7 +220,7 @@ def status(config: Config, client: ApiClient) -> dict:
         }
 
     source = config.token_source or "unknown"
-    method = authentication_method(token)
+    method = authentication_method(token, config=config)
     user: UserInfo | None = None
     error: str | None = None
     try:
@@ -219,6 +237,7 @@ def status(config: Config, client: ApiClient) -> dict:
     if user is not None:
         account = user.email or user.username or user.id
 
+    session = config.cli_session or {}
     return {
         "authenticated": user is not None,
         "token_source": source,
@@ -227,4 +246,6 @@ def status(config: Config, client: ApiClient) -> dict:
         "account": account,
         "user": user.model_dump() if user else None,
         "error": error,
+        "device_name": session.get("device_name"),
+        "credential_expires_at": session.get("expires_at"),
     }

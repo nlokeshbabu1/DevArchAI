@@ -1,19 +1,22 @@
-import { useState, useMemo } from "react"
-import { SecurityHero } from "./SecurityHero"
-import { RiskDistribution } from "./RiskDistribution"
-import { TopAffectedFiles } from "./TopAffectedFiles"
-import { FixTheseFirst } from "./PriorityRisks"
-import { FindingsExplorer } from "./FindingsExplorer"
-import { DetectionCoverage } from "./DetectionCoverage"
-import { ScannerExecutionTable } from "./ScannerExecutionTable"
-import { ScanCoverageSummary } from "./ScanCoverageSummary"
-import { EmptyState } from "./EmptyState"
-import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
-import { Diagnostics } from "./Diagnostics"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
-import { getFileName, copyToClipboard } from "../../lib/utils"
+import { useState, useMemo } from "react"
+
 import { resolveSecurityScore } from "../../lib/security-score"
+import { getFileName, copyToClipboard } from "../../lib/utils"
+
+import { DetectionCoverage } from "./DetectionCoverage"
+import { Diagnostics } from "./Diagnostics"
+import { EmptyState } from "./EmptyState"
+import { FindingDetailsDrawer } from "./FindingDetailsDrawer"
+import { FindingsExplorer } from "./FindingsExplorer"
+import { FixTheseFirst } from "./PriorityRisks"
+import { RiskDistribution } from "./RiskDistribution"
+import { ScanCoverageSummary } from "./ScanCoverageSummary"
+import { ScannerExecutionTable } from "./ScannerExecutionTable"
+import { SecurityHero } from "./SecurityHero"
+import { TopAffectedFiles } from "./TopAffectedFiles"
+
 
 interface ScanResultData {
   id?: string
@@ -81,6 +84,7 @@ export function ScanResultsDashboard({
 }: ScanResultsDashboardProps) {
   const [drawerFindingId, setDrawerFindingId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = useState('all')
   const isEmpty = findings.length === 0
 
   const scoreData = {
@@ -90,14 +94,14 @@ export function ScanResultsDashboard({
   const resolvedScore = resolveSecurityScore(scoreData)?.value ?? 0
 
   const rawFindingsCount = useMemo(() => {
-    if (!result.scanner_executions) return undefined
+    if (!result.scanner_executions) {return undefined}
     return result.scanner_executions.reduce((sum: number, e: any) => sum + (e.findings_count || 0), 0)
   }, [result.scanner_executions])
 
   const scannersCount = result.scanners_used ?? result.scanner_executions?.length
 
   const filesScanned = useMemo(() => {
-    if (result.files_analyzed != null && result.files_analyzed > 0) return result.files_analyzed
+    if (result.files_analyzed != null && result.files_analyzed > 0) {return result.files_analyzed}
     const uniqueFiles = new Set(findings.map(f => f.file_path).filter(Boolean))
     return uniqueFiles.size
   }, [result.files_analyzed, findings])
@@ -107,7 +111,7 @@ export function ScanResultsDashboard({
   }, [findings])
 
   const rulesExecuted = useMemo(() => {
-    if (result.rules_executed != null && result.rules_executed > 0) return result.rules_executed
+    if (result.rules_executed != null && result.rules_executed > 0) {return result.rules_executed}
     return new Set(findings.map(f => f.rule_id).filter(Boolean)).size
   }, [result.rules_executed, findings])
 
@@ -115,11 +119,11 @@ export function ScanResultsDashboard({
   const technologiesCount = result.detected_technologies?.length ?? 0
   const scannersUsed = result.scanners_used ?? scannersCount ?? 0
   const riskDistribution = useMemo(() => {
-    if (result.risk_distribution) return result.risk_distribution
+    if (result.risk_distribution) {return result.risk_distribution}
     const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
     for (const f of findings) {
       const sev = (f.severity ?? "").toLowerCase()
-      if (sev in counts) counts[sev as keyof typeof counts]++
+      if (sev in counts) {counts[sev as keyof typeof counts]++}
     }
     return counts
   }, [result.risk_distribution, findings])
@@ -131,19 +135,19 @@ export function ScanResultsDashboard({
   }, {} as Record<string, number>) ?? {}
 
   const filteredByCategory = useMemo(() => {
-    if (!categoryFilter) return findings
+    if (!categoryFilter) {return findings}
     const catKey = categoryFilter.toLowerCase()
     return findings.filter((f: any) => {
       const fc = (f.category ?? "").toLowerCase()
       const fp = (f.file_path ?? "").toLowerCase()
-      if (catKey === "secrets") return fc.includes("secret") || fc.includes("credential") || fc.includes("key") || fc.includes("token")
-      if (catKey === "sca") return fc.includes("dependency") || fc.includes("sca") || fc.includes("package") || fc.includes("npm") || fc.includes("pip")
-      if (catKey === "container") return fc.includes("container") || fc.includes("docker") || fp.includes("dockerfile")
-      if (catKey === "iac") return fc.includes("iac") || fc.includes("terraform") || fc.includes("tf") || fp.endsWith(".tf")
-      if (catKey === "sast") return fc.includes("sast") || fc.includes("code analysis") || fc.includes("static")
-      if (catKey === "cicd") return fc.includes("ci") || fc.includes("cd") || fc.includes("cicd") || fp.includes(".github") || fp.includes("workflow")
-      if (catKey === "misconfig") return fc.includes("misconfig") || fc.includes("misconfiguration") || fc.includes("hardening")
-      if (catKey === "license") return fc.includes("license") || fc.includes("licensing") || fc.includes("compliance")
+      if (catKey === "secrets") {return fc.includes("secret") || fc.includes("credential") || fc.includes("key") || fc.includes("token")}
+      if (catKey === "sca") {return fc.includes("dependency") || fc.includes("sca") || fc.includes("package") || fc.includes("npm") || fc.includes("pip")}
+      if (catKey === "container") {return fc.includes("container") || fc.includes("docker") || fp.includes("dockerfile")}
+      if (catKey === "iac") {return fc.includes("iac") || fc.includes("terraform") || fc.includes("tf") || fp.endsWith(".tf")}
+      if (catKey === "sast") {return fc.includes("sast") || fc.includes("code analysis") || fc.includes("static")}
+      if (catKey === "cicd") {return fc.includes("ci") || fc.includes("cd") || fc.includes("cicd") || fp.includes(".github") || fp.includes("workflow")}
+      if (catKey === "misconfig") {return fc.includes("misconfig") || fc.includes("misconfiguration") || fc.includes("hardening")}
+      if (catKey === "license") {return fc.includes("license") || fc.includes("licensing") || fc.includes("compliance")}
       return true
     })
   }, [findings, categoryFilter])
@@ -158,7 +162,7 @@ export function ScanResultsDashboard({
   const handleCopyFix = (code: string) => copyToClipboard(code)
 
   const handleDownloadPatch = (finding: any) => {
-    if (!finding.fix_code) return
+    if (!finding.fix_code) {return}
     const blob = new Blob([finding.fix_code], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -263,6 +267,8 @@ export function ScanResultsDashboard({
                 onExpandedFindingChange={onExpandedFindingChange}
                 onFindingClick={handleOpenDrawer}
                 rawFindingsCount={rawFindingsCount}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={setSourceFilter}
               />
             </div>
 

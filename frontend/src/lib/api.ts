@@ -1,5 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
+
+import { getApiV1BaseUrl, getConfiguredApiBaseUrl, warnIfDevApiOriginMismatch } from './api-base-url'
 import { getAccessToken, performRefresh } from './auth-token'
+import { getScanSessionToken } from './scan-session'
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -14,9 +17,11 @@ function getFallbackBaseUrl(): string {
 }
 
 function getConfiguredBaseUrl(): string {
-  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  return normalizeBaseUrl(configuredBaseUrl || getFallbackBaseUrl())
+  const configured = getConfiguredApiBaseUrl()
+  return configured || normalizeBaseUrl(getFallbackBaseUrl())
 }
+
+warnIfDevApiOriginMismatch()
 
 function redirectToLogin() {
   if (typeof window === 'undefined') {
@@ -40,7 +45,7 @@ function doRefresh(): Promise<string> {
 }
 
 export const API_BASE_URL = getConfiguredBaseUrl()
-export const API_V1_BASE_URL = API_BASE_URL ? `${API_BASE_URL}/api/v1` : '/api/v1'
+export const API_V1_BASE_URL = getApiV1BaseUrl()
 
 export function buildBackendUrl(path: string): string {
   const baseUrl = API_BASE_URL || getFallbackBaseUrl()
@@ -63,6 +68,15 @@ api.interceptors.request.use(
 
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+
+    const url = config.url || ''
+    const scanMatch = url.match(/\/scan\/(?:status|results|state)\/([0-9a-f-]{36})/i)
+    if (scanMatch && config.headers) {
+      const sessionToken = getScanSessionToken(scanMatch[1])
+      if (sessionToken) {
+        config.headers['X-Session-Token'] = sessionToken
+      }
     }
 
     return config
@@ -99,7 +113,8 @@ api.interceptors.response.use(
 
       return api(originalRequest)
     } catch (refreshError) {
-      return Promise.reject(refreshError)
+      const reason = refreshError instanceof Error ? refreshError : new Error(String(refreshError))
+      throw reason
     }
   },
 )

@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { cn, isValidScore } from '../../lib/utils'
+import { useEffect, useState } from 'react'
+
 import {
   formatSecurityScore,
   resolveSecurityScore,
   type ResolvedSecurityScore,
   type ScoreSource,
 } from '../../lib/security-score'
+import { cn, isValidScore } from '../../lib/utils'
 
 export interface SecurityScoreProps {
   data: ScoreSource | null | undefined
@@ -30,9 +31,9 @@ const SIZE = {
 } as const
 
 function strokeColor(value: number): string {
-  if (value >= 80) return '#22c55e'
-  if (value >= 60) return '#eab308'
-  if (value >= 40) return '#f97316'
+  if (value >= 80) {return '#22c55e'}
+  if (value >= 60) {return '#eab308'}
+  if (value >= 40) {return '#f97316'}
   return '#ef4444'
 }
 
@@ -76,7 +77,7 @@ export function SecurityScore({
       const t = Math.min((now - start) / duration, 1)
       const eased = 1 - Math.pow(1 - t, 3)
       setDisplay(resolved.value * eased)
-      if (t < 1) requestAnimationFrame(tick)
+      if (t < 1) {requestAnimationFrame(tick)}
     }
     requestAnimationFrame(tick)
   }, [resolved?.value, animated, reducedMotion])

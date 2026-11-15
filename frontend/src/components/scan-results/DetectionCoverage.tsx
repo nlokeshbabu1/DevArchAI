@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Shield, Cloud, Server, GanttChartSquare,
@@ -6,6 +5,8 @@ import {
   CheckCircle2, AlertCircle, HelpCircle, XCircle,
   Layers, ChevronDown, ChevronRight,
 } from "lucide-react"
+import { useMemo, useState } from "react"
+
 import {
   cn, getSeverityColor,
 } from "../../lib/utils"
@@ -66,12 +67,12 @@ const techIconMap: Record<string, typeof Shield> = {
 }
 
 function getScannerStatusLabel(status: string): string {
-  if (["COMPLETED", "COMPLETED_WITH_FINDINGS"].includes(status)) return "Completed"
-  if (status === "COMPLETED_NO_FINDINGS") return "Clear"
-  if (status === "SKIPPED_NOT_APPLICABLE") return "Not Applicable"
-  if (status === "UNAVAILABLE" || status === "DISABLED") return "Unavailable"
-  if (status === "FAILED") return "Failed"
-  if (status === "RUNNING") return "Running"
+  if (["COMPLETED", "COMPLETED_WITH_FINDINGS"].includes(status)) {return "Completed"}
+  if (status === "COMPLETED_NO_FINDINGS") {return "Clear"}
+  if (status === "SKIPPED_NOT_APPLICABLE") {return "Not Applicable"}
+  if (status === "UNAVAILABLE" || status === "DISABLED") {return "Unavailable"}
+  if (status === "FAILED") {return "Failed"}
+  if (status === "RUNNING") {return "Running"}
   return status
 }
 
@@ -127,7 +128,7 @@ function matchFindingToTech(finding: Record<string, unknown>, techKey: string): 
       return isHelmPath(filePath) || filePath.includes("chart.yaml") || filePath.includes("values.yaml")
     }
     case "kubernetes": {
-      if (isHelmPath(filePath)) return false
+      if (isHelmPath(filePath)) {return false}
       return (
         scannerName.includes("kube_score")
         || filePath.includes("k8s")
@@ -414,7 +415,7 @@ export function DetectionCoverage({ scannerExecutions = [], findings = [], detec
                   <div className="flex flex-wrap gap-x-2 gap-y-0.5 mb-1.5">
                     {SEVERITY_LABELS.map(sev => {
                       const count = card.sevCounts[sev] ?? 0
-                      if (count === 0) return null
+                      if (count === 0) {return null}
                       return renderSeverityBadge(sev, count)
                     })}
                   </div>

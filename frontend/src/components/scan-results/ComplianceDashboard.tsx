@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
 import { Shield, ShieldCheck, ShieldAlert, Scale, FileCheck, BookCheck } from "lucide-react"
+
 import { cn } from "../../lib/utils"
 
 interface ComplianceScore {
@@ -31,7 +32,7 @@ const statusConfig = {
 }
 
 export function ComplianceDashboard({ scores = defaultScores, hasFindings = true }: ComplianceDashboardProps) {
-  if (!hasFindings) return null
+  if (!hasFindings) {return null}
 
   return (
     <motion.div

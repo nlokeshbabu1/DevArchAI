@@ -5,11 +5,12 @@
  * Supports both GitHub and GitLab.
  */
 
-import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Github, Gitlab, Check, Loader2, Search } from 'lucide-react'
-import { Button } from '../components/ui-animated'
+import { useEffect, useState } from 'react'
+
 import { Badge } from '../components/ui'
+import { Button } from '../components/ui-animated'
 import { cn } from '../lib/utils'
 
 interface RepoItem {
@@ -79,7 +80,7 @@ export function RepoSelectionModal({
   const labelPlural = provider === 'github' ? 'repositories' : 'projects'
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {return}
     setSelectedIds(new Set())
     setSearchTerm('')
     setImportError(null)
@@ -95,8 +96,8 @@ export function RepoSelectionModal({
   const toggleRepo = (id: number) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {next.delete(id)}
+      else {next.add(id)}
       return next
     })
   }
@@ -105,7 +106,7 @@ export function RepoSelectionModal({
   const deselectAll = () => setSelectedIds(new Set())
 
   const handleImport = async () => {
-    if (selectedIds.size === 0) return
+    if (selectedIds.size === 0) {return}
     setIsImporting(true)
     setImportError(null)
     try {
@@ -119,7 +120,7 @@ export function RepoSelectionModal({
     }
   }
 
-  if (!isOpen) return null
+  if (!isOpen) {return null}
 
   return (
     <AnimatePresence>
@@ -128,7 +129,7 @@ export function RepoSelectionModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        onClick={() => { if (!isImporting) onClose() }}
+        onClick={() => { if (!isImporting) {onClose()} }}
       >
         <motion.div
           initial={{ scale: 0.95, opacity: 0, y: 20 }}

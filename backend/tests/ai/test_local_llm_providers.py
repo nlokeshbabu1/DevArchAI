@@ -198,8 +198,13 @@ class TestLocalProviderSelection:
     def test_get_llm_provider_gpt4all(self):
         with patch("app.ai.engine.settings") as mock_settings:
             mock_settings.LLM_PROVIDER = "gpt4all"
+            mock_settings.OPENAI_API_KEY = ""
+            mock_settings.ANTHROPIC_API_KEY = ""
+            mock_settings.GEMINI_API_KEY = ""
+            mock_settings.MISTRAL_API_KEY = ""
 
-            provider = engine_get_llm_provider()
+            with patch("app.ai.engine._gpt4all_is_available", return_value=True):
+                provider = engine_get_llm_provider()
 
             assert isinstance(provider, EngineGPT4AllProvider)
 

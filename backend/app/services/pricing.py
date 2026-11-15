@@ -244,9 +244,12 @@ def get_feature_limit(plan: PlanTier, feature: str) -> Any:
     return PRICING[plan]["features"].get(feature, False)
 
 
-def can_use_feature(plan: PlanTier, feature: str) -> bool:
-    """Check if a plan has access to a specific feature."""
-    return bool(get_feature_limit(plan, feature))
+def can_use_feature(plan: PlanTier, feature: str, user=None) -> bool:
+    """Check feature access; pass ``user`` so Beta entitlements apply for authenticated users."""
+    from app.services.entitlements import effective_can_use_feature, resolve_user_entitlements
+
+    ent = resolve_user_entitlements(user, plan_tier=plan)
+    return effective_can_use_feature(ent, feature)
 
 
 def has_unlimited_access(plan: PlanTier, feature: str) -> bool:

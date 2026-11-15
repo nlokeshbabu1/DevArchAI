@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.subscription import PlanTier, Subscription
 from app.models.user import User
-from app.services.pricing import (
-    can_use_feature,
-    get_plan_features,
-    is_feature_blurred,
+from app.services.entitlements import (
+    effective_can_use_feature,
+    effective_plan_tier_for_gating,
+    resolve_user_entitlements,
 )
+from app.services.pricing import is_feature_blurred
 
 
 async def get_user_subscription(
@@ -64,11 +65,12 @@ def require_plan(minimum_plan: PlanTier):
             **kwargs,
         ):
             user_plan = await get_user_plan(current_user, db)
+            entitlements = resolve_user_entitlements(current_user, plan_tier=user_plan)
+            user_plan = effective_plan_tier_for_gating(entitlements)
 
             # Define plan hierarchy
             plan_hierarchy = {
                 PlanTier.FREE: 0,
-                PlanTier.PLUS: 1,
                 PlanTier.PRO: 2,
                 PlanTier.ENTERPRISE: 3,
             }
@@ -110,8 +112,9 @@ def require_feature(feature: str):
             **kwargs,
         ):
             user_plan = await get_user_plan(current_user, db)
+            entitlements = resolve_user_entitlements(current_user, plan_tier=user_plan)
 
-            if not can_use_feature(user_plan, feature):
+            if not effective_can_use_feature(entitlements, feature):
                 subscription = await get_user_subscription(current_user, db)
                 plan_name = subscription.plan.value if subscription else "free"
 
@@ -122,7 +125,8 @@ def require_feature(feature: str):
                         "message": "This feature is not available in your current plan",
                         "feature": feature,
                         "current_plan": plan_name,
-                        "upgrade_url": "/billing",
+                        "upgrade_url": None if not entitlements.checkout_enabled else "/billing",
+                        "beta_access_mode": entitlements.beta_access_mode,
                     },
                 )
 
@@ -149,43 +153,9 @@ def check_scan_limit(func: Callable) -> Callable:
         *args,
         **kwargs,
     ):
-        from sqlalchemy import func as sql_func, select
+        from app.services.usage_enforcement import enforce_scan_monthly_limit
 
-        user_plan = await get_user_plan(current_user, db)
-        max_scans = get_plan_features(user_plan).get("max_scans_per_month", 0)
-
-        # Unlimited scans
-        if max_scans == -1:
-            return await func(current_user=current_user, db=db, *args, **kwargs)
-
-        # Count scans this month
-        from datetime import datetime, timedelta
-
-        from app.models.scan import Scan
-
-        first_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-        result = await db.execute(
-            select(sql_func.count(Scan.id)).where(
-                Scan.user_id == current_user.id,
-                Scan.created_at >= first_of_month,
-            )
-        )
-        scan_count = result.scalar() or 0
-
-        if scan_count >= max_scans:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={
-                    "error": "SCAN_LIMIT_EXCEEDED",
-                    "message": f"You've reached your monthly scan limit ({max_scans} scans)",
-                    "current_usage": scan_count,
-                    "limit": max_scans,
-                    "reset_date": (datetime.now() + timedelta(days=30)).isoformat(),
-                    "upgrade_url": "/billing",
-                },
-            )
-
+        await enforce_scan_monthly_limit(current_user, db)
         return await func(current_user=current_user, db=db, *args, **kwargs)
 
     return wrapper
@@ -208,44 +178,19 @@ def check_repository_limit(func: Callable) -> Callable:
         *args,
         **kwargs,
     ):
-        from sqlalchemy import func as sql_func, select
+        from app.services.usage_enforcement import enforce_repository_limit
 
-        user_plan = await get_user_plan(current_user, db)
-        max_repos = get_plan_features(user_plan).get("max_repositories", 0)
-
-        # Unlimited repositories
-        if max_repos == -1:
-            return await func(current_user=current_user, db=db, *args, **kwargs)
-
-        # Count repositories
-        from app.models.repository import Repository
-
-        result = await db.execute(
-            select(sql_func.count(Repository.id)).where(
-                Repository.user_id == current_user.id,
-            )
-        )
-        repo_count = result.scalar() or 0
-
-        if repo_count >= max_repos:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={
-                    "error": "REPOSITORY_LIMIT_EXCEEDED",
-                    "message": f"You've reached your repository limit ({max_repos} repositories)",
-                    "current_usage": repo_count,
-                    "limit": max_repos,
-                    "upgrade_url": "/billing",
-                },
-            )
-
+        await enforce_repository_limit(current_user, db)
         return await func(current_user=current_user, db=db, *args, **kwargs)
 
     return wrapper
 
 
-def should_blur_ai_suggestion(user_plan: PlanTier) -> bool:
+def should_blur_ai_suggestion(user_plan: PlanTier, user: User | None = None) -> bool:
     """Check if AI suggestion should be blurred for user's plan."""
+    if user is not None:
+        ent = resolve_user_entitlements(user, plan_tier=user_plan)
+        return bool(ent.ui_features.get("blur_ai_code", False))
     return is_feature_blurred(user_plan)
 
 

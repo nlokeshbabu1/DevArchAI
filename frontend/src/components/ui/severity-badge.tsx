@@ -1,5 +1,6 @@
-import { cn } from '../../lib/utils'
 import { AlertTriangle, AlertCircle, CheckCircle, Info } from 'lucide-react'
+
+import { cn } from '../../lib/utils'
 
 interface SeverityBadgeProps {
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info'

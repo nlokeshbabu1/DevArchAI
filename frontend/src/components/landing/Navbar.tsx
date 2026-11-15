@@ -1,14 +1,18 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ArrowRight, Menu, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { useProductConfigState } from '../../hooks/useProductConfig'
 import { Button } from '../ui-animated'
 
-const navLinks = [
+
+const navLinksBase = [
   { label: 'Features', href: '#features' },
+  { label: 'Supported Technologies', href: '#technologies' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
-]
+  { label: 'Pricing', href: '#pricing', labelBeta: 'Beta Access' },
+] as const
 
 const NavItem = memo(function NavItem({
   label, href, onClick,
@@ -28,6 +32,11 @@ const NavItem = memo(function NavItem({
 
 export function Navbar() {
   const navigate = useNavigate()
+  const { config } = useProductConfigState()
+  const navLinks = navLinksBase.map((link) => ({
+    ...link,
+    label: config.beta_access_mode && 'labelBeta' in link ? link.labelBeta : link.label,
+  }))
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
@@ -51,7 +60,7 @@ export function Navbar() {
 
   // Keyboard: Escape to close mobile menu
   useEffect(() => {
-    if (!mobileOpen) return
+    if (!mobileOpen) {return}
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMobileOpen(false)
@@ -64,16 +73,16 @@ export function Navbar() {
 
   // Focus trap inside mobile menu
   useEffect(() => {
-    if (!mobileOpen || !mobileMenuRef.current) return
+    if (!mobileOpen || !mobileMenuRef.current) {return}
     const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
     const focusable = mobileMenuRef.current.querySelectorAll<HTMLElement>(focusableSelector)
-    if (focusable.length === 0) return
+    if (focusable.length === 0) {return}
 
     // Focus first element when menu opens
     focusable[0]?.focus()
 
     const handleTab = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return
+      if (e.key !== 'Tab') {return}
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
       if (e.shiftKey) {

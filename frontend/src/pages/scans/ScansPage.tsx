@@ -1,14 +1,19 @@
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Trash2, Eye, Download, FileJson, FileSpreadsheet, FileText, Scan } from 'lucide-react'
-import { Card, Button, Badge, Progress } from '../../components/ui'
-import { scansApi } from '../../api/endpoints/scans'
-import { api } from '../../lib/api'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../stores/auth-store'
+
 import { EmptyState } from '@/components/ui/empty-state'
+
+import { scansApi } from '../../api/endpoints/scans'
+import { Card, Button, Badge, Progress } from '../../components/ui'
+import { toast } from '../../hooks/useToast'
+import { NativeSelect, nativeSelectOptionProps } from '../../components/ui/native-select'
 import { SecurityScore } from '../../components/ui/SecurityScore'
+import { api } from '../../lib/api'
 import { resolveSecurityScore } from '../../lib/security-score'
+import { useAuthStore } from '../../stores/auth-store'
+
 
 interface Scan {
   id: string
@@ -28,6 +33,7 @@ export function ScansPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [scanPendingDelete, setScanPendingDelete] = useState<Scan | null>(null)
   const { token } = useAuthStore()
 
   const { data: scans, isLoading, refetch } = useQuery({
@@ -63,11 +69,20 @@ export function ScansPage() {
   })
 
   const deleteScanMutation = useMutation({
-    mutationFn: async (scanId: string) => {
-      await api.delete(`/scans/${scanId}`)
-    },
+    mutationFn: async (scanId: string) => scansApi.deleteScan(scanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-recent-scans'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-risky-repositories'] })
+      queryClient.invalidateQueries({ queryKey: ['repositories'] })
+      setScanPendingDelete(null)
+      toast.success('Scan deleted')
+    },
+    onError: (error: unknown) => {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || 'Failed to delete scan')
     },
   })
 
@@ -112,7 +127,7 @@ export function ScansPage() {
   }
 
   const filteredScans = (scans || []).filter((scan: Scan) => {
-    if (statusFilter === 'all') return true
+    if (statusFilter === 'all') {return true}
     return scan.status === statusFilter
   })
 
@@ -178,19 +193,19 @@ export function ScansPage() {
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-foreground font-medium">Filter:</span>
-          <select
+          <NativeSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 bg-white border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Filter scans by status"
           >
-            <option value="all">All</option>
-            <option value="pending">Pending</option>
-            <option value="queued">Queued</option>
-            <option value="processing">Processing</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            <option value="all" {...nativeSelectOptionProps()}>All</option>
+            <option value="pending" {...nativeSelectOptionProps()}>Pending</option>
+            <option value="queued" {...nativeSelectOptionProps()}>Queued</option>
+            <option value="processing" {...nativeSelectOptionProps()}>Processing</option>
+            <option value="completed" {...nativeSelectOptionProps()}>Completed</option>
+            <option value="failed" {...nativeSelectOptionProps()}>Failed</option>
+            <option value="cancelled" {...nativeSelectOptionProps()}>Cancelled</option>
+          </NativeSelect>
         </div>
       </Card>
 
@@ -277,7 +292,7 @@ export function ScansPage() {
                           variant="primary"
                           size="sm"
                           className="w-full"
-                          onClick={() => navigate('/history')}
+                          onClick={() => navigate(`/scans/${scan.id}`)}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Report
@@ -322,7 +337,9 @@ export function ScansPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteScanMutation.mutate(scan.id)}
+                      aria-label={`Delete scan for ${scan.repository_url}`}
+                      disabled={deleteScanMutation.isPending}
+                      onClick={() => setScanPendingDelete(scan)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -333,6 +350,36 @@ export function ScansPage() {
           })
         )}
       </div>
+
+      {scanPendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-md p-6" hover={false}>
+            <h2 className="text-lg font-semibold text-foreground">Delete scan?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This permanently removes the scan for{' '}
+              <span className="font-medium text-foreground break-all">{scanPendingDelete.repository_url}</span>
+              . Findings and reports for this scan will be deleted.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                disabled={deleteScanMutation.isPending}
+                onClick={() => setScanPendingDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                loading={deleteScanMutation.isPending}
+                disabled={deleteScanMutation.isPending}
+                onClick={() => deleteScanMutation.mutate(scanPendingDelete.id)}
+              >
+                Delete scan
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

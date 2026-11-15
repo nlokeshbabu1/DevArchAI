@@ -21,6 +21,7 @@ from app.services.github_pr import (
     FixValidationError,
     GitHubPRService,
     PartialFixError,
+    RemediationAtomicFailure,
     generate_pr_title,
 )
 
@@ -236,31 +237,31 @@ async def create_pull_request(
         expires_at=installation_token_data.get("expires_at"),
     )
 
-    # Step 4: Prepare fixes
-    fixes = []
-    for finding in findings:
-        # Prefer full-file output when available to avoid partial patch PRs.
-        fix_code = finding.full_example or finding.fix_code or finding.fix_example
-        if not fix_code:
-            logger.warning(
-                "Skipping finding - no fix code available",
-                finding_id=str(finding.id),
-                rule_id=finding.rule_id
-            )
-            continue
+    # Step 4: Remediation plan is built inside GitHubPRService after clone (live file context).
+    finding_payloads = [
+        {
+            "rule_id": f.rule_id,
+            "rule_name": f.rule_name,
+            "severity": f.severity.value,
+            "description": f.description,
+            "recommendation": f.recommendation,
+            "file_path": f.file_path,
+            "line_number": f.line_number,
+            "confidence": f.confidence_score or f.confidence,
+            "scanner_name": getattr(f, "scanner_name", None),
+            "scanner_rule_id": getattr(f, "scanner_rule_id", None),
+            "package": getattr(f, "package", None),
+            "installed_version": getattr(f, "installed_version", None),
+            "fixed_version": getattr(f, "fixed_version", None),
+            "cve": getattr(f, "cve", None),
+            "cwe": getattr(f, "cwe", None),
+            "references": getattr(f, "references", None),
+            "evidence": getattr(f, "evidence", None),
+        }
+        for f in findings
+    ]
 
-        fixes.append({
-            "file_path": finding.file_path,
-            "fix_code": fix_code,
-            "finding_id": str(finding.id),
-            "rule_id": finding.rule_id,
-        })
-
-    if not fixes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fixes available for selected findings. AI-generated fixes may not be ready yet."
-        )
+    selected_finding_ids = [str(f.id) for f in findings]
 
     # Step 5: Generate branch name, title, and description
     branch_name = request.branch_name or f"devarchai/fix-{request.scan_id}"
@@ -302,7 +303,7 @@ async def create_pull_request(
         )
 
         pr_info = await pr_service.create_pr_with_fixes(
-            fixes=fixes,
+            fixes=[],
             branch_name=branch_name,
             base_branch=scan.branch or "main",
             title=pr_title,
@@ -310,27 +311,13 @@ async def create_pull_request(
             commit_message=commit_message,
             is_draft=request.is_draft,
             scan_id=request.scan_id,
-            findings=[{
-                "rule_id": f.rule_id,
-                "rule_name": f.rule_name,
-                "severity": f.severity.value,
-                "description": f.description,
-                "recommendation": f.recommendation,
-                "file_path": f.file_path,
-                "line_number": f.line_number,
-                "confidence": f.confidence_score or f.confidence,
-                "scanner_name": getattr(f, 'scanner_name', None),
-                "scanner_rule_id": getattr(f, 'scanner_rule_id', None),
-                "package": getattr(f, 'package', None),
-                "installed_version": getattr(f, 'installed_version', None),
-                "fixed_version": getattr(f, 'fixed_version', None),
-                "cve": getattr(f, 'cve', None),
-                "cwe": getattr(f, 'cwe', None),
-                "references": getattr(f, 'references', None),
-                "evidence": getattr(f, 'evidence', None),
-            } for f in findings],
+            findings=finding_payloads,
+            finding_records=findings,
             score_before=score_before,
             score_after=score_after,
+            atomic_mode=request.atomic_mode,
+            scan_commit_hash=scan.commit_hash,
+            scan_detected_stack=scan.detected_stack if isinstance(scan.detected_stack, dict) else None,
         )
 
         # Ensure we persist the actual PR description used.
@@ -349,14 +336,14 @@ async def create_pull_request(
 
         # Provide helpful error messages
         error_msg = str(e)
-        if isinstance(e, (FixApplicationError, PartialFixError, FixValidationError)):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "AI-generated fix output failed validation and the PR was not created.\n\n"
-                    f"{error_msg}"
-                ),
+        if isinstance(e, (FixApplicationError, PartialFixError, FixValidationError, RemediationAtomicFailure)):
+            detail = (
+                "Remediation failed validation and the PR was not created.\n\n"
+                f"{error_msg}"
             )
+            if isinstance(e, RemediationAtomicFailure) and getattr(pr_service, "_remediation_plan", None):
+                detail += "\n\nEnable partial remediation (atomic_mode=false) to create a PR with only validated patches."
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
         if "branch already exists" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -416,6 +403,14 @@ async def create_pull_request(
             )
 
     # Step 7: Save PR to database
+    remediation_report = pr_info.get("remediation_report")
+    findings_fixed = remediation_report.get("outcomes", []) if remediation_report else []
+    applied_ids = [
+        o.get("finding_id")
+        for o in findings_fixed
+        if o.get("status") == "ready" and o.get("finding_id")
+    ] or selected_finding_ids
+
     pr_record = PullRequest(
         scan_id=scan_uuid,
         user_id=current_user.id,
@@ -425,7 +420,7 @@ async def create_pull_request(
         title=pr_title,
         description=pr_description,
         status=PRStatus(pr_info["status"]),
-        findings_fixed=[str(f.id) for f in findings],
+        findings_fixed=applied_ids,
         score_before=score_before,
         score_after=score_after,
     )
@@ -449,11 +444,35 @@ async def create_pull_request(
         branch_name=branch_name,
         title=pr_title,
         status=PRStatus(pr_info["status"]),
-        findings_fixed=[str(f.id) for f in findings],
+        findings_fixed=applied_ids,
         score_before=score_before,
         score_after=score_after,
         created_at=pr_record.created_at,
+        remediation_report=remediation_report,
     )
+
+
+@router.post("/prs/{pr_id}/verify-remediation")
+async def verify_pr_remediation(
+    pr_id: str,
+    rescan_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compare post-merge scan evidence against findings targeted by a remediation PR."""
+    from app.services.remediation_post_merge import verify_post_merge_remediation
+
+    pr_uuid = _parse_uuid(pr_id)
+    rescan_uuid = _parse_uuid(rescan_id) if rescan_id else None
+    report = await verify_post_merge_remediation(
+        db,
+        pr_id=pr_uuid,
+        user_id=current_user.id,
+        rescan_id=rescan_uuid,
+    )
+    if not report.get("success"):
+        raise HTTPException(status_code=404, detail=report.get("error", "Verification failed"))
+    return report
 
 
 @router.get("/prs/{scan_id}")

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Shield, Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { Card, Button } from '../../components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
 import { githubAuthApi } from '../../api/endpoints/github-auth'
+import { Card, Button } from '../../components/ui'
 import { useAuthStore } from '../../stores/auth-store'
 
 export function GithubCallback() {
@@ -19,11 +20,12 @@ export function GithubCallback() {
 
   useEffect(() => {
     // Prevent double processing (React StrictMode)
-    if (hasProcessedRef.current) return
+    if (hasProcessedRef.current) {return}
     hasProcessedRef.current = true
 
     const handleCallback = async () => {
       const code = searchParams.get('code')
+      const state = searchParams.get('state')
       const errorParam = searchParams.get('error')
 
       // Check for OAuth error
@@ -39,9 +41,15 @@ export function GithubCallback() {
         return
       }
 
+      if (!state) {
+        setStatus('error')
+        setError('Missing OAuth state. Please try signing in again.')
+        return
+      }
+
       try {
         // Exchange code for token
-        const tokenResponse = await githubAuthApi.exchangeCodeForToken(code)
+        const tokenResponse = await githubAuthApi.exchangeCodeForToken(code, state)
 
         // Update auth store (token stored in memory only)
         login(tokenResponse.access_token)
@@ -60,9 +68,11 @@ export function GithubCallback() {
         // Clear stale query cache from any previous session
         queryClient.clear()
 
-        // Redirect to dashboard after short delay
+        // Return to the page that requested login (e.g. CLI authorize), else dashboard.
+        const redirectPath = sessionStorage.getItem('postLoginRedirect')
+        sessionStorage.removeItem('postLoginRedirect')
         setTimeout(() => {
-          navigate('/dashboard')
+          navigate(redirectPath || '/dashboard')
         }, 1000)
       } catch (err: any) {
         console.error('GitHub OAuth error:', err)

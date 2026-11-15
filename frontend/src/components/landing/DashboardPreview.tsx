@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Shield, BarChart3, GitBranch, AlertTriangle, CheckCircle, Sparkles, Layers, Server, TrendingUp, Activity, Clock } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 const dashboardHighlights = [

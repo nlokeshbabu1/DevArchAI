@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+
 import { buildWebSocketUrl } from '../lib/api'
 import { getAccessToken } from '../lib/auth-token'
+import { normalizeLifecycleStage } from '../lib/scanLifecycle'
+import { buildWebSocketAuthMessage } from '../lib/ws-auth'
 import type {
   ScanStage,
   ScanLifecycleState,
@@ -14,7 +17,6 @@ import type {
   ScanEventType,
   TechnologyResult,
 } from '../types'
-import { normalizeLifecycleStage } from '../lib/scanLifecycle'
 
 export interface WSMessage {
   type: string
@@ -157,7 +159,7 @@ export function useScanWebSocket({
   }, [])
 
   const applyServerState = useCallback((state: Record<string, any>) => {
-    if (!mountedRef.current) return
+    if (!mountedRef.current) {return}
     const lifecycleStage = normalizeLifecycleStage(state.stage || state.current_stage)
     const techList = state.technologies || state.technology_results || []
     const serverTechs = technologiesFromPayload(techList)
@@ -213,10 +215,10 @@ export function useScanWebSocket({
       const baseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || window.location.origin
       const url = `${baseUrl}/api/v1/scan/state/${id}`
       const headers: Record<string, string> = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
+      if (token) {headers['Authorization'] = `Bearer ${token}`}
 
       const response = await fetch(url, { headers })
-      if (!response.ok) return null
+      if (!response.ok) {return null}
       return await response.json()
     } catch {
       return null
@@ -224,15 +226,11 @@ export function useScanWebSocket({
   }, [])
 
   const connect = useCallback(async () => {
-    if (!scanIdRef.current || !enabledRef.current) return
+    if (!scanIdRef.current || !enabledRef.current) {return}
 
     const token = getAccessToken() || ''
     const st = sessionTokenRef.current || ''
-    let wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
-    const params = new URLSearchParams()
-    if (token) params.set('token', token)
-    if (st) params.set('session_token', st)
-    wsUrl = `${wsUrl}?${params.toString()}`
+    const wsUrl = buildWebSocketUrl(`/ws/scan/${scanIdRef.current}`)
 
     cleanup()
     setLifecycleState('reconnecting')
@@ -243,6 +241,17 @@ export function useScanWebSocket({
 
     ws.onopen = () => {
       if (!mountedRef.current) {
+        ws.close()
+        return
+      }
+      try {
+        ws.send(
+          buildWebSocketAuthMessage({
+            accessToken: token || null,
+            sessionToken: st || null,
+          }),
+        )
+      } catch {
         ws.close()
         return
       }
@@ -265,7 +274,7 @@ export function useScanWebSocket({
     }
 
     ws.onmessage = (event) => {
-      if (!mountedRef.current) return
+      if (!mountedRef.current) {return}
       try {
         const message = JSON.parse(event.data) as WSMessage
         const { type, data } = message
@@ -412,7 +421,7 @@ export function useScanWebSocket({
 
           case 'scanner_start': {
             const scannerId: string = data.scanner_id
-            if (!scannerId) break
+            if (!scannerId) {break}
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
               const scanner: ScannerStatus = {
@@ -434,7 +443,7 @@ export function useScanWebSocket({
 
           case 'scanner_complete': {
             const scannerId: string = data.scanner_id
-            if (!scannerId) break
+            if (!scannerId) {break}
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
               const existing = base.scanners[scannerId]
@@ -483,7 +492,7 @@ export function useScanWebSocket({
               const sev = finding.severity
               const counts = { ...base.severityCounts }
               if (sev in counts) {
-                counts[sev as keyof SeverityCounts]++
+                counts[sev]++
               }
               return {
                 ...base,
@@ -897,7 +906,7 @@ export function useScanWebSocket({
             })
             const techStage = `tech:${key}` as ScanStage
             currentStageRef.current = techStage
-            if (data.message) setStageMessages(prev => ({ ...prev, [techStage]: data.message }))
+            if (data.message) {setStageMessages(prev => ({ ...prev, [techStage]: data.message }))}
             pushEvent(type, { stage: techStage, message: data.message || `Analyzing ${name}` })
             break
           }
@@ -954,11 +963,11 @@ export function useScanWebSocket({
 
           case 'log_message': {
             const msg: string = data.message || ''
-            if (!msg) break
+            if (!msg) {break}
             setScanState(prev => {
               const base = prev ?? buildInitialSnapshot()
               const logs = [...base.logs, msg]
-              if (logs.length > 50) logs.splice(0, logs.length - 50)
+              if (logs.length > 50) {logs.splice(0, logs.length - 50)}
               return { ...base, logs }
             })
             break
@@ -978,7 +987,7 @@ export function useScanWebSocket({
     }
 
     ws.onclose = () => {
-      if (!mountedRef.current) return
+      if (!mountedRef.current) {return}
       wsRef.current = null
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current)
@@ -987,7 +996,7 @@ export function useScanWebSocket({
 
       const syncAndReconnect = async () => {
         const id = scanIdRef.current
-        if (!id) return
+        if (!id) {return}
 
         const state = await fetchScanState(id)
         if (state && mountedRef.current) {

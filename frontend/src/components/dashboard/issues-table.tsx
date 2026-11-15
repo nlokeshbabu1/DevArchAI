@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { cn, sanitizePath } from '../../lib/utils'
-import { SeverityBadge } from '../ui/severity-badge'
 import { AlertTriangle, AlertCircle, CheckCircle, Info, ChevronRight } from 'lucide-react'
+
+import { cn, sanitizePath } from '../../lib/utils'
 import { Button } from '../ui'
+import { SeverityBadge } from '../ui/severity-badge'
 
 interface Issue {
   id: string

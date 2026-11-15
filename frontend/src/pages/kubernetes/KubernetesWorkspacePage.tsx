@@ -1,21 +1,22 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Container, RefreshCw, Loader2, ArrowRight } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { kubernetesApi, type KubernetesInfo } from '@/api/endpoints/kubernetes'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { cn } from '@/lib/utils'
 
 function formatTimeAgo(dateStr?: string | null): string {
-  if (!dateStr) return 'never'
+  if (!dateStr) {return 'never'}
   const diff = Date.now() - new Date(dateStr).getTime()
   const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
+  if (secs < 60) {return `${secs}s ago`}
   const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) {return `${mins}m ago`}
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) {return `${hours}h ago`}
   return `${Math.floor(hours / 24)}d ago`
 }
 
@@ -32,7 +33,7 @@ function healthLabel(status?: string | null): string {
 }
 
 function providerLabel(conn: KubernetesInfo): string {
-  if (conn.kind === 'eks') return 'AWS EKS'
+  if (conn.kind === 'eks') {return 'AWS EKS'}
   return 'Kubernetes'
 }
 

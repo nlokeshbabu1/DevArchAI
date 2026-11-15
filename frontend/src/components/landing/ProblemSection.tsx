@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Key, Hexagon, Layers, GitBranch, AlertTriangle, Container, Cloud, Terminal } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface ProblemCard {

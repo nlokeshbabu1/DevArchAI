@@ -1,5 +1,5 @@
-import { memo, useEffect, useState, useRef } from 'react'
 import { motion, useInView, useReducedMotion } from 'framer-motion'
+import { memo, useEffect, useState, useRef } from 'react'
 
 interface StatItem {
   label: string
@@ -15,7 +15,7 @@ const stats: StatItem[] = [
 ]
 
 function formatValue(value: number, suffix: string): string {
-  if (suffix === 's') return `< ${value}${suffix}`
+  if (suffix === 's') {return `< ${value}${suffix}`}
   return `${value.toLocaleString()}${suffix}`
 }
 
@@ -24,7 +24,7 @@ function AnimatedCounter({ value, suffix, inView }: { value: number; suffix: str
   const [displayValue, setDisplayValue] = useState(0)
 
   useEffect(() => {
-    if (!inView) return
+    if (!inView) {return}
     if (prefersReducedMotion) {
       setDisplayValue(value)
       return

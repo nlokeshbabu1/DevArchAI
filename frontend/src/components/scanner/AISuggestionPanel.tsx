@@ -10,16 +10,17 @@
  * - Fallback message when AI not available
  */
 
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Brain, CheckCircle, Code, Copy, ThumbsUp, ThumbsDown, 
   AlertTriangle, Sparkles, FileText, Terminal, ChevronDown, ChevronUp,
   ExternalLink, BookOpen
 } from 'lucide-react'
-import { Button } from '../ui-animated'
-import { Badge, Card } from '../ui'
+import { useState } from 'react'
+
 import { cn, copyToClipboard } from '../../lib/utils'
+import { Badge, Card } from '../ui'
+import { Button } from '../ui-animated'
 
 interface AISuggestionPanelProps {
   finding: {
@@ -94,12 +95,12 @@ export function AISuggestionPanel({
   }
 
   const getLanguageFromPath = (path: string): string => {
-    if (!path) return 'plaintext'
-    if (path.endsWith('.tf') || path.endsWith('.tfvars')) return 'hcl'
-    if (path.endsWith('.yaml') || path.endsWith('.yml')) return 'yaml'
-    if (path.toLowerCase().includes('dockerfile')) return 'dockerfile'
-    if (path.endsWith('.sh')) return 'bash'
-    if (path.endsWith('.json')) return 'json'
+    if (!path) {return 'plaintext'}
+    if (path.endsWith('.tf') || path.endsWith('.tfvars')) {return 'hcl'}
+    if (path.endsWith('.yaml') || path.endsWith('.yml')) {return 'yaml'}
+    if (path.toLowerCase().includes('dockerfile')) {return 'dockerfile'}
+    if (path.endsWith('.sh')) {return 'bash'}
+    if (path.endsWith('.json')) {return 'json'}
     return 'plaintext'
   }
 

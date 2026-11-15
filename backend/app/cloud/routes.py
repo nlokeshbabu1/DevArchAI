@@ -1229,6 +1229,10 @@ async def _compute_scan_snapshot(
 
 @router.websocket("/ws/{connection_id}")
 async def cloud_scan_websocket(websocket: WebSocket, connection_id: str) -> None:
+    from app.core.websocket_auth import authenticate_cloud_websocket
+
+    if not await authenticate_cloud_websocket(websocket, connection_id):
+        return
     connected = await cloud_ws_manager.connect(connection_id, websocket)
     if not connected:
         return

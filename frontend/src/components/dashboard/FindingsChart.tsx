@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line } from 'recharts'
+
 import { cn } from '../../lib/utils'
 import { Button } from '../ui-animated'
 

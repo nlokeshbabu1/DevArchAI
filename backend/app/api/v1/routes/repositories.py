@@ -47,6 +47,10 @@ async def create_repository(
     db: AsyncSession = Depends(get_db),
 ):
     """Add a new repository to track."""
+    from app.services.usage_enforcement import enforce_repository_limit
+
+    await enforce_repository_limit(current_user, db)
+
     # Validate repository URL
     downloader = RepoDownloader()
     is_valid = await downloader.validate_repository(repo_data.url)

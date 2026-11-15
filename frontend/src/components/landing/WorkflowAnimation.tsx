@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback, memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
   Github, Download, Layers, Box, Hexagon, GitBranch,
   Shield, Sparkles, CheckCircle, FileText, FileDown
 } from 'lucide-react'
+import { useEffect, useState, useCallback, memo } from 'react'
 
 const steps = [
   { icon: Github, label: 'Repository' },
@@ -91,15 +91,15 @@ export function WorkflowAnimation() {
     const runCycle = async () => {
       setActiveIndex(-1)
       await new Promise((r) => setTimeout(r, 1000))
-      if (isCancelled) return
+      if (isCancelled) {return}
 
       for (let i = 0; i < steps.length; i++) {
-        if (isCancelled) return
+        if (isCancelled) {return}
         setActiveIndex(i)
         await new Promise((r) => setTimeout(r, 450))
       }
 
-      if (isCancelled) return
+      if (isCancelled) {return}
       await new Promise((r) => setTimeout(r, 3000))
 
       if (!isCancelled) {

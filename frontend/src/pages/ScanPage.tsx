@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Github, Gitlab, Loader2, AlertCircle, GitBranch, ChevronDown, CheckCircle2, Globe } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { scansApi } from '../api/endpoints/scans'
 import { Card } from '../components/ui-animated'
 import { api } from '../lib/api'
+import { saveScanSessionToken } from '../lib/scan-session'
 import { cn } from '../lib/utils'
-import { scansApi } from '../api/endpoints/scans'
 
 type RepoProvider = 'github' | 'gitlab' | 'unknown'
 interface RepoInfo { owner: string; repo: string; provider: RepoProvider }
@@ -17,16 +18,16 @@ function parseRepoUrl(url: string): RepoInfo | null {
     const trimmed = url.trim().replace(/\/+$/, '')
 
     const ghMatch = trimmed.match(/(?:https?:\/\/)?github\.com\/([^/\s]+)\/([^/\s]+)/i)
-    if (ghMatch) return { owner: ghMatch[1], repo: ghMatch[2].replace(/\.git$/, ''), provider: 'github' }
+    if (ghMatch) {return { owner: ghMatch[1], repo: ghMatch[2].replace(/\.git$/, ''), provider: 'github' }}
 
     const glMatch = trimmed.match(/(?:https?:\/\/)?gitlab\.com\/([^/\s]+(?:\/[^/\s]+)*)\/([^/\s]+)/i)
-    if (glMatch) return { owner: glMatch[1], repo: glMatch[2].replace(/\.git$/, ''), provider: 'gitlab' }
+    if (glMatch) {return { owner: glMatch[1], repo: glMatch[2].replace(/\.git$/, ''), provider: 'gitlab' }}
   } catch { /* ignore */ }
   return null
 }
 
 function ProviderIcon({ provider, className }: { provider: RepoProvider; className?: string }) {
-  if (provider === 'gitlab') return <Gitlab className={className} />
+  if (provider === 'gitlab') {return <Gitlab className={className} />}
   return <Github className={className} />
 }
 
@@ -50,7 +51,7 @@ export function ScanPage() {
 
   const parsed = useMemo(() => parseRepoUrl(repoUrl), [repoUrl])
   const urlValid = useMemo(() => {
-    if (!repoUrl.trim()) return null
+    if (!repoUrl.trim()) {return null}
     return !!parsed
   }, [parsed, repoUrl])
 
@@ -58,7 +59,7 @@ export function ScanPage() {
     queryKey: ['branches', repoUrl],
     queryFn: async () => {
       const trimmedUrl = repoUrl.trim()
-      if (!trimmedUrl || !parsed) return { branches: [], default_branch: 'main' }
+      if (!trimmedUrl || !parsed) {return { branches: [], default_branch: 'main' }}
       const endpoint = parsed.provider === 'gitlab' ? '/gitlab/branches' : '/github/branches'
       try {
         const response = await api.get(endpoint, { params: { repo_url: trimmedUrl } })
@@ -73,8 +74,8 @@ export function ScanPage() {
   })
 
   useEffect(() => {
-    if (!branchesData?.default_branch) return
-    if (initialUrl) return
+    if (!branchesData?.default_branch) {return}
+    if (initialUrl) {return}
     setSelectedBranch(branchesData.default_branch)
   }, [branchesData, initialUrl])
 
@@ -87,7 +88,7 @@ export function ScanPage() {
       autoSubmittedRef.current = true
       const timer = setTimeout(() => {
         const form = document.querySelector('form')
-        if (form) form.requestSubmit()
+        if (form) {form.requestSubmit()}
       }, 800)
       return () => clearTimeout(timer)
     }
@@ -95,14 +96,14 @@ export function ScanPage() {
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowBranchDropdown(false)
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {setShowBranchDropdown(false)}
     }
-    if (showBranchDropdown) document.addEventListener('mousedown', handleClickOutside)
+    if (showBranchDropdown) {document.addEventListener('mousedown', handleClickOutside)}
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showBranchDropdown])
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') setShowBranchDropdown(false)
+    if (e.key === 'Escape') {setShowBranchDropdown(false)}
   }, [])
 
   useEffect(() => {
@@ -122,7 +123,10 @@ export function ScanPage() {
     setError(null)
     try {
       const response = await scansApi.startUnifiedScan({ repository_url: trimmedUrl, branch: selectedBranch || 'main' })
-      if (!response.scan_id) throw new Error('No scan_id returned from server')
+      if (!response.scan_id) {throw new Error('No scan_id returned from server')}
+      if (response.session_token) {
+        saveScanSessionToken(response.scan_id, response.session_token)
+      }
       navigate(`/scans/${response.scan_id}`)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to analyze repository')

@@ -1,6 +1,7 @@
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Server, Loader2, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { useState } from 'react'
+
 import { Button } from '../ui'
 
 interface AzureConnectModalProps {

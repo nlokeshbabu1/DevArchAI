@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test'
 
+import { dismissCookieBanner } from './helpers/ui'
+
 test.describe('Scan Lifecycle', () => {
   test('should navigate to scan form from landing page', async ({ page }) => {
     await page.goto('/')
-    // Click the scan CTA or navigate to /scan
     await page.goto('/scan')
-    await expect(page.locator('h1, h2')).toContainText(/scan/i)
+    await dismissCookieBanner(page)
+    await expect(page.getByRole('heading', { name: /Analyze Your DevOps/i })).toBeVisible()
   })
 
   test('should show scan progress page for a scan id', async ({ page }) => {

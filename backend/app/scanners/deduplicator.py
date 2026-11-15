@@ -52,21 +52,23 @@ def _create_scanner_aware_key(finding: RuleFinding) -> tuple:
 
     # CVE-based grouping is strongest
     if cve:
-        return ("cve", cve, "")
+        return ("cve", cve, _normalize_path(file_path), str(line or 0))
 
-    # SCA findings group by package + rule_id
+    # SCA: same package+rule at different paths are distinct findings
     if package:
         base_rule = rule_id.split("/")[-1] if "/" in rule_id else rule_id
-        return ("package", package, base_rule)
+        return ("package", package, base_rule, _normalize_path(file_path), str(line or 0))
 
-    # File + line for location-based findings
-    if file_path and line:
+    # File + line for location-based findings (include rule cluster + resource)
+    if file_path:
         base_rule = rule_id.split("/")[-1] if "/" in rule_id else rule_id
-        return ("location", file_path, str(line))
+        resource = (finding.resource_name or "").strip().lower()
+        return ("location", file_path, str(line or 0), base_rule, resource)
 
-    # Fallback: rule ID cluster
+    # Fallback: rule + location + scanner (never merge unrelated resources)
     base_rule = rule_id.split("/")[-1] if "/" in rule_id else rule_id
-    return ("rule", base_rule, scanner_id)
+    resource = (finding.resource_name or "").strip().lower()
+    return ("rule", base_rule, _normalize_path(file_path), str(line or 0), resource, scanner_id)
 
 
 def deduplicate_across_scanners(

@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+
 import '@testing-library/jest-dom'
-import { ScannerCards } from './ScannerCards'
 import type { ScannerStatus } from '../../types'
+
+import { ScannerCards } from './ScannerCards'
 
 vi.mock('framer-motion', () => ({
   motion: {

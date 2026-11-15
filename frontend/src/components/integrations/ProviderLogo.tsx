@@ -1,4 +1,3 @@
-import { cn } from '@/lib/utils'
 import {
   Github,
   Gitlab,
@@ -23,6 +22,8 @@ import {
   Workflow,
   GitBranch,
 } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   github: Github,

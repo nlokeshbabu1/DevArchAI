@@ -9,13 +9,24 @@ FROM python:3.11-slim as base
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and scanner CLIs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     gcc \
     libpq-dev \
+    golang-go \
     && rm -rf /var/lib/apt/lists/*
+
+# Optional scanner CLIs used by the scan pipeline (Gitleaks, Hadolint, govulncheck, kube-score)
+# plus core scanners Trivy and Checkov.
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin \
+    && curl -sfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/tools/install.sh | sh -s -- -b /usr/local/bin \
+    && curl -fsSL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 -o /usr/local/bin/hadolint \
+    && chmod +x /usr/local/bin/hadolint \
+    && curl -fsSL https://github.com/zegl/kube-score/releases/download/v1.20.0/kube-score_1.20.0_linux_amd64 -o /usr/local/bin/kube-score \
+    && chmod +x /usr/local/bin/kube-score \
+    && GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest
 
 # ===========================================
 # Builder Stage
@@ -38,7 +49,7 @@ RUN groupadd --gid 1000 appgroup && \
 
 # Copy wheels from builder and install
 COPY --from=builder /app/wheels /wheels
-RUN pip install --no-cache-dir /wheels/*
+RUN pip install --no-cache-dir /wheels/* checkov
 
 # Copy application code
 COPY --chown=appuser:appgroup . .

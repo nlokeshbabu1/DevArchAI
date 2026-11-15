@@ -11,11 +11,10 @@ Tests the full persistence pipeline:
 
 from __future__ import annotations
 
-import os
 import uuid
 
 import pytest
-from sqlalchemy import func as sa_func, select
+from sqlalchemy import func as sa_func, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -38,22 +37,19 @@ from app.models.cloud import (
 )
 
 # ---------------------------------------------------------------------------
-# Fixtures — use the test database configured in pytest.ini or env vars
+# Fixtures — isolated TEST_DATABASE_URL (docker-compose.test.yml)
 # ---------------------------------------------------------------------------
 
-TEST_DB_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/devarchai_test",
-)
-# Convert sync URL to async if needed
-if TEST_DB_URL.startswith("postgresql://"):
-    TEST_DB_URL = TEST_DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+from tests.db_test_config import get_test_async_database_url
+
+TEST_DB_URL = get_test_async_database_url()
 
 
 @pytest.fixture(scope="function")
 async def engine():
     engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True)
     async with engine.begin() as conn:
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield engine
     await engine.dispose()

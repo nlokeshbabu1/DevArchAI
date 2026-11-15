@@ -1,15 +1,19 @@
-import { startTransition, useEffect, useState } from 'react'
-import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '../../lib/utils'
 import {
   Shield, LayoutDashboard, FolderGit2, FileSearch, AlertTriangle,
-  Brain, CreditCard, Settings, LogOut, Menu, X, Search,
-  Zap, Cloud, User, ChevronDown, BookOpen, Plug, Container,
+  Brain, CreditCard, Settings, Menu, X, Search,
+  Zap, Cloud, ChevronDown, BookOpen, Plug, Container,
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { startTransition, useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom'
+
+import { useProductConfig } from '../../hooks/useProductConfig'
+import { cn } from '../../lib/utils'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
 import { Button } from '../ui'
 import { StatusBadge } from '../ui/StatusBadge'
+
+import { UserAccountMenu, userInitials } from './UserAccountMenu'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -58,10 +62,29 @@ const navigation = navigationGroups.flatMap((g) => g.items.filter((i) => i.href)
 export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const productConfig = useProductConfig()
+  const navigationGroupsFiltered = useMemo(
+    () =>
+      navigationGroups.map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => item.href !== '/billing' || productConfig.checkout_enabled
+        ),
+      })),
+    [productConfig.checkout_enabled]
+  )
   const [, setSearchParams] = useSearchParams()
-  const { user, logout } = useAuthStore()
+  const { user, serverLogout, logoutInProgress, isLoading: authLoading } = useAuthStore()
+
+  useEffect(() => {
+    initAuthSync()
+    useAuthStore.getState().checkAuth()
+  }, [])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const headerMenuRef = useRef<HTMLDivElement>(null)
+  const sidebarUserMenuRef = useRef<HTMLDivElement>(null)
   const [dashboardSearch, setDashboardSearch] = useState('')
   const isDashboardRoute = location.pathname === '/dashboard'
 
@@ -94,6 +117,38 @@ export function Layout({ children }: LayoutProps) {
       setSearchParams(nextParams, { replace: true })
     })
   }
+
+  const handleLogout = useCallback(async () => {
+    setUserMenuOpen(false)
+    setHeaderMenuOpen(false)
+    await serverLogout()
+  }, [serverLogout])
+
+  const closeAccountMenus = useCallback(() => {
+    setUserMenuOpen(false)
+    setHeaderMenuOpen(false)
+  }, [])
+
+  const navigateFromMenu = useCallback(
+    (path: string) => {
+      navigate(path)
+      closeAccountMenus()
+      setSidebarOpen(false)
+    },
+    [closeAccountMenus, navigate],
+  )
+
+  useEffect(() => {
+    if (!userMenuOpen && !headerMenuOpen) {return}
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (headerMenuRef.current?.contains(target)) {return}
+      if (sidebarUserMenuRef.current?.contains(target)) {return}
+      closeAccountMenus()
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [userMenuOpen, headerMenuOpen, closeAccountMenus])
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -138,7 +193,7 @@ export function Layout({ children }: LayoutProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto" aria-label="Main navigation">
-          {navigationGroups.map((group) => (
+          {navigationGroupsFiltered.map((group) => (
             <div key={group.label}>
               <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
                 {group.label}
@@ -194,20 +249,23 @@ export function Layout({ children }: LayoutProps) {
 
         {/* User profile - sticky bottom */}
         <div className="p-3 border-t border-white/10">
-          <div className="relative">
+          <div className="relative" ref={sidebarUserMenuRef}>
             <button
+              type="button"
               onClick={() => setUserMenuOpen(!userMenuOpen)}
               className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-white/5 transition-colors"
+              aria-expanded={userMenuOpen}
+              aria-haspopup="menu"
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-indigo-600 flex-shrink-0">
-                <User className="h-4 w-4 text-white" />
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-indigo-600 flex-shrink-0 text-xs font-semibold text-white">
+                {userInitials(user)}
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-medium text-foreground truncate">
-                  {user?.username || 'User'}
+                  {user?.full_name || user?.username || 'Account'}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  {user?.email || 'user@example.com'}
+                  {user?.email || ''}
                 </p>
               </div>
               <ChevronDown className={cn("h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform", userMenuOpen && "rotate-180")} />
@@ -221,19 +279,16 @@ export function Layout({ children }: LayoutProps) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                 >
-                  <div className="p-2">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start gap-2"
-                      onClick={() => {
-                        logout()
-                        navigate('/')
-                      }}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Sign out
-                    </Button>
-                  </div>
+                  <UserAccountMenu
+                    user={user}
+                    productConfig={productConfig}
+                    logoutInProgress={logoutInProgress}
+                    authLoading={authLoading}
+                    onSettings={() => navigateFromMenu('/settings')}
+                    onIntegrations={() => navigateFromMenu('/integrations')}
+                    onBilling={() => navigateFromMenu('/billing')}
+                    onLogout={() => { void handleLogout() }}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -276,9 +331,62 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
-              <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
-              <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
+            <Button
+              variant="primary"
+              size="sm"
+              className="hidden sm:inline-flex"
+              onClick={() => navigate('/scan')}
+            >
+              <Zap className="h-3.5 w-3.5 mr-1.5" aria-hidden />
+              New Scan
+            </Button>
+            {productConfig.beta_access_mode ? (
+              <StatusBadge
+                status="beta"
+                label={productConfig.beta_label || 'Beta — Free Access'}
+                dot
+              />
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30">
+                <Zap className="h-3.5 w-3.5 text-primary" aria-hidden />
+                <span className="text-xs font-medium text-primary">{user?.plan ? `${user.plan} plan` : 'DevArchAI'}</span>
+              </div>
+            )}
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                type="button"
+                onClick={() => setHeaderMenuOpen((open) => !open)}
+                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                aria-expanded={headerMenuOpen}
+                aria-haspopup="menu"
+                aria-label="Account menu"
+              >
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-indigo-600 text-xs font-semibold text-white">
+                  {userInitials(user)}
+                </div>
+                <ChevronDown className={cn('h-4 w-4 text-muted-foreground hidden sm:block', headerMenuOpen && 'rotate-180')} />
+              </button>
+              <AnimatePresence>
+                {headerMenuOpen && (
+                  <motion.div
+                    className="absolute right-0 top-full mt-2 w-72 bg-card border border-white/10 rounded-lg shadow-xl overflow-hidden z-50"
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                  >
+                    <UserAccountMenu
+                      user={user}
+                      productConfig={productConfig}
+                      logoutInProgress={logoutInProgress}
+                      authLoading={authLoading}
+                      onSettings={() => navigateFromMenu('/settings')}
+                      onIntegrations={() => navigateFromMenu('/integrations')}
+                      onBilling={() => navigateFromMenu('/billing')}
+                      onLogout={() => { void handleLogout() }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>

@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Shield, Search, FileCode, Box, Hexagon, Layers, GitBranch, Brain, FileText, FileDown, FileSpreadsheet, BarChart3, Sparkles, Cloud, Lock } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface Capability {
@@ -118,7 +119,7 @@ const capabilities: Capability[] = [
   {
     title: 'Cloud Security',
     icon: Cloud,
-    description: 'Scan AWS, Azure, and GCP configurations for security risks, compliance gaps, and best practices.',
+    description: 'AWS account integration for live cloud posture; Azure and GCP integrations are on the roadmap (Coming Soon in app).',
     severity: [
       { label: 'Critical', count: 4, color: 'text-red-400' },
       { label: 'High', count: 11, color: 'text-orange-400' },

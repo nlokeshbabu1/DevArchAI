@@ -9,6 +9,8 @@ import pytest
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 
+from tests.integration.guest_session import guest_session_headers
+
 BUCKETS = {"critical", "high", "medium", "low", "info"}
 
 
@@ -36,7 +38,8 @@ async def test_scan_results_with_linked_repository_no_lazy_load(client, test_db)
     test_db.add(scan)
     await test_db.commit()
 
-    response = await client.get(f"/api/v1/scan/results/{scan_id}")
+    headers = await guest_session_headers(test_db, scan_id)
+    response = await client.get(f"/api/v1/scan/results/{scan_id}", headers=headers)
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["scan_id"] == str(scan_id)

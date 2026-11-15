@@ -11,12 +11,13 @@ from datetime import datetime
 from uuid import uuid4
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.scan_access import assert_scan_read_access
 from app.core.security import get_current_user, get_optional_user
 from app.core.validators import parse_uuid, validate_branch, validate_repository_url
 from app.db.session import get_db
@@ -150,125 +151,149 @@ async def create_anonymous_scan(
         await store.create_scan(str(scan.id))
         await store.add_log(str(scan.id), f"Scan started for {request.repository_url}")
 
-        # Run scan synchronously for development
-        try:
-            SessionLocal = get_sync_session_factory()
-            sync_db = SessionLocal()
+        from app.workers.tasks.scan_repository import scan_repository_task
+
+        if settings.ENVIRONMENT == "development":
             try:
-                scan_service = SyncScanService(
-                    db=sync_db,
-                    include_ai_explanations=True,
-                    progress_store=store,
-                    scan_id=str(scan.id),
-                )
+                SessionLocal = get_sync_session_factory()
+                sync_db = SessionLocal()
+                try:
+                    scan_service = SyncScanService(
+                        db=sync_db,
+                        include_ai_explanations=True,
+                        progress_store=store,
+                        scan_id=str(scan.id),
+                    )
 
-                # Get fresh scan from sync db
-                from app.models.scan import Scan as SyncScan
-                sync_scan = sync_db.get(SyncScan, scan.id)
+                    from app.models.scan import Scan as SyncScan
+                    sync_scan = sync_db.get(SyncScan, scan.id)
 
-                if sync_scan:
-                    # Execute scan synchronously with progress tracking
-                    updated_scan = scan_service.execute_scan(sync_scan)
+                    if sync_scan:
+                        updated_scan = scan_service.execute_scan(sync_scan)
 
-                    # Copy results back to async session
-                    scan.status = updated_scan.status
-                    scan.progress = updated_scan.progress
-                    scan.overall_score = updated_scan.overall_score
-                    scan.security_score = updated_scan.security_score
-                    scan.completed_at = updated_scan.completed_at
-                    await db.commit()
+                        scan.status = updated_scan.status
+                        scan.progress = updated_scan.progress
+                        scan.overall_score = updated_scan.overall_score
+                        scan.security_score = updated_scan.security_score
+                        scan.completed_at = updated_scan.completed_at
+                        await db.commit()
 
-                    logger.info(f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}")
-            finally:
-                sync_db.close()
+                    logger.info(
+                        f"Sync scan completed: {scan.status.value}, score: {scan.overall_score}"
+                    )
+                finally:
+                    sync_db.close()
 
-        except Exception as scan_error:
-            error_msg = str(scan_error)
+            except Exception as scan_error:
+                error_msg = str(scan_error)
 
-            # If branch not found, try fallback branches
-            if "Could not find remote branch" in error_msg or "not found in upstream" in error_msg:
-                fallback_branches = ["master", "develop", "dev", "main"]
-                if branch in fallback_branches:
-                    fallback_branches.remove(branch)
+                # If branch not found, try fallback branches
+                if "Could not find remote branch" in error_msg or "not found in upstream" in error_msg:
+                    fallback_branches = ["master", "develop", "dev", "main"]
+                    if branch in fallback_branches:
+                        fallback_branches.remove(branch)
 
-                logger.warning(f"Branch '{branch}' not found. Trying fallback branches: {fallback_branches}")
-                await store.add_log(str(scan.id), f"Branch '{branch}' not found, trying fallbacks...")
+                    logger.warning(
+                        f"Branch '{branch}' not found. Trying fallback branches: {fallback_branches}"
+                    )
+                    await store.add_log(str(scan.id), f"Branch '{branch}' not found, trying fallbacks...")
 
-                # Try fallback branches
-                for fallback in fallback_branches:
-                    try:
-                        SessionLocal = get_sync_session_factory()
-                        sync_db = SessionLocal()
+                    for fallback in fallback_branches:
                         try:
-                            scan_service = SyncScanService(
-                                db=sync_db,
-                                include_ai_explanations=True,
-                                progress_store=store,
-                                scan_id=str(scan.id),
+                            SessionLocal = get_sync_session_factory()
+                            sync_db = SessionLocal()
+                            try:
+                                scan_service = SyncScanService(
+                                    db=sync_db,
+                                    include_ai_explanations=True,
+                                    progress_store=store,
+                                    scan_id=str(scan.id),
+                                )
+                                sync_scan = sync_db.get(SyncScan, scan.id)
+
+                                if sync_scan:
+                                    sync_scan.branch = fallback
+                                    updated_scan = scan_service.execute_scan(sync_scan)
+
+                                    scan.branch = fallback
+                                    scan.status = updated_scan.status
+                                    scan.progress = updated_scan.progress
+                                    scan.overall_score = updated_scan.overall_score
+                                    scan.security_score = updated_scan.security_score
+                                    scan.completed_at = updated_scan.completed_at
+                                    await db.commit()
+
+                                    branch = fallback
+                                    logger.info(f"Scan succeeded with fallback branch: {fallback}")
+                                    await store.add_log(
+                                        str(scan.id), f"Using fallback branch: {fallback}"
+                                    )
+                                    break
+                            finally:
+                                sync_db.close()
+                        except Exception as fallback_error:
+                            logger.warning(f"Fallback branch '{fallback}' failed: {fallback_error}")
+                            await store.add_log(
+                                str(scan.id), f"Fallback branch '{fallback}' failed"
                             )
-                            sync_scan = sync_db.get(SyncScan, scan.id)
+                            continue
+                    else:
+                        scan.status = ScanStatus.FAILED
+                        scan.error_message = (
+                            f"Scan failed: No valid branch found. Tried: {branch}, "
+                            f"{', '.join(fallback_branches)}"
+                        )
+                        await db.commit()
+                        await store.fail_scan(str(scan.id), scan.error_message)
 
-                            if sync_scan:
-                                sync_scan.branch = fallback
-                                updated_scan = scan_service.execute_scan(sync_scan)
-
-                                # Update scan record
-                                scan.branch = fallback
-                                scan.status = updated_scan.status
-                                scan.progress = updated_scan.progress
-                                scan.overall_score = updated_scan.overall_score
-                                scan.security_score = updated_scan.security_score
-                                scan.completed_at = updated_scan.completed_at
-                                await db.commit()
-
-                                branch = fallback  # Update branch variable
-                                logger.info(f"Scan succeeded with fallback branch: {fallback}")
-                                await store.add_log(str(scan.id), f"Using fallback branch: {fallback}")
-                                break
-                        finally:
-                            sync_db.close()
-                    except Exception as fallback_error:
-                        logger.warning(f"Fallback branch '{fallback}' failed: {fallback_error}")
-                        await store.add_log(str(scan.id), f"Fallback branch '{fallback}' failed")
-                        continue
+                        return {
+                            "session_token": session_token,
+                            "scan_id": str(scan.id),
+                            "repository_name": repo_name,
+                            "status": "failed",
+                            "message": "Scan failed: No valid branch found. Please specify a valid branch.",
+                            "expires_at": expires_at.isoformat(),
+                        }
                 else:
-                    # All fallbacks failed
+                    logger.exception(f"Sync scan failed: {scan_error}")
                     scan.status = ScanStatus.FAILED
-                    scan.error_message = f"Scan failed: No valid branch found. Tried: {branch}, {', '.join(fallback_branches)}"
+                    scan.error_message = f"Scan error: {str(scan_error)}"
                     await db.commit()
-                    await store.fail_scan(str(scan.id), scan.error_message)
+                    await store.fail_scan(str(scan.id), str(scan_error))
 
                     return {
                         "session_token": session_token,
                         "scan_id": str(scan.id),
                         "repository_name": repo_name,
                         "status": "failed",
-                        "message": "Scan failed: No valid branch found. Please specify a valid branch.",
+                        "message": f"Scan failed: {str(scan_error)}",
                         "expires_at": expires_at.isoformat(),
                     }
-            else:
-                # Other error - mark as failed
-                logger.exception(f"Sync scan failed: {scan_error}")
-                scan.status = ScanStatus.FAILED
-                scan.error_message = f"Scan error: {str(scan_error)}"
-                await db.commit()
-                await store.fail_scan(str(scan.id), str(scan_error))
+        else:
+            task = scan_repository_task.delay(
+                scan_id=str(scan.id),
+                repository_url=scan.repository_url,
+                branch=scan.branch,
+                commit_hash=scan.commit_hash,
+                include_ai_explanations=True,
+            )
+            scan.celery_task_id = task.id
+            scan.status = ScanStatus.QUEUED
+            await db.commit()
+            await store.add_log(str(scan.id), "Scan queued for background processing")
 
-                return {
-                    "session_token": session_token,
-                    "scan_id": str(scan.id),
-                    "repository_name": repo_name,
-                    "status": "failed",
-                    "message": f"Scan failed: {str(scan_error)}",
-                    "expires_at": expires_at.isoformat(),
-                }
+        completion_message = (
+            "Scan completed successfully."
+            if settings.ENVIRONMENT == "development"
+            else "Scan queued successfully."
+        )
 
         return {
             "session_token": session_token,
             "scan_id": str(scan.id),
             "repository_name": repo_name,
             "status": scan.status.value,
-            "message": "Scan completed successfully.",
+            "message": completion_message,
             "branch": branch,
             "expires_at": expires_at.isoformat(),
         }
@@ -285,7 +310,9 @@ async def create_anonymous_scan(
 @router.get("/status/{scan_id}", response_model=dict)
 async def get_scan_status(
     scan_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """
     Get real-time scan progress status.
@@ -295,28 +322,24 @@ async def get_scan_status(
     from app.services.scan_progress_store import get_scan_progress_store
 
     parse_uuid(scan_id, "scan_id")
+
+    result = await db.execute(select(Scan).where(Scan.id == scan_id))
+    scan = result.scalar_one_or_none()
+
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan not found",
+        )
+
+    await assert_scan_read_access(
+        db, scan, current_user, request.headers.get("X-Session-Token")
+    )
+
     store = get_scan_progress_store()
     progress = await store.get_progress(scan_id)
 
     if not progress:
-        # Return scan status from database if progress not found
-        result = await db.execute(select(Scan).where(Scan.id == scan_id))
-        scan = result.scalar_one_or_none()
-
-        if not scan:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Scan not found",
-            )
-
-        # Only expose anonymous scan status via public endpoint
-        if scan.user_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied",
-            )
-
-        # Return completed scan data
         detected_techs = []
         if scan.detected_stack:
             # scan.detected_stack is a dict with "detected_stack" key containing the list

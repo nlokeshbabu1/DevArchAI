@@ -4,10 +4,11 @@ import hashlib
 from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.scan_access import assert_scan_read_access
 from app.core.security import get_optional_user
 from app.core.validators import parse_uuid
 from app.db.session import get_db
@@ -24,6 +25,7 @@ from app.schemas.ai_suggestion import (
     CreatePRResponse,
 )
 from app.services.feature_gating import FeatureGatingService
+from app.services.entitlements import resolve_user_entitlements
 from app.services.github_integration import get_github_integration_service
 
 logger = structlog.get_logger(__name__)
@@ -161,12 +163,12 @@ async def list_all_suggestions(
 @router.get("/{scan_id}", response_model=AISuggestionListResponse)
 async def list_suggestions(
     scan_id: str,
+    request: Request,
     status_filter: str | None = Query(None, description="Filter by status"),
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
     """List AI suggestions for a scan."""
-    # Verify scan exists and user has access
     parse_uuid(scan_id, "scan_id")
     scan_result = await db.execute(select(Scan).where(Scan.id == scan_id))
     scan = scan_result.scalar_one_or_none()
@@ -174,9 +176,9 @@ async def list_suggestions(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    # Check access (public scans or user's own scans)
-    if scan.user_id and scan.user_id != (current_user.id if current_user else None):
-        raise HTTPException(status_code=403, detail="Access denied")
+    await assert_scan_read_access(
+        db, scan, current_user, request.headers.get("X-Session-Token")
+    )
 
     # Build query
     query = select(AISuggestion).where(AISuggestion.scan_id == scan_id)
@@ -276,11 +278,16 @@ async def create_pr(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    user_plan = getattr(current_user, 'subscription_plan', 'free')
-    if user_plan not in ['pro', 'enterprise']:
+    if not FeatureGatingService.can_create_pr(current_user):
+        ent = resolve_user_entitlements(current_user)
         raise HTTPException(
             status_code=403,
-            detail=f"Create PR requires Pro or Enterprise plan. Current plan: {user_plan}",
+            detail={
+                "error": "FEATURE_NOT_AVAILABLE",
+                "message": "Create PR is not available on your current plan",
+                "current_plan": ent.billing_plan,
+                "beta_access_mode": ent.beta_access_mode,
+            },
         )
 
     # Get suggestion with ownership verification
@@ -410,7 +417,12 @@ async def generate_suggestion(
     recommendation = await engine.generate_recommendation(finding, context, fingerprint)
     rec = recommendation.to_dict() if hasattr(recommendation, "to_dict") else recommendation
 
-    fix_code = rec.get("fix_code") or rec.get("fix_example") or rec.get("full_example")
+    fix_code = rec.get("fix_code") or rec.get("fix_example") or ""
+    if not fix_code and rec.get("full_example"):
+        logger.warning(
+            "Generated recommendation has only full_example; not storing as auto-apply fix_code",
+            finding_id=str(finding_id),
+        )
     if not fix_code:
         raise HTTPException(status_code=500, detail="Failed to generate fix")
 

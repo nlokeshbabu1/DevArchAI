@@ -321,7 +321,7 @@ def test_browser_open_uses_explorer_on_wsl():
 def test_auth_logout_clears_token(isolated_env, tmp_path):
     store = SecretStore(config_file=tmp_path / "devsec" / "config.toml")
     store.set_token("dk_abc")
-    result = runner.invoke(app, ["auth", "logout", "--json"])
+    result = runner.invoke(app, ["auth", "logout", "--no-revoke", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["logged_out"] is True
@@ -333,7 +333,7 @@ def test_auth_logout_does_not_clear_env_api_key(isolated_env, tmp_path):
     os.environ["DEVSEC_API_KEY"] = "sk-env-still-here"
     store = SecretStore(config_file=tmp_path / "devsec" / "config.toml")
     store.set_token("sk-local-key")
-    result = runner.invoke(app, ["auth", "logout", "--json"])
+    result = runner.invoke(app, ["auth", "logout", "--no-revoke", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["logged_out"] is True

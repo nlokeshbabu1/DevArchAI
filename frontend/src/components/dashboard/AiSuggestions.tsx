@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { Brain, Lightbulb, ArrowRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+
 import { cn } from '../../lib/utils'
 import { Button } from '../ui-animated'
 

@@ -1,13 +1,15 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, ExternalLink, Loader2, CheckCircle, AlertCircle, GitPullRequest } from 'lucide-react';
+import { useState } from 'react';
+
+import { prApi, type CreatePRResponse } from '../api/endpoints/pull-requests';
 import { Button, Card } from '../components/ui-animated';
-import { prApi } from '../api/endpoints/pull-requests';
 
 interface CreatePRButtonProps {
   scanId: string;
   findingIds?: string[];
-  onSuccess?: (prUrl: string) => void;
+  atomicMode?: boolean;
+  onSuccess?: (prUrl: string, report?: CreatePRResponse['remediation_report']) => void;
 }
 
 type PRStep = 'idle' | 'creating' | 'success' | 'error';
@@ -19,10 +21,12 @@ const stepLabels: Record<PRStep, string> = {
   error: 'Failed to create PR',
 };
 
-export function CreatePRButton({ scanId, findingIds, onSuccess }: CreatePRButtonProps) {
+export function CreatePRButton({ scanId, findingIds, atomicMode = true, onSuccess }: CreatePRButtonProps) {
   const [step, setStep] = useState<PRStep>('idle');
   const [prUrl, setPrUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
+
+  const [remediationSummary, setRemediationSummary] = useState<string>('');
 
   const handleCreatePR = async () => {
     setStep('creating');
@@ -33,13 +37,24 @@ export function CreatePRButton({ scanId, findingIds, onSuccess }: CreatePRButton
         scan_id: scanId,
         finding_ids: findingIds,
         is_draft: false,
+        atomic_mode: atomicMode,
       });
 
       setPrUrl(response.github_pr_url);
+      const report = response.remediation_report;
+      if (report?.outcomes?.length) {
+        const applied = report.outcomes.filter((o) => o.status === 'ready').length;
+        const skipped = report.outcomes.length - applied;
+        setRemediationSummary(
+          `${applied} finding(s) patched${skipped ? `, ${skipped} not auto-applied` : ''}. Re-scan after merge to verify.`
+        );
+      } else {
+        setRemediationSummary('');
+      }
       setStep('success');
 
       if (onSuccess) {
-        onSuccess(response.github_pr_url);
+        onSuccess(response.github_pr_url, response.remediation_report ?? undefined);
       }
     } catch (err: any) {
       console.error('PR creation failed:', err);
@@ -70,8 +85,12 @@ export function CreatePRButton({ scanId, findingIds, onSuccess }: CreatePRButton
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-foreground">Pull Request Created!</h3>
                 <p className="text-sm text-muted-foreground">
-                  AI-generated fixes have been pushed to a new branch
+                  Targeted patches were pushed to a new branch
+                  {atomicMode ? ' (all selected findings)' : ' (partial remediation)'}
                 </p>
+                {remediationSummary ? (
+                  <p className="text-xs text-muted-foreground mt-1">{remediationSummary}</p>
+                ) : null}
               </div>
             </div>
 

@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 from devsec.api.client import ApiClient
 from devsec.api.scans import get_scan_state, get_scan_status, _scan_failure_hint
@@ -93,16 +93,21 @@ class ProgressState:
         return self.status.lower() in {"failed", "cancelled"}
 
 
-def _ws_url(config: Config, scan_id: str, token: str) -> str:
+def _ws_url(config: Config, scan_id: str) -> str:
     parsed = urlparse(config.api_url.rstrip("/"))
     scheme = "wss" if parsed.scheme == "https" else "ws"
     netloc = parsed.netloc
     path = f"/ws/scan/{scan_id}"
+    return urlunparse((scheme, netloc, path, "", "", ""))
+
+
+def _ws_auth_message(token: str) -> str:
+    payload: dict[str, str] = {"type": "auth"}
     if token.startswith(("sk-", "dk_")):
-        query = f"api_key={quote(token, safe='')}"
+        payload["api_key"] = token
     else:
-        query = f"token={quote(token, safe='')}"
-    return urlunparse((scheme, netloc, path, "", query, ""))
+        payload["access_token"] = token
+    return json.dumps(payload)
 
 
 def _can_use_websocket(config: Config) -> bool:
@@ -227,7 +232,8 @@ class ProgressTracker:
         if not token:
             return self._wait_with_polling(on_update=on_update)
 
-        ws_url = _ws_url(self._config, self._scan_id, token)
+        ws_url = _ws_url(self._config, self._scan_id)
+        auth_message = _ws_auth_message(token)
         reconnects = 0
         max_reconnects = 5
         deadline = time.monotonic() + self._timeout
@@ -241,6 +247,7 @@ class ProgressTracker:
                     close_timeout=5,
                     open_timeout=5,
                 ) as websocket:
+                    await websocket.send(auth_message)
                     reconnects = 0
                     while time.monotonic() < deadline:
                         try:

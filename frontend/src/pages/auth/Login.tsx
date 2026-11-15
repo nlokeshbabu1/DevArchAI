@@ -1,25 +1,56 @@
-import { useState, useEffect } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mail, Lock, Eye, EyeOff, Github, Loader2,
   CheckCircle, AlertCircle, ArrowRight, Shield
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/auth-store'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+
 import { authApi } from '../../api/endpoints/auth'
 import { githubAuthApi } from '../../api/endpoints/github-auth'
 import { gitlabAuthApi } from '../../api/endpoints/gitlab-auth'
+import { fetchProductConfig } from '../../hooks/useProductConfig'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { useAuthStore, initAuthSync } from '../../stores/auth-store'
+
 import { AuthLayout } from './AuthLayout'
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
+
+function consumePostLoginRedirect(): string | null {
+  const redirect = sessionStorage.getItem('postLoginRedirect')
+  if (redirect) {
+    sessionStorage.removeItem('postLoginRedirect')
+  }
+  return redirect
+}
 
 export function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const { login, setUser } = useAuthStore()
+  const { login, setUser, isAuthenticated, isLoading: authBootstrapping, checkAuth } = useAuthStore()
+  const manualLoginInProgress = useRef(false)
+
+  useEffect(() => {
+    initAuthSync()
+    if (isAuthenticated) {
+      navigate(consumePostLoginRedirect() || '/dashboard', { replace: true })
+      return
+    }
+    checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (manualLoginInProgress.current) {
+      return
+    }
+    if (!authBootstrapping && isAuthenticated) {
+      navigate(consumePostLoginRedirect() || '/dashboard', { replace: true })
+    }
+  }, [authBootstrapping, isAuthenticated, navigate])
 
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -34,7 +65,7 @@ export function Login() {
   })
 
   useEffect(() => {
-    if (error) setError('')
+    if (error) {setError('')}
   }, [formData.email, formData.password])
 
   useEffect(() => {
@@ -73,8 +104,9 @@ export function Login() {
     setSuccess('')
     setFieldErrors({})
 
-    if (!validateForm()) return
+    if (!validateForm()) {return}
 
+    manualLoginInProgress.current = true
     setIsLoading(true)
 
     try {
@@ -83,12 +115,13 @@ export function Login() {
       login(tokenResponse.access_token)
       setSuccess('Login successful! Redirecting...')
 
+      const redirectPath = sessionStorage.getItem('postLoginRedirect')
+
       try {
         const userResponse = await authApi.getCurrentUser()
         setUser(userResponse)
         queryClient.clear()
 
-        const redirectPath = sessionStorage.getItem('postLoginRedirect')
         const upgradeIntent = sessionStorage.getItem('upgradeIntent')
 
         if (upgradeIntent === 'true') {
@@ -97,6 +130,13 @@ export function Login() {
           sessionStorage.removeItem('upgradeIntent')
           sessionStorage.removeItem('upgradePlan')
           sessionStorage.removeItem('postLoginRedirect')
+
+          const productConfig = await fetchProductConfig()
+          if (!productConfig.checkout_enabled) {
+            navigate(targetRedirect)
+            return
+          }
+
           try {
             const data = await createCheckout(
               { plan, billing: 'monthly' },
@@ -116,9 +156,11 @@ export function Login() {
         }
       } catch {
         queryClient.clear()
-        navigate('/dashboard')
+        sessionStorage.removeItem('postLoginRedirect')
+        navigate(redirectPath || '/dashboard')
       }
     } catch (err: any) {
+      manualLoginInProgress.current = false
       const errorMessage = err.response?.data?.detail || 'Login failed. Please check your credentials.'
       setError(errorMessage)
       setShakeField('form')
@@ -162,6 +204,17 @@ export function Login() {
       setError('GitLab OAuth is not configured.')
       setIsLoading(false)
     }
+  }
+
+  if (authBootstrapping) {
+    return (
+      <AuthLayout>
+        <div className="flex flex-col items-center justify-center py-16 gap-4" role="status" aria-live="polite">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-slate-400">Restoring your session…</p>
+        </div>
+      </AuthLayout>
+    )
   }
 
   return (

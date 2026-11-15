@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Shield, AlertTriangle, AlertCircle, Info } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect, useCallback } from 'react'
+
 import { cloudApi, type CloudFinding } from '@/api/endpoints/cloud'
+import { cn } from '@/lib/utils'
 import { useCloudStore } from '@/stores/cloud-store'
 
 interface Props {
@@ -39,7 +40,7 @@ export function SecurityFindings({ connectionId }: Props) {
   }, [load])
 
   const filtered = findings.filter((f) => {
-    if (severityFilter !== 'all' && f.severity !== severityFilter) return false
+    if (severityFilter !== 'all' && f.severity !== severityFilter) {return false}
     if (search) {
       const q = search.toLowerCase()
       return f.title.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)

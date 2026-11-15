@@ -1,8 +1,11 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, AlertTriangle, TrendingUp, FolderGit2, Info } from 'lucide-react'
+import { memo } from 'react'
+
+import { SECURITY_SCORE_HELP } from '../../lib/security-score'
 import { cn } from '../../lib/utils'
 import { SecurityScore } from '../ui/SecurityScore'
+
 import type { KpiData } from './KpiRow'
 
 interface SecurityOverviewProps {
@@ -12,18 +15,21 @@ interface SecurityOverviewProps {
   repositoriesAtRisk: number
   scoreDelta: number | null
   isLoading?: boolean
+  usingFallbackScore?: boolean
 }
 
 export const SecurityOverview = memo(function SecurityOverview({
   securityScore, hasSecurityScore,
   criticalIssues, repositoriesAtRisk,
-  scoreDelta, isLoading
+  scoreDelta, isLoading, usingFallbackScore
 }: SecurityOverviewProps) {
   const overviewItems: KpiData[] = [
     {
       title: 'Security Score',
       value: hasSecurityScore ? securityScore.toFixed(1) : '—',
-      subtitle: hasSecurityScore ? 'Average completed scan score' : 'Run a scan to establish posture',
+      subtitle: hasSecurityScore
+        ? (usingFallbackScore ? 'Estimated from recent scans' : 'From dashboard summary API')
+        : 'Run a scan to establish posture',
       icon: ShieldCheck,
       trend: scoreDelta !== null && scoreDelta > 0 ? 'up' : scoreDelta !== null && scoreDelta < 0 ? 'down' : undefined,
       trendValue: scoreDelta !== null ? `${scoreDelta > 0 ? '+' : ''}${scoreDelta.toFixed(1)}` : undefined,
@@ -96,10 +102,16 @@ export const SecurityOverview = memo(function SecurityOverview({
               showLabel
               animated
             />
-            <p className="text-xs text-muted-foreground mt-4 text-center max-w-[200px] leading-relaxed">
+            <p className="text-xs text-muted-foreground mt-4 text-center max-w-[260px] leading-relaxed">
               {!hasSecurityScore
                 ? 'Run a scan to establish your security posture'
-                : 'Average across completed security scans'}
+                : usingFallbackScore
+                ? 'Derived from your most recent completed scans until summary data is available.'
+                : 'Aggregated from completed scans in your organization.'}
+            </p>
+            <p className="text-[10px] text-muted-foreground/80 mt-2 text-center max-w-[280px] leading-relaxed flex items-start gap-1 justify-center">
+              <Info className="h-3 w-3 shrink-0 mt-0.5" aria-hidden />
+              <span>{SECURITY_SCORE_HELP}</span>
             </p>
           </div>
         </motion.div>

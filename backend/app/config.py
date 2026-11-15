@@ -6,7 +6,7 @@ import logging
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
@@ -332,6 +332,11 @@ class Settings(BaseSettings):
     )
     AI_JOB_MAX_RETRIES: int = Field(default=3, env="AI_JOB_MAX_RETRIES")
     AI_JOB_RETRY_BACKOFF_SECONDS: int = Field(default=30, env="AI_JOB_RETRY_BACKOFF_SECONDS")
+    AI_ELIGIBILITY_INCLUDE_LOW: bool = Field(
+        default=False,
+        env="AI_ELIGIBILITY_INCLUDE_LOW",
+        description="When false, LOW-severity findings are excluded from LLM recommendation jobs (INFO always excluded).",
+    )
 
     # GitHub
     GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
@@ -375,17 +380,61 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, env="REFRESH_TOKEN_EXPIRE_DAYS")
 
-    # Rate Limiting
+    # CLI browser login (PKCE)
+    CLI_AUTH_SESSION_TTL_SECONDS: int = Field(default=600, ge=60, env="CLI_AUTH_SESSION_TTL_SECONDS")
+    CLI_AUTH_CODE_TTL_SECONDS: int = Field(default=120, ge=30, env="CLI_AUTH_CODE_TTL_SECONDS")
+
+    # Rate Limiting (hybrid user + IP; see docs/security/DEVARCHAI_RATE_LIMITING_POLICY.md)
+    RATE_LIMIT_ENABLED: bool = Field(default=True, env="RATE_LIMIT_ENABLED")
+    RATE_LIMIT_GENERAL_WINDOW: int = Field(default=60, env="RATE_LIMIT_GENERAL_WINDOW")
+    RATE_LIMIT_GENERAL_USER: int = Field(default=120, env="RATE_LIMIT_GENERAL_USER")
+    RATE_LIMIT_GENERAL_IP: int = Field(default=600, env="RATE_LIMIT_GENERAL_IP")
+    RATE_LIMIT_GENERAL_ANONYMOUS_IP: int = Field(default=60, env="RATE_LIMIT_GENERAL_ANONYMOUS_IP")
+    RATE_LIMIT_LOGIN_ACCOUNT: int = Field(default=5, env="RATE_LIMIT_LOGIN_ACCOUNT")
+    RATE_LIMIT_LOGIN_ACCOUNT_WINDOW: int = Field(default=900, env="RATE_LIMIT_LOGIN_ACCOUNT_WINDOW")
+    RATE_LIMIT_LOGIN_IP: int = Field(default=20, env="RATE_LIMIT_LOGIN_IP")
+    RATE_LIMIT_LOGIN_IP_WINDOW: int = Field(default=900, env="RATE_LIMIT_LOGIN_IP_WINDOW")
+    RATE_LIMIT_REGISTER_IP: int = Field(default=5, env="RATE_LIMIT_REGISTER_IP")
+    RATE_LIMIT_REGISTER_WINDOW: int = Field(default=3600, env="RATE_LIMIT_REGISTER_WINDOW")
+    RATE_LIMIT_PASSWORD_RESET_ACCOUNT: int = Field(default=3, env="RATE_LIMIT_PASSWORD_RESET_ACCOUNT")
+    RATE_LIMIT_PASSWORD_RESET_ACCOUNT_WINDOW: int = Field(default=3600, env="RATE_LIMIT_PASSWORD_RESET_ACCOUNT_WINDOW")
+    RATE_LIMIT_PASSWORD_RESET_IP: int = Field(default=10, env="RATE_LIMIT_PASSWORD_RESET_IP")
+    RATE_LIMIT_PASSWORD_RESET_IP_WINDOW: int = Field(default=3600, env="RATE_LIMIT_PASSWORD_RESET_IP_WINDOW")
+    RATE_LIMIT_REFRESH_USER: int = Field(default=30, env="RATE_LIMIT_REFRESH_USER")
+    RATE_LIMIT_REFRESH_IP: int = Field(default=120, env="RATE_LIMIT_REFRESH_IP")
+    RATE_LIMIT_REFRESH_WINDOW: int = Field(default=60, env="RATE_LIMIT_REFRESH_WINDOW")
+    RATE_LIMIT_SCAN_START_USER: int = Field(default=5, env="RATE_LIMIT_SCAN_START_USER")
+    RATE_LIMIT_SCAN_START_WINDOW: int = Field(default=60, env="RATE_LIMIT_SCAN_START_WINDOW")
+    RATE_LIMIT_AI_REMEDIATION_USER: int = Field(default=10, env="RATE_LIMIT_AI_REMEDIATION_USER")
+    RATE_LIMIT_AI_EXPLANATION_USER: int = Field(default=20, env="RATE_LIMIT_AI_EXPLANATION_USER")
+    RATE_LIMIT_AI_WINDOW: int = Field(default=60, env="RATE_LIMIT_AI_WINDOW")
+    RATE_LIMIT_REPOSITORY_SYNC_USER: int = Field(default=10, env="RATE_LIMIT_REPOSITORY_SYNC_USER")
+    RATE_LIMIT_REPOSITORY_SYNC_WINDOW: int = Field(default=60, env="RATE_LIMIT_REPOSITORY_SYNC_WINDOW")
+    RATE_LIMIT_SCAN_POLL_USER: int = Field(default=60, env="RATE_LIMIT_SCAN_POLL_USER")
+    RATE_LIMIT_SCAN_POLL_WINDOW: int = Field(default=60, env="RATE_LIMIT_SCAN_POLL_WINDOW")
+    RATE_LIMIT_WS_MAX_CONNECTIONS_USER: int = Field(default=10, env="RATE_LIMIT_WS_MAX_CONNECTIONS_USER")
+    RATE_LIMIT_WS_MAX_CONNECTIONS_IP: int = Field(default=30, env="RATE_LIMIT_WS_MAX_CONNECTIONS_IP")
+    RATE_LIMIT_WS_CONNECTION_WINDOW: int = Field(default=60, env="RATE_LIMIT_WS_CONNECTION_WINDOW")
+    TRUSTED_PROXY_CIDRS: list[str] = Field(
+        default_factory=list,
+        env="TRUSTED_PROXY_CIDRS",
+        description="Comma-separated CIDRs for proxies allowed to set X-Forwarded-For",
+    )
+
+    @field_validator("TRUSTED_PROXY_CIDRS", mode="before")
+    @classmethod
+    def parse_trusted_proxy_cidrs(cls, v):
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            return [part.strip() for part in v.split(",") if part.strip()]
+        return v
+    # Legacy settings (deprecated; kept for compatibility with older .env files)
     RATE_LIMIT_REQUESTS: int = Field(default=100, env="RATE_LIMIT_REQUESTS")
-    RATE_LIMIT_WINDOW: int = Field(default=60, env="RATE_LIMIT_WINDOW")  # seconds
-    RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, env="RATE_LIMIT_AUTH_REQUESTS")  # stricter for auth endpoints
-    RATE_LIMIT_AUTH_WINDOW: int = Field(default=60, env="RATE_LIMIT_AUTH_WINDOW")  # seconds
-    # Refresh is the legitimate, frequent "keep session alive" call and also runs
-    # on every page reload, so it gets a much more generous (per-IP) bucket than
-    # login/register. Otherwise multi-tab or rapid reloads can lock a user out of
-    # restoring their session.
+    RATE_LIMIT_WINDOW: int = Field(default=60, env="RATE_LIMIT_WINDOW")
+    RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, env="RATE_LIMIT_AUTH_REQUESTS")
+    RATE_LIMIT_AUTH_WINDOW: int = Field(default=60, env="RATE_LIMIT_AUTH_WINDOW")
     RATE_LIMIT_REFRESH_REQUESTS: int = Field(default=300, env="RATE_LIMIT_REFRESH_REQUESTS")
-    RATE_LIMIT_REFRESH_WINDOW: int = Field(default=60, env="RATE_LIMIT_REFRESH_WINDOW")  # seconds
 
     # Refresh Token Storage Mode
     AUTH_REFRESH_TOKEN_STORAGE_MODE: Literal["legacy", "hybrid", "cookie_only"] = Field(
@@ -401,7 +450,17 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = Field(default=False, env="COOKIE_SECURE")
     COOKIE_SAMESITE: str = Field(default="Lax", env="COOKIE_SAMESITE")
     COOKIE_DOMAIN: str | None = Field(default=None, env="COOKIE_DOMAIN")
-    COOKIE_PATH: str = Field(default="/api/v1/auth/refresh", env="COOKIE_PATH")
+    COOKIE_PATH: str = Field(default="/", env="COOKIE_PATH")
+    COOKIE_USE_HOST_PREFIX: bool = Field(
+        default=True,
+        env="COOKIE_USE_HOST_PREFIX",
+        description="When COOKIE_SECURE=true, use __Host- cookie prefix and Path=/",
+    )
+    REFRESH_COOKIE_NAME: str = Field(
+        default="devarchai_refresh",
+        env="REFRESH_COOKIE_NAME",
+        description="Refresh cookie name when not using __Host- prefix",
+    )
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
@@ -423,6 +482,24 @@ class Settings(BaseSettings):
     # Anonymous Scans
     ANONYMOUS_SCAN_EXPIRY_HOURS: int = Field(default=24, env="ANONYMOUS_SCAN_EXPIRY_HOURS")
 
+    # ─── Beta access (payment-free) ─────────────────────────────────────
+    BETA_ACCESS_MODE: bool = Field(
+        default=False,
+        env="BETA_ACCESS_MODE",
+        description=(
+            "When true, authenticated users receive Beta entitlements without checkout. "
+            "Default false preserves paid-plan gating."
+        ),
+    )
+    BETA_MAX_SCANS_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_SCANS_PER_MONTH")
+    BETA_MAX_REPOSITORIES: int = Field(default=10, ge=1, env="BETA_MAX_REPOSITORIES")
+    BETA_MAX_REPORTS_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_REPORTS_PER_MONTH")
+    BETA_MAX_CONCURRENT_SCANS: int = Field(default=2, ge=1, env="BETA_MAX_CONCURRENT_SCANS")
+    BETA_MAX_AI_REQUESTS_PER_MONTH: int = Field(default=200, ge=1, env="BETA_MAX_AI_REQUESTS_PER_MONTH")
+    BETA_MAX_AI_TOKENS_PER_MONTH: int = Field(default=500_000, ge=1, env="BETA_MAX_AI_TOKENS_PER_MONTH")
+    BETA_MAX_REMEDIATION_PER_MONTH: int = Field(default=50, ge=1, env="BETA_MAX_REMEDIATION_PER_MONTH")
+    BETA_API_RATE_LIMIT_PER_HOUR: int = Field(default=1000, ge=1, env="BETA_API_RATE_LIMIT_PER_HOUR")
+
     # ─── Payment Providers ─────────────────────────────────────────────
     STRIPE_SECRET_KEY: str | None = Field(default=None, env="STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY: str | None = Field(default=None, env="STRIPE_PUBLISHABLE_KEY")
@@ -436,6 +513,35 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str | None = Field(default=None, env="PAYPAL_CLIENT_ID")
     PAYPAL_CLIENT_SECRET: str | None = Field(default=None, env="PAYPAL_CLIENT_SECRET")
     PAYPAL_MODE: str = Field(default="sandbox", env="PAYPAL_MODE")  # sandbox | live
+
+    @field_validator("COOKIE_SAMESITE", mode="after")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str) -> str:
+        normalized = (v or "Lax").strip().capitalize()
+        if normalized not in {"Lax", "Strict", "None"}:
+            raise ValueError("COOKIE_SAMESITE must be Lax, Strict, or None")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """Fail fast when production would run with insecure auth/cookie defaults."""
+        if self.ENVIRONMENT == "production":
+            if not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SECURE must be true when ENVIRONMENT=production")
+            if self.COOKIE_SAMESITE == "None" and not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SAMESITE=None requires COOKIE_SECURE=true")
+            if not self.CORS_ORIGINS:
+                raise ValueError("CORS_ORIGINS must be explicitly set when ENVIRONMENT=production")
+            if any(origin == "*" for origin in self.CORS_ORIGINS):
+                raise ValueError("CORS_ORIGINS cannot include '*' when allow_credentials is enabled")
+        if self.COOKIE_SAMESITE == "None" and not self.COOKIE_SECURE:
+            raise ValueError("COOKIE_SAMESITE=None requires COOKIE_SECURE=true")
+        if self.BETA_ACCESS_MODE and self.ENVIRONMENT == "production":
+            _config_logger.info(
+                "BETA_ACCESS_MODE is enabled in production — checkout disabled; "
+                "usage limits apply via BETA_MAX_* settings."
+            )
+        return self
 
     @field_validator("SECRET_KEY", mode="after")
     @classmethod

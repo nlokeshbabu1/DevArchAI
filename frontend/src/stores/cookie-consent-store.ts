@@ -1,49 +1,87 @@
 import { create } from 'zustand'
 
-const CONSENT_STORAGE_KEY = 'devarchai:cookie-consent'
+import {
+  ALL_OPTIONAL_CONSENT,
+  CONSENT_VERSION,
+  DEFAULT_CONSENT,
+  ESSENTIAL_ONLY_CONSENT,
+  type ConsentCategory,
+  type ConsentChoices,
+  hasValidConsentRecord,
+  persistConsent,
+  readStoredConsent,
+} from '../lib/cookie-consent'
 
-type ConsentStatus = 'undecided' | 'accepted' | 'rejected'
+type ConsentUiStatus = 'undecided' | 'decided'
 
 interface CookieConsentState {
-  status: ConsentStatus
-  accept: () => void
-  reject: () => void
+  status: ConsentUiStatus
+  choices: ConsentChoices
+  customizeOpen: boolean
+  acceptAll: () => void
+  rejectOptional: () => void
+  openCustomize: () => void
+  closeCustomize: () => void
+  setCategory: (category: ConsentCategory, enabled: boolean) => void
+  saveCustom: () => void
+  reopenSettings: () => void
 }
 
-function readStoredStatus(): ConsentStatus {
-  if (typeof window === 'undefined') {
-    return 'undecided'
+function loadInitial(): { status: ConsentUiStatus; choices: ConsentChoices } {
+  const stored = readStoredConsent()
+  if (stored) {
+    return { status: 'decided', choices: stored.choices }
   }
-  try {
-    const stored = window.localStorage.getItem(CONSENT_STORAGE_KEY)
-    if (stored === 'accepted' || stored === 'rejected') {
-      return stored
-    }
-  } catch {
-    // localStorage unavailable (e.g. blocked); treat as undecided.
-    return 'undecided'
-  }
-  return 'undecided'
+  return { status: 'undecided', choices: DEFAULT_CONSENT }
 }
 
-export const useCookieConsentStore = create<CookieConsentState>()((set) => ({
-  status: readStoredStatus(),
+const initial = loadInitial()
 
-  accept: () => {
-    try {
-      window.localStorage.setItem(CONSENT_STORAGE_KEY, 'accepted')
-    } catch {
-      // ignore storage failures
-    }
-    set({ status: 'accepted' })
+export const useCookieConsentStore = create<CookieConsentState>()((set, get) => ({
+  status: initial.status,
+  choices: initial.choices,
+  customizeOpen: false,
+
+  acceptAll: () => {
+    const record = persistConsent(ALL_OPTIONAL_CONSENT)
+    set({ status: 'decided', choices: record.choices, customizeOpen: false })
   },
 
-  reject: () => {
-    try {
-      window.localStorage.setItem(CONSENT_STORAGE_KEY, 'rejected')
-    } catch {
-      // ignore storage failures
+  rejectOptional: () => {
+    const record = persistConsent(ESSENTIAL_ONLY_CONSENT)
+    set({ status: 'decided', choices: record.choices, customizeOpen: false })
+  },
+
+  openCustomize: () => set({ customizeOpen: true }),
+
+  closeCustomize: () => set({ customizeOpen: false }),
+
+  setCategory: (category, enabled) => {
+    if (category === 'essential') {
+      return
     }
-    set({ status: 'rejected' })
+    set((state) => ({
+      choices: {
+        ...state.choices,
+        [category]: enabled,
+      },
+    }))
+  },
+
+  saveCustom: () => {
+    const record = persistConsent(get().choices)
+    set({ status: 'decided', choices: record.choices, customizeOpen: false })
+  },
+
+  reopenSettings: () => {
+    if (!hasValidConsentRecord()) {
+      set({ status: 'undecided', customizeOpen: false })
+      return
+    }
+    set({ customizeOpen: true })
   },
 }))
+
+export function consentVersion(): number {
+  return CONSENT_VERSION
+}

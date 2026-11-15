@@ -239,10 +239,43 @@ class GitHubIntegrationService:
             if not branch_result["success"]:
                 return branch_result
 
+            # Fetch original file content from base branch for safe patch validation
+            import base64
+
+            original_content = ""
+            async with httpx.AsyncClient() as client:
+                base_file = await client.get(
+                    f"{self.base_url}/repos/{owner}/{repo}/contents/{file_path}",
+                    headers=self.headers,
+                    params={"ref": default_branch},
+                    timeout=10.0,
+                )
+                if base_file.status_code == 200:
+                    payload = base_file.json()
+                    if payload.get("encoding") == "base64" and payload.get("content"):
+                        original_content = base64.b64decode(payload["content"]).decode("utf-8")
+
+            from app.services.remediation_patch import (
+                PatchValidationError,
+                resolve_proposed_content,
+            )
+
+            try:
+                commit_content = resolve_proposed_content(
+                    original_content,
+                    {"fix_code": fix_code},
+                    rel_path=file_path,
+                )
+            except PatchValidationError as exc:
+                return {
+                    "success": False,
+                    "error": f"Unsafe or inapplicable fix rejected: {exc}",
+                }
+
             # Commit fix
             commit_message = f"Fix: {finding_title}\n\nAutomated fix applied by DevArchAI"
             commit_result = await self.commit_file(
-                owner, repo, branch_name, file_path, fix_code, commit_message
+                owner, repo, branch_name, file_path, commit_content, commit_message
             )
             if not commit_result["success"]:
                 return commit_result

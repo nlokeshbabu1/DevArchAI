@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Container, Loader2, CheckCircle, AlertCircle, Cloud as CloudIcon, RefreshCw, ChevronDown } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+
 import { kubernetesApi, type EksCluster } from '@/api/endpoints/kubernetes'
 
 interface EksConnectModalProps {
@@ -33,7 +34,7 @@ export function EksConnectModal({ open, onClose, onConnected, onNeedAws }: EksCo
   const [errorMsg, setErrorMsg] = useState('')
 
   const checkAws = useCallback(async () => {
-    if (!open) return
+    if (!open) {return}
     setState('checking')
     setErrorMsg('')
     try {
@@ -77,7 +78,7 @@ export function EksConnectModal({ open, onClose, onConnected, onNeedAws }: EksCo
   }
 
   const handleConnect = async () => {
-    if (!selected) return
+    if (!selected) {return}
     setState('connecting')
     setErrorMsg('')
     try {

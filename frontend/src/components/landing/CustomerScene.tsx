@@ -1,6 +1,6 @@
-import { useState, useEffect, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Smartphone, Brain, User, Sparkles } from 'lucide-react'
+import { useState, useEffect, memo } from 'react'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -28,7 +28,7 @@ const script: DialogueLine[] = [
 
 function useCurrentLine(t: number) {
   for (let i = script.length - 1; i >= 0; i--) {
-    if (t >= script[i].delay) return script[i]
+    if (t >= script[i].delay) {return script[i]}
   }
   return script[0]
 }
@@ -112,7 +112,7 @@ export const CustomerScene = memo(function CustomerScene() {
   const [playing, setPlaying] = useState(true)
 
   useEffect(() => {
-    if (!playing) return
+    if (!playing) {return}
     let raf: number
     const start = performance.now()
     const tick = (now: number) => {

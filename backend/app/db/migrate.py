@@ -80,7 +80,8 @@ _MIGRATION_MARKERS: list[tuple[str, str, str | None]] = [
     ("032", "knowledge_documents", None),
     ("033", "scan_ai_recommendations", None),
     ("034", "users", "token_encryption_version"),
-    ("035", "plans", "_has_rows"),
+    # Seed migration 035 — use schema marker (rows may be absent if seed was skipped)
+    ("035", "plans", "display_name"),
     ("036", "user_sessions", "token_family"),
     ("037", "finding_ai_jobs", None),
     ("038", "_enum:scanstage", "analyzing_findings"),

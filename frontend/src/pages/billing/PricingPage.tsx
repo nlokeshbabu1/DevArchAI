@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Zap, Shield, Brain, Sparkles, Globe, Lock, ArrowRight, Star, Users, Building2 } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
-import { cn } from '../../lib/utils'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useAuthStore } from '../../stores/auth-store'
+
+import { Button, Card } from '../../components/ui-animated'
+import { useProductConfig } from '../../hooks/useProductConfig'
 import { createCheckout, handleCheckoutResponse } from '../../lib/payment-gateway'
+import { cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 // Pricing data with multi-currency support
 const PRICING_DATA = {
@@ -153,6 +155,7 @@ const DEFAULT_CURRENCY: keyof typeof PRICING_DATA.free.price = 'USD'
 export function PricingPage() {
   const navigate = useNavigate()
   const { user, token } = useAuthStore()
+  const productConfig = useProductConfig()
   const [searchParams] = useSearchParams()
   const [currency, setCurrency] = useState<keyof typeof PRICING_DATA.free.price>(DEFAULT_CURRENCY)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
@@ -184,6 +187,15 @@ export function PricingPage() {
   }, [])
 
   const handleUpgrade = async (plan: string) => {
+    if (!productConfig.checkout_enabled) {
+      if (token) {
+        navigate('/dashboard')
+      } else {
+        navigate('/register')
+      }
+      return
+    }
+
     if (!token) {
       // Save the intended destination before login
       // Use redirect from URL if available, otherwise use default
@@ -223,9 +235,17 @@ export function PricingPage() {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/15 border border-primary/30 mb-6">
             <Globe className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium text-primary">
-              Multi-Currency Pricing
+              {productConfig.beta_access_mode
+                ? productConfig.beta_label || 'Beta — Free Access'
+                : 'Multi-Currency Pricing'}
             </span>
           </div>
+
+          {productConfig.beta_access_mode && (
+            <p className="text-sm text-muted-foreground mb-4">
+              Checkout is disabled during Beta. Register and use the app with configured usage limits at no cost.
+            </p>
+          )}
 
           <h1 className="text-4xl md:text-5xl font-bold mb-4">
             <span className="text-foreground">Choose Your Plan</span>

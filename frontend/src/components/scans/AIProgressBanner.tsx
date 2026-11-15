@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Brain, Loader2, CheckCircle, AlertCircle, Database, Globe, Cpu } from 'lucide-react'
+
 import { cn } from '../../lib/utils'
 import type { AIGenerationProgress } from '../../types'
 

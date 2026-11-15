@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { cn } from '../../lib/utils'
 import { Brain, Lightbulb, Code, CheckCircle, ArrowRight } from 'lucide-react'
+
+import { cn } from '../../lib/utils'
 import { Button } from '../ui'
 import { CodeBlock } from '../ui/code-block'
 

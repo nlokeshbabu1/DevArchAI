@@ -1,6 +1,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
-import { cn } from '../../lib/utils'
+
 import { Button } from '../../components/ui-animated'
+import { cn } from '../../lib/utils'
 
 interface ErrorStateProps {
   title?: string

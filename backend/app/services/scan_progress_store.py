@@ -10,6 +10,11 @@ from datetime import datetime
 import structlog
 
 from app.schemas.scan_progress import ScanProgressResponse, ScanStep, StepStatus
+from app.services.scan_progress_steps import (
+    is_terminal_scan_status,
+    normalize_progress_step_name,
+    progress_store_step_labels,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -62,10 +67,25 @@ class ScanProgressStore:
             progress_obj = self._store[scan_id]
             # Track previous progress for staleness detection
             progress_obj._last_progress = progress_obj.progress
+
+            if is_terminal_scan_status(progress_obj.status) and status == "running":
+                logger.warning(
+                    f"[LIFECYCLE] scan={scan_id} event=UPDATE_SKIP "
+                    f"reason=terminal_to_running prev={progress_obj.status}"
+                )
+                return
+
             progress_obj.status = status
-            progress_obj.progress = progress
+            if status in ("running", "pending"):
+                progress_obj.progress = max(progress_obj.progress, progress)
+            elif status in ("completed", "failed"):
+                progress_obj.progress = progress
+            else:
+                progress_obj.progress = max(progress_obj.progress, progress)
+
             if current_step:
-                progress_obj.current_step = current_step
+                canonical = normalize_progress_step_name(current_step) or current_step
+                progress_obj.current_step = canonical
 
             logger.debug(
                 f"[LIFECYCLE] scan={scan_id} event=STORE_UPDATE "
@@ -80,8 +100,15 @@ class ScanProgressStore:
                 return
 
             progress_obj = self._store[scan_id]
+            canonical = normalize_progress_step_name(step_name)
+            if canonical is None:
+                logger.debug(
+                    f"[LIFECYCLE] scan={scan_id} event=STEP_SKIP reason=unknown_step name={step_name!r}"
+                )
+                return
+
             for step in progress_obj.steps:
-                if step.name == step_name:
+                if step.name == canonical:
                     step.status = status
                     step.progress = progress
                     if error:
@@ -162,12 +189,14 @@ class ScanProgressStore:
             progress_obj.progress = 100
             progress_obj.completed_at = datetime.utcnow()
 
-            # Mark all steps as completed
+            # Mark all steps as completed (including in-progress steps)
+            now = datetime.utcnow()
             for step in progress_obj.steps:
-                if step.status == StepStatus.PENDING:
+                if step.status != StepStatus.COMPLETED:
                     step.status = StepStatus.COMPLETED
                     step.progress = 100
-                    step.completed_at = datetime.utcnow()
+                    if not step.completed_at:
+                        step.completed_at = now
 
             logger.info(
                 f"[LIFECYCLE] scan={scan_id} event=STORE_COMPLETE "
@@ -215,13 +244,10 @@ class ScanProgressStore:
                 logger.debug(f"Cleaned up old scan: {scan_id}")
 
     def _get_default_steps(self) -> list[ScanStep]:
-        """Get default scan steps aligned with user-facing lifecycle."""
+        """Default steps — same order and labels as ``scan_lifecycle`` UI stages."""
         return [
-            ScanStep(name="Connect to repository", status=StepStatus.PENDING),
-            ScanStep(name="Clone repository", status=StepStatus.PENDING),
-            ScanStep(name="Security scan", status=StepStatus.PENDING),
-            ScanStep(name="Detect technologies", status=StepStatus.PENDING),
-            ScanStep(name="Analyze findings", status=StepStatus.PENDING),
+            ScanStep(name=label, status=StepStatus.PENDING)
+            for label in progress_store_step_labels()
         ]
 
 

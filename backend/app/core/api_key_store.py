@@ -14,6 +14,8 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.security import hash_token
+
 _api_keys_store: dict[str, list[dict]] = {}
 
 _lock = threading.Lock()
@@ -32,6 +34,20 @@ def _load() -> None:
     except (OSError, ValueError):
         data = {}
     _api_keys_store = data if isinstance(data, dict) else {}
+    _migrate_plaintext_keys()
+
+
+def _migrate_plaintext_keys() -> None:
+    """Hash legacy entries that still store raw key material on disk."""
+    changed = False
+    for keys in _api_keys_store.values():
+        for entry in keys:
+            raw = entry.pop("full_key", None)
+            if raw and not entry.get("key_hash"):
+                entry["key_hash"] = hash_token(raw)
+                changed = True
+    if changed:
+        _save()
 
 
 def _save() -> None:
@@ -56,14 +72,14 @@ def create_api_key_entry(user_id: str, name: str = "") -> dict:
             "id": key_id,
             "name": name,
             "masked_key": f"sk-****{raw_key[-4:]}",
-            "full_key": raw_key,
+            "key_hash": hash_token(raw_key),
             "created_at": now,
         }
         if user_id not in _api_keys_store:
             _api_keys_store[user_id] = []
         _api_keys_store[user_id].insert(0, entry)
         _save()
-        return entry
+        return {**entry, "full_key": raw_key}
 
 
 def list_api_keys(user_id: str) -> list[dict]:
@@ -93,10 +109,17 @@ def revoke_api_key(user_id: str, key_id: str) -> bool:
 
 def revoke_key_by_value(user_id: str, raw_key: str) -> bool:
     """Revoke a key by its raw value; returns True when a key was removed."""
+    key_hash = hash_token(raw_key)
     with _lock:
         keys = _api_keys_store.get(user_id, [])
         before = len(keys)
-        _api_keys_store[user_id] = [k for k in keys if k.get("full_key") != raw_key]
+
+        def _matches(entry: dict) -> bool:
+            if entry.get("key_hash") == key_hash:
+                return True
+            return entry.get("full_key") == raw_key
+
+        _api_keys_store[user_id] = [k for k in keys if not _matches(k)]
         removed = len(_api_keys_store[user_id]) != before
         if removed:
             _save()
@@ -112,8 +135,11 @@ def remove_all_api_keys(user_id: str) -> None:
 
 def lookup_user_id_by_key(raw_key: str) -> str | None:
     """Return the user id that owns ``raw_key``, or None."""
+    key_hash = hash_token(raw_key)
     for uid, keys in _api_keys_store.items():
         for k in keys:
+            if k.get("key_hash") == key_hash:
+                return uid
             if k.get("full_key") == raw_key:
                 return uid
     return None

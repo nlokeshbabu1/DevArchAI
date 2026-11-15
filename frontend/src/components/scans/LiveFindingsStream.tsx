@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, AlertCircle, Info, Shield, ChevronRight } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { cn } from '../../lib/utils'
 import type { LiveFinding } from '../../types'

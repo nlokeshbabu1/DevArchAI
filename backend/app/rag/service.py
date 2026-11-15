@@ -27,10 +27,12 @@ logger = structlog.get_logger(__name__)
 class RagKnowledgeService:
     """Facade over ingestion + retrieval + inventory."""
 
-    def __init__(self) -> None:
+    def __init__(self, session_factory: Any | None = None) -> None:
         self._inventory = get_inventory()
         self._ingestion = get_ingestion_service()
-        self._retrieval = get_retrieval_service()
+        from app.rag.retrieval import create_retrieval_service
+
+        self._retrieval = create_retrieval_service(session_factory)
 
     # ------------------------------------------------------------------
     # Knowledge queries
@@ -132,3 +134,10 @@ def get_rag_service() -> RagKnowledgeService:
     if _rag_service is None:
         _rag_service = RagKnowledgeService()
     return _rag_service
+
+
+def create_rag_service(session_factory: Any | None = None) -> RagKnowledgeService:
+    """Build a RAG service bound to a specific async session factory."""
+    if session_factory is None:
+        return get_rag_service()
+    return RagKnowledgeService(session_factory=session_factory)

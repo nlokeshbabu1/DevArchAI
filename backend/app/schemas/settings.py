@@ -65,4 +65,6 @@ class CreateApiKeyResponse(BaseModel):
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str
+    password: str | None = None
+    confirmation: str | None = None
+    provider: str | None = None

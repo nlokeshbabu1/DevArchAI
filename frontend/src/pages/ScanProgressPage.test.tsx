@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { MemoryRouter } from 'react-router-dom'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, useNavigate, useParams } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('framer-motion', () => {
   const createMotionComponent = (tag: string) => {
@@ -46,6 +47,14 @@ vi.mock('../api/endpoints/scans', () => ({
     getStages: (...args: any[]) => mockGetStages(...args),
     getScanState: (...args: any[]) => mockGetScanState(...args),
     getScanResults: (...args: any[]) => mockGetScanResults(...args),
+    getAiStatus: vi.fn(async () => ({ ai_status: 'completed', total_jobs: 0, by_status: {} })),
+  },
+}))
+
+vi.mock('../stores/auth-store', () => ({
+  useAuthStore: (selector?: (s: { isLoading: boolean; sessionChecked: boolean }) => unknown) => {
+    const state = { isLoading: false, sessionChecked: true }
+    return selector ? selector(state) : state
   },
 }))
 
@@ -89,9 +98,9 @@ vi.mock('../components/ui-animated', () => ({
   Card: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }))
 
-import { ScanProgressPage } from './ScanProgressPage'
-import { useParams, useNavigate } from 'react-router-dom'
 import { useScanWebSocket } from '../hooks/useScanWebSocket'
+
+import { ScanProgressPage } from './ScanProgressPage'
 
 function createTestQueryClient() {
   return new QueryClient({

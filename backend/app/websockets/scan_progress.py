@@ -19,6 +19,7 @@ from typing import Any
 
 import structlog
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 logger = structlog.get_logger(__name__)
 
@@ -131,8 +132,16 @@ class ScanProgressWebSocketManager:
             True if the connection was accepted successfully.
         """
         try:
-            await websocket.accept()
+            client_state = getattr(websocket, "client_state", WebSocketState.CONNECTING)
+            if client_state != WebSocketState.CONNECTED:
+                await websocket.accept()
             async with self._lock:
+                if websocket in self._active:
+                    logger.debug(
+                        "WebSocket already registered",
+                        scan_id=self._active[websocket],
+                    )
+                    return True
                 self._connections[scan_id].append(websocket)
                 self._active[websocket] = scan_id
 
@@ -914,145 +923,6 @@ class ScanProgressWebSocketManager:
 scan_progress_manager = ScanProgressWebSocketManager()
 
 
-async def _authenticate_websocket(
-    websocket: WebSocket,
-    scan_id: str,
-) -> bool:
-    """
-    Validate JWT token, API key, or session_token from query params and verify scan ownership.
-    Returns True if authenticated and authorized, False otherwise.
-    """
-    from uuid import UUID
-
-    from sqlalchemy import select
-
-    from app.core.security import decode_token
-    from app.db.session import get_sync_session_factory
-    from app.models.scan import Scan
-
-    token = websocket.query_params.get("token", "")
-    api_key = websocket.query_params.get("api_key", "")
-    session_token = websocket.query_params.get("session_token", "")
-
-    def _verify_scan_owner(user_id: UUID) -> bool:
-        sync_db = get_sync_session_factory()()
-        try:
-            try:
-                scan_uuid = UUID(scan_id)
-            except ValueError:
-                return False
-            result = sync_db.execute(
-                select(Scan).where(Scan.id == scan_uuid, Scan.user_id == user_id)
-            )
-            return result.scalar_one_or_none() is not None
-        finally:
-            sync_db.close()
-
-    def _user_from_api_key(key: str):
-        from app.models.user import User
-
-        if key.startswith("sk-"):
-            from app.core.api_key_store import lookup_user_id_by_key
-
-            uid = lookup_user_id_by_key(key)
-            if not uid:
-                return None
-            sync_db = get_sync_session_factory()()
-            try:
-                result = sync_db.execute(
-                    select(User).where(User.id == UUID(uid), User.is_active.is_(True))
-                )
-                return result.scalar_one_or_none()
-            finally:
-                sync_db.close()
-
-        if "_" not in key or not key.startswith("dk_"):
-            return None
-
-        prefix = key.rsplit("_", 1)[0]
-        sync_db = get_sync_session_factory()()
-        try:
-            from app.models.user import User
-
-            result = sync_db.execute(
-                select(User).where(User.api_key_prefix == prefix, User.is_active.is_(True))
-            )
-            user = result.scalar_one_or_none()
-            if user and user.api_key == key:
-                return user
-        finally:
-            sync_db.close()
-        return None
-
-    # API key authentication (CLI uses sk- keys via ?api_key=)
-    if api_key:
-        user = _user_from_api_key(api_key)
-        if user and _verify_scan_owner(user.id):
-            return True
-        await websocket.close(code=4001, reason="Invalid API key or access denied")
-        return False
-
-    # Try JWT authentication first
-    if token:
-        payload = decode_token(token)
-        if payload:
-            user_id = payload.get("sub")
-            if user_id:
-                try:
-                    user_uuid = UUID(user_id)
-                except ValueError:
-                    await websocket.close(code=4001, reason="Invalid user identifier")
-                    return False
-
-                # Verify scan ownership
-                sync_db = get_sync_session_factory()()
-                try:
-                    try:
-                        scan_uuid = UUID(scan_id)
-                    except ValueError:
-                        await websocket.close(code=4001, reason="Invalid scan identifier")
-                        return False
-
-                    result = sync_db.execute(
-                        select(Scan).where(Scan.id == scan_uuid, Scan.user_id == user_uuid)
-                    )
-                    scan = result.scalar_one_or_none()
-                    if not scan:
-                        await websocket.close(code=4003, reason="Access denied: scan not found")
-                        return False
-                finally:
-                    sync_db.close()
-                return True
-
-    # Try session_token authentication (guest users)
-    if session_token:
-        from app.models.anonymous_scan import AnonymousScan
-        sync_db = get_sync_session_factory()()
-        try:
-            result = sync_db.execute(
-                select(AnonymousScan).where(
-                    AnonymousScan.session_token == session_token,
-                    AnonymousScan.linked_scan_id == scan_id,
-                )
-            )
-            anon_scan = result.scalar_one_or_none()
-            if not anon_scan:
-                await websocket.close(code=4003, reason="Access denied: invalid session")
-                return False
-            # Check expiry
-            if anon_scan.expires_at and anon_scan.expires_at < datetime.now(UTC):
-                await websocket.close(code=4003, reason="Session expired")
-                return False
-        finally:
-            sync_db.close()
-        return True
-
-    # No authentication provided
-    logger.warning("WebSocket auth failed: no token", scan_id=scan_id)
-    await websocket.close(code=4001, reason="Authentication required")
-    return False
-
-
 async def scan_progress_websocket(
     websocket: WebSocket,
     scan_id: str,
@@ -1069,7 +939,7 @@ async def scan_progress_websocket(
             await scan_progress_websocket(websocket, scan_id)
 
     The handler manages the full connection lifecycle:
-    0. Authenticates via JWT token from query params and verifies scan ownership
+    0. Authenticates via first WebSocket message (no URL tokens) and verifies scan ownership
     1. Accepts the connection and registers it with the manager
     2. Sends an initial snapshot of progress (if available)
     3. Keeps the connection open, receiving optional client messages
@@ -1077,8 +947,10 @@ async def scan_progress_websocket(
 
     Heartbeat: Sends ping every 15s. If no pong received within 10s, closes connection.
     """
+    from app.core.websocket_auth import authenticate_scan_websocket
+
     # 0. Tenant isolation: authenticate and authorize
-    if not await _authenticate_websocket(websocket, scan_id):
+    if not await authenticate_scan_websocket(websocket, scan_id):
         return
 
     # 1. Connect

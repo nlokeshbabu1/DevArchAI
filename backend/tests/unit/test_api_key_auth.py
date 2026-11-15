@@ -30,6 +30,7 @@ def _make_user(user_id: uuid.UUID, **kwargs) -> User:
 def _fake_db(user: User | None = None):
     db = MagicMock()
     db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: user))
+    db.commit = AsyncMock()
     return db
 
 

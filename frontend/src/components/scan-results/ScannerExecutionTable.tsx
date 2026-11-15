@@ -1,4 +1,5 @@
 import { Shield, CheckCircle2, AlertCircle, Clock, XCircle, HelpCircle, Loader2 } from "lucide-react"
+
 import { cn, formatDuration, getScannerPurpose, isScannerOptional } from "../../lib/utils"
 import type { ScannerExecution } from "../../types"
 
@@ -27,7 +28,7 @@ function getHealthStatus(exec: ScannerExecution): { label: string; color: string
     return { label: "Unavailable", color: "text-zinc-400 bg-zinc-500/10", icon: HelpCircle }
   }
   const cfg = STATUS_CONFIG[exec.status]
-  if (cfg) return cfg
+  if (cfg) {return cfg}
   return { label: exec.status, color: "text-white/30 bg-white/[0.03]", icon: Clock }
 }
 
@@ -51,24 +52,24 @@ function getDefaultNotApplicableReason(scannerId: string): string {
 }
 
 function getReason(exec: ScannerExecution): string {
-  if (exec.status === "SKIPPED_NOT_APPLICABLE") return exec.skipped_reason || getDefaultNotApplicableReason(exec.scanner_id)
-  if (exec.status === "UNAVAILABLE") return exec.skipped_reason || `CLI not installed`
+  if (exec.status === "SKIPPED_NOT_APPLICABLE") {return exec.skipped_reason || getDefaultNotApplicableReason(exec.scanner_id)}
+  if (exec.status === "UNAVAILABLE") {return exec.skipped_reason || `CLI not installed`}
   if (exec.status === "DISABLED") {
-    if (isScannerOptional(exec.scanner_id)) return "Scanner can improve coverage but is not required"
+    if (isScannerOptional(exec.scanner_id)) {return "Scanner can improve coverage but is not required"}
     return exec.skipped_reason || "Scanner not enabled on current worker"
   }
-  if (exec.status === "FAILED") return exec.error_message || ""
-  if (exec.status === "COMPLETED_NO_FINDINGS") return "No security issues found"
+  if (exec.status === "FAILED") {return exec.error_message || ""}
+  if (exec.status === "COMPLETED_NO_FINDINGS") {return "No security issues found"}
   return ""
 }
 
 function formatExecDuration(ms: number | null): string {
-  if (ms === null || ms === undefined) return "—"
+  if (ms === null || ms === undefined) {return "—"}
   return formatDuration(ms / 1000)
 }
 
 export function ScannerExecutionTable({ executions }: ScannerHealthProps) {
-  if (!executions || executions.length === 0) return null
+  if (!executions || executions.length === 0) {return null}
 
   const ordered = [...executions].sort((a, b) => {
     const order = ["COMPLETED", "COMPLETED_WITH_FINDINGS", "COMPLETED_NO_FINDINGS", "FAILED", "RUNNING", "SKIPPED_NOT_APPLICABLE", "UNAVAILABLE"]

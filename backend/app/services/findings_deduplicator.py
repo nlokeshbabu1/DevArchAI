@@ -59,8 +59,14 @@ class FindingsDeduplicator:
     findings.  All duplicate metadata is aggregated into the merged result.
     """
 
-    # Fields that form the unique deduplication key
-    _DEDUP_KEY_FIELDS: list[str] = ["rule_id", "file_path", "line_number"]
+    # Fields that form the unique deduplication key (include resource + scanner)
+    _DEDUP_KEY_FIELDS: list[str] = [
+        "rule_id",
+        "file_path",
+        "line_number",
+        "resource_name",
+        "scanner_name",
+    ]
 
     def __init__(self) -> None:
         self.stats = DeduplicationStats()
@@ -138,7 +144,10 @@ class FindingsDeduplicator:
         parts: list[str] = []
         for field_name in self._DEDUP_KEY_FIELDS:
             value = getattr(finding, field_name, None)
-            parts.append(str(value) if value is not None else "")
+            if field_name == "scanner_name":
+                parts.append(str(value).strip() if value else "DevArchAI")
+            else:
+                parts.append(str(value) if value is not None else "")
         return "|".join(parts)
 
     def _is_ai_enriched(self, finding: RuleFinding) -> bool:

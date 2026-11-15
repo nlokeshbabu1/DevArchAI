@@ -254,7 +254,14 @@ class RepositoryScanner:
             if k8s_path.exists():
                 scan_dirs.append(k8s_path)
 
+        repo_resolved = repo.resolve()
         for file_path in repo.rglob("*"):
+            if file_path.is_symlink():
+                continue
+            try:
+                file_path.resolve().relative_to(repo_resolved)
+            except ValueError:
+                continue
             if not file_path.is_file():
                 continue
 
@@ -326,9 +333,12 @@ class RepositoryScanner:
     def _calculate_dir_size(self, dir_path: str) -> float:
         """Calculate directory size in MB."""
         total_size = 0
-        for dirpath, dirnames, filenames in os.walk(dir_path):
+        for dirpath, dirnames, filenames in os.walk(dir_path, followlinks=False):
+            dirnames[:] = [d for d in dirnames if not os.path.islink(os.path.join(dirpath, d))]
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
+                if os.path.islink(file_path):
+                    continue
                 if os.path.exists(file_path):
                     total_size += os.path.getsize(file_path)
         return total_size / (1024 * 1024)  # Convert to MB

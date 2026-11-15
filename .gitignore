@@ -144,6 +144,7 @@ frontend/.eslintcache
 frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
+frontend/tests/e2e/.e2e-state.json
 
 # ===========================================
 # 🐳 DOCKER
@@ -413,6 +414,19 @@ profiling/
 # Vault
 .vault/
 vault-token
+
+# ===========================================
+# 🧪 EXPERIMENTAL & FEATURE FLAGS
+# ===========================================
+
+docs/*
+scripts/*
+
+########
+# not required for now, but can be uncommented if needed
+.cursor/*
+.impeccable/*
+.opencode/*
 
 # ===========================================
 # 📦 DEPENDENCY LOCKS (Optional)

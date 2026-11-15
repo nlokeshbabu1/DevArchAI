@@ -62,8 +62,14 @@ def _to_result_document(row: KnowledgeDocument, score: float = 0.0) -> RagResult
 class RagRetrievalService:
     """Retrieves knowledge from the RAG store."""
 
-    def __init__(self) -> None:
-        self._session_factory = get_session_factory()
+    def __init__(self, session_factory: Any | None = None) -> None:
+        self._session_factory = session_factory
+
+    def _db_session_factory(self) -> Any:
+        """Return the async session factory for the current event loop."""
+        if self._session_factory is not None:
+            return self._session_factory
+        return get_session_factory()
 
     # ------------------------------------------------------------------
     # Public API
@@ -181,7 +187,7 @@ class RagRetrievalService:
             )
         )
         stmt = self._apply_filters(stmt, technology, category, severity)
-        async with self._session_factory() as session:
+        async with self._db_session_factory()() as session:
             rows = (await session.execute(stmt)).scalars().all()
 
         ranked = sorted(
@@ -213,7 +219,7 @@ class RagRetrievalService:
             .order_by(KnowledgeDocument.updated_at.desc())
         )
         stmt = self._apply_filters(stmt, technology, category, severity)
-        async with self._session_factory() as session:
+        async with self._db_session_factory()() as session:
             rows = (await session.execute(stmt)).scalars().all()
 
         ranked = sorted(
@@ -254,7 +260,7 @@ class RagRetrievalService:
         )
         base = self._apply_filters(base, technology, category, severity)
 
-        async with self._session_factory() as session:
+        async with self._db_session_factory()() as session:
             chunk_rows = (await session.execute(base)).all()
             if not chunk_rows:
                 return RetrievedContext(
@@ -320,7 +326,7 @@ class RagRetrievalService:
 
         stmt = sa.select(KnowledgeDocument).limit(k * 4)
         stmt = self._apply_filters(stmt, technology, category, severity)
-        async with self._session_factory() as session:
+        async with self._db_session_factory()() as session:
             rows = (await session.execute(stmt)).scalars().all()
 
         scored: list[tuple[KnowledgeDocument, float]] = []
@@ -368,3 +374,10 @@ def get_retrieval_service() -> RagRetrievalService:
     if _retrieval_service is None:
         _retrieval_service = RagRetrievalService()
     return _retrieval_service
+
+
+def create_retrieval_service(session_factory: Any | None = None) -> RagRetrievalService:
+    """Build a retrieval service bound to a specific async session factory."""
+    if session_factory is None:
+        return get_retrieval_service()
+    return RagRetrievalService(session_factory=session_factory)

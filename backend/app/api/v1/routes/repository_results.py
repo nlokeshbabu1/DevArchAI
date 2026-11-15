@@ -11,9 +11,15 @@ from sqlalchemy.orm import selectinload
 from app.core.security import get_optional_user
 from app.db.session import get_db
 from app.models.finding import Finding
+from app.models.finding_ai_job import FindingAIJob
 from app.models.repository import Repository
 from app.models.scan import Scan, ScanStatus
 from app.models.user import User
+from app.services.ai_job_service import source_display
+from app.services.ai_source_provenance import (
+    documentation_status_display,
+    normalize_sources,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -38,11 +44,10 @@ async def get_repository_results(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Check access
-    if repository.user_id and current_user and repository.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    if repository.user_id and not current_user:
+    if not repository.user_id or not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
+    if repository.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get latest completed scan (eagerly load scanner_executions to avoid lazy-load in async context)
     scan_result = await db.execute(
@@ -75,6 +80,15 @@ async def get_repository_results(
         .order_by(Finding.severity, Finding.created_at)
     )
     findings = findings_result.scalars().all()
+
+    # Map each finding to its AI job so provenance is consistent across routes.
+    jobs = (
+        await db.execute(select(FindingAIJob).where(FindingAIJob.scan_id == scan.id))
+    ).scalars().all()
+    job_by_finding: dict[str, FindingAIJob] = {}
+    for job in jobs:
+        for finding_id in job.finding_ids or []:
+            job_by_finding[str(finding_id)] = job
 
     # Count by severity
     import json
@@ -204,6 +218,34 @@ async def get_repository_results(
                     "cwe": f.cwe,
                     "references": json.loads(f.references) if f.references else [],
                     "evidence": f.evidence,
+                    "ai_source": (job_by_finding.get(str(f.id)).source if job_by_finding.get(str(f.id)) else None),
+                    "source_display": source_display(
+                        job_by_finding.get(str(f.id)).source if job_by_finding.get(str(f.id)) else None
+                    ),
+                    "documentation_status": (
+                        job_by_finding.get(str(f.id)).documentation_status
+                        if job_by_finding.get(str(f.id))
+                        else None
+                    ),
+                    "documentation_status_display": documentation_status_display(
+                        job_by_finding.get(str(f.id)).documentation_status
+                        if job_by_finding.get(str(f.id))
+                        else None
+                    ),
+                    "sources": (
+                        normalize_sources(job_by_finding.get(str(f.id)).sources)
+                        if job_by_finding.get(str(f.id))
+                        else []
+                    ),
+                    "job": (
+                        {
+                            "id": str(job_by_finding[str(f.id)].id),
+                            "status": job_by_finding[str(f.id)].status,
+                            "source": job_by_finding[str(f.id)].source,
+                        }
+                        if str(f.id) in job_by_finding
+                        else None
+                    ),
                 }
                 for f in findings
             ],
@@ -228,7 +270,9 @@ async def get_repository_latest_scan(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repository.user_id and current_user and repository.user_id != current_user.id:
+    if not repository.user_id or not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if repository.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     scan_result = await db.execute(

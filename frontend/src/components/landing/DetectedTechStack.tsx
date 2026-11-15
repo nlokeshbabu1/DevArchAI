@@ -1,6 +1,7 @@
-import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Cloud, Layers, Github, Shield, Activity, GitBranch, Box, Package, Code, Lock } from 'lucide-react'
+import { memo } from 'react'
+
 import { cn } from '../../lib/utils'
 
 interface Technology {
@@ -11,25 +12,17 @@ interface Technology {
 }
 
 const technologies: Technology[] = [
-  { name: 'Terraform', icon: Layers, description: 'Infrastructure security checks', category: 'Infrastructure as Code' },
-  { name: 'Pulumi', icon: Code, description: 'Programmatic infrastructure as code', category: 'Infrastructure as Code' },
-  { name: 'CloudFormation', icon: Layers, description: 'AWS native infrastructure as code', category: 'Infrastructure as Code' },
-  { name: 'AWS', icon: Cloud, description: 'Amazon Web Services', category: 'Cloud Providers' },
-  { name: 'Azure', icon: Cloud, description: 'Microsoft Azure', category: 'Cloud Providers' },
-  { name: 'GCP', icon: Cloud, description: 'Google Cloud Platform', category: 'Cloud Providers' },
-  { name: 'Docker', icon: Box, description: 'Container security', category: 'Containers & Orchestration' },
-  { name: 'Kubernetes', icon: Package, description: 'K8s manifest analysis', category: 'Containers & Orchestration' },
-  { name: 'Helm', icon: Shield, description: 'Chart validation', category: 'Containers & Orchestration' },
-  { name: 'GitHub Actions', icon: Github, description: 'Workflow security', category: 'CI/CD Platforms' },
-  { name: 'Jenkins', icon: GitBranch, description: 'Pipeline security', category: 'CI/CD Platforms' },
-  { name: 'GitLab CI', icon: GitBranch, description: 'CI/CD validation', category: 'CI/CD Platforms' },
-  { name: 'CircleCI', icon: GitBranch, description: 'Pipeline checks', category: 'CI/CD Platforms' },
-  { name: 'Trivy', icon: Shield, description: 'Vulnerability scanning', category: 'Security Tools' },
-  { name: 'SonarQube', icon: Code, description: 'Code quality', category: 'Security Tools' },
-  { name: 'Vault', icon: Lock, description: 'Secrets management', category: 'Security Tools' },
-  { name: 'Prometheus', icon: Activity, description: 'Metrics monitoring', category: 'Monitoring' },
-  { name: 'Grafana', icon: Activity, description: 'Visualization', category: 'Monitoring' },
-  { name: 'ELK Stack', icon: Activity, description: 'Log analytics', category: 'Monitoring' },
+  { name: 'Terraform', icon: Layers, description: 'IaC policy and misconfiguration checks', category: 'Infrastructure as Code' },
+  { name: 'Docker', icon: Box, description: 'Container & Dockerfile scanning', category: 'Containers & Orchestration' },
+  { name: 'Kubernetes', icon: Package, description: 'Manifest and cluster configuration checks', category: 'Containers & Orchestration' },
+  { name: 'Helm', icon: Shield, description: 'Chart templates via IaC scanners', category: 'Containers & Orchestration' },
+  { name: 'AWS', icon: Cloud, description: 'Live AWS account integration (Azure/GCP coming soon)', category: 'Cloud Providers' },
+  { name: 'GitHub Actions', icon: Github, description: 'Workflow security analysis', category: 'CI/CD Platforms' },
+  { name: 'GitLab CI', icon: GitBranch, description: 'Pipeline configuration checks', category: 'CI/CD Platforms' },
+  { name: 'Jenkins', icon: GitBranch, description: 'Pipeline file detection & policies', category: 'CI/CD Platforms' },
+  { name: 'Trivy', icon: Shield, description: 'Vulnerability & misconfiguration scanning', category: 'Security Tools' },
+  { name: 'Checkov', icon: Code, description: 'Policy checks across IaC frameworks', category: 'Security Tools' },
+  { name: 'Gitleaks', icon: Lock, description: 'Secret detection in repositories', category: 'Security Tools' },
 ]
 
 const categoryColorMap: Record<string, string> = {

@@ -146,3 +146,19 @@ class ScanCancelResponse(BaseModel):
         if isinstance(v, UUID):
             return str(v)
         return v
+
+
+class ScanDeleteResponse(BaseModel):
+    """Scan deletion response."""
+
+    id: str
+    message: str
+    success: bool = True
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v):
+        """Convert UUID objects to strings."""
+        if isinstance(v, UUID):
+            return str(v)
+        return v

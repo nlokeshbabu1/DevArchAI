@@ -1,28 +1,27 @@
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Play, FolderGit2, AlertTriangle, Activity, Brain,
   TrendingUp, ArrowRight, Download, FileText,
   FileSpreadsheet, ExternalLink, Shield
 } from 'lucide-react'
-import { Button, Card } from '../components/ui-animated'
-import { cn } from '../lib/utils'
-import { useAuthStore } from '../stores/auth-store'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, Fragment } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import apiClient from '../api/endpoints/client'
 import { dashboardApi, type RecentScan } from '../api/endpoints/dashboard'
 import { repositoriesApi, type Repository } from '../api/endpoints/repositories'
-import apiClient from '../api/endpoints/client'
-import { InlineScanPanel } from '../components/InlineScanPanel'
-import { useState, useEffect, Fragment } from 'react'
-
 import {
   KpiRow, SecurityOverview,
   RiskTable, ActivityFeed, AiSuggestions,
   OnboardingView
 } from '../components/dashboard'
-
-import { resolveSecurityScore } from '../lib/security-score'
+import { InlineScanPanel } from '../components/InlineScanPanel'
 import { PageHeader } from '../components/ui/PageHeader'
+import { Button, Card } from '../components/ui-animated'
+import { resolveSecurityScore } from '../lib/security-score'
+import { cn } from '../lib/utils'
+import { useAuthStore } from '../stores/auth-store'
 
 const formatScore = (score: number) => Number(score.toFixed(1))
 
@@ -41,9 +40,9 @@ const getRepositoryCriticalCount = (repo: Repository) => repo.issues?.critical ?
 const getRepositoryHighCount = (repo: Repository) => repo.issues?.high ?? 0
 
 const formatRelativeDate = (value?: string | null) => {
-  if (!value) return 'Never'
+  if (!value) {return 'Never'}
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Unknown'
+  if (Number.isNaN(date.getTime())) {return 'Unknown'}
   return date.toLocaleDateString(undefined, {
     month: 'short', day: 'numeric',
     year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
@@ -117,7 +116,7 @@ export function Dashboard() {
   const summaryScore = getValidScore({ overall_score: summary?.average_score })
   const recentScoreValues = recentScans.reduce<number[]>((scores, scan) => {
     const scanScore = getValidScore(scan)
-    if (scanScore !== null) scores.push(scanScore)
+    if (scanScore !== null) {scores.push(scanScore)}
     return scores
   }, [])
   const fallbackSecurityScore = recentScoreValues.length > 0
@@ -178,7 +177,7 @@ export function Dashboard() {
   // Error state
   if (hasError) {
     return (
-      <Fragment>
+      <>
         <div className="space-y-6">
           <Card className="p-8 text-center" hover={false}>
             <div className="p-3 rounded-full bg-red-500/10 border border-red-500/30 w-fit mx-auto mb-4">
@@ -199,7 +198,7 @@ export function Dashboard() {
           onClose={() => setShowScanPanel(false)}
           onScanComplete={(scanId) => { setShowScanPanel(false); navigate(`/scans/${scanId}`) }}
         />
-      </Fragment>
+      </>
     )
   }
 
@@ -281,6 +280,7 @@ export function Dashboard() {
             repositoriesAtRisk={repositoriesAtRisk}
             scoreDelta={scoreDelta}
             isLoading={isLoading}
+            usingFallbackScore={isUsingFallbackScore}
           />
 
           <KpiRow

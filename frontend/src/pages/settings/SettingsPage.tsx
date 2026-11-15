@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User, Mail, Building, Key, Bell, Shield, CreditCard, Trash2,
@@ -7,19 +6,22 @@ import {
   AlertTriangle, RefreshCw, ChevronRight, Camera, Smartphone,
   Github, Gitlab, Lock,
 } from 'lucide-react'
-import { Button, Card, Input } from '../../components/ui'
-import { Skeleton } from '../../components/ui/Skeleton'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { authApi, type SessionInfo } from '../../api/endpoints/auth'
 import { settingsApi, type ProfileData, type NotificationPrefs, type SessionData, type ApiKeyData, type CreateApiKeyResponse } from '../../api/endpoints/settings'
-import { useAuthStore } from '../../stores/auth-store'
-import { useNavigate } from 'react-router-dom'
-import { cn, copyToClipboard } from '../../lib/utils'
+import { Button, Card, Input } from '../../components/ui'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { NativeSelect } from '../../components/ui/native-select'
+import { Skeleton } from '../../components/ui/Skeleton'
+import { cn, copyToClipboard } from '../../lib/utils'
+import { useAuthStore } from '../../stores/auth-store'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function safeEmail(email: string | null | undefined): string {
-  if (!email) return 'Email unavailable'
+  if (!email) {return 'Email unavailable'}
   return email
 }
 
@@ -48,7 +50,7 @@ function useToast() {
 }
 
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
-  if (!toasts.length) return null
+  if (!toasts.length) {return null}
   return (
     <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
       <AnimatePresence>
@@ -74,24 +76,24 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
 /* ──────────────── Password Strength ──────────────── */
 
 function getPasswordStrength(pw: string): { label: string; color: string; width: string; score: number } {
-  if (!pw) return { label: '', color: '', width: '0%', score: 0 }
+  if (!pw) {return { label: '', color: '', width: '0%', score: 0 }}
   let score = 0
-  if (pw.length >= 8) score += 1
-  if (pw.length >= 12) score += 1
-  if (/[a-z]/.test(pw)) score += 1
-  if (/[A-Z]/.test(pw)) score += 1
-  if (/[0-9]/.test(pw)) score += 1
-  if (/[^a-zA-Z0-9]/.test(pw)) score += 1
-  if (score <= 2) return { label: 'Weak', color: 'bg-red-500', width: '20%', score }
-  if (score <= 3) return { label: 'Fair', color: 'bg-orange-500', width: '40%', score }
-  if (score <= 4) return { label: 'Good', color: 'bg-yellow-500', width: '65%', score }
-  if (score <= 5) return { label: 'Strong', color: 'bg-green-500', width: '85%', score }
+  if (pw.length >= 8) {score += 1}
+  if (pw.length >= 12) {score += 1}
+  if (/[a-z]/.test(pw)) {score += 1}
+  if (/[A-Z]/.test(pw)) {score += 1}
+  if (/[0-9]/.test(pw)) {score += 1}
+  if (/[^a-zA-Z0-9]/.test(pw)) {score += 1}
+  if (score <= 2) {return { label: 'Weak', color: 'bg-red-500', width: '20%', score }}
+  if (score <= 3) {return { label: 'Fair', color: 'bg-orange-500', width: '40%', score }}
+  if (score <= 4) {return { label: 'Good', color: 'bg-yellow-500', width: '65%', score }}
+  if (score <= 5) {return { label: 'Strong', color: 'bg-green-500', width: '85%', score }}
   return { label: 'Very Strong', color: 'bg-emerald-500', width: '100%', score }
 }
 
 function PasswordStrengthMeter({ password }: { password: string }) {
   const strength = getPasswordStrength(password)
-  if (!password) return null
+  if (!password) {return null}
   return (
     <div className="mt-2 space-y-1">
       <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
@@ -133,7 +135,7 @@ function ToggleSwitch({ checked, onChange, label, description, icon: Icon }: { c
 /* ──────────────── Danger Confirmation Modal ──────────────── */
 
 function ConfirmModal({ open, onClose, onConfirm, title, description, confirmLabel, isLoading, children }: { open: boolean; onClose: () => void; onConfirm: () => void; title: string; description: string; confirmLabel: string; isLoading?: boolean; children?: React.ReactNode }) {
-  if (!open) return null
+  if (!open) {return null}
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-card border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -615,6 +617,8 @@ export function SettingsPage() {
   /* ── Danger Zone ── */
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deleteOAuthProvider, setDeleteOAuthProvider] = useState<'github' | 'gitlab' | ''>('')
 
   /* ── Load Data ── */
   useEffect(() => {
@@ -773,14 +777,38 @@ export function SettingsPage() {
   }
 
   /* ── Delete Account ── */
+  const deleteUsesPassword = profile?.has_password !== false
+  const deleteOAuthOptions = [
+    profile?.has_github_oauth ? ('github' as const) : null,
+    profile?.has_gitlab_oauth ? ('gitlab' as const) : null,
+  ].filter(Boolean) as Array<'github' | 'gitlab'>
+
   const handleDeleteAccount = async () => {
-    if (!deletePassword) {
-      addToast('error', 'Password is required to delete account')
-      return
+    if (deleteUsesPassword) {
+      if (!deletePassword) {
+        addToast('error', 'Password is required to delete account')
+        return
+      }
+    } else {
+      if (deleteConfirmation !== 'DELETE') {
+        addToast('error', 'Type DELETE to confirm account deletion')
+        return
+      }
+      if (deleteOAuthOptions.length > 1 && !deleteOAuthProvider) {
+        addToast('error', 'Select which linked provider should verify this action')
+        return
+      }
     }
     setSaving('delete')
     try {
-      await settingsApi.deleteAccount(deletePassword)
+      await settingsApi.deleteAccount(
+        deleteUsesPassword
+          ? { password: deletePassword }
+          : {
+              confirmation: deleteConfirmation,
+              provider: deleteOAuthOptions.length === 1 ? deleteOAuthOptions[0] : deleteOAuthProvider || undefined,
+            },
+      )
       addToast('info', 'Account deleted')
       setTimeout(() => {
         const { logout } = useAuthStore.getState()
@@ -793,6 +821,8 @@ export function SettingsPage() {
       setSaving(null)
       setShowDeleteModal(false)
       setDeletePassword('')
+      setDeleteConfirmation('')
+      setDeleteOAuthProvider('')
     }
   }
 
@@ -890,14 +920,51 @@ export function SettingsPage() {
       {/* ─── Delete Confirm Modal ─── */}
       <AnimatePresence>
         {showDeleteModal && (
-          <ConfirmModal open={showDeleteModal} onClose={() => { setShowDeleteModal(false); setDeletePassword('') }}
+          <ConfirmModal open={showDeleteModal} onClose={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteConfirmation(''); setDeleteOAuthProvider('') }}
             onConfirm={handleDeleteAccount} title="Delete Account"
-            description="This will permanently delete your account, scans, findings, and all associated data. Enter your password to confirm."
+            description="Deleting your account is permanent. Your account and associated data will be handled according to the account deletion policy."
             confirmLabel="Permanently Delete" isLoading={saving === 'delete'}>
-            <div className="mt-4">
-              <input type="password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
-                placeholder="Enter your password to confirm" autoFocus />
+            <div className="mt-4 space-y-4">
+              {deleteUsesPassword ? (
+                <input type="password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
+                  placeholder="Enter your password to confirm" autoFocus />
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Your account uses a linked OAuth provider. We will verify your active{' '}
+                    {deleteOAuthOptions.length === 1
+                      ? deleteOAuthOptions[0] === 'github'
+                        ? 'GitHub'
+                        : 'GitLab'
+                      : 'provider'}{' '}
+                    connection on the server before deletion.
+                  </p>
+                  {deleteOAuthOptions.length > 1 && (
+                    <NativeSelect
+                      value={deleteOAuthProvider}
+                      onChange={(e) => setDeleteOAuthProvider(e.target.value as 'github' | 'gitlab')}
+                      aria-label="Provider to verify for account deletion"
+                    >
+                      <option value="" disabled>Verify with…</option>
+                      {deleteOAuthOptions.includes('github') && (
+                        <option value="github">GitHub</option>
+                      )}
+                      {deleteOAuthOptions.includes('gitlab') && (
+                        <option value="gitlab">GitLab</option>
+                      )}
+                    </NativeSelect>
+                  )}
+                  <input
+                    type="text"
+                    value={deleteConfirmation}
+                    onChange={e => setDeleteConfirmation(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
+                    placeholder='Type DELETE to confirm'
+                    autoFocus
+                  />
+                </>
+              )}
             </div>
           </ConfirmModal>
         )}

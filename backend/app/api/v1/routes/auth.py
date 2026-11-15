@@ -17,22 +17,32 @@ from typing import Any
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.auth_csrf import verify_refresh_origin
+from app.core.cookie_settings import (
+    clear_refresh_cookie,
+    read_refresh_token_from_request,
+    set_refresh_cookie,
+)
+from app.core.oauth_state import generate_oauth_state, validate_oauth_state
 from app.core.api_key_store import user_has_api_keys
 from app.core.security import (
     create_access_token,
-    create_refresh_token,
+    decode_access_token_allow_expired,
     decode_token,
     decrypt_user_email,
     encrypt_user_email,
     generate_api_key,
     get_current_user,
+    get_current_user_from_token,
     get_password_hash,
     hash_email,
     hash_token,
+    http_bearer,
     verify_password,
 )
 from app.db.session import get_db
@@ -50,7 +60,14 @@ from app.schemas.common import MessageResponse
 from app.schemas.enterprise_auth import LogoutResponse, RevokeAllSessionsResponse, SessionResponse
 from app.services.audit_logger import audit_logger
 from app.services.organization_provisioning import ensure_user_organization_membership
-from app.services.token_blacklist import blacklist_token
+from app.services.refresh_session_service import (
+    create_refresh_session,
+    perform_refresh_rotation,
+    resolve_user_from_refresh_cookie,
+    revoke_all_user_sessions,
+    revoke_session_for_token,
+)
+from app.services.token_blacklist import access_token_blacklist_ttl, blacklist_token
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -236,7 +253,7 @@ def _is_cookie_only_mode() -> bool:
 def _warn_if_local_storage_used(request: Request) -> None:
     """Log warning if refresh token is read from Authorization header (localStorage)."""
     auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer ") and not request.cookies.get("refresh_token"):
+    if auth_header and auth_header.startswith("Bearer ") and not read_refresh_token_from_request(request):
         logger.warning(
             "Refresh token read from Authorization header (localStorage)",
             path=request.url.path,
@@ -247,41 +264,11 @@ def _warn_if_local_storage_used(request: Request) -> None:
 async def _create_session(
     db: AsyncSession, user: User, request: Request, refresh_token: str, token_family: str | None = None
 ) -> UserSession:
-    """Create a user session record."""
-    user_agent = request.headers.get("User-Agent", "")
-    ip_address = request.client.host if request.client else "0.0.0.0"
-    browser, os, device = _parse_user_agent(user_agent)
-
-    session = UserSession(
-        user_id=user.id,
-        refresh_token_hash=hash_token(refresh_token),
-        token_family=token_family,
-        browser=browser,
-        os=os,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        device_name=request.headers.get("Sec-Ch-UA-Platform", device),
-        is_current=True,
-        expires_at=datetime.now(UTC).replace(hour=0, minute=0, second=0)
-        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    """Create a user session record (legacy wrapper — prefer create_refresh_session)."""
+    session, _raw = await create_refresh_session(
+        db, user, request, token_family=token_family
     )
-    db.add(session)
-    await db.flush()
     return session
-
-
-def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
-    """Set refresh token as HttpOnly secure cookie."""
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path=settings.COOKIE_PATH,
-        domain=settings.COOKIE_DOMAIN,
-    )
 
 
 async def _check_account_locked(user: User) -> None:
@@ -316,11 +303,18 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """Authenticate user and return JWT tokens."""
+    from app.middleware.rate_limiting.deps import (
+        block_if_login_account_limited,
+        record_failed_login_account_attempt,
+    )
+
+    await block_if_login_account_limited(credentials.email)
     email_hash = hash_email(credentials.email)
     result = await db.execute(select(User).where(User.email_hash == email_hash))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
+        await record_failed_login_account_attempt(credentials.email)
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
@@ -367,7 +361,9 @@ async def login(
     # Enriched JWT with role, permissions, org_id
     claims = _enrich_jwt_claims(user)
     access_token = create_access_token(data=claims)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    _session, raw_refresh = await create_refresh_session(
+        db, user, request, token_family=str(uuid.uuid4())
+    )
 
     browser, os_val, device = _parse_user_agent(request.headers.get("User-Agent", ""))
 
@@ -384,10 +380,9 @@ async def login(
             user_agent=request.headers.get("User-Agent"),
         )
 
-    await _create_session(db, user, request, refresh_token, token_family=str(uuid.uuid4()))
     await db.commit()
 
-    _set_refresh_cookie(response, refresh_token)
+    set_refresh_cookie(response, raw_refresh)
 
     await audit_logger.log(
         actor_id=str(user.id),
@@ -400,7 +395,7 @@ async def login(
 
     return Token(
         access_token=access_token,
-        refresh_token=refresh_token if _should_include_refresh_token_body() else None,
+        refresh_token=None,
     )
 
 
@@ -424,16 +419,19 @@ async def get_github_oauth_url(redirect_uri: str | None = None):
     # Use redirect_uri from query param if provided, otherwise use settings
     final_redirect_uri = redirect_uri or settings.GITHUB_REDIRECT_URI
 
-    # Build OAuth URL
-    oauth_url = (
-        f"https://github.com/login/oauth/authorize"
-        f"?client_id={settings.GITHUB_CLIENT_ID}"
-        f"&redirect_uri={settings.GITHUB_REDIRECT_URI}"
-        f"&scope=user:email%20read:user%20repo"
-    )
+    from urllib.parse import urlencode
+
+    state = await generate_oauth_state()
+    params = urlencode({
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": final_redirect_uri,
+        "scope": "user:email read:user repo",
+        "state": state,
+    })
+    oauth_url = f"https://github.com/login/oauth/authorize?{params}"
 
     logger.info("Generated GitHub OAuth URL", redirect_uri=final_redirect_uri)
-    return {"oauth_url": oauth_url}
+    return {"oauth_url": oauth_url, "state": state}
 
 
 @router.post("/github/callback")
@@ -458,11 +456,18 @@ async def github_callback(
                 detail="Request body must be valid JSON",
             ) from exc
         code = data.get("code")
+        state = data.get("state")
 
         if not code:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authorization code required",
+            )
+
+        if not state or not await validate_oauth_state(state):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth state. Please try again.",
             )
 
         # Validate GitHub OAuth settings
@@ -607,7 +612,9 @@ async def github_callback(
             # Enriched JWT claims
             claims = _enrich_jwt_claims(user)
             access_token_jwt = create_access_token(data=claims)
-            refresh_token_jwt = create_refresh_token(data={"sub": str(user.id)})
+            _session, raw_refresh = await create_refresh_session(
+                db, user, request, token_family=str(uuid.uuid4())
+            )
 
             browser, os_val, device = _parse_user_agent(request.headers.get("User-Agent", ""))
 
@@ -623,11 +630,10 @@ async def github_callback(
                     user_agent=request.headers.get("User-Agent"),
                 )
 
-            await _create_session(db, user, request, refresh_token_jwt, token_family=str(uuid.uuid4()))
             await db.commit()
             await db.refresh(user)
 
-            _set_refresh_cookie(response, refresh_token_jwt)
+            set_refresh_cookie(response, raw_refresh)
 
             await audit_logger.log(
                 actor_id=str(user.id),
@@ -640,14 +646,11 @@ async def github_callback(
 
             logger.info("GitHub OAuth successful", user_id=user.id)
 
-            resp = {
+            return {
                 "access_token": access_token_jwt,
                 "token_type": "bearer",
                 "user": user_to_response(user),
             }
-            if _should_include_refresh_token_body():
-                resp["refresh_token"] = refresh_token_jwt
-            return resp
 
     except HTTPException:
         raise
@@ -663,63 +666,93 @@ async def github_callback(
 async def logout(
     request: Request,
     response: Response,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
 ):
-    """Logout current user: blacklist tokens, revoke session, clear cookie."""
-    raw_token = request.cookies.get("refresh_token")
+    """Logout: blacklist access JWT when present, revoke refresh session, always clear cookie."""
+    raw_token = read_refresh_token_from_request(request)
     if not raw_token and not _is_cookie_only_mode():
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
-            raw_token = auth_header.replace("Bearer ", "")
+            legacy = auth_header.replace("Bearer ", "")
+            if legacy.count(".") != 2:
+                raw_token = legacy
             _warn_if_local_storage_used(request)
 
-    token_hash = hash_token(raw_token) if raw_token else None
+    user: User | None = None
+    if credentials and credentials.credentials:
+        user = await get_current_user_from_token(credentials.credentials, db, request)
+        if user is None:
+            expired_payload = decode_access_token_allow_expired(credentials.credentials)
+            if expired_payload and expired_payload.get("sub"):
+                try:
+                    user_uuid = uuid.UUID(str(expired_payload["sub"]))
+                    result = await db.execute(select(User).where(User.id == user_uuid))
+                    user = result.scalar_one_or_none()
+                except (ValueError, AttributeError):
+                    user = None
 
-    # Blacklist current access token if we can extract jti
+    if user is None and raw_token:
+        user = await resolve_user_from_refresh_cookie(db, raw_token)
+
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         access_token_str = auth_header.replace("Bearer ", "")
-        access_payload = decode_token(access_token_str)
-        if access_payload and access_payload.get("jti"):
-            await blacklist_token(access_payload["jti"])
-
-    # Blacklist refresh token
-    if raw_token:
-        refresh_payload = decode_token(raw_token)
-        if refresh_payload and refresh_payload.get("jti"):
-            await blacklist_token(
-                refresh_payload["jti"],
-                expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-            )
-
-    # Revoke session
-    if token_hash:
-        await db.execute(
-            update(UserSession)
-            .where(
-                UserSession.user_id == current_user.id,
-                UserSession.refresh_token_hash == token_hash,
-            )
-            .values(revoked=True, is_current=False)
+        access_payload = decode_token(access_token_str) or decode_access_token_allow_expired(
+            access_token_str
         )
+        if access_payload and access_payload.get("jti"):
+            await blacklist_token(
+                access_payload["jti"],
+                expires_in=access_token_blacklist_ttl(access_payload.get("exp")),
+            )
+
+    if user is not None:
+        await revoke_session_for_token(db, user.id, raw_token)
+        await db.commit()
+        await audit_logger.log(
+            actor_id=str(user.id),
+            action="auth.logout",
+            resource_type="user",
+            resource_id=str(user.id),
+            ip_address=request.client.host if request.client else None,
+        )
+    else:
         await db.commit()
 
-    # Clear cookie
-    response.delete_cookie(
-        key="refresh_token",
-        path=settings.COOKIE_PATH,
-        domain=settings.COOKIE_DOMAIN,
-    )
+    clear_refresh_cookie(response)
+
+    return LogoutResponse()
+
+
+@router.post("/logout-all", response_model=LogoutResponse)
+async def logout_all_devices(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke every refresh session for the user and clear the cookie."""
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        access_payload = decode_token(auth_header.replace("Bearer ", ""))
+        if access_payload and access_payload.get("jti"):
+            await blacklist_token(
+                access_payload["jti"],
+                expires_in=access_token_blacklist_ttl(access_payload.get("exp")),
+            )
+
+    await revoke_all_user_sessions(db, current_user.id)
+    await db.commit()
+    clear_refresh_cookie(response)
 
     await audit_logger.log(
         actor_id=str(current_user.id),
-        action="auth.logout",
+        action="auth.logout_all",
         resource_type="user",
         resource_id=str(current_user.id),
         ip_address=request.client.host if request.client else None,
     )
-
     return LogoutResponse()
 
 
@@ -741,7 +774,7 @@ async def list_sessions(
     sessions = result.scalars().all()
 
     # Determine current session from cookie/header
-    raw_token = request.cookies.get("refresh_token")
+    raw_token = read_refresh_token_from_request(request)
     if not raw_token and not _is_cookie_only_mode():
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
@@ -825,7 +858,7 @@ async def revoke_all_sessions(
 ):
     """Revoke all sessions except the current one."""
     # Determine current session
-    raw_token = request.cookies.get("refresh_token")
+    raw_token = read_refresh_token_from_request(request)
     if not raw_token and not _is_cookie_only_mode():
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
@@ -909,6 +942,7 @@ async def update_current_user(
             )
 
         current_user.hashed_password = get_password_hash(user_data.new_password)
+        await revoke_all_user_sessions(db, current_user.id)
 
     await db.commit()
     await db.refresh(current_user)
@@ -927,7 +961,7 @@ async def create_api_key(
     result = await db.execute(
         update(User)
         .where(User.id == current_user.id)
-        .values(api_key=api_key, api_key_prefix=prefix)
+        .values(api_key=hash_token(api_key), api_key_prefix=prefix)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount == 0:
@@ -966,16 +1000,10 @@ async def refresh_token(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh access token using refresh token with rotation and reuse detection.
+    """Refresh access token using opaque refresh cookie with rotation and reuse detection."""
+    verify_refresh_origin(request)
 
-    Validates the refresh token, blacklists the old one,
-    issues new tokens, and creates a new session.
-
-    If a revoked refresh token is reused, the entire token family
-    and all associated sessions are revoked (potential token theft).
-    """
-    # Try cookie first, then Authorization header (unless cookie_only mode)
-    raw_token = request.cookies.get("refresh_token")
+    raw_token = read_refresh_token_from_request(request)
     if not raw_token and not _is_cookie_only_mode():
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
@@ -988,128 +1016,11 @@ async def refresh_token(
             detail="Refresh token required",
         )
 
-    payload = decode_token(raw_token)
+    user, new_raw, new_session = await perform_refresh_rotation(db, request, raw_token)
 
-    if not payload or payload.get("type") != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
-
-    # Check blacklist
-    old_jti = payload.get("jti")
-    if old_jti:
-        from app.services.token_blacklist import is_blacklisted
-        if await is_blacklisted(old_jti):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked",
-            )
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
-
-    # Get user
-    try:
-        from uuid import UUID
-        user_uuid = UUID(user_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user ID in token",
-        )
-
-    result = await db.execute(select(User).where(User.id == user_uuid))
-    user = result.scalar_one_or_none()
-
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
-    # Warn if reading from localStorage (Authorization header)
-    _warn_if_local_storage_used(request)
-
-    # ---- Reuse Detection ----
-    # Find the session that corresponds to this refresh token.
-    old_token_hash = hash_token(raw_token)
-    old_session_result = await db.execute(
-        select(UserSession).where(
-            UserSession.user_id == user.id,
-            UserSession.refresh_token_hash == old_token_hash,
-        )
-    )
-    old_session = old_session_result.scalar_one_or_none()
-
-    if old_session and old_session.revoked:
-        # REUSE DETECTED: a revoked token was presented.
-        # This likely means the token was stolen. Revoke the entire family.
-        if old_session.token_family:
-            logger.warning(
-                "refresh_token_reuse_detected",
-                user_id=str(user.id)[:8],
-                token_family=old_session.token_family,
-                ip_address=request.client.host if request.client else None,
-            )
-            await db.execute(
-                update(UserSession)
-                .where(
-                    UserSession.user_id == user.id,
-                    UserSession.token_family == old_session.token_family,
-                )
-                .values(revoked=True, is_current=False)
-            )
-            await db.commit()
-
-            await audit_logger.log(
-                actor_id=str(user.id),
-                action="auth.token.reuse_detected",
-                resource_type="session",
-                resource_id=str(user.id),
-                details={"token_family": old_session.token_family},
-                ip_address=request.client.host if request.client else None,
-            )
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked. Please log in again.",
-        )
-
-    # Preserve the token family across rotation
-    family = old_session.token_family if old_session else str(uuid.uuid4())
-
-    # Enriched JWT claims
     claims = _enrich_jwt_claims(user)
     new_access_token = create_access_token(data=claims)
-    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
-
-    # Blacklist old refresh token
-    if old_jti:
-        await blacklist_token(
-            old_jti,
-            expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-        )
-
-    # Revoke old session with this token hash
-    await db.execute(
-        update(UserSession)
-        .where(
-            UserSession.user_id == user.id,
-            UserSession.refresh_token_hash == old_token_hash,
-        )
-        .values(revoked=True, is_current=False)
-    )
-
-    # Create new session (same family)
-    new_session = await _create_session(db, user, request, new_refresh_token, token_family=family)
-    await db.commit()
-
-    _set_refresh_cookie(response, new_refresh_token)
+    set_refresh_cookie(response, new_raw)
 
     await audit_logger.log(
         actor_id=str(user.id),
@@ -1121,5 +1032,5 @@ async def refresh_token(
 
     return Token(
         access_token=new_access_token,
-        refresh_token=new_refresh_token if _should_include_refresh_token_body() else None,
+        refresh_token=None,
     )

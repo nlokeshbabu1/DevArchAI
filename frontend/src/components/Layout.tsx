@@ -1,6 +1,3 @@
-import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { cn } from '../lib/utils'
 import {
   LayoutDashboard,
   ScanSearch,
@@ -14,6 +11,10 @@ import {
   LogOut,
   User
 } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+
+import { cn } from '../lib/utils'
 import { useAuthStore } from '../stores/auth-store'
 
 interface LayoutProps {

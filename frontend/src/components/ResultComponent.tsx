@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle, AlertTriangle, Info, AlertCircle, Shield, Server, Cloud,
@@ -6,12 +5,16 @@ import {
   Download, BookOpen, Code, FileText, ChevronDown, ChevronUp, Filter,
   SortAsc, SortDesc, ExternalLink, Sparkles
 } from 'lucide-react'
-import { Card, Button } from './ui-animated'
+import { useState } from 'react'
+
+
 import { api } from '../lib/api'
 import { getAccessToken } from '../lib/auth-token'
 import { cn, sanitizePath, copyToClipboard } from '../lib/utils'
+
 import { TechStackDisplay } from './TechStackDisplay'
 import { SecurityScore } from './ui/SecurityScore'
+import { Card, Button } from './ui-animated'
 
 interface Finding {
   rule_id: string
@@ -230,23 +233,23 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
 
   // Get confidence badge color
   const getConfidenceBadge = (confidence: number | undefined) => {
-    if (!confidence) return { color: 'bg-gray-500/10 text-gray-400', label: 'Unknown' }
-    if (confidence >= 0.8) return { color: 'bg-green-500/10 text-green-400', label: 'High' }
-    if (confidence >= 0.6) return { color: 'bg-yellow-500/10 text-yellow-400', label: 'Medium' }
+    if (!confidence) {return { color: 'bg-gray-500/10 text-gray-400', label: 'Unknown' }}
+    if (confidence >= 0.8) {return { color: 'bg-green-500/10 text-green-400', label: 'High' }}
+    if (confidence >= 0.6) {return { color: 'bg-yellow-500/10 text-yellow-400', label: 'Medium' }}
     return { color: 'bg-gray-500/10 text-gray-400', label: 'Low' }
   }
 
   // Get syntax highlighting language from file path
   const getLanguageFromPath = (filePath: string): string => {
-    if (!filePath) return 'plaintext'
-    if (filePath.endsWith('.tf') || filePath.endsWith('.tfvars')) return 'hcl'
+    if (!filePath) {return 'plaintext'}
+    if (filePath.endsWith('.tf') || filePath.endsWith('.tfvars')) {return 'hcl'}
     if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
-      if (filePath.includes('k8s') || filePath.includes('kubernetes')) return 'yaml'
-      if (filePath.includes('workflow') || filePath.includes('.github')) return 'yaml'
+      if (filePath.includes('k8s') || filePath.includes('kubernetes')) {return 'yaml'}
+      if (filePath.includes('workflow') || filePath.includes('.github')) {return 'yaml'}
     }
-    if (filePath.toLowerCase().includes('dockerfile')) return 'dockerfile'
-    if (filePath.endsWith('.sh')) return 'bash'
-    if (filePath.endsWith('.json')) return 'json'
+    if (filePath.toLowerCase().includes('dockerfile')) {return 'dockerfile'}
+    if (filePath.endsWith('.sh')) {return 'bash'}
+    if (filePath.endsWith('.json')) {return 'json'}
     return 'plaintext'
   }
 
@@ -254,12 +257,12 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   const filteredAndSortedFindings = result?.findings && Array.isArray(result.findings)
     ? result.findings
         .filter(finding => {
-          if (!finding) return false  // Skip undefined/null findings
-          if (severityFilter === 'all') return true
+          if (!finding) {return false}  // Skip undefined/null findings
+          if (severityFilter === 'all') {return true}
           return finding.severity === severityFilter
         })
         .sort((a, b) => {
-          if (!a || !b) return 0
+          if (!a || !b) {return 0}
           let comparison = 0
 
           switch (sortOption) {
@@ -294,7 +297,7 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   const repoName = result.repository_name || result.repository_url?.split('/').slice(-2).join('/') || 'Repository'
 
   const handleRescan = () => {
-    if (onRescan) onRescan()
+    if (onRescan) {onRescan()}
   }
 
   const handleDownload = async (format: string = 'json') => {
@@ -379,8 +382,8 @@ export function ResultComponent({ result, selectedBranch, onRescan, onDownload, 
   }
 
   const handleBack = () => {
-    if (onBack) onBack()
-    else window.history.back()
+    if (onBack) {onBack()}
+    else {window.history.back()}
   }
 
   return (

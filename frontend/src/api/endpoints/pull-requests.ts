@@ -11,6 +11,26 @@ export interface CreatePRRequest {
   pr_title?: string;
   pr_description?: string;
   is_draft?: boolean;
+  /** Default true: all selected findings must patch successfully */
+  atomic_mode?: boolean;
+}
+
+export interface RemediationOutcome {
+  finding_id: string;
+  rule_id?: string;
+  file_path?: string;
+  status: string;
+  reason?: string;
+  manual_guidance?: string;
+  validation?: Array<{ name: string; status: string; message?: string }>;
+}
+
+export interface RemediationReport {
+  base_commit_sha?: string;
+  atomic_mode?: boolean;
+  atomic_ok?: boolean;
+  outcomes?: RemediationOutcome[];
+  files_modified?: string[];
 }
 
 export interface CreatePRResponse {
@@ -25,6 +45,7 @@ export interface CreatePRResponse {
   score_before: number;
   score_after: number;
   created_at: string;
+  remediation_report?: RemediationReport | null;
 }
 
 export interface PRInfo {

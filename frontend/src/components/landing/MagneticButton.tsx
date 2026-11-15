@@ -1,5 +1,5 @@
-import { useRef, useCallback, type ReactNode, type MouseEvent } from 'react'
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion'
+import { useRef, useCallback, type ReactNode, type MouseEvent } from 'react'
 
 interface MagneticButtonProps {
   children: ReactNode
@@ -33,7 +33,7 @@ export function MagneticButton({
   )
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    if (prefersReducedMotion || !ref.current) return
+    if (prefersReducedMotion || !ref.current) {return}
     const rect = ref.current.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2

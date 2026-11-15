@@ -1,10 +1,12 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { cn, copyToClipboard } from '../../lib/utils'
 import {
   Check, Copy, ChevronDown, ChevronRight, AlertTriangle,
   Info, CheckCircle, BookOpen, ArrowRight,
 } from 'lucide-react'
+import { useState } from 'react'
+
+import { cn, copyToClipboard } from '../../lib/utils'
+
 
 /* ── Utility Components ── */
 
@@ -1022,11 +1024,11 @@ export function SecurityFindingsContent() {
       <Table
         headers={['Severity', 'Color', 'Description', 'Example']}
         rows={[
-          ['Critical', <span className="text-red-400">Red</span>, 'Immediate risk, exploitable vulnerability', 'Publicly accessible S3 bucket with sensitive data'],
-          ['High', <span className="text-orange-400">Orange</span>, 'Significant risk, likely exploitable', 'Container running as root'],
-          ['Medium', <span className="text-yellow-400">Yellow</span>, 'Moderate risk, should be addressed', 'Missing resource limits on pod'],
-          ['Low', <span className="text-blue-400">Blue</span>, 'Minor risk, best practice violation', 'Missing tags on resources'],
-          ['Info', <span className="text-gray-400">Gray</span>, 'Informational, no immediate risk', 'Deprecated API version in use'],
+          ['Critical', 'Red', 'Immediate risk, exploitable vulnerability', 'Publicly accessible S3 bucket with sensitive data'],
+          ['High', 'Orange', 'Significant risk, likely exploitable', 'Container running as root'],
+          ['Medium', 'Yellow', 'Moderate risk, should be addressed', 'Missing resource limits on pod'],
+          ['Low', 'Blue', 'Minor risk, best practice violation', 'Missing tags on resources'],
+          ['Info', 'Gray', 'Informational, no immediate risk', 'Deprecated API version in use'],
         ]}
       />
 

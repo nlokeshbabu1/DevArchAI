@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { authApi } from './auth'
 import axios from 'axios'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+import { authApi } from './auth'
 
 // Mock axios with a working create(): lib/api.ts calls axios.create() and
 // attaches interceptors at module scope, so an empty auto-mock crashes on import

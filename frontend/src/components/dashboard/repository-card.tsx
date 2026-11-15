@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { cn } from '../../lib/utils'
 import { Github, CheckCircle, RefreshCw, Clock, AlertCircle, Play, Eye } from 'lucide-react'
+
+import { cn } from '../../lib/utils'
 import { Button } from '../ui'
 
 interface RepositoryCardProps {
@@ -35,9 +36,9 @@ export function RepositoryCard({
   const statusInfo = statusConfig[status]
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 60) return 'text-yellow-400'
-    if (score >= 50) return 'text-orange-400'
+    if (score >= 80) {return 'text-green-400'}
+    if (score >= 60) {return 'text-yellow-400'}
+    if (score >= 50) {return 'text-orange-400'}
     return 'text-red-400'
   }
 

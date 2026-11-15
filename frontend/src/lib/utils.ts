@@ -6,8 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds % 1 === 0 ? seconds : seconds.toFixed(1)}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+  if (seconds < 60) {return `${seconds % 1 === 0 ? seconds : seconds.toFixed(1)}s`}
+  if (seconds < 3600) {return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`}
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 }
 
@@ -28,14 +28,14 @@ export function getGradeColor(score: number): string {
 }
 
 export function relativeTime(dateStr: string): string {
-  if (!dateStr) return 'N/A'
+  if (!dateStr) {return 'N/A'}
   const now = Date.now()
   const then = new Date(dateStr).getTime()
-  if (isNaN(then)) return 'N/A'
+  if (isNaN(then)) {return 'N/A'}
   const diff = Math.max(0, Math.floor((now - then) / 1000))
-  if (diff < 60) return 'Just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 60) {return 'Just now'}
+  if (diff < 3600) {return `${Math.floor(diff / 60)}m ago`}
+  if (diff < 86400) {return `${Math.floor(diff / 3600)}h ago`}
   return `${Math.floor(diff / 86400)}d ago`
 }
 
@@ -57,7 +57,7 @@ interface HasFindings {
 }
 
 export function getFindingsCount(result: HasFindings | null | undefined): number {
-  if (!result) return 0
+  if (!result) {return 0}
   return result.total_findings ?? result.findings_count ?? result.findings?.length ?? 0
 }
 
@@ -65,25 +65,25 @@ const BACKEND_PATH_RE = /^(\/tmp\/|\/home\/|\/app\/|\/var\/|\/etc\/|\/usr\/|\.\/
 const INVALID_VALUES = [null, undefined, NaN, Infinity, -Infinity]
 
 export function isValidValue(value: unknown): boolean {
-  if (value === null || value === undefined) return false
-  if (typeof value === 'number' && !Number.isFinite(value)) return false
-  if (typeof value === 'string' && (!value.trim() || BACKEND_PATH_RE.test(value))) return false
+  if (value === null || value === undefined) {return false}
+  if (typeof value === 'number' && !Number.isFinite(value)) {return false}
+  if (typeof value === 'string' && (!value.trim() || BACKEND_PATH_RE.test(value))) {return false}
   return true
 }
 
 export function sanitizeDisplay(value: unknown, fallback = '—'): string {
-  if (!isValidValue(value)) return fallback
+  if (!isValidValue(value)) {return fallback}
   if (typeof value === 'number') {
-    if (value < 0 || value > 10000) return fallback
+    if (value < 0 || value > 10000) {return fallback}
     return String(value)
   }
   const str = String(value).trim()
-  if (BACKEND_PATH_RE.test(str)) return fallback
+  if (BACKEND_PATH_RE.test(str)) {return fallback}
   return str
 }
 
 export function sanitizePath(filePath: string | null | undefined): string {
-  if (!filePath) return ''
+  if (!filePath) {return ''}
   const cleaned = filePath
     .replace(/^\/tmp\/[^/]+\//, '')
     .replace(/^\/home\/[^/]+\//, '')
@@ -96,7 +96,7 @@ export function sanitizePath(filePath: string | null | undefined): string {
 
 export function getFileName(filePath: string | null | undefined): string {
   const path = sanitizePath(filePath)
-  if (!path) return 'unknown'
+  if (!path) {return 'unknown'}
   return path.split('/').pop() || path
 }
 
@@ -194,9 +194,9 @@ export const SCANNER_FAMILIES: ScannerFamilyDef[] = [
 
 export function getFamilyForScanner(scannerId: string): string {
   for (const family of SCANNER_FAMILIES) {
-    if (family.scannerIds.includes(scannerId)) return family.key
+    if (family.scannerIds.includes(scannerId)) {return family.key}
   }
-  if (scannerId.startsWith("trivy")) return "container"
+  if (scannerId.startsWith("trivy")) {return "container"}
   return "sast"
 }
 
@@ -205,7 +205,7 @@ export function getScannerFamilyLabel(key: string): string {
 }
 
 export function parseScannerSources(scannerName: string | null | undefined): string[] {
-  if (!scannerName) return ["DevArchAI"]
+  if (!scannerName) {return ["DevArchAI"]}
   return scannerName.split(",").map(s => s.trim()).filter(Boolean)
 }
 
@@ -215,12 +215,12 @@ const CI_CD_FILES = [".github/", "workflow", "gitlab-ci", "jenkins", ".circleci"
 
 function classifyByRuleId(ruleId: string): string | null {
   const r = (ruleId || "").toLowerCase()
-  if (r.startsWith("docker-") || r.startsWith("dock-") || /^sec-.*docker/i.test(r)) return "container"
-  if (r.startsWith("k8s-") || r.startsWith("helm-") || r.startsWith("kubernetes-")) return "kubernetes"
-  if (r.startsWith("tf-") || r.startsWith("terraform-")) return "iac"
-  if (r.startsWith("cicd-") || r.startsWith("ci/cd-")) return "cicd"
-  if (r.startsWith("secret") || r.includes("hardcoded_secret") || r.includes("credential")) return "secrets"
-  if (r.startsWith("cve-") || r.startsWith("ckv_")) return "sca"
+  if (r.startsWith("docker-") || r.startsWith("dock-") || /^sec-.*docker/i.test(r)) {return "container"}
+  if (r.startsWith("k8s-") || r.startsWith("helm-") || r.startsWith("kubernetes-")) {return "kubernetes"}
+  if (r.startsWith("tf-") || r.startsWith("terraform-")) {return "iac"}
+  if (r.startsWith("cicd-") || r.startsWith("ci/cd-")) {return "cicd"}
+  if (r.startsWith("secret") || r.includes("hardcoded_secret") || r.includes("credential")) {return "secrets"}
+  if (r.startsWith("cve-") || r.startsWith("ckv_")) {return "sca"}
   return null
 }
 
@@ -228,24 +228,24 @@ function classifyByFilePath(filePath: string, summary: string): string | null {
   const fp = (filePath || "").toLowerCase()
   const s = (summary || "").toLowerCase()
 
-  if (fp.includes("dockerfile") || fp.includes("docker-compose") || fp.includes("container")) return "container"
-  if (fp.includes("terraform") || fp.endsWith(".tf") || fp.endsWith(".tfvars") || fp.includes(".tfstate")) return "iac"
+  if (fp.includes("dockerfile") || fp.includes("docker-compose") || fp.includes("container")) {return "container"}
+  if (fp.includes("terraform") || fp.endsWith(".tf") || fp.endsWith(".tfvars") || fp.includes(".tfstate")) {return "iac"}
   if (fp.includes("kubernetes") || fp.includes("k8s") || fp.endsWith(".yaml") || fp.endsWith(".yml")) {
-    if (CI_CD_FILES.some(ci => fp.includes(ci))) return "cicd"
-    if (s.includes("network") || s.includes("pod") || s.includes("deployment") || s.includes("service") || s.includes("namespace") || s.includes("configmap")) return "kubernetes"
+    if (CI_CD_FILES.some(ci => fp.includes(ci))) {return "cicd"}
+    if (s.includes("network") || s.includes("pod") || s.includes("deployment") || s.includes("service") || s.includes("namespace") || s.includes("configmap")) {return "kubernetes"}
   }
-  if (CI_CD_FILES.some(ci => fp.includes(ci))) return "cicd"
+  if (CI_CD_FILES.some(ci => fp.includes(ci))) {return "cicd"}
   return null
 }
 
 function classifyBySummary(summary: string): string | null {
   const s = (summary || "").toLowerCase()
-  if (s.includes("docker") || s.includes("container") || s.includes("image tag") || s.includes("latest tag")) return "container"
-  if (s.includes("terraform") || s.includes("state file") || s.includes("tfstate") || s.includes("backend")) return "iac"
-  if (s.includes("kubernetes") || s.includes("k8s") || s.includes("helm chart") || s.includes("helm ")) return "kubernetes"
-  if (s.includes("ci/cd") || s.includes("pipeline") || s.includes("cache") || s.includes("workflow") || (s.includes("ci ") && s.includes("cd"))) return "cicd"
-  if (s.includes("secret") || s.includes("credential") || s.includes("hardcoded") || s.includes("api key") || s.includes("password") || s.includes("token")) return "secrets"
-  if (s.includes("cve") || s.includes("vulnerability") || s.includes("npm") || s.includes("package") || s.includes("dependency")) return "sca"
+  if (s.includes("docker") || s.includes("container") || s.includes("image tag") || s.includes("latest tag")) {return "container"}
+  if (s.includes("terraform") || s.includes("state file") || s.includes("tfstate") || s.includes("backend")) {return "iac"}
+  if (s.includes("kubernetes") || s.includes("k8s") || s.includes("helm chart") || s.includes("helm ")) {return "kubernetes"}
+  if (s.includes("ci/cd") || s.includes("pipeline") || s.includes("cache") || s.includes("workflow") || (s.includes("ci ") && s.includes("cd"))) {return "cicd"}
+  if (s.includes("secret") || s.includes("credential") || s.includes("hardcoded") || s.includes("api key") || s.includes("password") || s.includes("token")) {return "secrets"}
+  if (s.includes("cve") || s.includes("vulnerability") || s.includes("npm") || s.includes("package") || s.includes("dependency")) {return "sca"}
   return null
 }
 
@@ -255,11 +255,11 @@ export function classifyFindingScanner(finding: any): string {
   const summary = finding.summary || finding.message || finding.rule_name || ""
 
   const byRuleId = classifyByRuleId(ruleId)
-  if (byRuleId) return byRuleId
+  if (byRuleId) {return byRuleId}
   const byFilePath = classifyByFilePath(filePath, summary)
-  if (byFilePath) return byFilePath
+  if (byFilePath) {return byFilePath}
   const bySummary = classifyBySummary(summary)
-  if (bySummary) return bySummary
+  if (bySummary) {return bySummary}
 
   const scannerName = finding.scanner_name
   if (scannerName && typeof scannerName === "string" && scannerName.trim()) {
@@ -285,18 +285,18 @@ export const SCANNER_DEFINITIONS = [
 ]
 
 export function getRelativeTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—"
+  if (!dateStr) {return "—"}
   const now = Date.now()
   const then = new Date(dateStr).getTime()
-  if (isNaN(then)) return "—"
+  if (isNaN(then)) {return "—"}
   const diff = Math.max(0, Math.floor((now - then) / 1000))
-  if (diff < 60) return "Just now"
-  if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`
-  if (diff < 7200) return "1 hour ago"
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`
-  if (diff < 172800) return "Yesterday"
-  if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`
-  if (diff < 2592000) return `${Math.floor(diff / 604800)} weeks ago`
+  if (diff < 60) {return "Just now"}
+  if (diff < 3600) {return `${Math.floor(diff / 60)} minutes ago`}
+  if (diff < 7200) {return "1 hour ago"}
+  if (diff < 86400) {return `${Math.floor(diff / 3600)} hours ago`}
+  if (diff < 172800) {return "Yesterday"}
+  if (diff < 604800) {return `${Math.floor(diff / 86400)} days ago`}
+  if (diff < 2592000) {return `${Math.floor(diff / 604800)} weeks ago`}
   return `${Math.floor(diff / 2592000)} months ago`
 }
 
@@ -383,7 +383,7 @@ const CLASSIFICATION_TO_TECH: Record<string, string> = {
 export function classifyFindingTechnology(finding: any): string {
   const classification = classifyFindingScanner(finding)
   const scannerName = (finding.scanner_name || "").toLowerCase()
-  if (scannerName.includes("hadolint")) return "dockerfile"
+  if (scannerName.includes("hadolint")) {return "dockerfile"}
   return CLASSIFICATION_TO_TECH[classification] || "container"
 }
 

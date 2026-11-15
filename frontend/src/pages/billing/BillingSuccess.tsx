@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
-import { Button, Card } from '../../components/ui-animated'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import { Button, Card } from '../../components/ui-animated'
 import { api } from '../../lib/api'
-import { useAuthStore } from '../../stores/auth-store'
 import { verifyRazorpayPayment } from '../../lib/payment-gateway'
+import { useAuthStore } from '../../stores/auth-store'
 
 export function BillingSuccess() {
   const navigate = useNavigate()

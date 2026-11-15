@@ -3,17 +3,18 @@
  * Allows users to start a scan without leaving the dashboard
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, GitBranch, Github, Gitlab, Loader2, ChevronDown, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 
-import { Card, Button } from './ui-animated'
-import { cn } from '../lib/utils'
-import { ScanProgressOverlay } from './scans/ScanProgressOverlay'
-import { scansApi } from '../api/endpoints/scans'
 import apiClient from '../api/endpoints/client'
+import { scansApi } from '../api/endpoints/scans'
 import { useScanWebSocket } from '../hooks/useScanWebSocket'
+import { cn } from '../lib/utils'
+
+import { ScanProgressOverlay } from './scans/ScanProgressOverlay'
+import { Card, Button } from './ui-animated'
 
 type RepoProvider = 'github' | 'gitlab' | 'unknown'
 interface InlineScanPanelProps {
@@ -32,8 +33,8 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
 
   const parsedProvider = useMemo((): RepoProvider => {
     const trimmed = repoUrl.trim().replace(/\/+$/, '')
-    if (/github\.com\//i.test(trimmed)) return 'github'
-    if (/gitlab\.com\//i.test(trimmed)) return 'gitlab'
+    if (/github\.com\//i.test(trimmed)) {return 'github'}
+    if (/gitlab\.com\//i.test(trimmed)) {return 'gitlab'}
     return 'unknown'
   }, [repoUrl])
 
@@ -189,7 +190,7 @@ export function InlineScanPanel({ isOpen, onClose, onScanComplete }: InlineScanP
     )
   }
 
-  if (!isOpen) return null
+  if (!isOpen) {return null}
 
   return (
     <AnimatePresence>

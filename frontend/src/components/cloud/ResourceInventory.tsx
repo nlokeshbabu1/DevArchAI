@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Filter, Box, ExternalLink } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect, useCallback } from 'react'
+
 import { cloudApi, type CloudResource } from '@/api/endpoints/cloud'
+import { cn } from '@/lib/utils'
 import { useCloudStore } from '@/stores/cloud-store'
 
 interface Props {
@@ -32,7 +33,7 @@ export function ResourceInventory({ connectionId }: Props) {
 
   const services = Array.from(new Set(resources.map((r) => r.service))).sort()
   const filtered = resources.filter((r) => {
-    if (serviceFilter !== 'all' && r.service !== serviceFilter) return false
+    if (serviceFilter !== 'all' && r.service !== serviceFilter) {return false}
     if (search) {
       const q = search.toLowerCase()
       return (

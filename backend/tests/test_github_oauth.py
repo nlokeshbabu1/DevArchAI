@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.oauth_state import generate_oauth_state_sync as generate_oauth_state
 from app.main import app
 from app.models.user import User
 
@@ -73,10 +74,11 @@ class TestGitHubOAuth:
         mock_settings.GITHUB_CLIENT_ID = None
         mock_settings.GITHUB_CLIENT_SECRET = None
 
+        state = generate_oauth_state()
         with patch('app.api.v1.routes.auth.settings', mock_settings):
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "mock_code_123"},
+                json={"code": "mock_code_123", "state": state},
             )
 
             assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -110,16 +112,19 @@ class TestGitHubOAuth:
         with patch('app.api.v1.routes.auth.settings', mock_settings), \
              patch('httpx.AsyncClient', return_value=mock_async_client):
 
+            state = generate_oauth_state()
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "mock_code_123"},
+                json={"code": "mock_code_123", "state": state},
             )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
 
             assert "access_token" in data
-            assert "refresh_token" in data
+            assert "refresh_token" not in data
+            set_cookie = response.headers.get("set-cookie", "")
+            assert "HttpOnly" in set_cookie
             assert "user" in data
             assert data["user"]["email"] == "test@example.com"
             assert data["user"]["username"] == "testuser"
@@ -159,15 +164,27 @@ class TestGitHubOAuth:
         with patch('app.api.v1.routes.auth.settings', mock_settings), \
              patch('httpx.AsyncClient', return_value=mock_async_client):
 
+            state = generate_oauth_state()
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "mock_code_123"},
+                json={"code": "mock_code_123", "state": state},
             )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert data["user"]["email"] == "test@example.com"
             assert data["user"]["has_github"] is True
+
+    def test_github_callback_invalid_state(self, mock_settings):
+        mock_settings.GITHUB_CLIENT_ID = "test_client_id"
+        mock_settings.GITHUB_CLIENT_SECRET = "test_client_secret"
+        with patch("app.api.v1.routes.auth.settings", mock_settings):
+            response = client.post(
+                "/api/v1/auth/github/callback",
+                json={"code": "mock_code_123", "state": "invalid-state"},
+            )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "OAuth state" in _error_message(response)
 
     def test_github_callback_token_exchange_failure(self, mock_settings):
         """Test GitHub callback when token exchange fails."""
@@ -183,12 +200,13 @@ class TestGitHubOAuth:
         mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
         mock_async_client.__aexit__ = AsyncMock(return_value=False)
 
+        state = generate_oauth_state()
         with patch('app.api.v1.routes.auth.settings', mock_settings), \
              patch('httpx.AsyncClient', return_value=mock_async_client):
 
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "invalid_code"},
+                json={"code": "invalid_code", "state": state},
             )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -216,12 +234,13 @@ class TestGitHubOAuth:
         mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
         mock_async_client.__aexit__ = AsyncMock(return_value=False)
 
+        state = generate_oauth_state()
         with patch('app.api.v1.routes.auth.settings', mock_settings), \
              patch('httpx.AsyncClient', return_value=mock_async_client):
 
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "mock_code_123"},
+                json={"code": "mock_code_123", "state": state},
             )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -261,12 +280,13 @@ class TestGitHubOAuth:
         mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
         mock_async_client.__aexit__ = AsyncMock(return_value=False)
 
+        state = generate_oauth_state()
         with patch('app.api.v1.routes.auth.settings', mock_settings), \
              patch('httpx.AsyncClient', return_value=mock_async_client):
 
             response = client.post(
                 "/api/v1/auth/github/callback",
-                json={"code": "mock_code_123"},
+                json={"code": "mock_code_123", "state": state},
             )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST

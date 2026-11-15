@@ -138,6 +138,7 @@ class ApiClient:
     # ------------------------------------------------------------------
 
     def _auth_headers(self) -> dict[str, str]:
+        self._maybe_refresh_cli_session()
         token = self._token_override
         if token is None:
             token = self._config.token
@@ -146,6 +147,37 @@ class ApiClient:
         if token.startswith(("sk-", "dk_")):
             return {"X-API-Key": token}
         return {"Authorization": f"Bearer {token}"}
+
+    def _maybe_refresh_cli_session(self) -> None:
+        if self._config.env_credential_set:
+            return
+        session = self._config.load_cli_session()
+        if not session or not session.get("refresh_token"):
+            return
+        expires_at = float(session.get("expires_at") or 0)
+        if time.time() < expires_at - 30:
+            return
+        refresh = str(session["refresh_token"])
+        try:
+            response = self._client.post(
+                f"{_API_PREFIX}/auth/cli/refresh",
+                json={"refresh_token": refresh},
+            )
+        except httpx.RequestError:
+            return
+        if response.status_code >= 400:
+            return
+        payload = response.json()
+        session.update(
+            {
+                "access_token": payload["access_token"],
+                "refresh_token": payload.get("refresh_token", refresh),
+                "expires_at": time.time() + int(payload.get("expires_in", 900)),
+                "session_id": payload.get("session_id", session.get("session_id")),
+                "email": payload.get("email", session.get("email")),
+            }
+        )
+        self._config.update_cli_session(session)
 
     # ------------------------------------------------------------------
     # Request plumbing

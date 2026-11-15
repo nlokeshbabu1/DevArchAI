@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,14 @@ from typing import Any
 import httpx
 import structlog
 from git import GitCommandError, Repo
+
+from app.services.remediation_patch import (
+    PatchValidationError,
+    build_unified_diff,
+    file_content_hash,
+    reconcile_file_patches,
+    validate_preservation,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -26,6 +35,10 @@ class PartialFixError(FixApplicationError):
 
 class FixValidationError(FixApplicationError):
     """Raised when AI output fails production validation rules."""
+
+
+class RemediationAtomicFailure(FixApplicationError):
+    """Raised when atomic remediation cannot satisfy all selected findings."""
 
 
 def normalize_path(full_path: str | os.PathLike[str] | None, repo_root: str | os.PathLike[str] | None) -> str:
@@ -147,6 +160,7 @@ def _is_cicd_file(path: str) -> bool:
 
 
 def _validate_full_file_output(original: str, updated: str, *, min_ratio: float = 0.60) -> dict[str, Any]:
+    """Legacy size metric for PR descriptions. No longer used to require full-file rewrites."""
     original_len = len(original or "")
     updated_len = len(updated or "")
     ratio = (updated_len / original_len) if original_len > 0 else 1.0
@@ -157,6 +171,15 @@ def _validate_full_file_output(original: str, updated: str, *, min_ratio: float 
         "min_ratio": min_ratio,
         "is_full": ratio >= min_ratio,
     }
+
+
+def _reject_destructive_rewrite(original: str, updated: str, rel_path: str) -> dict[str, Any]:
+    """Run preservation checks; raises FixValidationError when rewrite is unsafe."""
+    try:
+        meta = validate_preservation(original, updated, rel_path)
+        return meta
+    except PatchValidationError as exc:
+        raise FixValidationError(str(exc)) from exc
 
 
 def _validate_dockerfile(content: str) -> dict[str, Any]:
@@ -566,15 +589,18 @@ class GitHubPRService:
             except Exception as e:
                 logger.warning("Failed to cleanup temporary directory", error=str(e))
 
-    def apply_fixes(self, fixes: list[dict]) -> list[str]:
+    def apply_fixes(
+        self,
+        fixes: list[dict],
+        *,
+        atomic_mode: bool = True,
+        selected_finding_ids: list[str] | None = None,
+    ) -> list[str]:
         """
         Apply AI-generated fixes to files.
 
-        Args:
-            fixes: List of fix dictionaries with file_path, fix_code, etc.
-
-        Returns:
-            List of modified file paths
+        Groups fixes by repository path, applies from a single base version per file,
+        and rejects unsafe full-file rewrites.
         """
         logger.info("Applying fixes", count=len(fixes))
         if not self.temp_dir:
@@ -584,32 +610,30 @@ class GitHubPRService:
         applied: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
 
+        grouped: dict[str, list[tuple[Path, dict[str, Any]]]] = defaultdict(list)
+
         for fix in fixes:
             file_path = fix.get("file_path")
-            fix_code = fix.get("full_file") or fix.get("fix_code") or fix.get("after_code")
             finding_id = fix.get("finding_id") or fix.get("id")
+            has_payload = bool(
+                fix.get("unified_diff")
+                or fix.get("fix_code")
+                or fix.get("after_code")
+            )
 
-            if not file_path or not fix_code:
-                failures.append({"finding_id": finding_id, "requested_path": file_path, "reason": "missing_fix_data"})
+            if not file_path or not has_payload:
+                failures.append(
+                    {"finding_id": finding_id, "requested_path": file_path, "reason": "missing_fix_data"}
+                )
                 logger.warning("Fix rejected - missing data", finding_id=finding_id, requested_path=file_path)
                 continue
 
-            # Try to find the file in the repository using normalized repo-relative path.
             full_path, normalized_repo_path = resolve_file_path(
                 self.temp_dir,
                 str(file_path),
                 self.repo_name,
             )
-            logger.info(
-                "Resolved fix path",
-                finding_id=finding_id,
-                original_path=str(file_path),
-                normalized_path=normalized_repo_path,
-                resolved_path=normalize_path(full_path, self.temp_dir) if full_path else None,
-            )
-
             if not full_path:
-                # Path resolution miss should not fail the whole PR flow.
                 logger.warning(
                     "Skipping fix - file not found in repo",
                     finding_id=finding_id,
@@ -618,100 +642,104 @@ class GitHubPRService:
                 )
                 continue
 
+            rel_path = normalize_path(full_path, self.temp_dir)
+            grouped[rel_path].append((Path(full_path), fix))
+
+        for rel_path, entries in grouped.items():
+            full_path = entries[0][0]
+            file_fixes = [fix for _, fix in entries]
+
             try:
-                # Read original content
-                with open(full_path, encoding='utf-8') as f:
+                with open(full_path, encoding="utf-8") as f:
                     original_content = f.read()
 
-                rel_path = normalize_path(full_path, self.temp_dir)
+                base_hash = file_content_hash(original_content)
+                for fix in file_fixes:
+                    fix.setdefault("original_sha256", base_hash)
 
-                # Validation 1: enforce full-file output (reject partial patches).
-                size_check = _validate_full_file_output(original_content, fix_code, min_ratio=0.60)
-                logger.info(
-                    "AI output size validation",
-                    finding_id=finding_id,
-                    file_path=rel_path,
-                    original_len=size_check["original_len"],
-                    updated_len=size_check["updated_len"],
-                    ratio=round(float(size_check["ratio"]), 4),
-                    min_ratio=size_check["min_ratio"],
-                    passed=size_check["is_full"],
+                updated_content, patch_meta = reconcile_file_patches(
+                    rel_path,
+                    original_content,
+                    file_fixes,
                 )
-                if not size_check["is_full"]:
-                    raise PartialFixError(
-                        f"AI output rejected as partial for '{rel_path}' "
-                        f"(updated/original={size_check['updated_len']}/{size_check['original_len']} "
-                        f"= {size_check['ratio']:.2%}, min {size_check['min_ratio']:.0%})."
-                    )
 
-                # Validation 2: file-type specific production checks.
-                validation: dict[str, Any] = {}
+                if updated_content == original_content:
+                    logger.info("No net change after patch reconciliation", file_path=rel_path)
+                    continue
+
+                preservation = _reject_destructive_rewrite(original_content, updated_content, rel_path)
+                size_check = _validate_full_file_output(original_content, updated_content)
+
+                validation: dict[str, Any] = {"preservation": preservation}
                 if _is_dockerfile(rel_path):
-                    docker_val = _validate_dockerfile(fix_code)
+                    docker_val = _validate_dockerfile(updated_content)
                     validation["dockerfile"] = docker_val
-                    logger.info(
-                        "Dockerfile validation",
-                        finding_id=finding_id,
-                        file_path=rel_path,
-                        valid=docker_val["valid"],
-                        has_from=docker_val["has_from"],
-                        has_user=docker_val["has_user"],
-                        last_user=docker_val["last_user"],
-                        user_is_root=docker_val["user_is_root"],
-                    )
                     if not docker_val["valid"]:
                         raise FixValidationError(docker_val["error"])
 
                 if _is_cicd_file(rel_path):
-                    cicd_val = _validate_cicd(fix_code)
+                    cicd_val = _validate_cicd(updated_content)
                     validation["cicd"] = cicd_val
-                    logger.info(
-                        "CI/CD validation",
-                        finding_id=finding_id,
-                        file_path=rel_path,
-                        valid=cicd_val["valid"],
-                        has_test_step=cicd_val["has_test_step"],
-                        has_security_scan_step=cicd_val["has_security_scan_step"],
-                    )
                     if not cicd_val["valid"]:
                         raise FixValidationError(cicd_val["error"])
 
-                # Apply fix
-                with open(full_path, 'w', encoding='utf-8') as f:
-                    f.write(fix_code)
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(updated_content)
 
-                diff_text = _build_unified_diff(rel_path, original_content, fix_code)
+                diff_text = build_unified_diff(rel_path, original_content, updated_content)
                 modified_files.append(rel_path)
-                applied.append(
+                for meta in patch_meta:
+                    applied.append(
+                        {
+                            "finding_id": meta.get("finding_id"),
+                            "requested_path": rel_path,
+                            "file_path": rel_path,
+                            "size_check": size_check,
+                            "validation": validation,
+                            "diff": meta.get("diff") or diff_text,
+                            "original_sha256": base_hash,
+                        }
+                    )
+                logger.info(
+                    "Fix applied",
+                    file_path=rel_path,
+                    findings=len(file_fixes),
+                    original_sha256=base_hash[:12],
+                )
+
+            except PatchValidationError as e:
+                failures.append(
                     {
-                        "finding_id": finding_id,
-                        "requested_path": str(file_path),
-                        "file_path": rel_path,
-                        "size_check": size_check,
-                        "validation": validation,
-                        "diff": diff_text,
+                        "finding_id": None,
+                        "requested_path": rel_path,
+                        "resolved_path": rel_path,
+                        "reason": "patch_validation_failed",
+                        "error": str(e),
                     }
                 )
-                logger.info("Fix applied", file_path=rel_path, finding_id=finding_id)
-
+                logger.error("Patch validation failed", file_path=rel_path, error=str(e))
+            except FixValidationError as e:
+                failures.append(
+                    {
+                        "finding_id": None,
+                        "requested_path": rel_path,
+                        "resolved_path": rel_path,
+                        "reason": "fix_validation_failed",
+                        "error": str(e),
+                    }
+                )
+                logger.error("Fix validation failed", file_path=rel_path, error=str(e))
             except Exception as e:
                 failures.append(
                     {
-                        "finding_id": finding_id,
-                        "requested_path": str(file_path),
-                        "resolved_path": normalize_path(full_path, self.temp_dir) if full_path else None,
+                        "finding_id": None,
+                        "requested_path": rel_path,
+                        "resolved_path": rel_path,
                         "reason": "apply_failed",
                         "error": str(e),
                     }
                 )
-                logger.error(
-                    "Failed to apply fix",
-                    finding_id=finding_id,
-                    requested_path=file_path,
-                    resolved_path=normalize_path(full_path, self.temp_dir) if full_path else None,
-                    error=str(e),
-                )
-                continue
+                logger.error("Failed to apply fix", file_path=rel_path, error=str(e))
 
         if failures:
             logger.warning(
@@ -720,6 +748,22 @@ class GitHubPRService:
                 failed=len(failures),
                 failures=failures[:10],
             )
+
+        self._apply_failures = failures  # type: ignore[attr-defined]
+
+        if atomic_mode and failures:
+            raise RemediationAtomicFailure(
+                f"Atomic remediation failed: {len(failures)} file/patch error(s). "
+                f"First error: {failures[0].get('error') or failures[0].get('reason')}"
+            )
+
+        if atomic_mode and selected_finding_ids:
+            applied_ids = {str(a.get("finding_id")) for a in applied if a.get("finding_id")}
+            missing = [fid for fid in selected_finding_ids if fid not in applied_ids]
+            if missing:
+                raise RemediationAtomicFailure(
+                    f"Atomic remediation failed: findings without applied patches: {missing[:8]}"
+                )
 
         self._applied_fixes = applied  # type: ignore[attr-defined]
         logger.info("Fixes applied successfully", modified_files=len(modified_files))
@@ -1061,9 +1105,14 @@ echo "password={self.github_token}"
         *,
         scan_id: str | None = None,
         findings: list[dict] | None = None,
+        finding_records: list[Any] | None = None,
         score_before: float | None = None,
         score_after: float | None = None,
         app_url: str = "https://app.devarchai.com",
+        atomic_mode: bool = True,
+        scan_commit_hash: str | None = None,
+        scan_detected_stack: dict | None = None,
+        remediation_plan: Any | None = None,
     ) -> dict:
         """
         Complete PR creation workflow: validate → clone → apply fixes → commit → push → create PR.
@@ -1098,11 +1147,49 @@ echo "password={self.github_token}"
             # Step 1: Clone repository
             await self.clone_repository(branch=base_branch)
 
+            plan = remediation_plan
+            if plan is None and finding_records:
+                from app.services.remediation_workflow import RemediationWorkflow
+
+                workflow = RemediationWorkflow()
+                plan = await workflow.build_plan_from_clone(
+                    self.temp_dir,
+                    self.repo_name,
+                    finding_records,
+                    branch=base_branch,
+                    scan_commit_hash=scan_commit_hash,
+                    scan_detected_stack=scan_detected_stack,
+                    atomic_mode=atomic_mode,
+                    generate_missing_patches=False,
+                )
+                self._remediation_plan = plan  # type: ignore[attr-defined]
+
+            if plan is not None:
+                if atomic_mode and not plan.atomic_ok:
+                    report = plan.to_report()
+                    raise RemediationAtomicFailure(
+                        "Atomic remediation failed: not all selected findings produced validated patches. "
+                        f"See remediation_report in API response. "
+                        f"Rejected/manual: "
+                        f"{[o.to_dict() for o in plan.outcomes if o.status != 'ready'][:3]}"
+                    )
+                fixes = plan.fixes
+
             # Step 2: Create new branch
             self.create_branch(branch_name)
 
+            selected_ids = (
+                plan.selected_finding_ids
+                if plan is not None
+                else [str(fx.get("finding_id")) for fx in fixes if fx.get("finding_id")]
+            )
+
             # Step 3: Apply fixes
-            modified_files = self.apply_fixes(fixes)
+            modified_files = self.apply_fixes(
+                fixes,
+                atomic_mode=atomic_mode,
+                selected_finding_ids=selected_ids,
+            )
 
             if not modified_files:
                 raise Exception("No files were modified. Cannot create PR.")
@@ -1116,6 +1203,10 @@ echo "password={self.github_token}"
             # Step 6: Create Pull Request
             if not description:
                 applied = getattr(self, "_applied_fixes", [])
+                plan_report = None
+                plan_obj = getattr(self, "_remediation_plan", None)
+                if plan_obj is not None:
+                    plan_report = plan_obj.to_report()
                 description = generate_pr_description(
                     scan_id=scan_id or "unknown",
                     findings=findings or [],
@@ -1124,6 +1215,10 @@ echo "password={self.github_token}"
                     app_url=app_url,
                     repo_root=self.temp_dir,
                     applied_fixes=applied,
+                    remediation_report=plan_report,
+                    base_commit_sha=getattr(plan_obj, "base_commit_sha", None)
+                    if plan_obj
+                    else None,
                 )
                 self._generated_description = description  # type: ignore[attr-defined]
 
@@ -1134,6 +1229,9 @@ echo "password={self.github_token}"
                 base_branch=base_branch,
                 is_draft=is_draft
             )
+
+            if getattr(self, "_remediation_plan", None) is not None:
+                pr_info["remediation_report"] = self._remediation_plan.to_report()  # type: ignore[attr-defined]
 
             return pr_info
 
@@ -1174,93 +1272,76 @@ def generate_pr_description(
     *,
     repo_root: str | None = None,
     applied_fixes: list[dict] | None = None,
+    remediation_report: dict | None = None,
+    base_commit_sha: str | None = None,
 ) -> str:
-    """Generate production-grade PR description (no internal path leakage)."""
+    """Generate PR description from actual remediation results (no fabricated score claims)."""
 
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for finding in findings:
         severity = finding.get("severity", "info")
         severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-    conf_values: list[float] = []
-    for f in findings:
-        c = f.get("confidence")
-        if isinstance(c, (int, float)):
-            conf_values.append(float(c))
-    confidence = (sum(conf_values) / len(conf_values)) if conf_values else None
-
-    improvement = score_after - score_before
-    improvement_note = (
-        "This is an estimate based on issue severity and typical remediation impact. "
-        "Validate by re-scanning after merge."
-    )
-
-    description = f"""## 🔒 Security Improvements
-
-This Pull Request was generated by DevArchAI to apply **full-file, production-grade** remediations. It includes validation to prevent partial patches and to enforce key security controls (where applicable).
-
-### 📊 Scan Summary
-
-- **Scan ID**: `{scan_id}`
-- **Score Before**: {score_before:.1f}/100
-- **Estimated Score After**: {score_after:.1f}/100
-- **Estimated Improvement**: +{improvement:.1f} points
-- **Why it’s estimated**: {improvement_note}
-- **Issues Addressed**: {len(findings)}
-
-### 🚨 Issues Fixed
-"""
-
-    # Group findings by severity
-    findings_by_severity = {}
-    for finding in findings:
-        severity = finding.get("severity", "info")
-        if severity not in findings_by_severity:
-            findings_by_severity[severity] = []
-        findings_by_severity[severity].append(finding)
-
-    # Add findings to description
-    for severity in ["critical", "high", "medium", "low"]:
-        severity_findings = findings_by_severity.get(severity, [])
-        if not severity_findings:
-            continue
-
-        emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
-        description += f"#### {emoji.get(severity, '⚪')} {severity.upper()} Severity ({len(severity_findings)} issues)\n\n"
-
-        for finding in severity_findings:
-            file_path = normalize_path(finding.get("file_path", "unknown"), repo_root)
-            line_number = finding.get("line_number", "")
-            line_info = f":{line_number}" if line_number else ""
-
-            description += f"**{finding.get('rule_id')}: {finding.get('rule_name')}**\n"
-            description += f"- **File**: `{file_path}{line_info}`\n"
-            description += f"- **Issue**: {finding.get('description')}\n"
-            description += f"- **Fix**: {finding.get('recommendation')}\n\n"
-
     applied_fixes = applied_fixes or []
     modified_files = sorted({fx.get("file_path") for fx in applied_fixes if fx.get("file_path")})
 
-    description += "\n### 📝 Changes Made\n\n"
+    report = remediation_report or {}
+    outcomes = report.get("outcomes") or []
+    ready_count = sum(1 for o in outcomes if o.get("status") == "ready")
+    rejected = [o for o in outcomes if o.get("status") in {"rejected", "manual_required", "skipped"}]
+
+    description = "## DevArchAI remediation\n\n"
+    description += "This pull request contains **targeted unified-diff patches** validated against the cloned repository.\n\n"
+    description += "### Repository context\n\n"
+    if base_commit_sha:
+        description += f"- **Base commit**: `{base_commit_sha}`\n"
+    description += f"- **Scan reference**: `{scan_id}`\n"
+    if report.get("discovery"):
+        disc = report["discovery"]
+        langs = disc.get("languages") or []
+        stack = (disc.get("technology_stack") or {}).get("detected_stack") or []
+        if langs:
+            description += f"- **Languages detected**: {', '.join(langs)}\n"
+        if stack:
+            description += f"- **Infrastructure signals**: {', '.join(stack)}\n"
+
+    description += "\n### Findings selected\n\n"
+    description += f"- **Selected**: {len(findings)}\n"
+    if outcomes:
+        description += f"- **Patches applied (validated)**: {ready_count}\n"
+        description += f"- **Not auto-applied**: {len(rejected)}\n"
+
+    description += "\n### Files modified\n\n"
     if modified_files:
         for p in modified_files:
-            description += f"- Modified: `{normalize_path(p, repo_root)}`\n"
+            description += f"- `{normalize_path(p, repo_root)}`\n"
     else:
-        description += "- Modified: `unknown` (no file metadata recorded)\n"
+        description += "- _(none recorded)_\n"
 
-    description += "\n### ⚠️ Review Notes\n\n"
-    description += "- All changes are applied as **full file updates** (partial patches are rejected).\n"
-    description += "- Dockerfiles are validated to include `FROM` and a **non-root `USER`**.\n"
-    description += "- CI/CD workflows are validated to include **tests** and a **security scan** step.\n"
-    description += "- Please review for environment-specific requirements (secrets, deployment targets, org policies).\n"
+    if rejected:
+        description += "\n### Findings not included in this PR\n\n"
+        for item in rejected[:20]:
+            description += (
+                f"- `{item.get('finding_id')}` / `{item.get('rule_id')}` — "
+                f"**{item.get('status')}**: {item.get('reason') or item.get('manual_guidance') or 'see scan'}\n"
+            )
 
-    description += "\n### 🤖 AI Confidence Score\n\n"
-    if confidence is not None:
-        description += f"- **Average confidence**: {confidence:.2f} (0.00–1.00)\n"
+    description += "\n### Validation\n\n"
+    file_changes = report.get("file_changes") or {}
+    if file_changes:
+        for path, meta in list(file_changes.items())[:15]:
+            description += f"#### `{normalize_path(path, repo_root)}`\n"
+            for vr in meta.get("validation") or []:
+                description += f"- **{vr.get('name')}**: {vr.get('status')} — {vr.get('message', '')}\n"
+            description += "\n"
     else:
-        description += "- Not available for this scan.\n"
+        description += "- Preservation and file-type validators run before commit when patches are generated.\n"
 
-    description += "\n### 🧾 Patch Preview (truncated)\n\n"
+    description += "\n### Review notes\n\n"
+    description += "- Re-scan after merge to confirm findings are resolved (patches alone are not proof of fix).\n"
+    description += "- Score before/after in the scan UI is informational only and is **not** verified by this PR.\n"
+
+    description += "\n### Patch preview (truncated)\n\n"
     max_total_lines = 400
     max_lines_per_file = 160
     total_lines = 0
@@ -1270,25 +1351,15 @@ This Pull Request was generated by DevArchAI to apply **full-file, production-gr
         if not diff_text:
             continue
         diff_lines = diff_text.splitlines()
-        if not diff_lines:
-            continue
         take = min(max_lines_per_file, len(diff_lines), max_total_lines - total_lines)
         if take <= 0:
             break
         description += f"#### `{path}`\n\n```diff\n" + "\n".join(diff_lines[:take]) + "\n```\n\n"
         total_lines += take
         if total_lines >= max_total_lines:
-            description += "_Diff preview truncated. Review the full PR diff in GitHub._\n"
+            description += "_Diff preview truncated._\n"
             break
 
-    description += f"""
-### 🔗 References
-
-- [View DevArchAI Scan Report]({app_url}/scans/{scan_id})
-
----
-
-*Generated by [DevArchAI](https://devarchai.com) on {datetime.utcnow().strftime('%Y-%m-%d at %H:%M UTC')}*
-"""
-
+    description += f"\n### References\n\n- [View scan]({app_url}/scans/{scan_id})\n"
+    description += f"\n---\n*Generated by DevArchAI on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*\n"
     return description
