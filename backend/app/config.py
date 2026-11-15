@@ -332,6 +332,11 @@ class Settings(BaseSettings):
     )
     AI_JOB_MAX_RETRIES: int = Field(default=3, env="AI_JOB_MAX_RETRIES")
     AI_JOB_RETRY_BACKOFF_SECONDS: int = Field(default=30, env="AI_JOB_RETRY_BACKOFF_SECONDS")
+    AI_ELIGIBILITY_INCLUDE_LOW: bool = Field(
+        default=False,
+        env="AI_ELIGIBILITY_INCLUDE_LOW",
+        description="When false, LOW-severity findings are excluded from LLM recommendation jobs (INFO always excluded).",
+    )
 
     # GitHub
     GITHUB_TOKEN: str | None = Field(default=None, env="GITHUB_TOKEN")
@@ -375,17 +380,61 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, env="REFRESH_TOKEN_EXPIRE_DAYS")
 
-    # Rate Limiting
+    # CLI browser login (PKCE)
+    CLI_AUTH_SESSION_TTL_SECONDS: int = Field(default=600, ge=60, env="CLI_AUTH_SESSION_TTL_SECONDS")
+    CLI_AUTH_CODE_TTL_SECONDS: int = Field(default=120, ge=30, env="CLI_AUTH_CODE_TTL_SECONDS")
+
+    # Rate Limiting (hybrid user + IP; see docs/security/DEVARCHAI_RATE_LIMITING_POLICY.md)
+    RATE_LIMIT_ENABLED: bool = Field(default=True, env="RATE_LIMIT_ENABLED")
+    RATE_LIMIT_GENERAL_WINDOW: int = Field(default=60, env="RATE_LIMIT_GENERAL_WINDOW")
+    RATE_LIMIT_GENERAL_USER: int = Field(default=120, env="RATE_LIMIT_GENERAL_USER")
+    RATE_LIMIT_GENERAL_IP: int = Field(default=600, env="RATE_LIMIT_GENERAL_IP")
+    RATE_LIMIT_GENERAL_ANONYMOUS_IP: int = Field(default=60, env="RATE_LIMIT_GENERAL_ANONYMOUS_IP")
+    RATE_LIMIT_LOGIN_ACCOUNT: int = Field(default=5, env="RATE_LIMIT_LOGIN_ACCOUNT")
+    RATE_LIMIT_LOGIN_ACCOUNT_WINDOW: int = Field(default=900, env="RATE_LIMIT_LOGIN_ACCOUNT_WINDOW")
+    RATE_LIMIT_LOGIN_IP: int = Field(default=20, env="RATE_LIMIT_LOGIN_IP")
+    RATE_LIMIT_LOGIN_IP_WINDOW: int = Field(default=900, env="RATE_LIMIT_LOGIN_IP_WINDOW")
+    RATE_LIMIT_REGISTER_IP: int = Field(default=5, env="RATE_LIMIT_REGISTER_IP")
+    RATE_LIMIT_REGISTER_WINDOW: int = Field(default=3600, env="RATE_LIMIT_REGISTER_WINDOW")
+    RATE_LIMIT_PASSWORD_RESET_ACCOUNT: int = Field(default=3, env="RATE_LIMIT_PASSWORD_RESET_ACCOUNT")
+    RATE_LIMIT_PASSWORD_RESET_ACCOUNT_WINDOW: int = Field(default=3600, env="RATE_LIMIT_PASSWORD_RESET_ACCOUNT_WINDOW")
+    RATE_LIMIT_PASSWORD_RESET_IP: int = Field(default=10, env="RATE_LIMIT_PASSWORD_RESET_IP")
+    RATE_LIMIT_PASSWORD_RESET_IP_WINDOW: int = Field(default=3600, env="RATE_LIMIT_PASSWORD_RESET_IP_WINDOW")
+    RATE_LIMIT_REFRESH_USER: int = Field(default=30, env="RATE_LIMIT_REFRESH_USER")
+    RATE_LIMIT_REFRESH_IP: int = Field(default=120, env="RATE_LIMIT_REFRESH_IP")
+    RATE_LIMIT_REFRESH_WINDOW: int = Field(default=60, env="RATE_LIMIT_REFRESH_WINDOW")
+    RATE_LIMIT_SCAN_START_USER: int = Field(default=5, env="RATE_LIMIT_SCAN_START_USER")
+    RATE_LIMIT_SCAN_START_WINDOW: int = Field(default=60, env="RATE_LIMIT_SCAN_START_WINDOW")
+    RATE_LIMIT_AI_REMEDIATION_USER: int = Field(default=10, env="RATE_LIMIT_AI_REMEDIATION_USER")
+    RATE_LIMIT_AI_EXPLANATION_USER: int = Field(default=20, env="RATE_LIMIT_AI_EXPLANATION_USER")
+    RATE_LIMIT_AI_WINDOW: int = Field(default=60, env="RATE_LIMIT_AI_WINDOW")
+    RATE_LIMIT_REPOSITORY_SYNC_USER: int = Field(default=10, env="RATE_LIMIT_REPOSITORY_SYNC_USER")
+    RATE_LIMIT_REPOSITORY_SYNC_WINDOW: int = Field(default=60, env="RATE_LIMIT_REPOSITORY_SYNC_WINDOW")
+    RATE_LIMIT_SCAN_POLL_USER: int = Field(default=60, env="RATE_LIMIT_SCAN_POLL_USER")
+    RATE_LIMIT_SCAN_POLL_WINDOW: int = Field(default=60, env="RATE_LIMIT_SCAN_POLL_WINDOW")
+    RATE_LIMIT_WS_MAX_CONNECTIONS_USER: int = Field(default=10, env="RATE_LIMIT_WS_MAX_CONNECTIONS_USER")
+    RATE_LIMIT_WS_MAX_CONNECTIONS_IP: int = Field(default=30, env="RATE_LIMIT_WS_MAX_CONNECTIONS_IP")
+    RATE_LIMIT_WS_CONNECTION_WINDOW: int = Field(default=60, env="RATE_LIMIT_WS_CONNECTION_WINDOW")
+    TRUSTED_PROXY_CIDRS: list[str] = Field(
+        default_factory=list,
+        env="TRUSTED_PROXY_CIDRS",
+        description="Comma-separated CIDRs for proxies allowed to set X-Forwarded-For",
+    )
+
+    @field_validator("TRUSTED_PROXY_CIDRS", mode="before")
+    @classmethod
+    def parse_trusted_proxy_cidrs(cls, v):
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            return [part.strip() for part in v.split(",") if part.strip()]
+        return v
+    # Legacy settings (deprecated; kept for compatibility with older .env files)
     RATE_LIMIT_REQUESTS: int = Field(default=100, env="RATE_LIMIT_REQUESTS")
-    RATE_LIMIT_WINDOW: int = Field(default=60, env="RATE_LIMIT_WINDOW")  # seconds
-    RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, env="RATE_LIMIT_AUTH_REQUESTS")  # stricter for auth endpoints
-    RATE_LIMIT_AUTH_WINDOW: int = Field(default=60, env="RATE_LIMIT_AUTH_WINDOW")  # seconds
-    # Refresh is the legitimate, frequent "keep session alive" call and also runs
-    # on every page reload, so it gets a much more generous (per-IP) bucket than
-    # login/register. Otherwise multi-tab or rapid reloads can lock a user out of
-    # restoring their session.
+    RATE_LIMIT_WINDOW: int = Field(default=60, env="RATE_LIMIT_WINDOW")
+    RATE_LIMIT_AUTH_REQUESTS: int = Field(default=10, env="RATE_LIMIT_AUTH_REQUESTS")
+    RATE_LIMIT_AUTH_WINDOW: int = Field(default=60, env="RATE_LIMIT_AUTH_WINDOW")
     RATE_LIMIT_REFRESH_REQUESTS: int = Field(default=300, env="RATE_LIMIT_REFRESH_REQUESTS")
-    RATE_LIMIT_REFRESH_WINDOW: int = Field(default=60, env="RATE_LIMIT_REFRESH_WINDOW")  # seconds
 
     # Refresh Token Storage Mode
     AUTH_REFRESH_TOKEN_STORAGE_MODE: Literal["legacy", "hybrid", "cookie_only"] = Field(

@@ -88,9 +88,15 @@ class CheckovAdapter(BaseScannerAdapter):
                     guideline = check.get("guideline", "")
                     severity_str = check.get("severity", "medium")
 
-                    description = check_name or check.get("check_name", check_id)
+                    description = check_name or check_id
                     if resource:
                         description = f"{description} in {resource}"
+                    remediation = (check.get("guideline") or guideline or "").strip()
+                    line_number = check.get("file_line_range")
+                    if isinstance(line_number, list) and line_number:
+                        line_number = line_number[0]
+                    elif not isinstance(line_number, int):
+                        line_number = check.get("line_number")
 
                     findings.append(RuleFinding(
                         rule_id=f"Checkov/{check_id}",
@@ -98,11 +104,14 @@ class CheckovAdapter(BaseScannerAdapter):
                         severity=map_severity(severity_str),
                         category=detect_category(description, check_id),
                         description=description,
-                        recommendation=check.get("check_name", ""),
+                        recommendation=remediation or check_name or check_id,
+                        summary=description,
                         file_path=file_path or None,
+                        line_number=line_number if isinstance(line_number, int) else None,
+                        resource_name=resource or None,
                         scanner_name=self.name,
                         scanner_rule_id=check_id,
-                        references=[guideline] if guideline else [],
+                        references=[remediation] if remediation else [],
                         evidence=json.dumps({"resource": resource}) if resource else None,
                     ))
         except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError):

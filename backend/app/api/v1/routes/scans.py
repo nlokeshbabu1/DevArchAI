@@ -19,6 +19,7 @@ from app.models.user import User
 from app.schemas.scan import (
     ScanCancelResponse,
     ScanCreate,
+    ScanDeleteResponse,
     ScanProgressResponse,
     ScanResponse,
 )
@@ -365,6 +366,54 @@ async def cancel_scan(
         id=str(scan.id),
         status="cancelled",
         message="Scan cancelled successfully",
+    )
+
+
+@router.delete("/{scan_id}", response_model=ScanDeleteResponse)
+async def delete_scan(
+    scan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a scan and its dependent records (owner only)."""
+    scan_uuid = _parse_scan_id(scan_id)
+
+    result = await db.execute(
+        select(Scan).where(
+            Scan.id == scan_uuid,
+            Scan.user_id == current_user.id,
+        )
+    )
+    scan = result.scalar_one_or_none()
+
+    if not scan:
+        raise ScanNotFoundException(scan_id)
+
+    if scan.status in (ScanStatus.PENDING, ScanStatus.PROCESSING, ScanStatus.QUEUED):
+        if scan.celery_task_id:
+            try:
+                cancel_scan_task.delay(str(scan.id))
+            except Exception as e:
+                logger.warning("Failed to cancel Celery task before delete", error=str(e))
+        scan.status = ScanStatus.CANCELLED
+        scan.error_message = "Scan cancelled for deletion"
+
+    scan_id_str = str(scan.id)
+    await db.delete(scan)
+    await db.commit()
+
+    try:
+        from app.websockets.scan_progress import scan_progress_manager
+
+        await scan_progress_manager.broadcast_scan_cancelled(scan_id_str)
+    except Exception as exc:
+        logger.warning("Failed to broadcast scan deletion", error=str(exc))
+
+    logger.info("scan_deleted", scan_id=scan_id_str, user_id=str(current_user.id))
+    return ScanDeleteResponse(
+        id=scan_id_str,
+        message="Scan deleted successfully",
+        success=True,
     )
 
 

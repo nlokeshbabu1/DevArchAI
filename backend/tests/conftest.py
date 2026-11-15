@@ -284,10 +284,12 @@ def _flush_rate_limit_keys():
             settings.REDIS_URL, socket_connect_timeout=2, socket_timeout=2
         )
         keys = list(client.scan_iter("ratelimit:*"))
+        keys.extend(client.scan_iter("ratelimit:v2:*"))
         if keys:
             client.delete(*keys)
         yield
         keys = list(client.scan_iter("ratelimit:*"))
+        keys.extend(client.scan_iter("ratelimit:v2:*"))
         if keys:
             client.delete(*keys)
     except Exception:

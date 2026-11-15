@@ -280,6 +280,7 @@ export function Dashboard() {
             repositoriesAtRisk={repositoriesAtRisk}
             scoreDelta={scoreDelta}
             isLoading={isLoading}
+            usingFallbackScore={isUsingFallbackScore}
           />
 
           <KpiRow

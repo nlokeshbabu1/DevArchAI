@@ -1,0 +1,1 @@
+"""CLI browser authentication (PKCE)."""

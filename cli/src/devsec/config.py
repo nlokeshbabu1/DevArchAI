@@ -38,6 +38,7 @@ ENV_API_KEY = "DEVSEC_API_KEY"  # noqa: S105
 # Legacy name kept for backward compatibility with CI setups written before
 # ``DEVSEC_API_KEY``. Precedence: DEVSEC_API_KEY > DEVSEC_API_TOKEN > keyring.
 ENV_API_TOKEN = "DEVSEC_API_TOKEN"  # noqa: S105
+CLI_SESSION_KEYRING_USER = "cli_session"
 
 # Keys accepted by `devsec config set`.
 CONFIG_KEYS: dict[str, str] = {
@@ -323,22 +324,51 @@ class Config:
             return "config-file"
         return "default"
 
+    def save_cli_session(self, data: dict[str, Any]) -> None:
+        """Persist interactive CLI login tokens in the OS keyring (never in config.toml)."""
+        self.secrets.set_token(json.dumps(data), username=CLI_SESSION_KEYRING_USER)
+        self.secrets.delete_token()
+
+    def load_cli_session(self) -> dict[str, Any] | None:
+        raw = self.secrets.get_token(username=CLI_SESSION_KEYRING_USER)
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return data if isinstance(data, dict) else None
+
+    def clear_cli_session(self) -> None:
+        self.secrets.delete_token(username=CLI_SESSION_KEYRING_USER)
+
+    @property
+    def cli_session(self) -> dict[str, Any] | None:
+        return self.load_cli_session()
+
     @property
     def token(self) -> str | None:
-        """Return the auth token: ``DEVSEC_API_KEY`` first, then legacy
-        ``DEVSEC_API_TOKEN``, then keyring."""
+        """Return credential: env API key > CLI session JWT > legacy keyring API key."""
         env_token = self._env.get(ENV_API_KEY) or self._env.get(ENV_API_TOKEN)
         if env_token:
             return env_token.strip() or None
+        session = self.load_cli_session()
+        if session and session.get("access_token"):
+            return str(session["access_token"])
         return self.secrets.get_token()
 
     @property
     def token_source(self) -> str | None:
         if self._env.get(ENV_API_KEY) or self._env.get(ENV_API_TOKEN):
             return "environment"
+        if self.load_cli_session():
+            return "cli-session"
         if self.secrets.get_token():
             return "credentials-file" if self.secrets.using_fallback else "keyring"
         return None
+
+    def update_cli_session(self, data: dict[str, Any]) -> None:
+        self.save_cli_session(data)
 
     @property
     def is_using_api_key(self) -> bool:

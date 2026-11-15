@@ -415,17 +415,27 @@ export function ScanProgressPage() {
   const liveFindings = wsState?.liveFindings || []
   const aiProgress = wsState?.aiProgress || null
   const polledAiProgress = useMemo(() => {
-    if (!aiJobStatus?.total_jobs) {return null}
+    if (!aiJobStatus) {return null}
+    const eligible = aiJobStatus.jobs_eligible_total ?? aiJobStatus.ai_eligible_findings ?? aiJobStatus.total_jobs
+    if (!eligible) {return null}
     const by = aiJobStatus.by_status || {}
-    const completed = (by.completed || 0) + (by.failed || 0)
-    const total = aiJobStatus.total_jobs
-    if (total <= 0) {return null}
+    const completed = aiJobStatus?.jobs_analyzed ?? (by.completed || 0) + (by.failed || 0)
+    const infoSkipped = aiJobStatus?.info_excluded_count ?? 0
+    const totalFindings = aiJobStatus?.total_findings
+    const detail =
+      infoSkipped > 0 && totalFindings
+        ? ` · ${infoSkipped} informational excluded from AI`
+        : ''
+    const message =
+      completed >= eligible
+        ? `AI analyzed ${completed} of ${eligible} eligible findings${detail}`
+        : `AI analyzing ${completed} of ${eligible} eligible findings${detail}`
     return {
       phase: 'llm',
-      message: `Generating AI recommendations (${completed}/${total})`,
-      progress: Math.round((completed / total) * 100),
+      message,
+      progress: Math.round((completed / eligible) * 100),
       findings_processed: completed,
-      findings_total: total,
+      findings_total: eligible,
       timestamp: new Date().toISOString(),
     }
   }, [aiJobStatus])
@@ -661,6 +671,12 @@ export function ScanProgressPage() {
                     )}
                     {isAiPending && <StatusBadge status="processing" label="AI analyzing" dot />}
                     {isAiReady && <StatusBadge status="completed" label="AI ready" dot />}
+                    {(aiJobStatus?.info_excluded_count ?? 0) > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {aiJobStatus?.info_excluded_count} informational finding
+                        {(aiJobStatus?.info_excluded_count ?? 0) === 1 ? '' : 's'} excluded from AI analysis
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

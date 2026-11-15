@@ -119,7 +119,7 @@ const capabilities: Capability[] = [
   {
     title: 'Cloud Security',
     icon: Cloud,
-    description: 'Scan AWS, Azure, and GCP configurations for security risks, compliance gaps, and best practices.',
+    description: 'AWS account integration for live cloud posture; Azure and GCP integrations are on the roadmap (Coming Soon in app).',
     severity: [
       { label: 'Critical', count: 4, color: 'text-red-400' },
       { label: 'High', count: 11, color: 'text-orange-400' },

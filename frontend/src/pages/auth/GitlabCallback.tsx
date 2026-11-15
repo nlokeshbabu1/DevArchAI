@@ -56,7 +56,9 @@ export function GitlabCallback() {
         }
         queryClient.clear()
         setStatus('success')
-        setTimeout(() => navigate('/dashboard'), 1000)
+        const redirectPath = sessionStorage.getItem('postLoginRedirect')
+        sessionStorage.removeItem('postLoginRedirect')
+        setTimeout(() => navigate(redirectPath || '/dashboard'), 1000)
       })
       .catch((err: unknown) => {
         setStatus('error')

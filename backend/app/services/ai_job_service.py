@@ -19,6 +19,11 @@ from app.services.ai_recommendation_cache import (
     finding_fingerprint,
     recommendation_cache_key,
 )
+from app.services.ai_eligibility import (
+    filter_ai_eligible_findings,
+    finding_severity_value,
+    is_ai_eligible_finding,
+)
 from app.services.ai_source_provenance import (
     documentation_status_display,
     normalize_sources,
@@ -57,18 +62,19 @@ async def build_job_groups(
 
     engine = context_engine or AIContextEngine()
     limit = max_per_scan or int(getattr(settings, "AI_RECOMMENDATIONS_MAX_PER_SCAN", 50) or 50)
-    findings = (
+    all_findings = (
         (
             await session.execute(
                 select(Finding)
                 .where(Finding.scan_id == scan.id)
                 .order_by(Finding.created_at.asc())
-                .limit(limit)
             )
         )
         .scalars()
         .all()
     )
+    eligible = filter_ai_eligible_findings(all_findings)
+    findings = eligible[:limit]
     if not findings:
         return []
 
@@ -281,6 +287,18 @@ async def summarize_scan_ai(session: Any, scan_id: UUID | str) -> dict[str, Any]
     for job in jobs:
         by_status[job.status] = by_status.get(job.status, 0) + 1
 
+    findings_rows = (
+        await session.execute(select(Finding).where(Finding.scan_id == scan_uuid))
+    ).scalars().all()
+    total_findings = len(findings_rows)
+    eligible_findings = filter_ai_eligible_findings(findings_rows)
+    info_excluded = sum(1 for f in findings_rows if finding_severity_value(f) == "info")
+    low_excluded = sum(
+        1 for f in findings_rows if finding_severity_value(f) == "low" and not is_ai_eligible_finding(f)
+    )
+    jobs_completed = by_status.get(FindingAIJobStatus.COMPLETED.value, 0)
+    jobs_failed = by_status.get(FindingAIJobStatus.FAILED.value, 0)
+
     return {
         "scan_id": str(scan_uuid),
         "ai_status": scan.ai_status if scan else "unknown",
@@ -288,6 +306,12 @@ async def summarize_scan_ai(session: Any, scan_id: UUID | str) -> dict[str, Any]
         "total_jobs": len(jobs),
         "by_status": by_status,
         "jobs": [serialize_job(job) for job in jobs],
+        "total_findings": total_findings,
+        "ai_eligible_findings": len(eligible_findings),
+        "info_excluded_count": info_excluded,
+        "low_excluded_count": low_excluded,
+        "jobs_analyzed": jobs_completed + jobs_failed,
+        "jobs_eligible_total": len(jobs),
     }
 
 

@@ -4,7 +4,7 @@ import {
   Mail, Lock, Eye, EyeOff, Github, Loader2,
   CheckCircle, AlertCircle, ArrowRight, Shield
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { authApi } from '../../api/endpoints/auth'
@@ -18,16 +18,25 @@ import { AuthLayout } from './AuthLayout'
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
 
+function consumePostLoginRedirect(): string | null {
+  const redirect = sessionStorage.getItem('postLoginRedirect')
+  if (redirect) {
+    sessionStorage.removeItem('postLoginRedirect')
+  }
+  return redirect
+}
+
 export function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { login, setUser, isAuthenticated, isLoading: authBootstrapping, checkAuth } = useAuthStore()
+  const manualLoginInProgress = useRef(false)
 
   useEffect(() => {
     initAuthSync()
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      navigate(consumePostLoginRedirect() || '/dashboard', { replace: true })
       return
     }
     checkAuth()
@@ -35,8 +44,11 @@ export function Login() {
   }, [])
 
   useEffect(() => {
+    if (manualLoginInProgress.current) {
+      return
+    }
     if (!authBootstrapping && isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      navigate(consumePostLoginRedirect() || '/dashboard', { replace: true })
     }
   }, [authBootstrapping, isAuthenticated, navigate])
 
@@ -94,6 +106,7 @@ export function Login() {
 
     if (!validateForm()) {return}
 
+    manualLoginInProgress.current = true
     setIsLoading(true)
 
     try {
@@ -102,12 +115,13 @@ export function Login() {
       login(tokenResponse.access_token)
       setSuccess('Login successful! Redirecting...')
 
+      const redirectPath = sessionStorage.getItem('postLoginRedirect')
+
       try {
         const userResponse = await authApi.getCurrentUser()
         setUser(userResponse)
         queryClient.clear()
 
-        const redirectPath = sessionStorage.getItem('postLoginRedirect')
         const upgradeIntent = sessionStorage.getItem('upgradeIntent')
 
         if (upgradeIntent === 'true') {
@@ -142,9 +156,11 @@ export function Login() {
         }
       } catch {
         queryClient.clear()
-        navigate('/dashboard')
+        sessionStorage.removeItem('postLoginRedirect')
+        navigate(redirectPath || '/dashboard')
       }
     } catch (err: any) {
+      manualLoginInProgress.current = false
       const errorMessage = err.response?.data?.detail || 'Login failed. Please check your credentials.'
       setError(errorMessage)
       setShakeField('form')

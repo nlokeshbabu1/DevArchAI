@@ -9,6 +9,7 @@ import { Button } from '../ui-animated'
 
 const navLinksBase = [
   { label: 'Features', href: '#features' },
+  { label: 'Supported Technologies', href: '#technologies' },
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Pricing', href: '#pricing', labelBeta: 'Beta Access' },
 ] as const

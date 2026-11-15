@@ -51,7 +51,7 @@ describe('Landing Page', () => {
   it('renders CTA buttons', () => {
     renderLanding()
     expect(screen.getAllByText(/Start Free Scan/i).length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText(/Watch Demo/i)).toBeInTheDocument()
+    expect(screen.getByText(/Explore Features/i)).toBeInTheDocument()
   })
 
   it('renders hero trust markers', () => {
@@ -70,7 +70,7 @@ describe('Landing Page', () => {
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBeGreaterThanOrEqual(6)
     expect(screen.getByText('Connect Your Repository')).toBeInTheDocument()
     expect(screen.getByText('Technology Detection')).toBeInTheDocument()
-    expect(screen.getByText('AI Security Scan')).toBeInTheDocument()
+    expect(screen.getByText('Security Scan')).toBeInTheDocument()
   })
 
   it('renders supported technologies section', () => {
@@ -110,10 +110,10 @@ describe('Landing Page', () => {
     expect(screen.getByText(/Log In/i)).toBeInTheDocument()
   })
 
-  it('renders live analysis demo', () => {
+  it('renders walkthrough and product preview', () => {
     renderLanding()
-    expect(screen.getByText(/See It In Action/i)).toBeInTheDocument()
-    expect(screen.getByText(/Live Product Demo/i)).toBeInTheDocument()
+    expect(screen.getByText(/Walkthrough/i)).toBeInTheDocument()
+    expect(screen.getByText(/Product preview/i)).toBeInTheDocument()
   })
 
   it('has a footer with compliance links', () => {

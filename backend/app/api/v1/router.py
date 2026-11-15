@@ -7,6 +7,7 @@ from app.api.v1.aws.routes import router as aws_router
 from app.api.v1.routes import (
     ai_suggestions,
     auth,
+    cli_auth,
     billing,
     dashboard,
     findings,
@@ -37,6 +38,7 @@ api_router = APIRouter()
 
 api_router.include_router(ai_suggestions.router)
 api_router.include_router(auth.router)
+api_router.include_router(cli_auth.router)
 api_router.include_router(billing.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(findings.router)

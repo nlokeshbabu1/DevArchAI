@@ -7,7 +7,9 @@ const STATUS: Record<string, ConnectionStatus> = {
 
 export const buildCategories = (opts: {
   githubStatus: ConnectionStatus
+  githubConnectionNote?: string
   gitlabStatus: ConnectionStatus
+  gitlabConnectionNote?: string
   bitbucketStatus: ConnectionStatus
   awsStatus: ConnectionStatus
   kubernetesStatus: ConnectionStatus
@@ -56,6 +58,7 @@ export const buildCategories = (opts: {
       icon: 'github',
       category: 'repositories',
       status: opts.githubStatus,
+      providerLabel: opts.githubConnectionNote,
       features: ['Repository import', 'PR comments', 'Status checks', 'Auto-scan on push'],
     },
     {
@@ -65,6 +68,7 @@ export const buildCategories = (opts: {
       icon: 'gitlab',
       category: 'repositories',
       status: opts.gitlabStatus,
+      providerLabel: opts.gitlabConnectionNote,
       features: ['Repository import', 'CI/CD integration', 'MR comments', 'Pipeline status'],
     },
     {

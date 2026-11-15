@@ -138,9 +138,14 @@ export function IntegrationsPage() {
         }
       : undefined
 
+  const githubIntegration = integrations.find((i) => i.provider === 'github')
+  const gitlabIntegration = integrations.find((i) => i.provider === 'gitlab')
+
   const categories = buildCategories({
     githubStatus: getCardStatus('github'),
+    githubConnectionNote: githubIntegration?.connectionDetail,
     gitlabStatus: getCardStatus('gitlab'),
+    gitlabConnectionNote: gitlabIntegration?.connectionDetail,
     bitbucketStatus: getCardStatus('bitbucket'),
     awsStatus: awsConnection.connected ? 'connected' : getCardStatus('aws'),
     kubernetesStatus: getCardStatus('kubernetes'),

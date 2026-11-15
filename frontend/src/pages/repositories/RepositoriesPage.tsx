@@ -21,7 +21,9 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState } from '@/components/ui/empty-state'
 
 import apiClient from '../../api/endpoints/client'
+import { integrationsApi } from '../../api/endpoints/integrations'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
+import { RepositoryListCard } from '../../components/repositories/RepositoryListCard'
 import { scansApi } from '../../api/endpoints/scans'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
@@ -33,16 +35,22 @@ import { StatusBadge } from '../../components/ui/StatusBadge'
 import { Button, Card } from '../../components/ui-animated'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
 import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
+import {
+  countRepositoriesByStatus,
+  inferRepositoryProvider,
+  REPOSITORY_STATUS_FILTERS,
+  repositoryStatusLabel,
+  resolveRepositoryDisplayStatus,
+  type RepositoryDisplayStatus,
+} from '../../lib/repository-display'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/auth-store'
 import type { StageMetadata } from '../../types'
 
 
-type DisplayStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed'
-
 interface DisplayRepository extends Repository {
-  displayStatus: DisplayStatus
-  source?: 'github' | 'gitlab' | 'manual'
+  displayStatus: RepositoryDisplayStatus
+  source?: ReturnType<typeof inferRepositoryProvider>
 }
 
 interface TriggerScanVariables {
@@ -89,35 +97,6 @@ interface ImportableRepoItem {
   forks_count: number
   updated_at: string
 }
-function getStatusLabel(status: DisplayStatus | 'all') {
-  if (status === 'all') {
-    return 'All'
-  }
-
-  if (status === 'not_scanned') {
-    return 'Not Scanned'
-  }
-
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-function getRepositoryActivityLabel(repo: DisplayRepository) {
-  if (repo.last_scan_at) {
-    const lastScan = new Date(repo.last_scan_at)
-    return `${lastScan.toLocaleDateString()} • ${lastScan.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  }
-
-  if (repo.displayStatus === 'scanning') {
-    return 'Scan in progress'
-  }
-
-  return 'Never scanned'
-}
-
-function isRunningStatus(status?: string | null) {
-  return status === 'processing' || status === 'pending' || status === 'queued' || status === 'running'
-}
-
 function parseRepositoryId(id: string) {
   const parts = id.split('_')
   const parsedId = Number(parts[parts.length - 1])
@@ -181,6 +160,12 @@ export function RepositoriesPage() {
     },
   })
 
+  const { data: integrationStatus } = useQuery({
+    queryKey: ['integrations-status'],
+    queryFn: () => integrationsApi.getIntegrationStatus(),
+    staleTime: 60_000,
+  })
+
   const { data: repositoriesResponse, isLoading } = useQuery({
     queryKey: ['repositories'],
     queryFn: async () => {
@@ -193,8 +178,8 @@ export function RepositoriesPage() {
   const repositories = repositoriesResponse || []
   const allRepos: DisplayRepository[] = repositories.map((repo) => ({
     ...repo,
-    displayStatus: 'not_scanned',
-    source: repo.url?.includes('github.com') ? 'github' : repo.url?.includes('gitlab.com') ? 'gitlab' : 'manual',
+    displayStatus: 'not_scanned' as RepositoryDisplayStatus,
+    source: inferRepositoryProvider(repo.url),
   }))
 
   const activeProvider: 'github' | 'gitlab' = 
@@ -227,12 +212,11 @@ export function RepositoriesPage() {
     retry: false,
   })
 
-  const githubConnected =
-    activeProvider === 'github'
-      ? (githubRepositoriesResponse?.github_connected ??
-        repositories.some((repo) => repo.url?.includes('github.com')))
-      : false
-  const gitlabConnected = user?.has_gitlab ?? false
+  const githubOAuthConnected = integrationStatus?.github_oauth ?? false
+  const githubAppInstalled = integrationStatus?.github_app_installed ?? false
+  const githubOAuthForImport =
+    activeProvider === 'github' ? (githubRepositoriesResponse?.github_connected ?? githubOAuthConnected) : false
+  const gitlabOAuthConnected = integrationStatus?.gitlab_oauth ?? integrationStatus?.gitlab ?? (user?.has_gitlab ?? false)
   const importedRepositoryUrls = new Set(repositories.map((repo) => repo.url))
 
   const isImportLoading = activeProvider === 'github' ? isGitHubRepositoriesLoading : isGitLabProjectsLoading
@@ -284,9 +268,9 @@ export function RepositoriesPage() {
     ? activeProvider === 'github'
       ? 'Failed to load GitHub repositories. Please try again.'
       : 'Failed to load GitLab projects. Please try again.'
-    : activeProvider === 'github' && !githubConnected
+    : activeProvider === 'github' && !githubOAuthForImport
     ? (githubRepositoriesResponse?.message || 'Connect GitHub with OAuth to import repositories.')
-    : activeProvider === 'gitlab' && !gitlabConnected
+    : activeProvider === 'gitlab' && !gitlabOAuthConnected
     ? (gitlabProjectsResponse?.message || 'Connect GitLab with OAuth to import projects.')
     : rawItems.length > 0 && importableItems.length === 0
     ? activeProvider === 'github'
@@ -438,26 +422,12 @@ export function RepositoriesPage() {
     }
   }
 
-  const displayRepos: DisplayRepository[] = allRepos.map((repo) => {
-    let displayStatus: DisplayStatus = 'not_scanned'
-
-    if (repo.scan_status === 'completed' && repo.overall_score !== null && repo.overall_score !== undefined) {
-      displayStatus = 'completed'
-    } else if (isRunningStatus(repo.scan_status) || scanningRepoIds.has(repo.id)) {
-      displayStatus = 'scanning'
-    } else if (repo.scan_status === 'failed') {
-      displayStatus = 'failed'
-    } else if (repo.scan_count && repo.scan_count > 0 && repo.overall_score !== null && repo.overall_score !== undefined) {
-      displayStatus = 'completed'
-    } else if (repo.scan_count && repo.scan_count > 0) {
-      displayStatus = 'scanning'
-    }
-
-    return {
-      ...repo,
-      displayStatus,
-    }
-  })
+  const displayRepos: DisplayRepository[] = allRepos.map((repo) => ({
+    ...repo,
+    displayStatus: resolveRepositoryDisplayStatus(repo, {
+      locallyScanning: scanningRepoIds.has(repo.id) || activeScan?.repoId === repo.id,
+    }),
+  }))
 
   const filteredRepos = displayRepos.filter((repo) => {
     if (statusFilter !== 'all' && repo.displayStatus !== statusFilter) {
@@ -467,13 +437,7 @@ export function RepositoriesPage() {
     return true
   })
 
-  const statusCounts = {
-    all: displayRepos.length,
-    completed: displayRepos.filter((repo) => repo.displayStatus === 'completed').length,
-    scanning: displayRepos.filter((repo) => repo.displayStatus === 'scanning').length,
-    not_scanned: displayRepos.filter((repo) => repo.displayStatus === 'not_scanned').length,
-    failed: displayRepos.filter((repo) => repo.displayStatus === 'failed').length,
-  }
+  const statusCounts = countRepositoriesByStatus(displayRepos)
 
   const isAdding = addRepositoryMutation.isPending
 
@@ -512,8 +476,26 @@ export function RepositoriesPage() {
           transition={{ delay: 0.1 }}
         >
           {[
-            { name: 'GitHub', icon: Github, status: githubConnected ? 'connected' as const : 'not_connected' as const },
-            { name: 'GitLab', icon: Gitlab, status: gitlabConnected ? 'connected' as const : 'not_connected' as const },
+            {
+              name: 'GitHub',
+              icon: Github,
+              status: githubOAuthConnected
+                ? ('connected' as const)
+                : githubAppInstalled
+                ? ('pending' as const)
+                : ('not_connected' as const),
+              label: githubOAuthConnected
+                ? 'OAuth linked'
+                : githubAppInstalled
+                ? 'App installed'
+                : undefined,
+            },
+            {
+              name: 'GitLab',
+              icon: Gitlab,
+              status: gitlabOAuthConnected ? ('connected' as const) : ('not_connected' as const),
+              label: gitlabOAuthConnected ? 'OAuth linked' : undefined,
+            },
             { name: 'AWS', icon: Cloud, status: 'not_connected' as const },
             { name: 'Azure', icon: Server, status: 'coming_soon' as const },
           ].map((integration) => (
@@ -523,7 +505,7 @@ export function RepositoriesPage() {
                   <integration.icon className="h-6 w-6 text-muted-foreground" />
                   <span className="font-medium">{integration.name}</span>
                 </div>
-                <StatusBadge status={integration.status} dot />
+                <StatusBadge status={integration.status} label={integration.label} dot />
               </div>
             </Card>
           ))}
@@ -533,7 +515,7 @@ export function RepositoriesPage() {
           <Card className="p-4" hover={false}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="mr-2 text-sm font-medium text-foreground">Status:</span>
-              {(['all', 'completed', 'scanning', 'not_scanned', 'failed'] as const).map((status) => (
+              {REPOSITORY_STATUS_FILTERS.map((status) => (
                 <button
                   key={status}
                   onClick={() => setStatusFilter(status)}
@@ -544,7 +526,7 @@ export function RepositoriesPage() {
                       : 'bg-white/5 text-muted-foreground hover:bg-white/10',
                   )}
                 >
-                  {getStatusLabel(status)} ({statusCounts[status]})
+                  {repositoryStatusLabel(status)} ({statusCounts[status]})
                 </button>
               ))}
             </div>
@@ -613,201 +595,18 @@ export function RepositoriesPage() {
               />
             )
           ) : (
-            filteredRepos.map((repo, index) => {
-              const isStartPending = scanStartPendingIds.has(repo.id)
-              const isRepoScanning = repo.displayStatus === 'scanning' || scanningRepoIds.has(repo.id) || activeScan?.repoId === repo.id
-              const hasScore = repo.overall_score !== undefined && repo.overall_score !== null
-              const scanButtonLabel = repo.displayStatus === 'completed'
-                ? 'Rescan'
-                : repo.displayStatus === 'failed'
-                ? 'Retry Scan'
-                : 'Scan'
-
-              return (
-                <motion.div
-                  key={repo.id}
-                  className="h-full"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 + index * 0.08 }}
-                >
-                  <Card className="flex h-full flex-col overflow-hidden" hover>
-                    <div className="flex flex-1 flex-col gap-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 flex-1 items-start gap-3">
-                          <div className="rounded-xl border border-white/10 bg-white/5 p-2.5">
-                            {repo.source === 'gitlab'
-                              ? <Gitlab className="h-5 w-5 text-muted-foreground" />
-                              : <Github className="h-5 w-5 text-muted-foreground" />
-                            }
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="truncate text-lg font-semibold text-foreground">
-                                {repo.name}
-                              </h3>
-                              {repo.source === 'github' && (
-                                <Badge variant="secondary" className="border-blue-500/30 bg-blue-500/10 text-xs text-blue-400">
-                                  <Github className="mr-1 h-3 w-3" />
-                                  GitHub
-                                </Badge>
-                              )}
-                              {repo.source === 'gitlab' && (
-                                <Badge variant="secondary" className="border-orange-500/30 bg-orange-500/10 text-xs text-orange-400">
-                                  <Gitlab className="mr-1 h-3 w-3" />
-                                  GitLab
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
-                              {repo.description || repo.url}
-                            </p>
-                          </div>
-                        </div>
-                        <div
-                          className={cn(
-                            'inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-                            repo.displayStatus === 'completed'
-                              ? 'border-green-500/30 bg-green-500/15 text-green-400'
-                              : repo.displayStatus === 'scanning'
-                              ? 'border-blue-500/30 bg-blue-500/15 text-blue-400'
-                              : repo.displayStatus === 'failed'
-                              ? 'border-red-500/30 bg-red-500/15 text-red-400'
-                              : 'border-gray-500/30 bg-gray-500/15 text-gray-400',
-                          )}
-                        >
-                          {repo.displayStatus === 'scanning' && <Loader2 className="h-3 w-3 animate-spin" />}
-                          {repo.displayStatus === 'completed' && <CheckCircle className="h-3 w-3" />}
-                          {repo.displayStatus === 'failed' && <AlertCircle className="h-3 w-3" />}
-                          <span>{getStatusLabel(repo.displayStatus)}</span>
-                        </div>
-                      </div>
-
-                      {repo.tech_stack && repo.tech_stack.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {repo.tech_stack.slice(0, 4).map((tech) => (
-                            <Badge key={tech} variant="secondary" className="text-xs">
-                              {tech}
-                            </Badge>
-                          ))}
-                          {repo.tech_stack.length > 4 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{repo.tech_stack.length - 4}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                            Security Score
-                          </div>
-                          {hasScore ? (
-                            <div className="mt-3">
-                              <SecurityScore
-                                data={{ overall_score: repo.overall_score }}
-                                size="sm"
-                                showLabel={false}
-                                animated={false}
-                              />
-                            </div>
-                          ) : (
-                            <p className="mt-3 text-sm text-muted-foreground">
-                              {repo.displayStatus === 'scanning' ? 'Refreshing after scan...' : 'No score available yet'}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                            Latest Activity
-                          </div>
-                          <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
-                            <Clock className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                            <span className="leading-6">{getRepositoryActivityLabel(repo)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {repo.issues && Object.values(repo.issues).some((value) => value > 0) && (
-                        <div className="flex flex-wrap gap-2">
-                          {repo.issues.critical > 0 && (
-                            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400">
-                              Critical {repo.issues.critical}
-                            </span>
-                          )}
-                          {repo.issues.high > 0 && (
-                            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-400">
-                              High {repo.issues.high}
-                            </span>
-                          )}
-                          {repo.issues.medium > 0 && (
-                            <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-400">
-                              Medium {repo.issues.medium}
-                            </span>
-                          )}
-                          {repo.issues.low > 0 && (
-                            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                              Low {repo.issues.low}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="mt-auto border-t border-white/10 pt-5">
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          {repo.displayStatus === 'completed' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="sm:flex-1"
-                              onClick={() => handleViewResults(repo.id)}
-                              icon={<ExternalLink className="h-3.5 w-3.5" />}
-                            >
-                              View Results
-                            </Button>
-                          )}
-
-                          {isRepoScanning ? (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="sm:flex-1"
-                              disabled
-                              icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                            >
-                              {isStartPending ? 'Starting Scan...' : 'Scanning...'}
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              className="sm:flex-1"
-                              onClick={() => handleScan(repo)}
-                              disabled={isStartPending}
-                              icon={isStartPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                            >
-                              {isStartPending ? 'Starting Scan...' : scanButtonLabel}
-                            </Button>
-                          )}
-
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="sm:w-11"
-                            onClick={() => handleDelete(repo.id)}
-                            disabled={isRepoScanning || isStartPending}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </motion.div>
-              )
-            })
+            filteredRepos.map((repo, index) => (
+              <RepositoryListCard
+                key={repo.id}
+                repo={repo}
+                index={index}
+                isStartPending={scanStartPendingIds.has(repo.id)}
+                isLocallyScanning={scanningRepoIds.has(repo.id) || activeScan?.repoId === repo.id}
+                onScan={() => handleScan(repo)}
+                onViewResults={() => { void handleViewResults(repo.id) }}
+                onDelete={() => { void handleDelete(repo.id) }}
+              />
+            ))
           )}
         </motion.div>
 
@@ -825,7 +624,7 @@ export function RepositoriesPage() {
           repos={importableItems}
           isLoading={isImportLoading}
           provider={activeProvider}
-          connected={activeProvider === 'github' ? githubConnected : gitlabConnected}
+          connected={activeProvider === 'github' ? githubOAuthForImport : gitlabOAuthConnected}
           statusMessage={importStatusMessage}
           hasError={Boolean(importError)}
         />

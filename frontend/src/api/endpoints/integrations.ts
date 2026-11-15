@@ -6,7 +6,11 @@ export type IntegrationStatus = 'connected' | 'not_connected' | 'connecting' | '
 
 export interface IntegrationStatusResponse {
   github: boolean
+  github_oauth?: boolean
+  github_app_installed?: boolean
+  github_repository_access?: boolean
   gitlab: boolean
+  gitlab_oauth?: boolean
   aws: boolean
   azure: boolean
   bitbucket: boolean
@@ -25,15 +29,11 @@ export interface IntegrationInfo {
   connectType: 'oauth' | 'modal' | 'none'
   connectUrl?: string
   modalType?: 'aws' | 'azure' | 'kubernetes' | 'eks'
+  connectionDetail?: string
 }
 
 export interface AuthContext {
   authProvider: 'github' | 'gitlab' | 'email'
-}
-
-const AUTH_PROVIDER_MAP: Record<string, IntegrationProvider> = {
-  github: 'github',
-  gitlab: 'gitlab',
 }
 
 const PROVIDER_META: Record<IntegrationProvider, { label: string; description: string; features: string[]; icon: string; connectType: 'oauth' | 'modal' | 'none'; connectUrl?: string; modalType?: 'aws' | 'azure' | 'kubernetes' | 'eks' }> = {
@@ -98,18 +98,40 @@ const PROVIDER_META: Record<IntegrationProvider, { label: string; description: s
   },
 }
 
-function buildDefaultStatus(authProvider: 'github' | 'gitlab' | 'email'): IntegrationInfo[] {
+function githubOAuthConnected(data: IntegrationStatusResponse): boolean {
+  return data.github_oauth ?? false
+}
+
+function gitlabOAuthConnected(data: IntegrationStatusResponse): boolean {
+  return data.gitlab_oauth ?? data.gitlab ?? false
+}
+
+function githubConnectionDetail(data: IntegrationStatusResponse): string | undefined {
+  const oauth = githubOAuthConnected(data)
+  const app = data.github_app_installed ?? false
+  const repos = data.github_repository_access ?? false
+  if (oauth) {
+    return app ? 'OAuth linked · GitHub App installed' : 'OAuth identity linked'
+  }
+  if (app) {
+    return 'GitHub App installed (OAuth not linked)'
+  }
+  if (repos) {
+    return 'Repositories added manually (OAuth not linked)'
+  }
+  return undefined
+}
+
+function buildDefaultStatus(): IntegrationInfo[] {
   const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket', 'kubernetes', 'eks']
 
   return providers.map((provider) => {
     const meta = PROVIDER_META[provider]
-    const isAuthMatched = authProvider !== 'email' && AUTH_PROVIDER_MAP[authProvider] === provider
-    const connected = isAuthMatched
 
     return {
       provider,
-      connected,
-      status: connected ? 'connected' : 'not_connected',
+      connected: false,
+      status: 'not_connected',
       label: meta.label,
       description: meta.description,
       features: meta.features,
@@ -122,26 +144,38 @@ function buildDefaultStatus(authProvider: 'github' | 'gitlab' | 'email'): Integr
 }
 
 export const integrationsApi = {
-  getStatus: async (auth: AuthContext): Promise<IntegrationInfo[]> => {
+  getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
+    const response = await apiClient.get<IntegrationStatusResponse>('/integrations/status')
+    return response.data
+  },
+
+  getStatus: async (_auth: AuthContext): Promise<IntegrationInfo[]> => {
     try {
-      const response = await apiClient.get<IntegrationStatusResponse>('/integrations/status')
-      const data = response.data
+      const data = await integrationsApi.getIntegrationStatus()
       const providers: IntegrationProvider[] = ['github', 'gitlab', 'aws', 'azure', 'bitbucket', 'kubernetes', 'eks']
-      const { authProvider } = auth
 
       return providers.map((provider) => {
         const meta = PROVIDER_META[provider]
-        const backendConnected = data[provider] ?? false
-        const isAuthMatched = authProvider !== 'email' && AUTH_PROVIDER_MAP[authProvider] === provider
+        let connected = data[provider] ?? false
+        let status: IntegrationStatus = connected ? 'connected' : 'not_connected'
+        let connectionDetail: string | undefined
 
-        // Auth provider's matching integration is always connected
-        // Other integrations require backend verification
-        const connected = isAuthMatched || backendConnected
+        if (provider === 'github') {
+          const oauth = githubOAuthConnected(data)
+          const app = data.github_app_installed ?? false
+          connected = oauth
+          status = oauth ? 'connected' : app ? 'pending_verification' : 'not_connected'
+          connectionDetail = githubConnectionDetail(data)
+        } else if (provider === 'gitlab') {
+          connected = gitlabOAuthConnected(data)
+          status = connected ? 'connected' : 'not_connected'
+          connectionDetail = connected ? 'OAuth identity linked' : undefined
+        }
 
         return {
           provider,
           connected,
-          status: connected ? 'connected' : 'not_connected',
+          status,
           label: meta.label,
           description: meta.description,
           features: meta.features,
@@ -149,10 +183,11 @@ export const integrationsApi = {
           connectType: meta.connectType,
           connectUrl: meta.connectUrl,
           modalType: meta.modalType,
+          connectionDetail,
         }
       })
     } catch {
-      return buildDefaultStatus(auth.authProvider)
+      return buildDefaultStatus()
     }
   },
 

@@ -37,6 +37,7 @@ from app.services.ai_recommendation_cache import (
     finding_fingerprint,
     recommendation_cache_key,
 )
+from app.services.ai_eligibility import filter_ai_eligible_findings, finding_severity_value
 from app.services.ai_job_service import (
     aggregate_scan_ai_status,
     ensure_jobs_for_scan,
@@ -146,11 +147,27 @@ class AIRecommendationService:
         scan.ai_error_message = None
         scan.ai_completed_at = None
         await self.session.commit()
-        findings_total = len(getattr(scan, "findings", None) or [])
-        await self._broadcast_started(str(scan_uuid), findings_total=findings_total)
+        from sqlalchemy import select
 
+        from app.models.finding import Finding
+
+        raw_findings = list(getattr(scan, "findings", None) or [])
+        if not raw_findings:
+            raw_findings = list(
+                (await self.session.execute(select(Finding).where(Finding.scan_id == scan_uuid)))
+                .scalars()
+                .all()
+            )
+        eligible_findings = filter_ai_eligible_findings(raw_findings)
+        info_excluded = sum(1 for f in raw_findings if finding_severity_value(f) == "info")
         jobs = await ensure_jobs_for_scan(
             self.session, scan_uuid, max_per_scan=self.max_per_scan, context_engine=self.context_engine
+        )
+        await self._broadcast_started(
+            str(scan_uuid),
+            findings_total=len(jobs),
+            total_findings=len(raw_findings),
+            info_excluded=info_excluded,
         )
         if not jobs:
             scan.ai_status = "completed"
@@ -673,7 +690,14 @@ class AIRecommendationService:
     # WebSocket / metrics
     # ------------------------------------------------------------------
 
-    async def _broadcast_started(self, scan_id: str, findings_total: int = 0) -> None:
+    async def _broadcast_started(
+        self,
+        scan_id: str,
+        *,
+        findings_total: int = 0,
+        total_findings: int | None = None,
+        info_excluded: int | None = None,
+    ) -> None:
         try:
             from app.websockets.scan_progress import scan_progress_manager
             await scan_progress_manager.broadcast_ai_started(
@@ -684,6 +708,18 @@ class AIRecommendationService:
             await scan_progress_manager.broadcast_ai_analysis_started(
                 scan_id, findings_total=findings_total
             )
+            if total_findings is not None:
+                await scan_progress_manager.broadcast_ai_progress(
+                    scan_id,
+                    phase="eligibility",
+                    message_text=(
+                        f"AI eligible: {findings_total} of {total_findings} findings"
+                        + (f" ({info_excluded} informational excluded)" if info_excluded else "")
+                    ),
+                    progress=0,
+                    findings_processed=0,
+                    findings_total=findings_total,
+                )
             await scan_progress_manager.broadcast_ai_progress(
                 scan_id, phase="building_context", message_text="Building AI recommendations…", progress=0
             )

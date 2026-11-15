@@ -278,7 +278,22 @@ async def authenticate_scan_websocket(websocket: WebSocket, scan_id: str) -> boo
     creds = await receive_websocket_credentials(websocket)
     if creds is None:
         return False
-    return await authorize_scan_access(websocket, scan_id, creds)
+    if not await authorize_scan_access(websocket, scan_id, creds):
+        return False
+    from app.middleware.rate_limiting.websocket_limits import (
+        enforce_websocket_connection_limits,
+        user_sub_from_access_token,
+    )
+
+    user_sub = user_sub_from_access_token(creds.access_token)
+    if not await enforce_websocket_connection_limits(
+        websocket,
+        user_sub=user_sub,
+        api_key=creds.api_key,
+        session_token=creds.session_token,
+    ):
+        return False
+    return True
 
 
 async def authenticate_cloud_websocket(websocket: WebSocket, connection_id: str) -> bool:

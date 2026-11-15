@@ -11,9 +11,9 @@ const features = [
 ]
 
 const stats = [
-  { value: '10,000+', label: 'Repositories' },
-  { value: '500+', label: 'Security Rules' },
-  { value: '<30 sec', label: 'Average Scan' },
+  { value: '500+', label: 'Security rules' },
+  { value: 'Multi-scanner', label: 'IaC & repos' },
+  { value: '<30 sec', label: 'Typical scan' },
 ]
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const

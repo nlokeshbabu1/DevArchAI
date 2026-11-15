@@ -119,6 +119,12 @@ export const scansApi = {
     ai_status: string
     total_jobs: number
     by_status: Record<string, number>
+    total_findings?: number
+    ai_eligible_findings?: number
+    info_excluded_count?: number
+    low_excluded_count?: number
+    jobs_analyzed?: number
+    jobs_eligible_total?: number
   }> => {
     const response = await apiClient.get(`/scans/${scanId}/ai/status`);
     return response.data;

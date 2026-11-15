@@ -21,6 +21,8 @@ from app.core.security import (
     get_password_hash,
     verify_password,
 )
+from app.schemas.settings import DeleteAccountRequest
+from app.services.account_deletion import assert_account_deletion_allowed, user_has_usable_password
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.user import User
@@ -80,7 +82,9 @@ def _profile_dict(user: User, org_name: str | None = None) -> dict:
             else "gitlab" if user.gitlab_id
             else "email"
         ),
-        "has_password": bool(user.hashed_password),
+        "has_password": user_has_usable_password(user),
+        "has_github_oauth": bool(user.github_id),
+        "has_gitlab_oauth": bool(user.gitlab_id),
     }
 
 
@@ -324,15 +328,16 @@ async def revoke_api_key(
 
 @router.delete("/account")
 async def delete_account(
-    body: dict = Body(...),
+    body: DeleteAccountRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pw = body.get("password", "")
-    if not pw:
-        raise HTTPException(status_code=400, detail="Password is required")
-    if not verify_password(pw, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Password is incorrect")
+    await assert_account_deletion_allowed(
+        current_user,
+        password=body.password,
+        confirmation=body.confirmation,
+        provider=body.provider,
+    )
     uid = str(current_user.id)
     _preferences_store.pop(uid, None)
     _sessions_store.pop(uid, None)

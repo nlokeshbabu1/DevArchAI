@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { memo, useMemo, useState, useEffect } from 'react'
 
+import { MARQUEE_TECHNOLOGIES } from '../../lib/supported-capabilities'
+
 function useIsDesktop(breakpoint = 1024) {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
@@ -50,8 +52,11 @@ const allCards: FloatingCard[] = [
   { id: 12, icon: Workflow, label: 'ArgoCD', sub: 'GitOps', color: 'text-[#00e5ff]', glow: 'rgba(0,229,255,0.3)', borderColor: 'border-cyan-500/20', x: '1%', y: '33%', delay: 2.6, duration: 9.5, driftX: 4, driftY: -3, rotate: 1 },
   { id: 13, icon: Activity, label: 'Prometheus', sub: 'Metrics', color: 'text-orange-400', glow: 'rgba(255,181,71,0.28)', borderColor: 'border-orange-500/20', x: '96%', y: '33%', delay: 3, duration: 11, driftX: -4, driftY: -5, rotate: 0.5 },
   { id: 14, icon: LineChart, label: 'Grafana', sub: 'Dashboards', color: 'text-[#4f8dff]', glow: 'rgba(79,141,255,0.28)', borderColor: 'border-blue-500/20', x: '5%', y: '90%', delay: 0.6, duration: 10.5, driftX: 5, driftY: -4, rotate: -1 },
-  { id: 15, icon: Search, label: 'SonarQube', sub: 'Quality', color: 'text-amber-400', glow: 'rgba(255,181,71,0.28)', borderColor: 'border-amber-500/20', x: '91%', y: '88%', delay: 2.4, duration: 12.5, driftX: -5, driftY: -4, rotate: 1 },
+  { id: 16, icon: Shield, label: 'Checkov', sub: 'IaC policy', color: 'text-violet-400', glow: 'rgba(139,92,246,0.28)', borderColor: 'border-violet-500/20', x: '91%', y: '88%', delay: 2.4, duration: 12.5, driftX: -5, driftY: -4, rotate: 1 },
+  { id: 17, icon: Search, label: 'Gitleaks', sub: 'Secrets', color: 'text-rose-400', glow: 'rgba(244,63,94,0.28)', borderColor: 'border-rose-500/20', x: '50%', y: '6%', delay: 1.1, duration: 11.5, driftX: 3, driftY: -4, rotate: 0.5 },
 ]
+
+const heroLabelSet = new Set<string>(MARQUEE_TECHNOLOGIES)
 
 const FloatingCardItem = memo(function FloatingCardItem({
   card, reduced,
@@ -121,7 +126,7 @@ export const FloatingTechCards = memo(function FloatingTechCards() {
     if (!isDesktop) {
       return []
     }
-    return allCards
+    return allCards.filter((card) => heroLabelSet.has(card.label))
   }, [isDesktop])
 
   return (

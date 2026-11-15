@@ -24,6 +24,9 @@ export interface ResolvedSecurityScore {
   label: string
 }
 
+export const SECURITY_SCORE_HELP =
+  'Security Score prefers the security-category score from the backend when present; otherwise it uses the composite overall score (see resolveSecurityScore).'
+
 export function resolveSecurityScore(
   data: ScoreSource | null | undefined,
 ): ResolvedSecurityScore | null {

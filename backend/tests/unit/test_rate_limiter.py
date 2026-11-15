@@ -100,6 +100,7 @@ class TestRateLimitMiddleware:
         middleware = RateLimitMiddleware(app=FastAPI())
         request = MagicMock()
         request.url.path = "/api/v1/repos"
+        request.method = "GET"
         request.client.host = "10.0.0.1"
         request.headers = {}
         request.scope = {"client": ("10.0.0.1", 0)}
@@ -132,12 +133,13 @@ class TestRateLimitMiddleware:
         middleware = RateLimitMiddleware(app=FastAPI())
         request = MagicMock()
         request.url.path = "/api/v1/repos"
+        request.method = "GET"
         request.client.host = "10.0.0.1"
         request.headers = {}
         request.scope = {"client": ("10.0.0.1", 0)}
 
         mock_pipe = MagicMock()
-        mock_pipe.execute = AsyncMock(return_value=[0, 101, True, True])
+        mock_pipe.execute = AsyncMock(return_value=[0, 61, True, True])
 
         mock_redis = MagicMock()
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)
@@ -165,13 +167,14 @@ class TestRateLimitMiddleware:
         middleware = RateLimitMiddleware(app=FastAPI())
         request = MagicMock()
         request.url.path = "/api/v1/auth/login"
+        request.method = "POST"
         request.client.host = "10.0.0.2"
         request.headers = {}
         request.scope = {"client": ("10.0.0.2", 0)}
 
-        # Auth limit = 10. ZCARD returns 10 (at limit) => should 429
+        # Login IP limit default = 20. ZCARD returns 20 (at limit) => should 429
         mock_pipe = MagicMock()
-        mock_pipe.execute = AsyncMock(return_value=[0, 10, True, True])
+        mock_pipe.execute = AsyncMock(return_value=[0, 20, True, True])
 
         mock_redis = MagicMock()
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)

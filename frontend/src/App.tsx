@@ -9,6 +9,7 @@ import { GitlabCallback } from './pages/auth/GitlabCallback'
 import { IntegrationCallback } from './pages/auth/IntegrationCallback'
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
+import { CliAuthorize } from './pages/cli/CliAuthorize'
 import { Landing } from './pages/Landing'
 import { useAuthStore, initAuthSync } from './stores/auth-store'
 
@@ -95,6 +96,7 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/scan" element={<ScanPage />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/cli/authorize" element={<CliAuthorize />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/auth/gitlab/callback" element={<GitlabCallback />} />

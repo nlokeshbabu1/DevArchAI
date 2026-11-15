@@ -9,7 +9,7 @@ const faqs = [
   },
   {
     question: 'What technologies and frameworks are supported?',
-    answer: 'We support Terraform, Pulumi, CloudFormation, Kubernetes, Helm, Docker, Docker Compose, GitHub Actions, GitLab CI, Jenkins, CircleCI, AWS, Azure, and GCP. New technologies are added regularly based on user demand.',
+    answer: 'DevArchAI scans Terraform, Kubernetes, Helm charts, Docker, GitHub Actions, GitLab CI, Jenkins pipeline files, and related dependencies with Checkov, Trivy, Gitleaks, and other registered scanners. AWS cloud integration is available today; Azure and GCP integrations are marked Coming Soon in the product navigation.',
   },
   {
     question: 'How long does a scan take?',
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     question: 'Can I use DevArchAI in my CI/CD pipeline?',
-    answer: 'Yes. DevArchAI integrates with GitHub Actions, GitLab CI, Jenkins, and CircleCI. You can add a scan step to your pipeline and get results automatically on every push or pull request.',
+    answer: 'Repository scans analyze GitHub Actions, GitLab CI, and Jenkins files in your codebase. Use the dashboard or API to run scans on push; native CI marketplace actions are evolving — check documentation for the current integration path.',
   },
   {
     question: 'What is the difference between Free, Plus, and Pro?',

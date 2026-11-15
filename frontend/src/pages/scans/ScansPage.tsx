@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 
 import { scansApi } from '../../api/endpoints/scans'
 import { Card, Button, Badge, Progress } from '../../components/ui'
+import { toast } from '../../hooks/useToast'
 import { NativeSelect, nativeSelectOptionProps } from '../../components/ui/native-select'
 import { SecurityScore } from '../../components/ui/SecurityScore'
 import { api } from '../../lib/api'
@@ -32,6 +33,7 @@ export function ScansPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [scanPendingDelete, setScanPendingDelete] = useState<Scan | null>(null)
   const { token } = useAuthStore()
 
   const { data: scans, isLoading, refetch } = useQuery({
@@ -67,11 +69,20 @@ export function ScansPage() {
   })
 
   const deleteScanMutation = useMutation({
-    mutationFn: async (scanId: string) => {
-      await api.delete(`/scans/${scanId}`)
-    },
+    mutationFn: async (scanId: string) => scansApi.deleteScan(scanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-recent-scans'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-risky-repositories'] })
+      queryClient.invalidateQueries({ queryKey: ['repositories'] })
+      setScanPendingDelete(null)
+      toast.success('Scan deleted')
+    },
+    onError: (error: unknown) => {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail || 'Failed to delete scan')
     },
   })
 
@@ -326,7 +337,9 @@ export function ScansPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteScanMutation.mutate(scan.id)}
+                      aria-label={`Delete scan for ${scan.repository_url}`}
+                      disabled={deleteScanMutation.isPending}
+                      onClick={() => setScanPendingDelete(scan)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -337,6 +350,36 @@ export function ScansPage() {
           })
         )}
       </div>
+
+      {scanPendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-md p-6" hover={false}>
+            <h2 className="text-lg font-semibold text-foreground">Delete scan?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This permanently removes the scan for{' '}
+              <span className="font-medium text-foreground break-all">{scanPendingDelete.repository_url}</span>
+              . Findings and reports for this scan will be deleted.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                disabled={deleteScanMutation.isPending}
+                onClick={() => setScanPendingDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                loading={deleteScanMutation.isPending}
+                disabled={deleteScanMutation.isPending}
+                onClick={() => deleteScanMutation.mutate(scanPendingDelete.id)}
+              >
+                Delete scan
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

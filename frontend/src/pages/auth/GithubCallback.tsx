@@ -68,9 +68,11 @@ export function GithubCallback() {
         // Clear stale query cache from any previous session
         queryClient.clear()
 
-        // Redirect to dashboard after short delay
+        // Return to the page that requested login (e.g. CLI authorize), else dashboard.
+        const redirectPath = sessionStorage.getItem('postLoginRedirect')
+        sessionStorage.removeItem('postLoginRedirect')
         setTimeout(() => {
-          navigate('/dashboard')
+          navigate(redirectPath || '/dashboard')
         }, 1000)
       } catch (err: any) {
         console.error('GitHub OAuth error:', err)

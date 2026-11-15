@@ -19,23 +19,32 @@ app = typer.Typer(
 @command
 def auth_login(
     api_key: str | None = typer.Option(
-        None, "--api-key", help="Provide the API key directly (skips the prompt)."
+        None, "--api-key", help="Use an API key instead of browser login (CI/automation)."
     ),
+    server: str | None = typer.Option(
+        None, "--server", help="Custom DevArchAI API base URL (https required except localhost)."
+    ),
+    device_name: str | None = typer.Option(None, "--device-name", help="Label for this CLI device."),
     *,
     json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> dict:
-    """Authenticate with a DevArchAI API key."""
+    """Sign in with your DevArchAI account (browser) or an API key."""
     config, client = make_client()
     try:
-        data = api_login(config, client, api_key=api_key)
+        data = api_login(config, client, api_key=api_key, server=server, device_name=device_name)
         if not json:
             email = data.get("email")
-            if email:
+            if data.get("authentication") == "CLI Session":
+                print_success("Authentication successful")
+                if email:
+                    print_success(f"Account: {email}")
+                print_muted(f"API: {data.get('api_url')}")
+                print_muted("Credentials stored securely (never written to config.toml).")
+            elif email:
                 print_success(f"Logged in as {email}.")
             else:
                 print_success("Logged in.")
             print_muted(f"API: {data.get('api_url')}")
-            print_muted("Credential stored securely (never written to config.toml).")
         return data
     finally:
         client.close()
@@ -44,7 +53,7 @@ def auth_login(
 @app.command("logout")
 @command
 def auth_logout(
-    revoke: bool = typer.Option(False, "--revoke", help="Also revoke the API key on the server."),
+    revoke: bool = typer.Option(True, "--revoke/--no-revoke", help="Revoke the server-side CLI session/API key."),
     *,
     json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> dict:

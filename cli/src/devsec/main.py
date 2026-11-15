@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from devsec.commands import auth_app, config_app, kubernetes_app, project_app, scan_app
+from devsec.commands.auth_cmd import auth_login, auth_logout, auth_status
 from devsec.commands.base import command, set_debug
 from devsec.commands.version import version_cmd
 from devsec.output.console import is_ci, set_output_mode
@@ -66,6 +67,37 @@ def version_command(
 
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
+
+
+@app.command("login")
+@command
+def login_command(
+    api_key: str | None = typer.Option(None, "--api-key", help="API key login (CI)."),
+    server: str | None = typer.Option(None, "--server", help="Custom API base URL."),
+    device_name: str | None = typer.Option(None, "--device-name", help="CLI device label."),
+    *,
+    json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+) -> dict:
+    """Sign in to DevArchAI (browser by default)."""
+    return auth_login(api_key=api_key, server=server, device_name=device_name, json=json)
+
+
+@app.command("logout")
+@command
+def logout_command(
+    revoke: bool = typer.Option(True, "--revoke/--no-revoke", help="Revoke server session."),
+    *,
+    json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+) -> dict:
+    """Sign out and clear stored CLI credentials."""
+    return auth_logout(revoke=revoke, json=json)
+
+
+@app.command("whoami")
+@command
+def whoami_command(*, json: bool = typer.Option(False, "--json", help="Emit JSON to stdout.")) -> dict:
+    """Show the authenticated account and CLI session metadata."""
+    return auth_status(json=json)
 app.add_typer(project_app, name="project")
 app.add_typer(scan_app, name="scan")
 app.add_typer(kubernetes_app, name="k8s")

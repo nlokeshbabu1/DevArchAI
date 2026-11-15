@@ -62,11 +62,19 @@ devsec config set api-url http://localhost:8000
 ## Authentication
 
 ```bash
-devsec auth login          # paste API key from Settings → Security
+devsec auth login          # choose browser sign-in or an API key
 devsec auth status         # show current user
-devsec auth logout         # remove local credential
-devsec auth logout --revoke  # also revoke key on server
+devsec auth logout         # remove local credential and revoke the session
 ```
+
+`devsec auth login` offers two options:
+
+1. **Browser sign-in** (recommended) — opens the web app; approve the CLI device and the
+   terminal picks up the session automatically.
+2. **API key** — create a key under **Settings → Security** in the web app and paste it into
+   the hidden CLI prompt.
+
+For scripts and CI you can skip the prompt with `devsec auth login --api-key sk-...`.
 
 API keys (`sk-...`) are stored in the OS keyring (or `~/.config/devsec/credentials.json`
 with `0600` permissions as fallback). Keys are never logged or written to `config.toml`.

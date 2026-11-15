@@ -1,7 +1,8 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { Box, GitBranch, Github, Layers, Cloud, Server, Shield, Hexagon } from 'lucide-react'
+import { Box, GitBranch, Github, Layers, Cloud, Shield, Hexagon } from 'lucide-react'
 import { memo, useState, useEffect } from 'react'
 
+import { MARQUEE_TECHNOLOGIES } from '../../lib/supported-capabilities'
 import { cn } from '../../lib/utils'
 
 interface TechItem {
@@ -11,20 +12,20 @@ interface TechItem {
   color: string
 }
 
-const technologies: TechItem[] = [
-  { name: 'Docker', icon: Box, category: 'Containers', color: 'from-blue-500/20 to-cyan-500/20' },
-  { name: 'Docker Compose', icon: Layers, category: 'Containers', color: 'from-blue-500/20 to-cyan-500/20' },
-  { name: 'Kubernetes', icon: Hexagon, category: 'Orchestration', color: 'from-indigo-500/20 to-blue-500/20' },
-  { name: 'Helm', icon: Shield, category: 'Orchestration', color: 'from-indigo-500/20 to-blue-500/20' },
-  { name: 'Terraform', icon: Layers, category: 'Infrastructure', color: 'from-purple-500/20 to-indigo-500/20' },
-  { name: 'GitHub Actions', icon: Github, category: 'CI/CD', color: 'from-slate-500/20 to-gray-500/20' },
-  { name: 'Jenkins', icon: GitBranch, category: 'CI/CD', color: 'from-orange-500/20 to-red-500/20' },
-  { name: 'GitLab CI', icon: GitBranch, category: 'CI/CD', color: 'from-orange-500/20 to-amber-500/20' },
-  { name: 'AWS', icon: Cloud, category: 'Cloud', color: 'from-amber-500/20 to-orange-500/20' },
-  { name: 'EKS', icon: Server, category: 'Cloud', color: 'from-amber-500/20 to-orange-500/20' },
-  { name: 'AKS', icon: Server, category: 'Cloud', color: 'from-blue-500/20 to-cyan-500/20' },
-  { name: 'GKE', icon: Server, category: 'Cloud', color: 'from-green-500/20 to-emerald-500/20' },
-]
+const TECH_CATALOG: Record<string, TechItem> = {
+  Docker: { name: 'Docker', icon: Box, category: 'Containers', color: 'from-blue-500/20 to-cyan-500/20' },
+  Kubernetes: { name: 'Kubernetes', icon: Hexagon, category: 'Orchestration', color: 'from-indigo-500/20 to-blue-500/20' },
+  Helm: { name: 'Helm', icon: Shield, category: 'Orchestration', color: 'from-indigo-500/20 to-blue-500/20' },
+  Terraform: { name: 'Terraform', icon: Layers, category: 'Infrastructure', color: 'from-purple-500/20 to-indigo-500/20' },
+  'GitHub Actions': { name: 'GitHub Actions', icon: Github, category: 'CI/CD', color: 'from-slate-500/20 to-gray-500/20' },
+  Jenkins: { name: 'Jenkins', icon: GitBranch, category: 'CI/CD', color: 'from-orange-500/20 to-red-500/20' },
+  'GitLab CI': { name: 'GitLab CI', icon: GitBranch, category: 'CI/CD', color: 'from-orange-500/20 to-amber-500/20' },
+  AWS: { name: 'AWS', icon: Cloud, category: 'Integration', color: 'from-amber-500/20 to-orange-500/20' },
+  Trivy: { name: 'Trivy', icon: Shield, category: 'Scanner', color: 'from-emerald-500/20 to-teal-500/20' },
+  Checkov: { name: 'Checkov', icon: Layers, category: 'Scanner', color: 'from-violet-500/20 to-purple-500/20' },
+}
+
+const technologies: TechItem[] = MARQUEE_TECHNOLOGIES.map((name) => TECH_CATALOG[name]).filter(Boolean)
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false)

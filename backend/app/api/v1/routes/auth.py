@@ -303,11 +303,18 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """Authenticate user and return JWT tokens."""
+    from app.middleware.rate_limiting.deps import (
+        block_if_login_account_limited,
+        record_failed_login_account_attempt,
+    )
+
+    await block_if_login_account_limited(credentials.email)
     email_hash = hash_email(credentials.email)
     result = await db.execute(select(User).where(User.email_hash == email_hash))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
+        await record_failed_login_account_attempt(credentials.email)
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
