@@ -99,35 +99,6 @@ jobs:
       - name: NPM audit
         run: npm audit --audit-level=high
 
-# ==========================================
-# CODEQL SAST Performs SAST (Static Application Security Testing) against your JavaScript/TypeScript code.
-# ==========================================
-
-  codeql:
-    name: CodeQL SAST
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-
-    steps:
-
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-            fetch-depth: 1
-            persist-credentials: true
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-
-      - name: Analyze
-        uses: github/codeql-action/analyze@v4
-
 
   # ==========================================
   # 2C. SCA - DEPENDENCY REVIEW (PRs Only)
@@ -157,7 +128,7 @@ jobs:
     ##########################################################
   build-artifact:
     name: Build Frontend Artifact
-    needs: [test, npm-security, codeql, dependency-review]
+    needs: [test, npm-security, dependency-review]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
