@@ -23,10 +23,10 @@ import { EmptyState } from '@/components/ui/empty-state'
 import apiClient from '../../api/endpoints/client'
 import { integrationsApi } from '../../api/endpoints/integrations'
 import { repositoriesApi, Repository } from '../../api/endpoints/repositories'
-import { RepositoryListCard } from '../../components/repositories/RepositoryListCard'
 import { scansApi } from '../../api/endpoints/scans'
 import { AddRepositoryModal } from '../../components/AddRepositoryModal'
 import { RepoSelectionModal } from '../../components/GitHubRepoSelectionModal'
+import { RepositoryListCard } from '../../components/repositories/RepositoryListCard'
 import { ScanProgressOverlay } from '../../components/scans/ScanProgressOverlay'
 import { Badge } from '../../components/ui'
 import { PageHeader } from '../../components/ui/PageHeader'
@@ -34,7 +34,6 @@ import { SecurityScore } from '../../components/ui/SecurityScore'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { Button, Card } from '../../components/ui-animated'
 import { useScanWebSocket } from '../../hooks/useScanWebSocket'
-import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
 import {
   countRepositoriesByStatus,
   inferRepositoryProvider,
@@ -43,6 +42,7 @@ import {
   resolveRepositoryDisplayStatus,
   type RepositoryDisplayStatus,
 } from '../../lib/repository-display'
+import { normalizeLifecycleStage } from '../../lib/scanLifecycle'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/auth-store'
 import type { StageMetadata } from '../../types'
@@ -178,7 +178,7 @@ export function RepositoriesPage() {
   const repositories = repositoriesResponse || []
   const allRepos: DisplayRepository[] = repositories.map((repo) => ({
     ...repo,
-    displayStatus: 'not_scanned' as RepositoryDisplayStatus,
+    displayStatus: 'not_scanned',
     source: inferRepositoryProvider(repo.url),
   }))
 
