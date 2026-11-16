@@ -133,7 +133,6 @@ jobs:
   # ==========================================
   dependency-review:
     name: SCA - Dependency Review
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
 
     permissions:
@@ -147,6 +146,7 @@ jobs:
             token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dependency Review
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name == 'merge_group'
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
