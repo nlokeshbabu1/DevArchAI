@@ -32,6 +32,11 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Update Alpine packages in the final runtime image
+RUN apk update \
+    && apk upgrade --no-cache \
+    && rm -rf /var/cache/apk/*
+
 #create the use appuser
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
@@ -62,7 +67,7 @@ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 USER appuser
 
 #Expose port 80
-EXPOSE 80
+EXPOSE 8080
 
 # Generate config at runtime using env var
 CMD ["/bin/sh", "-c", "envsubst '$BACKEND_HOST' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
