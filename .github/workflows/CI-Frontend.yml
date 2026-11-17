@@ -216,7 +216,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
-          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          image-ref: frontend:${{ steps.meta.outputs.version }}
           format: cyclonedx
           output: frontend-sbom.cdx.json
           exit-code: '0'
