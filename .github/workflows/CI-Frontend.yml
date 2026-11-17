@@ -193,12 +193,12 @@ jobs:
         with:
           context: ./frontend
           load: true # Loads image into local Docker daemon so Trivy can scan it BEFORE pushing
-          tags: frontend:${{ steps.meta.outputs.version }}
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: frontend:${{ steps.meta.outputs.version }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: sarif
           output: trivy-report.sarif
           exit-code: '1' # Fails the pipeline and blocks Docker push if HIGH/CRITICAL CVEs exist
@@ -216,7 +216,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
-          image-ref: frontend:${{ steps.meta.outputs.version }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: cyclonedx
           output: frontend-sbom.cdx.json
           exit-code: '0'
