@@ -240,7 +240,7 @@ jobs:
           docker push "${IMAGE_NAME}:${IMAGE_TAG}"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          IMAGE_TAG: ${{ steps.meta.outputs.version }}
 
       - name: Get published image digest
         id: digest
