@@ -248,8 +248,8 @@ jobs:
           DIGEST=$(docker image inspect \
             --format='{{index .RepoDigests 0}}' \
             "${IMAGE_NAME}:${IMAGE_TAG}")
-
-          echo "image-digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "DIGEST=$DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
         env:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          IMAGE_TAG: ${{ steps.meta.outputs.version }}
